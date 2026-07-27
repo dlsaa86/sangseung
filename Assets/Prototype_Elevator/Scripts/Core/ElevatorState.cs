@@ -23,6 +23,15 @@ namespace Ascend.Prototype
         [Tooltip("Maximum weight allowed before overload penalty.")]
         public float AllowedWeight;
 
+        [Header("Passenger / Accident")]
+        [Tooltip("Current visible probability of an overload accident, from 0 to 1.")]
+        public float AccidentChance;
+
+        public bool LastAccidentOccurred;
+        public float LastAccidentLoss;
+        public string LastAccidentCause;
+        public int BoardedCount;
+
         [Header("Turn Tracking")]
         [Tooltip("Current generation turn index within the floor (1-indexed, 0 = before first turn).")]
         public int CurrentTurn;
@@ -46,10 +55,15 @@ namespace Ascend.Prototype
         /// <summary>Resets all fields to their initial values from the given config.</summary>
         public void Initialize(PrototypeConfig config)
         {
-            Power              = config.startingPower;
-            Money              = config.startingMoney;
-            Weight             = config.startingWeight;
-            AllowedWeight      = config.allowedWeight;
+            Power              = config != null ? config.startingPower : 0f;
+            Money              = config != null ? config.startingMoney : 0f;
+            Weight             = config != null ? config.startingWeight : 0f;
+            AllowedWeight      = config != null ? config.allowedWeight : 0f;
+            AccidentChance     = 0f;
+            LastAccidentOccurred = false;
+            LastAccidentLoss    = 0f;
+            LastAccidentCause   = string.Empty;
+            BoardedCount        = 0;
             CurrentTurn        = 0;
             BankedPower        = 0f;
             LastRollSummary    = string.Empty;

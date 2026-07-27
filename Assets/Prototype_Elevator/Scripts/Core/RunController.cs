@@ -19,6 +19,7 @@ namespace Ascend.Prototype
         [SerializeField] private RouletteController  _roulette;
         [SerializeField] private EffectResolver      _effects;
         [SerializeField] private CombinationResolver _resolver;
+        [SerializeField] private PassengerManager    _passengers;
 
         [Header("State (Inspector — live during Play Mode)")]
         [SerializeField] private ElevatorState _state = new ElevatorState();
@@ -34,6 +35,7 @@ namespace Ascend.Prototype
         private float _floorStartPower;       // power value at floor entry; used to reset on retry
 
         private CombinationResolver.CombinationResult _lastCombination;
+        private System.Random _accidentRng = new System.Random(0);
 
         // ── T-02: generation turn state ──
         /// <summary>True once all 3 tubes have stopped and the combination has been resolved this turn.</summary>
@@ -88,16 +90,33 @@ namespace Ascend.Prototype
             if (_currentState == RunState.GenerationTurn)
             {
                 // [1]/[2]/[3] — stop individual tubes (only active in GenerationTurn)
-                if (keyboard.digit1Key.wasPressedThisFrame)
+                if (keyboard.digit1Key.wasPressedThisFrame && _roulette != null)
                     _roulette.StopTube(0);
-                else if (keyboard.digit2Key.wasPressedThisFrame)
+                else if (keyboard.digit2Key.wasPressedThisFrame && _roulette != null)
                     _roulette.StopTube(1);
-                else if (keyboard.digit3Key.wasPressedThisFrame)
+                else if (keyboard.digit3Key.wasPressedThisFrame && _roulette != null)
                     _roulette.StopTube(2);
 
                 // Auto-resolve once all tubes have stopped
-                if (!_turnResolved && _roulette.AllStopped)
+                if (!_turnResolved && _roulette != null && _roulette.AllStopped)
                     ResolveGenerationTurn();
+            }
+            else if (_currentState == RunState.PassengerSelection)
+            {
+                if (keyboard.digit1Key.wasPressedThisFrame)
+                {
+                    if (_passengers != null && _passengers.Board(0))
+                        RecalculateLoad();
+                }
+                else if (keyboard.digit2Key.wasPressedThisFrame)
+                {
+                    if (_passengers != null && _passengers.Board(1))
+                        RecalculateLoad();
+                }
+                else if (keyboard.digit0Key.wasPressedThisFrame)
+                {
+                    Debug.Log("[상승] PassengerSelection: no passenger boarded.");
+                }
             }
             else if (_currentState == RunState.OverchargeAllocation)
             {
@@ -129,24 +148,53 @@ namespace Ascend.Prototype
         /// </summary>
         public void ResetRun()
         {
+            if (_state == null)
+                _state = new ElevatorState();
+
             _state.Initialize(_config);
+            if (_passengers != null)
+            {
+                int seed = _config != null ? _config.randomSeed : 0;
+                _passengers.InitializeSeed(seed);
+                _passengers.ResetPassengers();
+            }
+            else
+            {
+                Debug.LogWarning("[상승] RunController.ResetRun(): PassengerManager is missing.");
+            }
+
+            if (_config == null)
+            {
+                _currentState = RunState.FloorArrival;
+                RecalculateLoad();
+                return;
+            }
+
             _currentState          = RunState.FloorArrival;
             _surplus               = 0f;
             _lastShortfall         = 0f;
             _lastResolutionSuccess = false;
             _overchargeChoice      = 0;
             _lastCombination       = default;
-            _floorStartPower       = _config.startingPower;
+            _floorStartPower       = _config != null ? _config.startingPower : 0f;
             _turnResolved          = false;
+            int randomSeed = _config != null ? _config.randomSeed : 0;
+            _accidentRng = new System.Random(unchecked(randomSeed * 17 ^ 0x2ACC));
 
-            _floor.EnterFloor(0);
-            _floor.UpdateRequiredPower(_state.IsOverloaded);
-            _roulette.InitializeSeed(_config.randomSeed);
+            if (_floor != null)
+                _floor.EnterFloor(0);
+            RecalculateLoad();
+            if (_passengers != null)
+                _passengers.GenerateCandidates(_floor != null ? _floor.CurrentFloor : 0);
+
+            if (_roulette != null)
+                _roulette.InitializeSeed(randomSeed);
             if (_effects != null)
-                _effects.InitializeSeed(_config.randomSeed);
-            _roulette.ResetTubes();
+                _effects.InitializeSeed(randomSeed);
+            if (_roulette != null)
+                _roulette.ResetTubes();
 
-            Debug.Log($"[상승] Run Reset → FloorArrival (Floor {_floor.CurrentFloor}, Turn 0/{_config.generationsPerFloor}, Seed {_config.randomSeed})");
+            Debug.Log($"[상승] Run Reset → FloorArrival (Floor {(_floor != null ? _floor.CurrentFloor : 0)}, Turn 0/{_config.generationsPerFloor}, Seed {_config.randomSeed})");
         }
 
         /// <summary>
@@ -167,6 +215,12 @@ namespace Ascend.Prototype
         /// </summary>
         public void AdvanceState()
         {
+            if (_config == null)
+            {
+                Debug.LogWarning("[상승] RunController.AdvanceState(): config is missing; state cannot advance.");
+                return;
+            }
+
             RunState from = _currentState;
             RunState to;
 
@@ -213,8 +267,8 @@ namespace Ascend.Prototype
                     _state.Power        = _floorStartPower;
                     _state.BankedPower  = 0f;
                     _state.CurrentTurn  = 0;
-                    _floor.EnterFloor(_floor.CurrentFloor + 1);
-                    _floor.UpdateRequiredPower(_state.IsOverloaded);
+                    if (_floor != null)
+                        _floor.EnterFloor(_floor.CurrentFloor + 1);
                     to = RunState.FloorArrival;
                     break;
 
@@ -224,7 +278,14 @@ namespace Ascend.Prototype
             }
 
             _currentState = to;
-            Debug.Log($"[상승] {from} -> {to} (Floor {_floor.CurrentFloor}, Turn {_state.CurrentTurn}/{_config.generationsPerFloor})");
+
+            if (to == RunState.FloorArrival)
+            {
+                RecalculateLoad();
+                if (_passengers != null)
+                    _passengers.GenerateCandidates(_floor != null ? _floor.CurrentFloor : 0);
+            }
+            Debug.Log($"[상승] {from} -> {to} (Floor {(_floor != null ? _floor.CurrentFloor : 0)}, Turn {_state.CurrentTurn}/{_config.generationsPerFloor})");
 
             // Post-transition hooks
             if (to == RunState.GenerationTurn)
@@ -247,7 +308,8 @@ namespace Ascend.Prototype
         private void StartGenerationTurn()
         {
             _turnResolved = false;
-            _roulette.StartSpin();
+            if (_roulette != null)
+                _roulette.StartSpin();
             Debug.Log($"[상승] StartGenerationTurn — Turn {_state.CurrentTurn}, tubes spinning.");
         }
 
@@ -257,50 +319,102 @@ namespace Ascend.Prototype
         /// </summary>
         private void ResolveGenerationTurn()
         {
-            IReadOnlyList<BallDefinition> balls = _roulette.CollectResults();
+            IReadOnlyList<BallDefinition> balls = _roulette != null
+                ? _roulette.CollectResults()
+                : new List<BallDefinition>();
 
-            // T-03 hook — currently a no-op stub preserved for future effect chain insertion.
-            // TODO: derive this from all three tube stop qualities in T-04.
-            bool perfectStop = false;
-            GenerationContext context = _resolver.BuildContext(
-                balls,
-                _state.IsOverloaded,
-                perfectStop,
-                _state.CurrentTurn,
-                _floor.CurrentFloor);
+            // T-03 effect input now includes the actual quality of all three stops.
+            bool perfectStop = _roulette != null && _roulette.IsPerfectStop;
+            GenerationContext context = _resolver != null
+                ? _resolver.BuildContext(
+                    balls,
+                    _state.IsOverloaded,
+                    perfectStop,
+                    _state.CurrentTurn,
+                    _floor != null ? _floor.CurrentFloor : 0)
+                : new GenerationContext
+                {
+                    Balls = balls != null ? new List<BallDefinition>(balls) : new List<BallDefinition>(),
+                    IsOverloaded = _state.IsOverloaded,
+                    PerfectStop = perfectStop,
+                    TurnIndex = _state.CurrentTurn,
+                    FloorIndex = _floor != null ? _floor.CurrentFloor : 0
+                };
             context = _effects != null ? _effects.Resolve(context) : context;
             if (_effects == null)
                 context.FinalPower = context.ComputeCurrentPower();
 
-            _lastCombination = _resolver.Resolve(balls);
+            _lastCombination = _resolver != null
+                ? _resolver.Resolve(balls)
+                : default;
             _state.Power += context.FinalPower;
             _state.LastGenerationPower = context.FinalPower;
             _state.LastRollSummary = $"{_lastCombination.Summary} | Combination: {context.Combination}";
             _state.LastEffectLog = _effects != null ? _effects.BuildLogText() : string.Empty;
             _turnResolved               = true;
 
-            Debug.Log($"[상승] ResolveGenerationTurn Turn {_state.CurrentTurn}: {_lastCombination.Summary} | Power: {_state.Power:F1} / Required: {_floor.RequiredPower:F1}");
+            Debug.Log($"[상승] ResolveGenerationTurn Turn {_state.CurrentTurn}: {_lastCombination.Summary} | Power: {_state.Power:F1} / Required: {(_floor != null ? _floor.RequiredPower : 0f):F1}");
         }
 
         // ── Power resolution ──
 
         private void PerformPowerResolution()
         {
-            _surplus = _state.Power - _floor.RequiredPower;
+            _state.LastAccidentOccurred = false;
+            _state.LastAccidentLoss     = 0f;
+            _state.LastAccidentCause    = string.Empty;
+
+            float chance = FloorMath.ComputeAccidentChance(
+                _config, _state.Weight, _state.AllowedWeight);
+            _state.AccidentChance = chance;
+
+            if (chance > 0f && _accidentRng.NextDouble() < chance)
+            {
+                float loss = FloorMath.ComputeAccidentPowerLoss(_config, _state.Power);
+                _state.Power -= loss;
+                _state.LastAccidentOccurred = true;
+                _state.LastAccidentLoss     = loss;
+                float over = Mathf.Max(0f, _state.Weight - _state.AllowedWeight);
+                _state.LastAccidentCause = $"과적 {over:F1} 초과 (확률 {chance:P0}) — 전력 {loss:F1} 손실";
+                Debug.LogWarning($"[상승] 과적 사고! {_state.LastAccidentCause}");
+            }
+
+            float requiredPower = _floor != null ? _floor.RequiredPower : 0f;
+            _surplus = _state.Power - requiredPower;
 
             if (_surplus >= 0f)
             {
                 _lastResolutionSuccess = true;
                 _lastShortfall         = 0f;
-                Debug.Log($"[상승] PowerResolution: SUCCESS — Power {_state.Power:F1} >= Required {_floor.RequiredPower:F1} (surplus +{_surplus:F1})");
+                Debug.Log($"[상승] PowerResolution: SUCCESS — Power {_state.Power:F1} >= Required {requiredPower:F1} (surplus +{_surplus:F1})");
             }
             else
             {
                 _lastResolutionSuccess = false;
                 _lastShortfall         = -_surplus;
-                Debug.Log($"[상승] PowerResolution: FAIL — Power {_state.Power:F1} < Required {_floor.RequiredPower:F1} (short {_lastShortfall:F1})");
+                Debug.Log($"[상승] PowerResolution: FAIL — Power {_state.Power:F1} < Required {requiredPower:F1} (short {_lastShortfall:F1})");
                 RetryFloor();
             }
+        }
+
+        /// <summary>Refreshes all load-derived state and the active passenger effects.</summary>
+        private void RecalculateLoad()
+        {
+            float passengerWeight = _passengers != null ? _passengers.TotalWeight : 0f;
+            float allowedBonus = _passengers != null ? _passengers.TotalAllowedWeightBonus : 0f;
+
+            _state.Weight = (_config != null ? _config.startingWeight : 0f) + passengerWeight;
+            _state.AllowedWeight = (_config != null ? _config.allowedWeight : 0f) + allowedBonus;
+            _state.BoardedCount = _passengers != null ? _passengers.Boarded.Count : 0;
+            _state.AccidentChance = FloorMath.ComputeAccidentChance(_config, _state.Weight, _state.AllowedWeight);
+
+            if (_floor != null)
+                _floor.UpdateRequiredPower(_state.Weight, _state.IsOverloaded);
+
+            if (_effects != null)
+                _effects.SetActiveEffects(_passengers != null
+                    ? _passengers.ActiveEffects
+                    : new List<EffectDefinition>());
         }
 
         private void RetryFloor()
@@ -308,7 +422,7 @@ namespace Ascend.Prototype
             _state.Power       = _floorStartPower;
             _state.CurrentTurn = 0;
             _currentState      = RunState.PassengerSelection;
-            Debug.Log($"[상승] Floor Retry → PassengerSelection (Floor {_floor.CurrentFloor}, Power reset to {_state.Power:F1})");
+            Debug.Log($"[상승] Floor Retry → PassengerSelection (Floor {(_floor != null ? _floor.CurrentFloor : 0)}, Power reset to {_state.Power:F1})");
         }
 
         // ── Overcharge allocation ──

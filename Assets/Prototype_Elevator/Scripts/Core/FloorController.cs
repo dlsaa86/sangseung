@@ -27,27 +27,36 @@ namespace Ascend.Prototype
         public void EnterFloor(int floor)
         {
             _currentFloor  = floor;
-            _requiredPower = ComputeRequiredPower(floor);
+            _requiredPower = FloorMath.ComputeRequiredPower(_config, floor, 0f, false);
         }
 
         /// <summary>
         /// Recomputes required power for the given floor, optionally applying the
         /// overload multiplier from config.
         /// </summary>
+        public float ComputeRequiredPower(int floor, float totalWeight, bool isOverloaded = false)
+        {
+            return FloorMath.ComputeRequiredPower(_config, floor, totalWeight, isOverloaded);
+        }
+
+        /// <summary>Compatibility overload for callers that do not track load yet.</summary>
         public float ComputeRequiredPower(int floor, bool isOverloaded = false)
         {
-            float required = _config.baseRequiredPower + floor * _config.requiredPowerGrowthPerFloor;
-            if (isOverloaded)
-                required *= _config.overloadRequiredPowerMultiplier;
-            return required;
+            return ComputeRequiredPower(floor, 0f, isOverloaded);
         }
 
         /// <summary>
         /// Refreshes <see cref="RequiredPower"/> for the current floor with the given overload state.
         /// </summary>
+        public void UpdateRequiredPower(float totalWeight, bool isOverloaded)
+        {
+            _requiredPower = ComputeRequiredPower(_currentFloor, totalWeight, isOverloaded);
+        }
+
+        /// <summary>Compatibility overload for callers that do not track load yet.</summary>
         public void UpdateRequiredPower(bool isOverloaded)
         {
-            _requiredPower = ComputeRequiredPower(_currentFloor, isOverloaded);
+            UpdateRequiredPower(0f, isOverloaded);
         }
     }
 }

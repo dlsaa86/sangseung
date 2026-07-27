@@ -15,8 +15,14 @@ MonoBehaviour:
   generationsPerFloor: 3
   baseRequiredPower: 100
   requiredPowerGrowthPerFloor: 25
-  allowedWeight: 100
+  allowedWeight: 8
   overloadRequiredPowerMultiplier: 1.5
+  weightToPowerFactor: 2
+  maxPassengerSlots: 6
+  passengerCandidatesPerFloor: 2
+  accidentChancePerOverweightUnit: 0.06
+  maxAccidentChance: 0.75
+  accidentPowerLossRatio: 0.35
   powerToMoneyRatio: 1
   startingPower: 0
   startingMoney: 0
@@ -28,5 +34,6 @@ MonoBehaviour:
   visibleBallsPerTube: 7
   tubeHeight: 6
   harvestWindowOffset: -1.5
+  perfectStopTolerance: 0.12
   streamLength: 32
   randomSeed: 12345

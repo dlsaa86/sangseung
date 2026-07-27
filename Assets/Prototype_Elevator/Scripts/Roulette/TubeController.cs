@@ -27,6 +27,7 @@ namespace Ascend.Prototype
         private bool  _isBraking;
         private float _brakeTimer;
         private BallDefinition _stoppedBall;
+        private float _lastStopDistance = float.MaxValue;
 
         // ── Snap-to-harvest-line settle ──
         private bool  _isSnapping;
@@ -54,6 +55,9 @@ namespace Ascend.Prototype
         /// <summary>The ball confirmed at the harvest window; null until IsStopped.</summary>
         public BallDefinition StoppedBall => _stoppedBall;
 
+        /// <summary>Distance between the selected ball and the harvest window at the last stop.</summary>
+        public float LastStopDistance => _lastStopDistance;
+
         // ── Public API ──
 
         /// <summary>
@@ -76,6 +80,7 @@ namespace Ascend.Prototype
             _isBraking    = false;
             _isSnapping   = false;
             _stoppedBall  = null;
+            _lastStopDistance = float.MaxValue;
             UpdateVisuals();
         }
 
@@ -117,6 +122,7 @@ namespace Ascend.Prototype
             _brakeTimer  = 0f;
             _snapElapsed = 0f;
             _stoppedBall = null;
+            _lastStopDistance = float.MaxValue;
             _scrollOffset = 0f;
             HideAllVisuals();
         }
@@ -382,6 +388,8 @@ namespace Ascend.Prototype
                     bestSlot = i;
                 }
             }
+
+            _lastStopDistance = bestDist;
 
             int streamIdx = StreamIndexForSlot(bestSlot);
             _stoppedBall  = _stream[streamIdx];

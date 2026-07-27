@@ -127,6 +127,26 @@ namespace Ascend.Prototype
             }
         }
 
+        /// <summary>True when every configured tube stopped within the perfect-stop tolerance.</summary>
+        public bool IsPerfectStop
+        {
+            get
+            {
+                if (_config == null || _tubes == null || _tubes.Length == 0)
+                    return false;
+
+                foreach (TubeController tube in _tubes)
+                {
+                    if (tube == null || !tube.IsStopped)
+                        return false;
+                    if (tube.LastStopDistance > _config.perfectStopTolerance)
+                        return false;
+                }
+
+                return true;
+            }
+        }
+
         /// <summary>
         /// Returns the stopped balls from all tubes in order.
         /// Contract unchanged from T-01 (IReadOnlyList&lt;BallDefinition&gt;).

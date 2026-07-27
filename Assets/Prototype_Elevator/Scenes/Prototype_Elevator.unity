@@ -137,8 +137,12 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: 3000
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Transparent
+  disabledShaderPasses:
+  - DepthOnly
+  - SHADOWCASTER
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -160,18 +164,18 @@ Material:
     - _BlendOp: 0
     - _Cull: 2
     - _Cutoff: 0.5
-    - _DstBlend: 0
-    - _DstBlendAlpha: 0
+    - _DstBlend: 10
+    - _DstBlendAlpha: 10
     - _QueueOffset: 0
     - _SampleGI: 0
-    - _SrcBlend: 1
+    - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Surface: 1
     - _XRMotionVectorsPass: 1
-    - _ZWrite: 1
+    - _ZWrite: 0
     m_Colors:
     - _BaseColor: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &74992579
@@ -188,6 +192,7 @@ GameObject:
   - component: {fileID: 74992582}
   - component: {fileID: 74992581}
   - component: {fileID: 74992585}
+  - component: {fileID: 74992586}
   m_Layer: 0
   m_Name: GameSystems
   m_TagString: Untagged
@@ -212,15 +217,22 @@ MonoBehaviour:
   _roulette: {fileID: 74992582}
   _effects: {fileID: 74992581}
   _resolver: {fileID: 74992585}
+  _passengers: {fileID: 74992586}
   _state:
     Power: 0
     Money: 0
     Weight: 0
     AllowedWeight: 0
+    AccidentChance: 0
+    LastAccidentOccurred: 0
+    LastAccidentLoss: 0
+    LastAccidentCause: 
+    BoardedCount: 0
     CurrentTurn: 0
     BankedPower: 0
     LastRollSummary: 
     LastGenerationPower: 0
+    LastEffectLog: 
 --- !u!114 &74992581
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -233,6 +245,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5d88ef6c6caf224985a8d55953a48e9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.EffectResolver
+  _settings: {fileID: 11400000, guid: b0a4be46ae4206d4ead432e70a01b4b4, type: 2}
+  _globalEffects: []
 --- !u!114 &74992582
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -292,6 +306,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.CombinationResolver
   _config: {fileID: 11400000, guid: b89458d2acaf37a4880c0cde9eef58cc, type: 2}
+--- !u!114 &74992586
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 74992579}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa7ec8efe7ec2884f9accf912e5ee4e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.PassengerManager
+  _config: {fileID: 11400000, guid: 35a0f62beabf07d4eb4194c6f89de004, type: 2}
+  _pool:
+  - {fileID: 11400000, guid: d0012e66b457d5343ac0e4760867a5fc, type: 2}
+  - {fileID: 11400000, guid: 59e5abfa91f1cd54cb345c358827021e, type: 2}
+  - {fileID: 11400000, guid: 7c16300f1c5fef5479c993d0880984e0, type: 2}
+  - {fileID: 11400000, guid: 3077a6222894e954fb37f8d1731a519c, type: 2}
+  - {fileID: 11400000, guid: 6eb2fd887b29f7b4893a993ba1b25323, type: 2}
 --- !u!21 &98520102
 Material:
   serializedVersion: 8
@@ -309,8 +342,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -343,7 +378,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 0.9, b: 0.2, a: 1}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 1, g: 0.9, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!21 &106608109
@@ -364,8 +399,12 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: 3000
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Transparent
+  disabledShaderPasses:
+  - DepthOnly
+  - SHADOWCASTER
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -387,18 +426,18 @@ Material:
     - _BlendOp: 0
     - _Cull: 2
     - _Cutoff: 0.5
-    - _DstBlend: 0
-    - _DstBlendAlpha: 0
+    - _DstBlend: 10
+    - _DstBlendAlpha: 10
     - _QueueOffset: 0
     - _SampleGI: 0
-    - _SrcBlend: 1
+    - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Surface: 1
     - _XRMotionVectorsPass: 1
-    - _ZWrite: 1
+    - _ZWrite: 0
     m_Colors:
     - _BaseColor: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &179222977
@@ -707,8 +746,12 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: 3000
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Transparent
+  disabledShaderPasses:
+  - DepthOnly
+  - SHADOWCASTER
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -730,18 +773,18 @@ Material:
     - _BlendOp: 0
     - _Cull: 2
     - _Cutoff: 0.5
-    - _DstBlend: 0
-    - _DstBlendAlpha: 0
+    - _DstBlend: 10
+    - _DstBlendAlpha: 10
     - _QueueOffset: 0
     - _SampleGI: 0
-    - _SrcBlend: 1
+    - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Surface: 1
     - _XRMotionVectorsPass: 1
-    - _ZWrite: 1
+    - _ZWrite: 0
     m_Colors:
     - _BaseColor: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 0.7, g: 0.7, b: 0.7, a: 0.25}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &552686245
@@ -913,8 +956,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -947,7 +992,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 0.9, b: 0.2, a: 1}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 1, g: 0.9, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &930165997
@@ -1914,8 +1959,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -1948,7 +1995,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 0.9, b: 0.2, a: 1}
-    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _Color: {r: 1, g: 0.9, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &1840604975

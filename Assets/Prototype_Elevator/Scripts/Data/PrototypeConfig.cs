@@ -27,6 +27,24 @@ namespace Ascend.Prototype
         [Tooltip("Multiplier applied to required power when the elevator is overloaded.")]
         public float overloadRequiredPowerMultiplier = 1.5f;
 
+        [Header("Weight → Power")]
+        [Tooltip("Required power added per unit of total weight.")]
+        public float weightToPowerFactor = 2f;
+
+        [Header("Passengers")]
+        public int maxPassengerSlots = 6;
+        public int passengerCandidatesPerFloor = 2;
+
+        [Header("Overload Accident (T-06)")]
+        [Tooltip("Accident chance added per unit of overweight.")]
+        public float accidentChancePerOverweightUnit = 0.06f;
+
+        [Tooltip("Maximum accident chance.")]
+        [Range(0f, 1f)] public float maxAccidentChance = 0.75f;
+
+        [Tooltip("Ratio of current power lost when an accident occurs.")]
+        [Range(0f, 1f)] public float accidentPowerLossRatio = 0.35f;
+
         [Header("Economy")]
         [Tooltip("Conversion ratio: excess power → money.")]
         public float powerToMoneyRatio = 1f;
@@ -63,6 +81,10 @@ namespace Ascend.Prototype
 
         [Tooltip("Y offset of the harvest window marker relative to the tube's local origin.")]
         public float harvestWindowOffset = -1.5f;
+
+        [Header("Perfect Stop")]
+        [Tooltip("Distance from the harvest-window centre within which a stop counts as perfect.")]
+        public float perfectStopTolerance = 0.12f;
 
         [Tooltip("Number of ball entries pre-generated in each tube's stream per spin.")]
         public int streamLength = 32;

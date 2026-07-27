@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d201aeacdd8d0a4fa0e21de786eebfa, type: 3}
+  m_Name: PSG_TRANSFORMER
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.PassengerDefinition
+  id: PSG_TRANSFORMER
+  displayName: "\uBCC0\uC555\uAE30 \uAE30\uC0AC"
+  description: "\uCD5C\uC885 \uC804\uB825 \xD72"
+  weight: 4
+  allowedWeightBonus: 0
+  effects:
+  - {fileID: 11400000, guid: e80d604c43fc88940b93dce8544cf1c4, type: 2}
+  debugColor: {r: 1, g: 1, b: 1, a: 1}
