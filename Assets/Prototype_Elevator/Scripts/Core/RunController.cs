@@ -85,6 +85,32 @@ namespace Ascend.Prototype
         /// <summary>T-04: Exposes the PassengerManager so UI can list candidates and boarded passengers.</summary>
         public PassengerManager Passengers => _passengers;
 
+        /// <summary>
+        /// Boards the candidate at <paramref name="index"/> and refreshes the load-derived values.
+        /// This is the single boarding path — the key handler calls it too, so automated checks
+        /// exercise exactly what a key press does.
+        /// </summary>
+        public bool TryBoardCandidate(int index)
+        {
+            if (_currentState != RunState.PassengerSelection) return false;
+            if (_passengers == null || !_passengers.Board(index)) return false;
+            RecalculateLoad();
+            return true;
+        }
+
+        /// <summary>
+        /// Selects how the surplus will be spent (0 = money, 1 = extra ascent).
+        /// Same single path the [1]/[2] keys use during OverchargeAllocation.
+        /// </summary>
+        public bool SetOverchargeChoice(int choice)
+        {
+            if (_currentState != RunState.OverchargeAllocation) return false;
+            _overchargeChoice = choice == 1 ? 1 : 0;
+            OverchargeOption picked = _overchargeChoice == 1 ? AscendOption : MoneyOption;
+            Debug.Log($"[상승] OverchargeAllocation 선택: {picked.Label}");
+            return true;
+        }
+
         /// <summary>T-03: Effect chain log from the most recent generation turn, for UI display.</summary>
         public EffectResolver Effects => _effects;
 
@@ -127,13 +153,11 @@ namespace Ascend.Prototype
             {
                 if (keyboard.digit1Key.wasPressedThisFrame)
                 {
-                    if (_passengers != null && _passengers.Board(0))
-                        RecalculateLoad();
+                    TryBoardCandidate(0);
                 }
                 else if (keyboard.digit2Key.wasPressedThisFrame)
                 {
-                    if (_passengers != null && _passengers.Board(1))
-                        RecalculateLoad();
+                    TryBoardCandidate(1);
                 }
                 else if (keyboard.digit0Key.wasPressedThisFrame)
                 {
@@ -144,15 +168,9 @@ namespace Ascend.Prototype
             {
                 // [1] = Money, [2] = Ascend
                 if (keyboard.digit1Key.wasPressedThisFrame)
-                {
-                    _overchargeChoice = 0;
-                    Debug.Log($"[상승] OverchargeAllocation: [1] {MoneyOption.Label} 선택");
-                }
+                    SetOverchargeChoice(0);
                 else if (keyboard.digit2Key.wasPressedThisFrame)
-                {
-                    _overchargeChoice = 1;
-                    Debug.Log($"[상승] OverchargeAllocation: [2] {AscendOption.Label} 선택");
-                }
+                    SetOverchargeChoice(1);
             }
 
             if (keyboard.spaceKey.wasPressedThisFrame)

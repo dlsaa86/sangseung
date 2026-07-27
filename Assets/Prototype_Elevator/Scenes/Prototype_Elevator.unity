@@ -233,6 +233,12 @@ MonoBehaviour:
     LastRollSummary: 
     LastGenerationPower: 0
     LastEffectLog: 
+    RetriesThisFloor: 0
+    TotalRetries: 0
+    HighestFloorReached: 0
+    TotalMoneyEarned: 0
+    TotalAccidents: 0
+    LastFailureReason: 
 --- !u!114 &74992581
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1441,6 +1447,7 @@ MonoBehaviour:
   _runController: {fileID: 74992580}
   _hudText: {fileID: 940668279}
   _hintText: {fileID: 1205442131}
+  _ballDatabase: {fileID: 11400000, guid: 8823cb58cda0ba24d80289b5c6e305a8, type: 2}
 --- !u!4 &1057998283
 Transform:
   m_ObjectHideFlags: 0
