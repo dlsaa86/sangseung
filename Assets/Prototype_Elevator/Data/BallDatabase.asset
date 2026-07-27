@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 47f37c13a8faa684f84b3d6063fc3d23, type: 3}
+  m_Name: BallDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.BallDatabase
+  balls:
+  - {fileID: 11400000, guid: 57cc32c66a0ce7742a1fb504a8e4d271, type: 2}
+  - {fileID: 11400000, guid: e62ea1326fddf2e488f14743b9a9064b, type: 2}
+  - {fileID: 11400000, guid: 13d5dc6634cedb84589ee3c13352b57f, type: 2}
+  - {fileID: 11400000, guid: a59b67714607c374ca9792b845cca951, type: 2}
+  - {fileID: 11400000, guid: ef63e8d1f4f7be64b800273ec81e7116, type: 2}
+  - {fileID: 11400000, guid: 18d65371779666e4bb35147cf786344f, type: 2}
+  - {fileID: 11400000, guid: 6da9efff0991be447871f3750195bbc8, type: 2}
+  - {fileID: 11400000, guid: 7d8535ee945ef6647945d51481c9435f, type: 2}
+  - {fileID: 11400000, guid: 2a9275368980c8646a5be533acb7d31e, type: 2}

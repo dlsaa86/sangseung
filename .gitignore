@@ -1,0 +1,47 @@
+# ── Unity generated ────────────────────────────────────────────────
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Never ignore Packages/ itself — manifest.json and packages-lock.json are project state.
+/[Aa]ssets/AssetStoreTools*
+
+# ── Capture harness output ─────────────────────────────────────────
+# Screenshots and manifests are run evidence, not source. They are large,
+# regenerable, and would bloat history fast. Keep them on disk, out of git.
+/Captures/
+
+# ── IDE / OS ───────────────────────────────────────────────────────
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# ── Unity crash / build artifacts ──────────────────────────────────
+sysinfo.txt
+crashlytics-build.properties
+*.apk
+*.aab
+*.unitypackage
+*.app

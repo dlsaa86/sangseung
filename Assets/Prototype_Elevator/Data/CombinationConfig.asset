@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: feb58efdadfc4f5479311959b7008da2, type: 3}
+  m_Name: CombinationConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.CombinationConfig
+  threeOfAKindBaseScore: 20
+  threeOfAKindMultiplier: 2
+  threeSameGradeBaseScore: 12
+  threeSameGradeMultiplier: 1.6
+  threeDifferentCommonBaseScore: 6
+  threeDifferentCommonMultiplier: 1.2
+  commonAdvancedRareBaseScore: 10
+  commonAdvancedRareMultiplier: 1.5
+  specificOrderBaseScore: 8
+  specificOrderMultiplier: 1.4
+  containsLegendaryBaseScore: 30
+  containsLegendaryMultiplier: 2.5
+  minimumBaseOutput: 5

@@ -1,0 +1,87 @@
+# Normalize line endings to LF in the repository; check out native per platform.
+# This is what keeps a Windows and a macOS clone from showing every file as modified.
+* text=auto
+
+# ── Unity YAML ─────────────────────────────────────────────────────
+# These are text and must stay LF. `merge=unityyamlmerge` routes conflicts to Unity's
+# smart merge tool; without it, two people editing one scene get an unusable conflict.
+# Enable it once per machine (path differs per install):
+#   git config merge.unityyamlmerge.name "Unity SmartMerge"
+#   git config merge.unityyamlmerge.driver '"<UnityInstall>/Editor/Data/Tools/UnityYAMLMerge" merge -p "$BASE" "$REMOTE" "$LOCAL" "$MERGED"'
+*.unity      text eol=lf merge=unityyamlmerge
+*.prefab     text eol=lf merge=unityyamlmerge
+*.asset      text eol=lf merge=unityyamlmerge
+*.mat        text eol=lf merge=unityyamlmerge
+*.anim       text eol=lf merge=unityyamlmerge
+*.controller text eol=lf merge=unityyamlmerge
+*.overrideController text eol=lf merge=unityyamlmerge
+*.physicMaterial     text eol=lf merge=unityyamlmerge
+*.physicsMaterial2D  text eol=lf merge=unityyamlmerge
+*.playable   text eol=lf merge=unityyamlmerge
+*.mask       text eol=lf merge=unityyamlmerge
+*.brush      text eol=lf merge=unityyamlmerge
+*.flare      text eol=lf merge=unityyamlmerge
+*.fontsettings text eol=lf merge=unityyamlmerge
+*.guiskin    text eol=lf merge=unityyamlmerge
+*.giparams   text eol=lf merge=unityyamlmerge
+*.meta       text eol=lf merge=unityyamlmerge
+*.terrainlayer text eol=lf merge=unityyamlmerge
+*.mixer      text eol=lf merge=unityyamlmerge
+
+# ── Source and config ──────────────────────────────────────────────
+*.cs         text diff=csharp
+*.shader     text
+*.hlsl       text
+*.cginc      text
+*.compute    text
+*.json       text
+*.md         text
+*.txt        text
+*.xml        text
+*.yml        text
+*.uxml       text
+*.uss        text
+*.inputactions text
+
+# ── Binary ─────────────────────────────────────────────────────────
+# Declared explicitly so a bad heuristic can never corrupt them with EOL conversion.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.tga  binary
+*.tif  binary
+*.tiff binary
+*.psd  binary
+*.exr  binary
+*.hdr  binary
+*.bmp  binary
+*.ico  binary
+*.fbx  binary
+*.obj  binary
+*.blend binary
+*.dae  binary
+*.3ds  binary
+*.mb   binary
+*.ma   binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
+*.aif  binary
+*.aiff binary
+*.mp4  binary
+*.mov  binary
+*.webm binary
+*.ttf  binary
+*.otf  binary
+*.dll  binary
+*.so   binary
+*.dylib binary
+*.a    binary
+*.pdb  binary
+*.unitypackage binary
+*.cubemap binary
+*.aac  binary
+
+# Git LFS is not configured — nothing here exceeds a few MB. If large art lands later,
+# track those extensions with `git lfs track` before committing them.
