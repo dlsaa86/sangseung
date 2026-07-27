@@ -398,6 +398,15 @@ namespace Ascend.CaptureHarness
             sb.Append("  \"captureSet\": ").Append(Json(Set != null ? Set.name : null)).Append(",\n");
             sb.Append("  \"scenePath\": ").Append(Json(Set != null ? Set.ScenePath : null)).Append(",\n");
             sb.Append("  \"unityVersion\": ").Append(Json(Application.unityVersion)).Append(",\n");
+
+            // Rendering is not bit-identical across operating systems, GPUs or graphics APIs.
+            // Two runs may only be compared when these match — the fingerprint makes a
+            // cross-machine comparison detectable instead of silently wrong.
+            sb.Append("  \"machineFingerprint\": ").Append(Json(MachineFingerprint())).Append(",\n");
+            sb.Append("  \"operatingSystem\": ").Append(Json(SystemInfo.operatingSystem)).Append(",\n");
+            sb.Append("  \"graphicsDeviceType\": ").Append(Json(SystemInfo.graphicsDeviceType.ToString())).Append(",\n");
+            sb.Append("  \"graphicsDeviceName\": ").Append(Json(SystemInfo.graphicsDeviceName)).Append(",\n");
+            sb.Append("  \"deviceName\": ").Append(Json(SystemInfo.deviceName)).Append(",\n");
             sb.Append("  \"width\": ").Append(Set != null ? Set.Width : 0).Append(",\n");
             sb.Append("  \"height\": ").Append(Set != null ? Set.Height : 0).Append(",\n");
             sb.Append("  \"captureFps\": ").Append(Set != null ? Set.CaptureFps : 0).Append(",\n");
@@ -420,6 +429,18 @@ namespace Ascend.CaptureHarness
             {
                 Debug.LogError("[CaptureHarness] Failed to write manifest: " + e.Message);
             }
+        }
+
+        /// <summary>
+        /// Identifies the rendering environment. Anything that can change pixel output without
+        /// the project changing belongs here.
+        /// </summary>
+        private static string MachineFingerprint()
+        {
+            return SystemInfo.operatingSystemFamily
+                   + "|" + SystemInfo.graphicsDeviceType
+                   + "|" + SystemInfo.graphicsDeviceName
+                   + "|" + Application.unityVersion;
         }
 
         private static void AppendArray(StringBuilder sb, string key, List<string> values)
