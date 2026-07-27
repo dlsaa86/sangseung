@@ -78,7 +78,7 @@ namespace Ascend.Prototype
             return context;
         }
 
-        private static CombinationType DetermineType(BallDefinition b0, BallDefinition b1, BallDefinition b2)
+        public static CombinationType DetermineType(BallDefinition b0, BallDefinition b1, BallDefinition b2)
         {
             if (b0 == null || b1 == null || b2 == null)
                 return CombinationType.None;
