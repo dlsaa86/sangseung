@@ -49,6 +49,14 @@ namespace Ascend.Prototype
         [Tooltip("Effect pipeline log from the most recent generation turn.")]
         public string LastEffectLog;
 
+        [Header("Run Tracking")]
+        public int RetriesThisFloor;
+        public int TotalRetries;
+        public int HighestFloorReached;
+        public float TotalMoneyEarned;
+        public int TotalAccidents;
+        public string LastFailureReason;
+
         /// <summary>True when Weight exceeds AllowedWeight.</summary>
         public bool IsOverloaded => Weight > AllowedWeight;
 
@@ -69,6 +77,12 @@ namespace Ascend.Prototype
             LastRollSummary    = string.Empty;
             LastGenerationPower = 0f;
             LastEffectLog      = string.Empty;
+            RetriesThisFloor   = 0;
+            TotalRetries       = 0;
+            HighestFloorReached = 0;
+            TotalMoneyEarned    = 0f;
+            TotalAccidents     = 0;
+            LastFailureReason   = string.Empty;
         }
     }
 }

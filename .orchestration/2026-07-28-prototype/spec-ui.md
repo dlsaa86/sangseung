@@ -23,8 +23,24 @@
   - `Assets/Prototype_Elevator/Scripts/Data/BallDatabase.cs`, `BallDefinition.cs`
   - `Assets/Prototype_Elevator/Scripts/Effects/EffectResolver.cs` (BuildLogText)
 
-`RunController`에 필요한 getter가 없으면 **`RunController`에 읽기 전용 프로퍼티를 추가해도 된다.**
-단 로직은 바꾸지 마라.
+**`RunController.cs`를 수정하지 마라.** 필요한 읽기 전용 접근자는 이미 전부 있다:
+
+```
+CurrentState, State, Floor, Config, Outcome, Roulette, Passengers, Effects,
+LastCombination, Surplus, OverchargeChoice, LastResolutionSuccess, LastShortfall,
+MoneyOption, AscendOption
+```
+
+`ElevatorState`에는 `Power, Money, Weight, AllowedWeight, IsOverloaded, CurrentTurn,
+BankedPower, LastRollSummary, LastGenerationPower, LastEffectLog, AccidentChance,
+LastAccidentOccurred, LastAccidentLoss, LastAccidentCause, BoardedCount,
+RetriesThisFloor, TotalRetries, HighestFloorReached, TotalMoneyEarned,
+TotalAccidents, LastFailureReason` 가 있다.
+
+이 목록으로 부족하면 **그 화면 요소를 생략하고 주석으로 남겨라.**
+다른 파일을 수정하면 병렬 작업과 충돌한다.
+
+**이 작업에서 수정해도 되는 파일은 `Assets/Prototype_Elevator/Scripts/UI/PrototypeUI.cs` 하나뿐이다.**
 
 ---
 

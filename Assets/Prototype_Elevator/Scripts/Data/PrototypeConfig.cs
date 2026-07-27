@@ -49,6 +49,20 @@ namespace Ascend.Prototype
         [Tooltip("Conversion ratio: excess power → money.")]
         public float powerToMoneyRatio = 1f;
 
+        [Header("Run (T-07)")]
+        [Tooltip("이 층에 도달하면 런 성공.")]
+        public int targetFloor = 10;
+
+        [Tooltip("한 층에서 허용되는 발전 재시도 횟수. 초과하면 런 실패.")]
+        public int maxRetriesPerFloor = 2;
+
+        [Header("Overcharge (T-05)")]
+        [Tooltip("추가 상승 1개 층에 필요한 초과 전력.")]
+        public float powerPerExtraFloor = 60f;
+
+        [Tooltip("추가 상승으로 한 번에 오를 수 있는 최대 층수.")]
+        public int maxExtraFloorsPerAllocation = 3;
+
         [Header("Starting Values")]
         [Tooltip("Power at the start of a new run.")]
         public float startingPower = 0f;

@@ -31,6 +31,9 @@ namespace Ascend.Prototype
         private float _lastShortfall;         // |deficit| when resolution fails
         private bool  _lastResolutionSuccess; // outcome of the most recent PowerResolution
         private int   _overchargeChoice;      // 0 = Money, 1 = Ascend (set via [1]/[2] keys)
+        private int   _pendingExtraFloors;
+
+        private RunOutcome _outcome = RunOutcome.InProgress;
 
         private float _floorStartPower;       // power value at floor entry; used to reset on retry
 
@@ -70,8 +73,20 @@ namespace Ascend.Prototype
         /// <summary>Absolute power deficit when the last resolution failed (0 when success).</summary>
         public float LastShortfall => _lastShortfall;
 
+        public RunOutcome Outcome => _outcome;
+
+        public OverchargeOption MoneyOption { get; private set; }
+
+        public OverchargeOption AscendOption { get; private set; }
+
         /// <summary>T-02: Exposes the RouletteController so UI can read tube states.</summary>
         public RouletteController Roulette => _roulette;
+
+        /// <summary>T-04: Exposes the PassengerManager so UI can list candidates and boarded passengers.</summary>
+        public PassengerManager Passengers => _passengers;
+
+        /// <summary>T-03: Effect chain log from the most recent generation turn, for UI display.</summary>
+        public EffectResolver Effects => _effects;
 
         // ── Unity lifecycle ──
 
@@ -84,6 +99,13 @@ namespace Ascend.Prototype
         {
             var keyboard = Keyboard.current;
             if (keyboard == null) return;
+
+            if (_outcome != RunOutcome.InProgress)
+            {
+                if (keyboard.rKey.wasPressedThisFrame)
+                    ResetRun();
+                return;
+            }
 
             // ── State-gated inputs ──
 
@@ -124,12 +146,12 @@ namespace Ascend.Prototype
                 if (keyboard.digit1Key.wasPressedThisFrame)
                 {
                     _overchargeChoice = 0;
-                    Debug.Log("[상승] OverchargeAllocation: [1] Money selected");
+                    Debug.Log($"[상승] OverchargeAllocation: [1] {MoneyOption.Label} 선택");
                 }
                 else if (keyboard.digit2Key.wasPressedThisFrame)
                 {
                     _overchargeChoice = 1;
-                    Debug.Log("[상승] OverchargeAllocation: [2] Ascend selected");
+                    Debug.Log($"[상승] OverchargeAllocation: [2] {AscendOption.Label} 선택");
                 }
             }
 
@@ -148,6 +170,8 @@ namespace Ascend.Prototype
         /// </summary>
         public void ResetRun()
         {
+            _outcome = RunOutcome.InProgress;
+
             if (_state == null)
                 _state = new ElevatorState();
 
@@ -163,19 +187,15 @@ namespace Ascend.Prototype
                 Debug.LogWarning("[상승] RunController.ResetRun(): PassengerManager is missing.");
             }
 
-            if (_config == null)
-            {
-                _currentState = RunState.FloorArrival;
-                RecalculateLoad();
-                return;
-            }
-
             _currentState          = RunState.FloorArrival;
             _surplus               = 0f;
             _lastShortfall         = 0f;
             _lastResolutionSuccess = false;
             _overchargeChoice      = 0;
+            _pendingExtraFloors    = 0;
             _lastCombination       = default;
+            MoneyOption            = default;
+            AscendOption           = default;
             _floorStartPower       = _config != null ? _config.startingPower : 0f;
             _turnResolved          = false;
             int randomSeed = _config != null ? _config.randomSeed : 0;
@@ -193,6 +213,9 @@ namespace Ascend.Prototype
                 _effects.InitializeSeed(randomSeed);
             if (_roulette != null)
                 _roulette.ResetTubes();
+
+            if (_config == null)
+                return;
 
             Debug.Log($"[상승] Run Reset → FloorArrival (Floor {(_floor != null ? _floor.CurrentFloor : 0)}, Turn 0/{_config.generationsPerFloor}, Seed {_config.randomSeed})");
         }
@@ -215,6 +238,9 @@ namespace Ascend.Prototype
         /// </summary>
         public void AdvanceState()
         {
+            if (_outcome != RunOutcome.InProgress)
+                return;
+
             if (_config == null)
             {
                 Debug.LogWarning("[상승] RunController.AdvanceState(): config is missing; state cannot advance.");
@@ -263,12 +289,30 @@ namespace Ascend.Prototype
                     break;
 
                 case RunState.Ascending:
-                    _floorStartPower    = _config.startingPower + _state.BankedPower;
-                    _state.Power        = _floorStartPower;
-                    _state.BankedPower  = 0f;
-                    _state.CurrentTurn  = 0;
+                    int climb = 1 + _pendingExtraFloors;
+                    _pendingExtraFloors = 0;
+
+                    _floorStartPower = _config.startingPower + _state.BankedPower;
+                    _state.Power = _floorStartPower;
+                    _state.BankedPower = 0f;
+                    _state.CurrentTurn = 0;
+                    _state.RetriesThisFloor = 0;
+
+                    int currentFloor = _floor != null ? _floor.CurrentFloor : 0;
+                    int next = currentFloor + climb;
                     if (_floor != null)
-                        _floor.EnterFloor(_floor.CurrentFloor + 1);
+                        _floor.EnterFloor(next);
+                    _state.HighestFloorReached = Mathf.Max(_state.HighestFloorReached, next);
+
+                    if (next >= _config.targetFloor)
+                    {
+                        SucceedRun();
+                        return;
+                    }
+
+                    if (_passengers != null)
+                        _passengers.GenerateCandidates(next);
+                    RecalculateLoad();
                     to = RunState.FloorArrival;
                     break;
 
@@ -282,8 +326,6 @@ namespace Ascend.Prototype
             if (to == RunState.FloorArrival)
             {
                 RecalculateLoad();
-                if (_passengers != null)
-                    _passengers.GenerateCandidates(_floor != null ? _floor.CurrentFloor : 0);
             }
             Debug.Log($"[상승] {from} -> {to} (Floor {(_floor != null ? _floor.CurrentFloor : 0)}, Turn {_state.CurrentTurn}/{_config.generationsPerFloor})");
 
@@ -374,6 +416,7 @@ namespace Ascend.Prototype
                 _state.Power -= loss;
                 _state.LastAccidentOccurred = true;
                 _state.LastAccidentLoss     = loss;
+                _state.TotalAccidents++;
                 float over = Mathf.Max(0f, _state.Weight - _state.AllowedWeight);
                 _state.LastAccidentCause = $"과적 {over:F1} 초과 (확률 {chance:P0}) — 전력 {loss:F1} 손실";
                 Debug.LogWarning($"[상승] 과적 사고! {_state.LastAccidentCause}");
@@ -386,6 +429,8 @@ namespace Ascend.Prototype
             {
                 _lastResolutionSuccess = true;
                 _lastShortfall         = 0f;
+                MoneyOption = FloorMath.BuildMoneyOption(_config, _surplus);
+                AscendOption = FloorMath.BuildAscendOption(_config, _surplus);
                 Debug.Log($"[상승] PowerResolution: SUCCESS — Power {_state.Power:F1} >= Required {requiredPower:F1} (surplus +{_surplus:F1})");
             }
             else
@@ -393,6 +438,13 @@ namespace Ascend.Prototype
                 _lastResolutionSuccess = false;
                 _lastShortfall         = -_surplus;
                 Debug.Log($"[상승] PowerResolution: FAIL — Power {_state.Power:F1} < Required {requiredPower:F1} (short {_lastShortfall:F1})");
+                _state.RetriesThisFloor++;
+                _state.TotalRetries++;
+                if (_state.RetriesThisFloor > _config.maxRetriesPerFloor)
+                {
+                    FailRun($"{(_floor != null ? _floor.CurrentFloor : 0)}층에서 요구 전력 미달 (재시도 {_config.maxRetriesPerFloor}회 초과)");
+                    return;
+                }
                 RetryFloor();
             }
         }
@@ -429,19 +481,36 @@ namespace Ascend.Prototype
 
         private void ApplyOverchargeAllocation()
         {
-            if (_overchargeChoice == 1)
+            OverchargeOption chosen = (_overchargeChoice == 1) ? AscendOption : MoneyOption;
+
+            if (chosen.Mode == OverchargeMode.Ascend)
             {
-                _state.BankedPower = _surplus;
-                Debug.Log($"[상승] OverchargeAllocation: Ascend — BankedPower = {_surplus:F1}");
+                _pendingExtraFloors = chosen.FloorsGained;
+                _state.BankedPower = chosen.PowerCarried;
             }
             else
             {
-                float earned = _surplus * _config.powerToMoneyRatio;
-                _state.Money += earned;
-                Debug.Log($"[상승] OverchargeAllocation: Money — +{earned:F1} money (surplus={_surplus:F1} x ratio={_config.powerToMoneyRatio})");
+                _pendingExtraFloors = 0;
+                _state.Money += chosen.MoneyGained;
+                _state.TotalMoneyEarned += chosen.MoneyGained;
+                _state.BankedPower = 0f;
             }
 
+            Debug.Log($"[상승] 초과 전력 분배: {chosen.Label}");
             _overchargeChoice = 0;
+        }
+
+        private void SucceedRun()
+        {
+            _outcome = RunOutcome.Success;
+            Debug.Log($"[상승] === 런 성공 === {(_floor != null ? _floor.CurrentFloor : _state.HighestFloorReached)}층 도달 / 돈 {_state.Money:F0} / 사고 {_state.TotalAccidents}회 / 재시도 {_state.TotalRetries}회");
+        }
+
+        private void FailRun(string reason)
+        {
+            _outcome = RunOutcome.Failure;
+            _state.LastFailureReason = reason;
+            Debug.Log($"[상승] === 런 실패 === {reason} / 최고 도달 {_state.HighestFloorReached}층");
         }
     }
 }
