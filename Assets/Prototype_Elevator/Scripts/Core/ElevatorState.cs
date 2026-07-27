@@ -37,6 +37,9 @@ namespace Ascend.Prototype
         [Tooltip("Power gained in the most recent generation turn.")]
         public float LastGenerationPower;
 
+        [Tooltip("Effect pipeline log from the most recent generation turn.")]
+        public string LastEffectLog;
+
         /// <summary>True when Weight exceeds AllowedWeight.</summary>
         public bool IsOverloaded => Weight > AllowedWeight;
 
@@ -51,6 +54,7 @@ namespace Ascend.Prototype
             BankedPower        = 0f;
             LastRollSummary    = string.Empty;
             LastGenerationPower = 0f;
+            LastEffectLog      = string.Empty;
         }
     }
 }

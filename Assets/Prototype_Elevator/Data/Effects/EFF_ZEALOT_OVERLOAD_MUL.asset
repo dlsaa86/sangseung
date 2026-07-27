@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16fd2c7ffeb1d0546ab640c4c6b93705, type: 3}
+  m_Name: EFF_ZEALOT_OVERLOAD_MUL
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.EffectDefinition
+  id: EFF_ZEALOT_OVERLOAD_MUL
+  displayName: "\uACFC\uC801 \uAD11\uC2E0\uB3C4"
+  type: 5
+  priority: 0
+  trigger: 3
+  condition: 1
+  conditionGrade: 0
+  probability: 1
+  value: 2
+  targetBallId: 
+  resultBallId: 
+  repeatCount: 1
+  description: 

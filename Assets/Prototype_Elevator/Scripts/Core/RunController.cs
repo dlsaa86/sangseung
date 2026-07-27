@@ -142,6 +142,8 @@ namespace Ascend.Prototype
             _floor.EnterFloor(0);
             _floor.UpdateRequiredPower(_state.IsOverloaded);
             _roulette.InitializeSeed(_config.randomSeed);
+            if (_effects != null)
+                _effects.InitializeSeed(_config.randomSeed);
             _roulette.ResetTubes();
 
             Debug.Log($"[상승] Run Reset → FloorArrival (Floor {_floor.CurrentFloor}, Turn 0/{_config.generationsPerFloor}, Seed {_config.randomSeed})");
@@ -258,12 +260,23 @@ namespace Ascend.Prototype
             IReadOnlyList<BallDefinition> balls = _roulette.CollectResults();
 
             // T-03 hook — currently a no-op stub preserved for future effect chain insertion.
-            _effects.ResolveEffects();
+            // TODO: derive this from all three tube stop qualities in T-04.
+            bool perfectStop = false;
+            GenerationContext context = _resolver.BuildContext(
+                balls,
+                _state.IsOverloaded,
+                perfectStop,
+                _state.CurrentTurn,
+                _floor.CurrentFloor);
+            context = _effects != null ? _effects.Resolve(context) : context;
+            if (_effects == null)
+                context.FinalPower = context.ComputeCurrentPower();
 
-            _lastCombination            = _resolver.Resolve(balls);
-            _state.Power               += _lastCombination.Power;
-            _state.LastGenerationPower  = _lastCombination.Power;
-            _state.LastRollSummary      = _lastCombination.Summary;
+            _lastCombination = _resolver.Resolve(balls);
+            _state.Power += context.FinalPower;
+            _state.LastGenerationPower = context.FinalPower;
+            _state.LastRollSummary = $"{_lastCombination.Summary} | Combination: {context.Combination}";
+            _state.LastEffectLog = _effects != null ? _effects.BuildLogText() : string.Empty;
             _turnResolved               = true;
 
             Debug.Log($"[상승] ResolveGenerationTurn Turn {_state.CurrentTurn}: {_lastCombination.Summary} | Power: {_state.Power:F1} / Required: {_floor.RequiredPower:F1}");

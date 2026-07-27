@@ -1,17 +1,14 @@
 namespace Ascend.Prototype
 {
-    /// <summary>
-    /// Categorises effect types available on ball combinations.
-    /// Placeholder — full logic is planned for T-02+.
-    /// </summary>
+    /// <summary>Effect categories in their required pipeline processing order.</summary>
     public enum EffectType
     {
         Probability,
-        Add,
-        Multiply,
+        Remove,
         Convert,
         Copy,
-        Remove,
+        Add,
+        Multiply,
         Repeat
     }
 }
