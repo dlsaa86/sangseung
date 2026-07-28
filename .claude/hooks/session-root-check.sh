@@ -24,9 +24,11 @@ elif [ ! -f "$ROOT/Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity" ];
   add "경고: Prototype_Elevator 씬이 없다. 다른 프로젝트이거나 체크아웃이 불완전하다."
 fi
 
+# Mirror/sync/checkpoint locations, not a specific machine's layout — this has to stay true
+# when the repo moves to another OS.
 case "$ROOT" in
-  *iCloudDrive*|*AssistantCheckpoints*|*orca/workspaces*)
-    add "경고: '$ROOT' 는 이 프로젝트의 사본 경로로 보인다. 실제 작업 대상은 B:/Projects/Upandup_DDD 다. 여기서 편집하면 Unity 에디터가 변경을 보지 못한다."
+  *iCloudDrive*|*"Mobile Documents"*|*Dropbox*|*OneDrive*|*"Google Drive"*|*AssistantCheckpoints*|*orca/workspaces*)
+    add "경고: '$ROOT' 는 동기화 폴더이거나 체크포인트 사본으로 보인다. 이런 경로에서 편집하면 실제로 열려 있는 Unity 에디터가 변경을 보지 못할 수 있다. 진짜 작업용 체크아웃이 맞는지 확인할 것."
     ;;
 esac
 

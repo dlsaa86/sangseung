@@ -32,8 +32,10 @@ deny() {
   exit 0
 }
 
+VERSION="$(sed -n 's/^m_EditorVersion: *//p' "$ROOT/ProjectSettings/ProjectVersion.txt" 2>/dev/null | head -1)"
+
 if [ ! -s "$INSTANCE" ]; then
-  deny "Unity 에디터가 이 프로젝트를 열고 있지 않다 (Library/EditorInstance.json 없음/빈 파일). 먼저 에디터를 실행할 것: \"B:/Unity/6000.5.5f1/Editor/Unity.exe\" -projectPath \"$ROOT\""
+  deny "Unity 에디터가 이 프로젝트를 열고 있지 않다 (Library/EditorInstance.json 없음/빈 파일). Unity ${VERSION:-6000.5.5f1} 로 이 프로젝트를 먼저 열 것: $ROOT"
 fi
 
 PID="$(grep -oE '"process_id"[[:space:]]*:[[:space:]]*[0-9]+' "$INSTANCE" | grep -oE '[0-9]+$' | head -1)"
@@ -52,7 +54,9 @@ else
 fi
 
 if [ "$ALIVE" -ne 1 ]; then
-  deny "Unity 프로세스(PID $PID)가 죽어 있다. EditorInstance.json 은 크래시 후에도 남으므로 파일 존재만으로는 생존을 알 수 없다. 에디터를 다시 실행한 뒤 재시도할 것: \"B:/Unity/6000.5.5f1/Editor/Unity.exe\" -projectPath \"$ROOT\""
+  # EditorInstance.json records the editor binary, so the recovery hint stays correct on any OS.
+  APP="$(sed -n 's/.*"app_path"[^"]*"\([^"]*\)".*/\1/p' "$INSTANCE" 2>/dev/null | head -1)"
+  deny "Unity 프로세스(PID $PID)가 죽어 있다. EditorInstance.json 은 크래시 후에도 남으므로 파일 존재만으로는 생존을 알 수 없다. 에디터를 다시 실행한 뒤 재시도할 것${APP:+ ($APP)}: $ROOT"
 fi
 
 exit 0
