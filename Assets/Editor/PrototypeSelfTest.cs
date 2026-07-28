@@ -55,7 +55,29 @@ public static class PrototypeSelfTest
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
+        WriteMarker();
         return _log.ToString();
+    }
+
+    /// <summary>
+    /// Records when the suite last ran and whether it passed.
+    /// The pre-commit hook compares this file's timestamp against the newest .cs file, so a
+    /// commit cannot claim verification it never did.
+    /// </summary>
+    private static void WriteMarker()
+    {
+        try
+        {
+            string dir = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), ".claude", "state");
+            System.IO.Directory.CreateDirectory(dir);
+            string body = $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}\tpass={_pass}\tfail={_fail}\n";
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "last-selftest.txt"), body);
+        }
+        catch (System.Exception e)
+        {
+            // A marker failure must never take the test run down with it.
+            Debug.LogWarning("[상승] 자체 검증 마커 기록 실패: " + e.Message);
+        }
     }
 
     // ── assert helpers ──

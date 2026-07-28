@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__unity-mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/unity-preflight.sh\"",
+            "timeout": 10,
+            "statusMessage": "Unity 에디터 확인"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/commit-gate.sh\"",
+            "if": "Bash(git commit*)",
+            "timeout": 15,
+            "statusMessage": "자체 검증 상태 확인"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-root-check.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

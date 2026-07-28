@@ -48,3 +48,6 @@ crashlytics-build.properties
 PlaytestLogs/
 
 Captures/
+
+# 훅이 기록하는 로컬 검증 마커 (머신 종속)
+.claude/state/
