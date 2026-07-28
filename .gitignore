@@ -46,3 +46,5 @@ crashlytics-build.properties
 *.unitypackage
 *.app
 PlaytestLogs/
+
+Captures/

@@ -26,6 +26,34 @@ T-06에서 과적 불가능 결함을 이 방식으로 잡았다. 다만 **제3�
 
 **재발 방지:** 자동화 작업 전 `EditorApplication.isPlaying`을 먼저 확인할 것.
 
+### A-4. Unity 에디터가 GPU 디바이스 소실로 반복 크래시 — **환경 문제, 조치 필요**
+
+작업 중 Unity 에디터가 두 번 크래시했다. 스택이 동일하다:
+
+```
+GfxDeviceWorker::RunCommand
+  D3D12Window::EndRendering
+    GfxDeviceD3D12::QueuePresent
+      D3D12Fence::Wait
+        CheckDeviceStatus   ← 여기서 디바이스 소실 감지 후 종료
+```
+
+- `Crash_2026-07-27_154452884` (00:45)
+- `Crash_2026-07-27_235316160` (08:53)
+
+**스크립트나 씬 때문이 아니다.** D3D12 디바이스가 응답을 멈춘 것으로, GPU 드라이버
+또는 하드웨어 레벨 문제다. 크래시 직전 로그는 정상적인 게임플레이 로그였다
+(`ResolveGenerationTurn Turn 1 ... Power: 30.0`).
+
+작업물 손실은 없었다(씬은 크래시 전 저장 완료, 커밋된 코드 무사).
+
+**확인해 볼 것:**
+- NVIDIA 드라이버 버전 `32.0.15.9186` — 다른 버전으로 롤백/업데이트
+- GPU 온도·전원 상태
+- 증상이 계속되면 Unity를 `-force-d3d11` 로 실행해 D3D12를 우회
+
+방치하면 장시간 자동화 작업이 임의 시점에 끊긴다.
+
 ### A-3. 에디터 포커스 손실 시 플레이 루프 정지
 `runInBackground=false`라 에디터가 포커스를 잃으면 플레이 모드가 멈춘다.
 Play Mode 자동 검증 결과가 진행되지 않으면 이것을 먼저 의심할 것.

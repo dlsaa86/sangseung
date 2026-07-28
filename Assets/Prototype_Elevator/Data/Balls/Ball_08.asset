@@ -17,4 +17,4 @@ MonoBehaviour:
   grade: 2
   spawnProbability: 6
   baseOutput: 18
-  debugColor: {r: 0.15, g: 0.3, b: 0.75, a: 1}
+  debugColor: {r: 0.57, g: 0.36, b: 0.86, a: 1}
