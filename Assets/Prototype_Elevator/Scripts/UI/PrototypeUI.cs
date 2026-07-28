@@ -235,17 +235,9 @@ namespace Ascend.Prototype
                     }
                     else _sb.Append('?');
 
-                    // The tier is the whole reason timing matters, so it is stated outright
-                    // rather than left for the player to infer from the power number.
-                    switch (roulette.AccuracyTierFor(tube))
-                    {
-                        case 0: _sb.Append("  <color=").Append(ColGood).Append(">완벽 ×")
-                                   .Append(config.perfectStopPowerMultiplier.ToString("0.00")).Append("</color>"); break;
-                        case 1: _sb.Append("  <color=").Append(ColWarn).Append(">양호 ×")
-                                   .Append(config.goodStopPowerMultiplier.ToString("0.00")).Append("</color>"); break;
-                        default: _sb.Append("  <color=").Append(ColBad).Append(">빗나감 ×")
-                                   .Append(config.missStopPowerMultiplier.ToString("0.00")).Append("</color>"); break;
-                    }
+                    // No timing verdict here on purpose. Press precision decides WHICH ball you
+                    // take, nothing more — showing a grade for it only invited the player to
+                    // chase a number and made the whole thing tiring.
                 }
                 else if (tube.IsBraking) _sb.Append("<color=").Append(ColWarn).Append(">● 제동중</color>");
                 else                     _sb.Append("<color=").Append(ColDim).Append(">● 낙하중</color>");
@@ -300,15 +292,9 @@ namespace Ascend.Prototype
 
         private void AppendRollAndEffects(ElevatorState state)
         {
-            if (state.LastAccuracyMultiplier < 0.999f || state.LastGenerationPower > 0f)
-            {
-                float acc = state.LastAccuracyMultiplier;
-                string accCol = acc >= 0.9f ? ColGood : (acc >= 0.6f ? ColWarn : ColBad);
-                _sb.Append("\n정지 정확도  <color=").Append(accCol).Append('>')
-                   .Append('×').Append(acc.ToString("0.00")).Append("</color>");
-                if (acc < 0.9f) _sb.Append("  <color=").Append(ColDim).Append(">— 수확선에 맞춰 누르면 오른다</color>");
-                _sb.Append('\n');
-            }
+            // Stop accuracy and timing bias used to be reported here. Both are gone on purpose:
+            // grading the press turned a judgement game into a reflex test and made players
+            // stare instead of think. The press picks a ball; that is all it does.
 
             if (!string.IsNullOrEmpty(state.LastRollSummary))
                 _sb.Append("조합  ").Append(state.LastRollSummary).Append('\n');

@@ -134,14 +134,10 @@ namespace Ascend.Prototype
                     {
                         pressed = true;
                         BallDefinition ball = tube.StoppedBall;
-                        int tier = roulette.AccuracyTierFor(tube);
-                        // Tier colours the button, not the ball grade — the player needs the
-                        // timing verdict at a glance, and the grade is already on the label.
-                        target = tier == 0 ? ColGood : (tier == 1 ? ColBraking : ColBad);
-                        string tierText = tier == 0 ? "완벽" : (tier == 1 ? "양호" : "빗나감");
-                        label = ball != null
-                            ? $"{ball.id} {GradeName(ball.grade)}\n{tierText}"
-                            : tierText;
+                        // Button takes the harvested ball's grade colour. It reports WHAT you
+                        // caught, not how cleanly you caught it — there is no timing verdict.
+                        target = ball != null ? GradeColor(ball.grade) : ColGood;
+                        label = ball != null ? $"{ball.id}\n{GradeName(ball.grade)}" : "정지";
                     }
                     else if (tube.IsBraking || tube.IsSnapping)
                     {

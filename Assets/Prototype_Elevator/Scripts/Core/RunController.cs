@@ -405,6 +405,17 @@ namespace Ascend.Prototype
             context.AccuracyMultiplier = _roulette != null ? _roulette.AccuracyMultiplier : 1f;
             _state.LastAccuracyMultiplier = context.AccuracyMultiplier;
 
+            // Fold this turn's three presses into the running bias so a mis-set latency
+            // compensation shows up as a number instead of as vague "it feels late".
+            if (_roulette != null && _roulette.Tubes != null)
+            {
+                foreach (TubeController tube in _roulette.Tubes)
+                    if (tube != null && tube.IsStopped) _roulette.RecordTimingSample(tube.LastSignedError);
+
+                _state.MeanTimingBias = _roulette.MeanSignedError;
+                _state.TimingSamples  = _roulette.SignedErrorSamples;
+            }
+
             context = _effects != null ? _effects.Resolve(context) : context;
             if (_effects == null)
                 context.FinalPower = context.ComputeCurrentPower();

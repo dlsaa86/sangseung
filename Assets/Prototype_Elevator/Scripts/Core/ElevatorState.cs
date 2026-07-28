@@ -49,6 +49,12 @@ namespace Ascend.Prototype
         [Tooltip("Timing accuracy multiplier applied to the most recent generation turn (1 = all perfect).")]
         public float LastAccuracyMultiplier = 1f;
 
+        [Tooltip("Mean signed timing error across all stops so far. Positive = consistently late.")]
+        public float MeanTimingBias;
+
+        [Tooltip("How many stops the timing bias is averaged over.")]
+        public int TimingSamples;
+
         [Tooltip("Effect pipeline log from the most recent generation turn.")]
         public string LastEffectLog;
 

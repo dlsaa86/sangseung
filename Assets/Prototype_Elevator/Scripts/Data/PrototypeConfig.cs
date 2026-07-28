@@ -86,6 +86,13 @@ namespace Ascend.Prototype
         [Tooltip("Seconds spent easing the nearest ball onto the harvest line after a stop. 0 snaps instantly.")]
         public float snapDuration = 0.12f;
 
+        [Tooltip("End-to-end input+display latency, in seconds. The frame the player reacts to is " +
+                 "already several frames old by the time it reaches the eye, so the stop is judged " +
+                 "against where the reel was that long ago. Without this every press reads as late. " +
+                 "Typical range 0.04-0.09; calibrate with the signed bias shown in the HUD.")]
+        [Range(0f, 0.2f)]
+        public float inputLatencyCompensation = 0.06f;
+
         [Header("Tube Visuals")]
         [Tooltip("Number of ball spheres visible per tube at any time.")]
         public int visibleBallsPerTube = 7;

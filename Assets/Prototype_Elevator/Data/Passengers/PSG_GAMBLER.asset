@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.PassengerDefinition
   id: PSG_GAMBLER
   displayName: "\uB3C4\uBC15\uC0AC"
-  description: "\uC644\uBCBD \uC815\uC9C0 \uC2DC \uD6A8\uACFC \uC7AC\uBC1C\uB3D9"
+  description: "35% \uD655\uB960\uB85C \uD6A8\uACFC \uC7AC\uBC1C\uB3D9"
   weight: 3
   allowedWeightBonus: 0
   effects:

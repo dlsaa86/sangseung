@@ -181,6 +181,41 @@ namespace Ascend.Prototype
             return _config.missStopPowerMultiplier;
         }
 
+        // ── Timing bias tracking ──
+        //
+        // A single stop tells you nothing: everyone misses sometimes. The mean signed error over
+        // many stops is what separates "the player is sloppy" from "inputLatencyCompensation is
+        // wrong", and only the second one is the game's fault to fix.
+        private float _signedErrorSum;
+        private int   _signedErrorCount;
+
+        /// <summary>Mean signed timing error so far. Positive = consistently late.</summary>
+        public float MeanSignedError => _signedErrorCount == 0 ? 0f : _signedErrorSum / _signedErrorCount;
+
+        /// <summary>Number of stops folded into <see cref="MeanSignedError"/>.</summary>
+        public int SignedErrorSamples => _signedErrorCount;
+
+        /// <summary>
+        /// Latency (seconds) that would centre the current bias. Add this to
+        /// PrototypeConfig.inputLatencyCompensation to cancel a systematic lateness.
+        /// </summary>
+        public float SuggestedLatencyAdjustment
+            => (_config == null || _config.ballMoveSpeed <= 0f) ? 0f : MeanSignedError / _config.ballMoveSpeed;
+
+        /// <summary>Folds a finished stop into the bias statistics. Called once per tube stop.</summary>
+        public void RecordTimingSample(float signedError)
+        {
+            _signedErrorSum += signedError;
+            _signedErrorCount++;
+        }
+
+        /// <summary>Clears the bias statistics. Bias is per-player, not per-run, so this is opt-in.</summary>
+        public void ResetTimingStats()
+        {
+            _signedErrorSum = 0f;
+            _signedErrorCount = 0;
+        }
+
         /// <summary>0 = perfect, 1 = good, 2 = miss. Used by the UI to label each tube.</summary>
         public int AccuracyTierFor(TubeController tube)
         {

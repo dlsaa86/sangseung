@@ -31,17 +31,18 @@ MonoBehaviour:
   startingPower: 0
   startingMoney: 0
   startingWeight: 0
-  ballMoveSpeed: 10
+  ballMoveSpeed: 4
   ballSpacing: 1
   brakeDelay: 0
   snapDuration: 0.12
+  inputLatencyCompensation: 0.06
   visibleBallsPerTube: 7
   tubeHeight: 6
   harvestWindowOffset: -1.5
   perfectStopTolerance: 0.12
   goodStopTolerance: 0.28
   perfectStopPowerMultiplier: 1
-  goodStopPowerMultiplier: 0.6
-  missStopPowerMultiplier: 0.15
+  goodStopPowerMultiplier: 1
+  missStopPowerMultiplier: 1
   streamLength: 32
   randomSeed: 12345

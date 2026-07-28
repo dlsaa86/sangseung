@@ -28,6 +28,7 @@ namespace Ascend.Prototype
         private float _brakeTimer;
         private BallDefinition _stoppedBall;
         private float _lastStopDistance = float.MaxValue;
+        private float _lastSignedError;
 
         // ── Snap-to-harvest-line settle ──
         private bool  _isSnapping;
@@ -57,6 +58,13 @@ namespace Ascend.Prototype
 
         /// <summary>Distance between the selected ball and the harvest window at the last stop.</summary>
         public float LastStopDistance => _lastStopDistance;
+
+        /// <summary>
+        /// Signed timing error of the last stop: positive means the press landed late, negative
+        /// early. Averaged across stops this exposes a systematic bias, which is the only way to
+        /// tell a mistimed player from a mis-set inputLatencyCompensation.
+        /// </summary>
+        public float LastSignedError => _lastSignedError;
 
         // ── Public API ──
 
@@ -335,13 +343,22 @@ namespace Ascend.Prototype
             // Rounding picks whichever ball is nearest at this instant, which may nudge the
             // reel back by up to half a spacing — that settle-back is the intended feel.
             float anchor = TopY - HarvestY;
-            float raw    = (_scrollOffset - anchor) / Spacing;
-            int   m      = Mathf.RoundToInt(raw);
 
-            // Accuracy has to be sampled HERE, at the instant the player pressed. Measuring after
-            // the snap always reports ~0 because the snap parks a ball dead on the line, which
-            // made every stop count as perfect and removed timing from the game entirely.
-            _lastStopDistance = Mathf.Abs(raw - m) * Spacing;
+            // Judge against where the reel was when the player SAW it, not where it is now.
+            // The frame being reacted to is already a few frames old by the time it reaches the
+            // eye, and at ballMoveSpeed 10 that gap is over half a ball — every press reads as
+            // late and the ball after the intended one gets taken.
+            float perceivedOffset = _scrollOffset - _config.ballMoveSpeed * _config.inputLatencyCompensation;
+
+            float raw = (perceivedOffset - anchor) / Spacing;
+            int   m   = Mathf.RoundToInt(raw);
+
+            // Accuracy is sampled HERE, at the instant of the press. Measuring after the snap
+            // always reports ~0 because the snap parks a ball dead on the line, which made every
+            // stop count as perfect and removed timing from the game entirely.
+            float signed     = (raw - m) * Spacing;   // >0 = pressed late, <0 = pressed early
+            _lastStopDistance = Mathf.Abs(signed);
+            _lastSignedError  = signed;
 
             _snapStartOffset  = _scrollOffset;
             _snapTargetOffset = anchor + m * Spacing;

@@ -51,7 +51,7 @@ public static class PrototypeSelfTest
         Test6_RepeatGuard(effectSettings);
         Test7_StateReset(config);
         Test8_SeedReproducibility(config, balls, combo, effectSettings, passengers);
-        Test9_TimingMatters(config, effectSettings);
+        Test9_TimingIsNotATax(config, effectSettings);
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
@@ -238,22 +238,20 @@ public static class PrototypeSelfTest
         Check(clean, "7. 재시작 후 상태 완전 초기화");
     }
 
-    // ── 9. 타이밍이 결과를 바꾸는가 ──
-    private static void Test9_TimingMatters(PrototypeConfig cfg, EffectResolverSettings settings)
+    // ── 9. 타이밍이 출력에 영향을 주지 않는가 ──
+    //
+    // The design deliberately reversed here. Press precision used to scale power, which turned
+    // the game into a reflex test — players reported eye strain and said the pressure to be
+    // exact was just irritating. The press now only decides WHICH ball is taken. These checks
+    // lock that in so a future tuning pass cannot quietly reintroduce a timing tax.
+    private static void Test9_TimingIsNotATax(PrototypeConfig cfg, EffectResolverSettings settings)
     {
-        // Ordering of the tiers. If a miss ever pays as well as a perfect stop, the timing
-        // pillar is dead and no amount of tuning elsewhere brings it back.
-        Check(cfg.perfectStopPowerMultiplier > cfg.goodStopPowerMultiplier
-              && cfg.goodStopPowerMultiplier > cfg.missStopPowerMultiplier,
-              "9a. 정확도 배수 순서 완벽 > 양호 > 빗나감",
+        Check(Near(cfg.perfectStopPowerMultiplier, cfg.goodStopPowerMultiplier)
+              && Near(cfg.goodStopPowerMultiplier, cfg.missStopPowerMultiplier),
+              "9a. 정확도 배수가 전부 동일 (타이밍이 출력에 영향 없음)",
               $"{cfg.perfectStopPowerMultiplier}/{cfg.goodStopPowerMultiplier}/{cfg.missStopPowerMultiplier}");
 
-        Check(cfg.perfectStopTolerance < cfg.goodStopTolerance
-              && cfg.goodStopTolerance < cfg.ballSpacing * 0.5f,
-              "9b. 허용 오차가 구슬 간격 절반 안에 있다",
-              $"완벽 {cfg.perfectStopTolerance}, 양호 {cfg.goodStopTolerance}, 절반 {cfg.ballSpacing * 0.5f}");
-
-        // A uniformly random press must lose meaningfully against precise play.
+        // Whatever the player's timing, expected output must be the same.
         const int N = 2000;
         var rng = new System.Random(11);
         float sum = 0f;
@@ -265,18 +263,27 @@ public static class PrototypeSelfTest
                  : cfg.missStopPowerMultiplier;
         }
         float mashed = sum / N;
-        float ratio = mashed / cfg.perfectStopPowerMultiplier;
-        Check(ratio <= 0.75f,
-              "9c. 막누르기 기대 출력이 완벽 정지의 75% 이하",
-              $"실측 {ratio:P0} (배수 {mashed:F3})");
+        Check(Near(mashed, cfg.perfectStopPowerMultiplier, 0.01f),
+              "9b. 막누르기와 정밀 입력의 기대 출력이 같다",
+              $"막누르기 {mashed:F3} vs 완벽 {cfg.perfectStopPowerMultiplier:F3}");
 
-        // The accuracy multiplier must actually reach the power formula.
-        var ctx = new GenerationContext { CombinationBaseScore = 10f, CombinationMultiplier = 1f };
-        float full = ctx.ComputeCurrentPower();
-        ctx.AccuracyMultiplier = 0.5f;
-        Check(Near(ctx.ComputeCurrentPower(), full * 0.5f),
-              "9d. 정확도 배수가 전력 공식에 반영된다",
-              $"{ctx.ComputeCurrentPower():F2} vs {full * 0.5f:F2}");
+        // Latency compensation must still be live — it is what makes the intended ball the one
+        // you actually get, which matters more now that the ball choice is the whole skill.
+        Check(cfg.inputLatencyCompensation > 0f,
+              "9c. 입력 지연 보정이 켜져 있다",
+              $"현재 {cfg.inputLatencyCompensation:F3}s");
+
+        float shift = cfg.ballMoveSpeed * cfg.inputLatencyCompensation;
+        Check(shift < cfg.ballSpacing * 0.5f,
+              "9d. 지연 보정이 구슬 하나를 넘기지 않는다",
+              $"보정 거리 {shift:F3} vs 전환 경계 {cfg.ballSpacing * 0.5f:F3}");
+
+        // Reading the stream has to be physically possible: a ball must linger long enough to
+        // recognise. Below ~200ms players cannot read grade and are forced to stare.
+        float periodMs = cfg.ballSpacing / Mathf.Max(0.0001f, cfg.ballMoveSpeed) * 1000f;
+        Check(periodMs >= 200f,
+              "9e. 구슬 주기가 판독 가능한 범위 (>=200ms)",
+              $"현재 {periodMs:F0}ms — 이보다 빠르면 응시를 강요하고 눈이 피로해진다");
     }
 
     // ── 8. 같은 시드 재현성 ──

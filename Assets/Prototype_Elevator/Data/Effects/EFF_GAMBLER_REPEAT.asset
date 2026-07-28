@@ -17,11 +17,11 @@ MonoBehaviour:
   type: 6
   priority: 0
   trigger: 3
-  condition: 3
+  condition: 0
   conditionGrade: 0
-  probability: 1
+  probability: 0.35
   value: 0
   targetBallId: 
   resultBallId: 
   repeatCount: 1
-  description: 
+  description: "35% \uD655\uB960\uB85C \uD6A8\uACFC \uC7AC\uBC1C\uB3D9"
