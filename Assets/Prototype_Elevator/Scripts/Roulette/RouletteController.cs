@@ -148,6 +148,50 @@ namespace Ascend.Prototype
         }
 
         /// <summary>
+        /// Average of the three tubes' accuracy multipliers, used to scale this turn's power.
+        /// This is what makes the stop timing worth aiming at — without it a mashed press and a
+        /// precise press produce exactly the same result.
+        /// </summary>
+        public float AccuracyMultiplier
+        {
+            get
+            {
+                if (_config == null || _tubes == null || _tubes.Length == 0) return 1f;
+
+                float sum = 0f;
+                int counted = 0;
+                foreach (TubeController tube in _tubes)
+                {
+                    if (tube == null) continue;
+                    sum += AccuracyMultiplierFor(tube);
+                    counted++;
+                }
+                return counted == 0 ? 1f : sum / counted;
+            }
+        }
+
+        /// <summary>Accuracy multiplier for a single tube based on how close the press was.</summary>
+        public float AccuracyMultiplierFor(TubeController tube)
+        {
+            if (_config == null) return 1f;
+            if (tube == null || !tube.IsStopped) return _config.missStopPowerMultiplier;
+            float d = tube.LastStopDistance;
+            if (d <= _config.perfectStopTolerance) return _config.perfectStopPowerMultiplier;
+            if (d <= _config.goodStopTolerance)    return _config.goodStopPowerMultiplier;
+            return _config.missStopPowerMultiplier;
+        }
+
+        /// <summary>0 = perfect, 1 = good, 2 = miss. Used by the UI to label each tube.</summary>
+        public int AccuracyTierFor(TubeController tube)
+        {
+            if (_config == null || tube == null || !tube.IsStopped) return 2;
+            float d = tube.LastStopDistance;
+            if (d <= _config.perfectStopTolerance) return 0;
+            if (d <= _config.goodStopTolerance)    return 1;
+            return 2;
+        }
+
+        /// <summary>
         /// Returns the stopped balls from all tubes in order.
         /// Contract unchanged from T-01 (IReadOnlyList&lt;BallDefinition&gt;).
         /// </summary>

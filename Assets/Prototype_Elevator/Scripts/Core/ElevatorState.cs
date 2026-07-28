@@ -46,6 +46,9 @@ namespace Ascend.Prototype
         [Tooltip("Power gained in the most recent generation turn.")]
         public float LastGenerationPower;
 
+        [Tooltip("Timing accuracy multiplier applied to the most recent generation turn (1 = all perfect).")]
+        public float LastAccuracyMultiplier = 1f;
+
         [Tooltip("Effect pipeline log from the most recent generation turn.")]
         public string LastEffectLog;
 
@@ -76,6 +79,7 @@ namespace Ascend.Prototype
             BankedPower        = 0f;
             LastRollSummary    = string.Empty;
             LastGenerationPower = 0f;
+            LastAccuracyMultiplier = 1f;
             LastEffectLog      = string.Empty;
             RetriesThisFloor   = 0;
             TotalRetries       = 0;

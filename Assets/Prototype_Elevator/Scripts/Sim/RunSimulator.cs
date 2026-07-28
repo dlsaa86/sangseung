@@ -144,10 +144,31 @@ namespace Ascend.Prototype
                 // ── GenerationTurn x N ──
                 for (int turn = 1; turn <= _config.generationsPerFloor; turn++)
                 {
-                    List<BallDefinition> balls = drawer.DrawMany(3);
-                    bool perfectStop = policyRng.NextDouble() < policy.perfectStopChance;
+                    List<BallDefinition> balls = DrawHarvest(drawer, policy, policyRng);
+
+                    // Roll each tube's timing separately, exactly as the runtime does, then average
+                    // the multipliers. Rolling once for all three would hide the fact that a single
+                    // sloppy press already costs the turn.
+                    float accuracySum = 0f;
+                    int perfectCount = 0;
+                    for (int t = 0; t < 3; t++)
+                    {
+                        double roll = policyRng.NextDouble();
+                        if (roll < policy.perfectStopChance)
+                        {
+                            accuracySum += _config.perfectStopPowerMultiplier;
+                            perfectCount++;
+                        }
+                        else if (roll < policy.perfectStopChance + policy.goodStopChance)
+                            accuracySum += _config.goodStopPowerMultiplier;
+                        else
+                            accuracySum += _config.missStopPowerMultiplier;
+                    }
+                    float accuracy = accuracySum / 3f;
+                    bool perfectStop = perfectCount == 3;
 
                     var ctx = BuildContext(balls, overloaded, perfectStop, turn, floor);
+                    ctx.AccuracyMultiplier = accuracy;
                     float before = ctx.ComputeCurrentPower();
                     pipeline.Run(ctx, activeEffects);
 
@@ -160,6 +181,7 @@ namespace Ascend.Prototype
                         ball0 = Id(balls, 0), ball1 = Id(balls, 1), ball2 = Id(balls, 2),
                         grade0 = Grade(balls, 0), grade1 = Grade(balls, 1), grade2 = Grade(balls, 2),
                         perfectStop = perfectStop,
+                        accuracyMultiplier = accuracy,
                         combination = ctx.Combination.ToString(),
                         powerBeforeEffects = before,
                         powerAfterEffects = ctx.FinalPower,
@@ -277,6 +299,38 @@ namespace Ascend.Prototype
             ctx.CombinationBaseScore = _combinationConfig.GetBaseScore(ctx.Combination);
             ctx.CombinationMultiplier = _combinationConfig.GetMultiplier(ctx.Combination);
             return ctx;
+        }
+
+        /// <summary>
+        /// Harvests three balls, modelling that a skilled player does not merely press on beat —
+        /// they read the falling stream and press when the ball they want reaches the window.
+        /// A successful aim consumes the same number of stream entries either way, so the RNG
+        /// stream stays aligned between policies and seeds remain comparable.
+        /// </summary>
+        private List<BallDefinition> DrawHarvest(BallDrawer drawer, SimPolicy policy, System.Random rng)
+        {
+            var result = new List<BallDefinition>(3);
+            int window = Mathf.Clamp(policy.ballAimWindow, 1, 6);
+
+            for (int tube = 0; tube < 3; tube++)
+            {
+                List<BallDefinition> visible = drawer.DrawMany(window);
+                bool aimed = rng.NextDouble() < policy.ballAimChance;
+
+                BallDefinition picked = visible[0];
+                if (aimed)
+                {
+                    foreach (BallDefinition b in visible)
+                        if (b != null && (picked == null || b.baseOutput > picked.baseOutput)) picked = b;
+                }
+                else
+                {
+                    // No aim: whichever ball happened to be at the window.
+                    picked = visible[rng.Next(visible.Count)];
+                }
+                result.Add(picked);
+            }
+            return result;
         }
 
         /// <summary>Draws candidates without replacement, mirroring PassengerManager.GenerateCandidates.</summary>

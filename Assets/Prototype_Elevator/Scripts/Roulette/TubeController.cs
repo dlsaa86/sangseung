@@ -335,7 +335,13 @@ namespace Ascend.Prototype
             // Rounding picks whichever ball is nearest at this instant, which may nudge the
             // reel back by up to half a spacing — that settle-back is the intended feel.
             float anchor = TopY - HarvestY;
-            int   m      = Mathf.RoundToInt((_scrollOffset - anchor) / Spacing);
+            float raw    = (_scrollOffset - anchor) / Spacing;
+            int   m      = Mathf.RoundToInt(raw);
+
+            // Accuracy has to be sampled HERE, at the instant the player pressed. Measuring after
+            // the snap always reports ~0 because the snap parks a ball dead on the line, which
+            // made every stop count as perfect and removed timing from the game entirely.
+            _lastStopDistance = Mathf.Abs(raw - m) * Spacing;
 
             _snapStartOffset  = _scrollOffset;
             _snapTargetOffset = anchor + m * Spacing;
@@ -389,12 +395,14 @@ namespace Ascend.Prototype
                 }
             }
 
-            _lastStopDistance = bestDist;
+            // Deliberately NOT overwriting _lastStopDistance here — bestDist is measured after the
+            // snap has already parked a ball on the line, so it is always ~0 and says nothing
+            // about how well the player timed the press. BeginSnap records the real error.
 
             int streamIdx = StreamIndexForSlot(bestSlot);
             _stoppedBall  = _stream[streamIdx];
 
-            Debug.Log($"[상승] {name}: STOPPED — StoppedBall = {(_stoppedBall != null ? _stoppedBall.id : "null")} (slot {bestSlot}, streamIdx {streamIdx}, dist {bestDist:F3})");
+            Debug.Log($"[상승] {name}: STOPPED — StoppedBall = {(_stoppedBall != null ? _stoppedBall.id : "null")} (slot {bestSlot}, streamIdx {streamIdx}, 입력오차 {_lastStopDistance:F3})");
         }
     }
 }

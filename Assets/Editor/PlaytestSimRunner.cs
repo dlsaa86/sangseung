@@ -186,7 +186,7 @@ public static class PlaytestSimRunner
 
     // ── Asset loading ──
 
-    internal static T LoadOne<T>(string typeName) where T : ScriptableObject
+    public static T LoadOne<T>(string typeName) where T : ScriptableObject
     {
         foreach (string guid in AssetDatabase.FindAssets("t:" + typeName))
         {
@@ -196,7 +196,7 @@ public static class PlaytestSimRunner
         return null;
     }
 
-    internal static List<T> LoadAll<T>(string typeName) where T : ScriptableObject
+    public static List<T> LoadAll<T>(string typeName) where T : ScriptableObject
     {
         var list = new List<T>();
         foreach (string guid in AssetDatabase.FindAssets("t:" + typeName))

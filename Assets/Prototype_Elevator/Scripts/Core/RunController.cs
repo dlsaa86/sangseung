@@ -400,6 +400,11 @@ namespace Ascend.Prototype
                     TurnIndex = _state.CurrentTurn,
                     FloorIndex = _floor != null ? _floor.CurrentFloor : 0
                 };
+
+            // Timing quality scales the whole turn. Without this the press moment is cosmetic.
+            context.AccuracyMultiplier = _roulette != null ? _roulette.AccuracyMultiplier : 1f;
+            _state.LastAccuracyMultiplier = context.AccuracyMultiplier;
+
             context = _effects != null ? _effects.Resolve(context) : context;
             if (_effects == null)
                 context.FinalPower = context.ComputeCurrentPower();

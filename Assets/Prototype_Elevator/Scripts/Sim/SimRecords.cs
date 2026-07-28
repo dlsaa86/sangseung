@@ -11,6 +11,7 @@ namespace Ascend.Prototype
         public string ball0, ball1, ball2;
         public string grade0, grade1, grade2;
         public bool   perfectStop;
+        public float  accuracyMultiplier;
         public string combination;
         public float  powerBeforeEffects;
         public float  powerAfterEffects;

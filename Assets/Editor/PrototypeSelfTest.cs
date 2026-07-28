@@ -51,6 +51,7 @@ public static class PrototypeSelfTest
         Test6_RepeatGuard(effectSettings);
         Test7_StateReset(config);
         Test8_SeedReproducibility(config, balls, combo, effectSettings, passengers);
+        Test9_TimingMatters(config, effectSettings);
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
@@ -213,6 +214,47 @@ public static class PrototypeSelfTest
             string.IsNullOrEmpty(st.LastFailureReason);
 
         Check(clean, "7. 재시작 후 상태 완전 초기화");
+    }
+
+    // ── 9. 타이밍이 결과를 바꾸는가 ──
+    private static void Test9_TimingMatters(PrototypeConfig cfg, EffectResolverSettings settings)
+    {
+        // Ordering of the tiers. If a miss ever pays as well as a perfect stop, the timing
+        // pillar is dead and no amount of tuning elsewhere brings it back.
+        Check(cfg.perfectStopPowerMultiplier > cfg.goodStopPowerMultiplier
+              && cfg.goodStopPowerMultiplier > cfg.missStopPowerMultiplier,
+              "9a. 정확도 배수 순서 완벽 > 양호 > 빗나감",
+              $"{cfg.perfectStopPowerMultiplier}/{cfg.goodStopPowerMultiplier}/{cfg.missStopPowerMultiplier}");
+
+        Check(cfg.perfectStopTolerance < cfg.goodStopTolerance
+              && cfg.goodStopTolerance < cfg.ballSpacing * 0.5f,
+              "9b. 허용 오차가 구슬 간격 절반 안에 있다",
+              $"완벽 {cfg.perfectStopTolerance}, 양호 {cfg.goodStopTolerance}, 절반 {cfg.ballSpacing * 0.5f}");
+
+        // A uniformly random press must lose meaningfully against precise play.
+        const int N = 2000;
+        var rng = new System.Random(11);
+        float sum = 0f;
+        for (int i = 0; i < N; i++)
+        {
+            float err = Mathf.Abs((float)rng.NextDouble() - 0.5f) * cfg.ballSpacing;
+            sum += err <= cfg.perfectStopTolerance ? cfg.perfectStopPowerMultiplier
+                 : err <= cfg.goodStopTolerance ? cfg.goodStopPowerMultiplier
+                 : cfg.missStopPowerMultiplier;
+        }
+        float mashed = sum / N;
+        float ratio = mashed / cfg.perfectStopPowerMultiplier;
+        Check(ratio <= 0.75f,
+              "9c. 막누르기 기대 출력이 완벽 정지의 75% 이하",
+              $"실측 {ratio:P0} (배수 {mashed:F3})");
+
+        // The accuracy multiplier must actually reach the power formula.
+        var ctx = new GenerationContext { CombinationBaseScore = 10f, CombinationMultiplier = 1f };
+        float full = ctx.ComputeCurrentPower();
+        ctx.AccuracyMultiplier = 0.5f;
+        Check(Near(ctx.ComputeCurrentPower(), full * 0.5f),
+              "9d. 정확도 배수가 전력 공식에 반영된다",
+              $"{ctx.ComputeCurrentPower():F2} vs {full * 0.5f:F2}");
     }
 
     // ── 8. 같은 시드 재현성 ──

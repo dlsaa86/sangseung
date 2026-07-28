@@ -100,6 +100,19 @@ namespace Ascend.Prototype
         [Tooltip("Distance from the harvest-window centre within which a stop counts as perfect.")]
         public float perfectStopTolerance = 0.12f;
 
+        [Header("Stop Accuracy")]
+        [Tooltip("Within this distance a stop counts as good; beyond it the stop is a miss.")]
+        public float goodStopTolerance = 0.28f;
+
+        [Tooltip("Power multiplier contributed by a perfectly timed tube.")]
+        public float perfectStopPowerMultiplier = 1.0f;
+
+        [Tooltip("Power multiplier contributed by a good tube.")]
+        public float goodStopPowerMultiplier = 0.72f;
+
+        [Tooltip("Power multiplier contributed by a missed tube. If mistimed stops cost nothing, timing is not a game.")]
+        public float missStopPowerMultiplier = 0.40f;
+
         [Tooltip("Number of ball entries pre-generated in each tube's stream per spin.")]
         public int streamLength = 32;
 

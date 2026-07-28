@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: PrototypeConfig
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.PrototypeConfig
   generationsPerFloor: 3
-  baseRequiredPower: 100
-  requiredPowerGrowthPerFloor: 25
+  baseRequiredPower: 130
+  requiredPowerGrowthPerFloor: 8
   allowedWeight: 8
   overloadRequiredPowerMultiplier: 1.5
   weightToPowerFactor: 2
@@ -24,6 +24,10 @@ MonoBehaviour:
   maxAccidentChance: 0.75
   accidentPowerLossRatio: 0.35
   powerToMoneyRatio: 1
+  targetFloor: 10
+  maxRetriesPerFloor: 1
+  powerPerExtraFloor: 60
+  maxExtraFloorsPerAllocation: 3
   startingPower: 0
   startingMoney: 0
   startingWeight: 0
@@ -35,5 +39,9 @@ MonoBehaviour:
   tubeHeight: 6
   harvestWindowOffset: -1.5
   perfectStopTolerance: 0.12
+  goodStopTolerance: 0.28
+  perfectStopPowerMultiplier: 1
+  goodStopPowerMultiplier: 0.6
+  missStopPowerMultiplier: 0.15
   streamLength: 32
   randomSeed: 12345

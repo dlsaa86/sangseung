@@ -22,6 +22,12 @@ namespace Ascend.Prototype
         public float CombinationBaseScore;
         public float CombinationMultiplier = 1f;
 
+        /// <summary>
+        /// How well the player timed the three stops (see RouletteController.AccuracyMultiplier).
+        /// Applied to the final power so precision is worth something.
+        /// </summary>
+        public float AccuracyMultiplier = 1f;
+
         public float FlatBonus;
         public float MultiplierBonus = 1f;
         public float MoneyDelta;
@@ -41,7 +47,7 @@ namespace Ascend.Prototype
         public float ComputeCurrentPower()
         {
             return (BaseOutputSum + CombinationBaseScore + FlatBonus)
-                   * CombinationMultiplier * MultiplierBonus;
+                   * CombinationMultiplier * MultiplierBonus * AccuracyMultiplier;
         }
 
         /// <summary>Creates an independent context for one additional repeat power pass.</summary>
@@ -53,6 +59,7 @@ namespace Ascend.Prototype
                 Combination = Combination,
                 CombinationBaseScore = CombinationBaseScore,
                 CombinationMultiplier = CombinationMultiplier,
+                AccuracyMultiplier = AccuracyMultiplier,
                 IsOverloaded = IsOverloaded,
                 PerfectStop = PerfectStop,
                 TurnIndex = TurnIndex,
