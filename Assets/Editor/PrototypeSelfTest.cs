@@ -53,10 +53,33 @@ public static class PrototypeSelfTest
         Test8_SeedReproducibility(config, balls, combo, effectSettings, passengers);
         Test9_TimingIsNotATax(config, effectSettings);
 
+        // 노션 재설계 이후의 코어. 위 1~9번은 폐기 예정인 옛 구조(구슬 조합·타이밍)를 지키고
+        // 있어서, 새 룰렛·층 진행이 깨져도 전부 통과한다. 커밋 게이트가 그 상태를 승인하면
+        // "검증했다"는 기록이 거짓이 되므로 여기에 편입한다.
+        FoldInSuite("자동 룰렛 판정", Ascend.Prototype.Spin.Tests.SpinEngineTests.RunAll());
+        FoldInSuite("층 진행·계약·앤티", Ascend.Prototype.Run.Tests.RunTests.RunAll());
+
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
         WriteMarker();
         return _log.ToString();
+    }
+
+    /// <summary>
+    /// 다른 파일에 사는 테스트 묶음의 결과를 이 리포트의 집계에 합친다.
+    /// 실패한 케이스 이름은 그대로 옮겨 적는다 — 어느 것이 깨졌는지 로그만 보고 알아야 한다.
+    /// </summary>
+    private static void FoldInSuite(string label, (int passed, int failed, string report) result)
+    {
+        _pass += result.passed;
+        _fail += result.failed;
+        _log.AppendLine();
+        _log.AppendLine($"  [{label}] {result.passed} PASS / {result.failed} FAIL");
+        if (result.failed > 0 && !string.IsNullOrEmpty(result.report))
+        {
+            foreach (string line in result.report.Split('\n'))
+                if (line.Contains("FAIL")) _log.AppendLine("    " + line.Trim());
+        }
     }
 
     /// <summary>
@@ -315,10 +338,24 @@ public static class PrototypeSelfTest
         }
 
         // Sanity: a different seed should not produce an identical trace.
+        //
+        // highestFloor·finalMoney·floors.Count만 보면 안 된다. 밸런스가 잡힌 뒤로는
+        // 어떤 시드든 10층을 클리어하므로 그 세 값이 항상 같아지고, 시드가 완전히
+        // 무시되는 상황조차 통과한다. 실제로 그렇게 잘못 실패하고 있었다.
+        // 층별 전력은 시드마다 반드시 달라지므로 그것을 본다.
         SimRunRecord c = sim.RunOnce(9999, SimPolicy.Balanced(), 0);
         bool differs = c.highestFloor != a.highestFloor
                     || !Near(c.finalMoney, a.finalMoney)
                     || c.floors.Count != a.floors.Count;
+
+        if (!differs)
+        {
+            int compared = System.Math.Min(a.floors.Count, c.floors.Count);
+            for (int i = 0; i < compared; i++)
+            {
+                if (!Near(a.floors[i].finalPower, c.floors[i].finalPower)) { differs = true; break; }
+            }
+        }
 
         Check(true, "8a. 같은 시드 → 같은 결과");
         Check(differs, "8b. 다른 시드 → 다른 결과", "동일하다면 시드가 실제로 쓰이지 않는 것");

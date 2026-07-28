@@ -1,412 +1,362 @@
+using System;
 using System.Collections.Generic;
-using System.Text;
-using UnityEngine;
+using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype
 {
     /// <summary>
-    /// Headless replay of the full floor loop — no scene, no MonoBehaviour, no visuals.
-    ///
-    /// Every balance formula is delegated to FloorMath / CombinationResolver.DetermineType /
-    /// CombinationConfig / EffectPipeline. The simulator deliberately owns no formula of its own:
-    /// the moment it computes required power or combination score itself, the numbers it reports
-    /// stop describing the game that actually ships.
-    ///
-    /// The turn order below mirrors RunController exactly:
-    ///   FloorArrival -> PassengerSelection -> GenerationTurn xN -> PowerResolution
-    ///   -> OverchargeAllocation -> Ascending
+    /// Headless ten-floor balance simulation. This class intentionally has no Unity dependency;
+    /// the only game-side operation it performs is calling the fixed SpinEngine contract.
     /// </summary>
-    public class RunSimulator
+    public sealed class RunSimulator
     {
-        private readonly PrototypeConfig _config;
-        private readonly BallDatabase _ballDatabase;
-        private readonly CombinationConfig _combinationConfig;
-        private readonly EffectResolverSettings _effectSettings;
-        private readonly List<PassengerDefinition> _passengerPool;
+        private readonly int _seed;
 
-        public RunSimulator(
-            PrototypeConfig config,
-            BallDatabase ballDatabase,
-            CombinationConfig combinationConfig,
-            EffectResolverSettings effectSettings,
-            IReadOnlyList<PassengerDefinition> passengerPool)
+        public RunSimulator(int seed = 1337)
         {
-            _config = config;
-            _ballDatabase = ballDatabase;
-            _combinationConfig = combinationConfig;
-            _effectSettings = effectSettings;
-            _passengerPool = new List<PassengerDefinition>();
-            if (passengerPool != null)
-                foreach (PassengerDefinition p in passengerPool)
-                    if (p != null) _passengerPool.Add(p);
+            _seed = seed;
         }
 
-        /// <summary>Runs one complete run and returns its full record.</summary>
+        /// <summary>
+        /// Source-compatible shim for retired editor callers. The new simulator is intentionally
+        /// asset-free, so these values are ignored and the deterministic default seed is used.
+        /// </summary>
+        public RunSimulator(object config, object ballDatabase, object combinationConfig,
+                            object effectSettings, object passengerPool)
+        {
+            _seed = 1337;
+        }
+
+        public SimReportData Simulate(int runCount = 1000)
+        {
+            if (runCount < 1) throw new ArgumentOutOfRangeException(nameof(runCount));
+
+            var report = new SimReportData { runCount = runCount, seed = _seed };
+            foreach (SimPolicy policy in SimPolicy.Defaults)
+            {
+                var policyReport = new SimPolicyReport { policyName = policy.name, runCount = runCount };
+                for (int i = 0; i < runCount; i++)
+                {
+                    SimRunRecord run = RunOnce(_seed + i, policy, i);
+                    policyReport.runs.Add(run);
+                    Accumulate(policyReport, run);
+                }
+                FinalizeAverages(policyReport);
+                report.policies.Add(policyReport);
+            }
+
+            SimReport.AddBalanceWarnings(report);
+            return report;
+        }
+
+        /// <summary>Pure C# entry point for command-line tests or other non-Editor callers.</summary>
+        public string RunReport(int runCount = 1000)
+        {
+            return SimReport.Format(Simulate(runCount));
+        }
+
+        public static string RunHeadless(int runCount = 1000, int seed = 1337)
+        {
+            return new RunSimulator(seed).RunReport(runCount);
+        }
+
         public SimRunRecord RunOnce(int seed, SimPolicy policy, int runIndex)
         {
+            if (policy == null) policy = SimPolicy.Balanced();
+
             var record = new SimRunRecord
             {
                 runIndex = runIndex,
                 seed = seed,
-                policyName = policy != null ? policy.name : "(none)",
+                policyName = policy.name,
+                succeeded = true,
+                failedFloor = 0,
                 outcome = "InProgress",
-                failureReason = string.Empty
+                failureReason = string.Empty,
             };
+            var engine = new SpinEngine(seed);
+            ResidualState residual = ResidualState.Empty;
+            float runPower = 0f;
 
-            if (_config == null || _ballDatabase == null || _combinationConfig == null)
+            foreach (FloorPlan floor in PrototypeCurriculum.TenFloors)
             {
-                record.outcome = "Failure";
-                record.failureReason = "설정 에셋 누락 (config/ballDatabase/combinationConfig)";
-                return record;
-            }
-            if (policy == null) policy = SimPolicy.Balanced();
-
-            // Seed derivation must match the runtime systems exactly, otherwise the simulation
-            // explores a different random space than play mode does for the same seed.
-            var ballRng      = new System.Random(seed);
-            var effectRng    = new SystemEffectRandom(unchecked(seed * 397 ^ 0x5EED));
-            var passengerRng = new System.Random(unchecked(seed * 31 ^ 0x9A55));
-            var accidentRng  = new System.Random(unchecked(seed * 17 ^ 0x2ACC));
-            var policyRng    = new System.Random(unchecked(seed * 7 ^ 0x1B0D));
-
-            var drawer   = new BallDrawer(_ballDatabase, ballRng);
-            var pipeline = new EffectPipeline(_effectSettings, effectRng);
-
-            var boarded = new List<PassengerDefinition>();
-            float money = _config.startingMoney;
-            float power = _config.startingPower;
-            float bankedPower = 0f;
-            float floorStartPower = _config.startingPower;
-            int floor = 0;
-            int highestFloor = 0;
-            int retriesThisFloor = 0;
-            int totalRetries = 0;
-            int totalAccidents = 0;
-            bool candidatesPending = true;
-            var candidates = new List<PassengerDefinition>();
-
-            int guard = 0;
-            int guardLimit = _config.targetFloor * (_config.maxRetriesPerFloor + 2) + 20;
-
-            while (true)
-            {
-                if (++guard > guardLimit)
+                // Each floor starts with a fresh board; residual is carried between spins
+                // inside this floor only. The next floor's contract is selected fresh.
+                residual = ResidualState.Empty;
+                var floorRecord = new SimFloorRecord
                 {
+                    floor = floor.Floor,
+                    floorIndex = floor.Floor,
+                    requiredPower = floor.RequiredPower,
+                    selectedContract = policy.ChooseContract(floor, in residual),
+                    finalBand = PowerBand.Crash,
+                    failureReason = string.Empty,
+                };
+                SpinRuleSet rules = PrototypeCurriculum.BuildRules(in floor);
+                rules.Apply(in floorRecord.selectedContract);
+                float floorPower = 0f;
+                PowerBand previousBand = PowerThresholds.Default.BandFor(floorPower, floor.RequiredPower);
+                int thresholdCrossings = 0;
+
+                for (int spinIndex = 0; spinIndex < floor.Spins; spinIndex++)
+                {
+                    bool requiredAlreadyMet = floorPower >= floor.RequiredPower;
+                    int spinsRemaining = floor.Spins - spinIndex - 1;
+                    if (requiredAlreadyMet) floorRecord.additionalSpinDecisions++;
+                    if (requiredAlreadyMet && !policy.ShouldTakeAdditionalSpin(
+                            floorPower, floor.RequiredPower, spinsRemaining)) break;
+
+                    bool additional = requiredAlreadyMet;
+                    bool firstAdditional = additional && floorRecord.additionalSpinChoices == 0;
+                    float ante = 0f;
+                    if (additional)
+                    {
+                        ante = floorPower * 0.12f * (1f + 0.35f * floorRecord.additionalSpinChoices);
+                        floorPower -= ante;
+                        runPower -= ante;
+                        floorRecord.totalAnte += ante;
+                    }
+                    SpinResolution resolution = engine.Spin(rules, in floorRecord.selectedContract, in residual);
+                    SimSpinRecord spin = MeasureSpin(resolution, rules, spinIndex + 1, additional);
+                    spin.additionalSpinAnte = ante;
+                    spin.isFirstAdditionalSpin = firstAdditional;
+                    floorRecord.spins.Add(spin);
+                    floorPower += resolution.NetPower;
+                    runPower += resolution.NetPower;
+                    spin.cumulativePower = floorPower;
+
+                    PowerBand currentBand = PowerThresholds.Default.BandFor(floorPower, floor.RequiredPower);
+                    if (currentBand != previousBand) thresholdCrossings++;
+                    previousBand = currentBand;
+                    if (additional)
+                    {
+                        floorRecord.additionalSpinChoices++;
+                        spin.additionalSpinNetAfterAnte = resolution.NetPower - ante;
+                        spin.additionalSpinSucceeded = spin.additionalSpinNetAfterAnte >= 0f;
+                        spin.additionalSpinLost = spin.additionalSpinNetAfterAnte < 0f;
+                        if (spin.additionalSpinSucceeded) floorRecord.additionalSpinSuccesses++;
+                        if (spin.additionalSpinLost) floorRecord.additionalSpinLosses++;
+                        if (firstAdditional)
+                        {
+                            floorRecord.firstAdditionalSpinChoices++;
+                            if (spin.additionalSpinSucceeded) floorRecord.firstAdditionalSpinSuccesses++;
+                            if (spin.additionalSpinLost) floorRecord.firstAdditionalSpinLosses++;
+                        }
+                    }
+                    residual = resolution.Residual;
+                }
+
+                floorRecord.totalWeight = TotalWeight(rules);
+                floorRecord.finalPower = floorPower;
+                floorRecord.finalBand = PowerThresholds.Default.BandFor(floorPower, floor.RequiredPower);
+                floorRecord.passed = floorRecord.finalBand.Ascends();
+                floorRecord.success = floorRecord.passed;
+                floorRecord.surplus = floorPower - floor.RequiredPower;
+                floorRecord.thresholdCrossings = thresholdCrossings;
+                if (!floorRecord.passed)
+                {
+                    floorRecord.failureReason = floorRecord.finalBand.DisplayName();
+                    record.succeeded = false;
+                    record.failedFloor = floor.Floor;
                     record.outcome = "Failure";
-                    record.failureReason = "시뮬레이션 반복 상한 도달";
-                    break;
+                    record.failureReason = "" + floor.Floor + "층에서 " + floorRecord.failureReason;
+                    record.highestFloor = floor.Floor - 1;
+                    record.finalPower = runPower;
+                    record.floors.Add(floorRecord);
+                    return record;
                 }
-
-                var fr = new SimFloorRecord { floorIndex = floor, retries = retriesThisFloor };
-
-                // ── FloorArrival: draw this floor's candidates (only on first entry, not on retry) ──
-                if (candidatesPending)
-                {
-                    candidates = DrawCandidates(passengerRng);
-                    candidatesPending = false;
-                }
-                fr.candidatesOffered = DescribeCandidates(candidates);
-
-                // ── PassengerSelection ──
-                fr.passengerBoarded = "-";
-                if (candidates.Count > 0 && boarded.Count < _config.maxPassengerSlots)
-                {
-                    if (policyRng.NextDouble() < policy.boardChance)
-                    {
-                        int pick = policyRng.Next(candidates.Count);
-                        PassengerDefinition chosen = candidates[pick];
-                        float projectedWeight = _config.startingWeight + SumWeight(boarded) + chosen.weight;
-                        float projectedAllowed = _config.allowedWeight + SumAllowedBonus(boarded) + chosen.allowedWeightBonus;
-
-                        if (projectedWeight <= projectedAllowed * policy.weightCeilingRatio)
-                        {
-                            boarded.Add(chosen);
-                            candidates.RemoveAt(pick);
-                            fr.passengerBoarded = Label(chosen);
-                        }
-                    }
-                }
-
-                // ── Load recalculation (mirrors RunController.RecalculateLoad) ──
-                float weight = _config.startingWeight + SumWeight(boarded);
-                float allowed = _config.allowedWeight + SumAllowedBonus(boarded);
-                bool overloaded = weight > allowed;
-                float required = FloorMath.ComputeRequiredPower(_config, floor, weight, overloaded);
-                float accidentChance = FloorMath.ComputeAccidentChance(_config, weight, allowed);
-                List<EffectDefinition> activeEffects = CollectEffects(boarded);
-
-                fr.totalWeight = weight;
-                fr.allowedWeight = allowed;
-                fr.overloaded = overloaded;
-                fr.requiredPower = required;
-                fr.accidentChance = accidentChance;
-
-                // ── GenerationTurn x N ──
-                for (int turn = 1; turn <= _config.generationsPerFloor; turn++)
-                {
-                    List<BallDefinition> balls = DrawHarvest(drawer, policy, policyRng);
-
-                    // Roll each tube's timing separately, exactly as the runtime does, then average
-                    // the multipliers. Rolling once for all three would hide the fact that a single
-                    // sloppy press already costs the turn.
-                    float accuracySum = 0f;
-                    int perfectCount = 0;
-                    for (int t = 0; t < 3; t++)
-                    {
-                        double roll = policyRng.NextDouble();
-                        if (roll < policy.perfectStopChance)
-                        {
-                            accuracySum += _config.perfectStopPowerMultiplier;
-                            perfectCount++;
-                        }
-                        else if (roll < policy.perfectStopChance + policy.goodStopChance)
-                            accuracySum += _config.goodStopPowerMultiplier;
-                        else
-                            accuracySum += _config.missStopPowerMultiplier;
-                    }
-                    float accuracy = accuracySum / 3f;
-                    bool perfectStop = perfectCount == 3;
-
-                    var ctx = BuildContext(balls, overloaded, perfectStop, turn, floor);
-                    ctx.AccuracyMultiplier = accuracy;
-                    float before = ctx.ComputeCurrentPower();
-                    pipeline.Run(ctx, activeEffects);
-
-                    power += ctx.FinalPower;
-                    money += ctx.MoneyDelta;
-
-                    fr.turns.Add(new SimTurnRecord
-                    {
-                        turnIndex = turn,
-                        ball0 = Id(balls, 0), ball1 = Id(balls, 1), ball2 = Id(balls, 2),
-                        grade0 = Grade(balls, 0), grade1 = Grade(balls, 1), grade2 = Grade(balls, 2),
-                        perfectStop = perfectStop,
-                        accuracyMultiplier = accuracy,
-                        combination = ctx.Combination.ToString(),
-                        powerBeforeEffects = before,
-                        powerAfterEffects = ctx.FinalPower,
-                        moneyDelta = ctx.MoneyDelta,
-                        effectLog = FlattenLog(ctx.Log)
-                    });
-                }
-
-                // ── PowerResolution: accident is rolled before the comparison ──
-                if (accidentChance > 0f && accidentRng.NextDouble() < accidentChance)
-                {
-                    float loss = FloorMath.ComputeAccidentPowerLoss(_config, power);
-                    power -= loss;
-                    totalAccidents++;
-                    fr.accidentOccurred = true;
-                    fr.accidentLoss = loss;
-                }
-
-                fr.finalPower = power;
-                float surplus = power - required;
-
-                if (surplus < 0f)
-                {
-                    retriesThisFloor++;
-                    totalRetries++;
-                    fr.success = false;
-                    fr.retries = retriesThisFloor;
-                    fr.overchargeChoice = "-";
-                    record.floors.Add(fr);
-
-                    if (retriesThisFloor > _config.maxRetriesPerFloor)
-                    {
-                        record.outcome = "Failure";
-                        record.failureReason = $"{floor}층에서 요구 전력 미달 (재시도 {_config.maxRetriesPerFloor}회 초과)";
-                        break;
-                    }
-
-                    // Retry the same floor: power resets, candidates are NOT redrawn.
-                    power = floorStartPower;
-                    continue;
-                }
-
-                fr.success = true;
-                fr.surplus = surplus;
-
-                // ── OverchargeAllocation ──
-                OverchargeOption chosenOption = policyRng.NextDouble() < policy.ascendChance
-                    ? FloorMath.BuildAscendOption(_config, surplus)
-                    : FloorMath.BuildMoneyOption(_config, surplus);
-
-                int extraFloors = 0;
-                if (chosenOption.Mode == OverchargeMode.Ascend)
-                {
-                    extraFloors = chosenOption.FloorsGained;
-                    bankedPower = chosenOption.PowerCarried;
-                }
-                else
-                {
-                    money += chosenOption.MoneyGained;
-                    bankedPower = 0f;
-                }
-                fr.overchargeChoice = chosenOption.Label;
-
-                // ── Ascending ──
-                int climb = 1 + extraFloors;
-                fr.floorsClimbed = climb;
-                record.floors.Add(fr);
-
-                floorStartPower = _config.startingPower + bankedPower;
-                power = floorStartPower;
-                bankedPower = 0f;
-                retriesThisFloor = 0;
-
-                floor += climb;
-                highestFloor = Mathf.Max(highestFloor, floor);
-                candidatesPending = true;
-
-                if (floor >= _config.targetFloor)
-                {
-                    record.outcome = "Success";
-                    break;
-                }
+                record.floors.Add(floorRecord);
             }
 
-            record.highestFloor = highestFloor;
-            record.finalMoney = money;
-            record.totalAccidents = totalAccidents;
-            record.totalRetries = totalRetries;
+            record.finalPower = runPower;
+            record.outcome = "Success";
+            record.highestFloor = PrototypeCurriculum.TenFloors.Count;
             return record;
         }
 
-        // ── Helpers ──
-
-        /// <summary>
-        /// Builds the pipeline context without a CombinationResolver MonoBehaviour, reusing the
-        /// same DetermineType and CombinationConfig lookups the runtime path uses.
-        /// </summary>
-        private GenerationContext BuildContext(
-            List<BallDefinition> balls, bool overloaded, bool perfectStop, int turn, int floor)
+        private static SimSpinRecord MeasureSpin(
+            in SpinResolution resolution, SpinRuleSet rules, int spinIndex, bool additional)
         {
-            var ctx = new GenerationContext
+            var record = new SimSpinRecord
             {
-                Balls = new List<BallDefinition>(balls),
-                IsOverloaded = overloaded,
-                PerfectStop = perfectStop,
-                TurnIndex = turn,
-                FloorIndex = floor,
-                CombinationMultiplier = 1f
+                spinIndex = spinIndex,
+                cells = resolution.InitialBoard.ToArray(),
+                normalSoulBasePower = rules.NormalSoulValue,
+                normalSoulPower = resolution.NormalSoulPower,
+                grossPower = resolution.GrossPower,
+                netPower = resolution.NetPower,
+                cascadeLength = resolution.ChainDepth,
+                absorberResidualCount = resolution.Residual.AbsorberCount,
+                proliferatorResidualCount = resolution.Residual.ProliferatorCount,
+                absorberResidualCost = resolution.Residual.StoredPowerLoss,
+                proliferatorResidualCost = resolution.Residual.NextProliferatorWeightAdd,
+                wasAdditionalSpin = additional,
+                resolution = resolution,
             };
+            foreach (KeyValuePair<SymbolKind, float> pair in rules.Weights)
+                record.symbolWeights[pair.Key] = pair.Value;
 
-            ctx.Combination = ctx.Balls.Count >= 3
-                ? CombinationResolver.DetermineType(ctx.Balls[0], ctx.Balls[1], ctx.Balls[2])
-                : CombinationType.None;
-
-            ctx.CombinationBaseScore = _combinationConfig.GetBaseScore(ctx.Combination);
-            ctx.CombinationMultiplier = _combinationConfig.GetMultiplier(ctx.Combination);
-            return ctx;
+            int normalSouls = 0;
+            if (resolution.Steps != null)
+            {
+                foreach (CascadeStep step in resolution.Steps)
+                {
+                    normalSouls += step.NormalSoulsHarvested;
+                    if (step.Purifies == null) continue;
+                    foreach (PurifyEvent purify in step.Purifies)
+                    {
+                        if (purify.Pattern == PatternKind.Scattered) record.basePurifyCount++;
+                        if (purify.Pattern == PatternKind.Line) record.lineCount++;
+                        if (purify.Pattern == PatternKind.Cluster || purify.Pattern == PatternKind.FullBoard)
+                            record.clusterCount++;
+                    }
+                }
+            }
+            record.normalSouls = normalSouls;
+            foreach (SymbolKind kind in SymbolKinds.ResistanceKinds)
+                record.resistanceCounts[kind] = resolution.InitialBoard.CountOf(kind);
+            record.cascadeAdditionalPower = CascadePowerAfterFirst(resolution);
+            return record;
         }
 
-        /// <summary>
-        /// Harvests three balls, modelling that a skilled player does not merely press on beat —
-        /// they read the falling stream and press when the ball they want reaches the window.
-        /// A successful aim consumes the same number of stream entries either way, so the RNG
-        /// stream stays aligned between policies and seeds remain comparable.
-        /// </summary>
-        private List<BallDefinition> DrawHarvest(BallDrawer drawer, SimPolicy policy, System.Random rng)
+        private static float CascadePowerAfterFirst(in SpinResolution resolution)
         {
-            var result = new List<BallDefinition>(3);
-            int window = Mathf.Clamp(policy.ballAimWindow, 1, 6);
-
-            for (int tube = 0; tube < 3; tube++)
-            {
-                List<BallDefinition> visible = drawer.DrawMany(window);
-                bool aimed = rng.NextDouble() < policy.ballAimChance;
-
-                BallDefinition picked = visible[0];
-                if (aimed)
-                {
-                    foreach (BallDefinition b in visible)
-                        if (b != null && (picked == null || b.baseOutput > picked.baseOutput)) picked = b;
-                }
-                else
-                {
-                    // No aim: whichever ball happened to be at the window.
-                    picked = visible[rng.Next(visible.Count)];
-                }
-                result.Add(picked);
-            }
+            if (resolution.Steps == null || resolution.Steps.Length < 2) return 0f;
+            float result = 0f;
+            for (int i = 1; i < resolution.Steps.Length; i++) result += resolution.Steps[i].StepPower;
             return result;
         }
 
-        /// <summary>Draws candidates without replacement, mirroring PassengerManager.GenerateCandidates.</summary>
-        private List<PassengerDefinition> DrawCandidates(System.Random rng)
+        private static float TotalWeight(SpinRuleSet rules)
         {
-            var result = new List<PassengerDefinition>();
-            if (_passengerPool.Count == 0) return result;
+            float total = 0f;
+            foreach (KeyValuePair<SymbolKind, float> pair in rules.Weights)
+                total += (float)Math.Max(0d, pair.Value);
+            return total;
+        }
 
-            var available = new List<PassengerDefinition>(_passengerPool);
-            int target = Mathf.Min(Mathf.Max(0, _config.passengerCandidatesPerFloor), available.Count);
-            for (int i = 0; i < target; i++)
+        private static void Accumulate(SimPolicyReport report, SimRunRecord run)
+        {
+            if (run.succeeded) report.successfulRuns++;
+            foreach (SimFloorRecord floor in run.floors)
             {
-                int idx = rng.Next(available.Count);
-                result.Add(available[idx]);
-                available.RemoveAt(idx);
+                int i = floor.floor - 1;
+                if (i < 0 || i >= report.floorPasses.Length) continue;
+                report.floorAttempts[i]++;
+                if (floor.passed) report.floorPasses[i]++;
+                report.averageFinalPowerByFloor[i] += floor.finalPower;
+                report.averageRequiredPowerByFloor[i] += floor.requiredPower;
+                report.additionalSpinChoicesByFloor[i] += floor.additionalSpinChoices;
+                report.additionalSpinDecisionsByFloor[i] += floor.additionalSpinDecisions;
+                report.additionalSpinSuccessesByFloor[i] += floor.additionalSpinSuccesses;
+                report.additionalSpinLossesByFloor[i] += floor.additionalSpinLosses;
+                    report.averageAnteByFloor[i] += floor.totalAnte;
+                    report.firstAdditionalSpinCount += floor.firstAdditionalSpinChoices;
+                    report.firstAdditionalSpinLossCount += floor.firstAdditionalSpinLosses;
+                report.totalWeight += floor.totalWeight;
+                Increment(report.thresholdCrossingDistribution, floor.thresholdCrossings);
+                Increment(report.powerBandDistribution, floor.finalBand);
+                if (!floor.selectedContract.IsNone)
+                {
+                    report.contractRuns++;
+                    report.contractAverageFinalPower += floor.finalPower;
+                }
+                else report.noneAverageFinalPower += floor.finalPower;
+
+                foreach (SimSpinRecord spin in floor.spins)
+                {
+                    report.basePurificationsByFloor[i] += spin.basePurifyCount;
+                    report.linesByFloor[i] += spin.lineCount;
+                    report.clustersByFloor[i] += spin.clusterCount;
+                    report.cascadesByFloor[i] += spin.cascadeLength > 1 ? 1f : 0f;
+                    report.cascadeAdditionalPowerByFloor[i] += spin.cascadeAdditionalPower;
+                    report.absorberResidualsByFloor[i] += spin.absorberResidualCount;
+                    report.proliferatorResidualsByFloor[i] += spin.proliferatorResidualCount;
+                    report.residualCostsByFloor[i] += spin.absorberResidualCost + spin.proliferatorResidualCost;
+                    report.averageNormalSoulBasePower += spin.normalSoulBasePower;
+                    foreach (KeyValuePair<SymbolKind, int> pair in spin.resistanceCounts)
+                        Add(report.totalResistanceCounts, pair.Key, pair.Value);
+                    foreach (KeyValuePair<SymbolKind, float> pair in spin.symbolWeights)
+                        Add(report.averageSymbolWeights, pair.Key, pair.Value);
+                    report.symbolWeightSamples++;
+                    Increment(report.cascadeLengthDistribution, spin.cascadeLength);
+                }
             }
-            return result;
+            report.averageFinalPower += run.finalPower;
         }
 
-        private static List<EffectDefinition> CollectEffects(List<PassengerDefinition> boarded)
+        private static void FinalizeAverages(SimPolicyReport report)
         {
-            var effects = new List<EffectDefinition>();
-            foreach (PassengerDefinition p in boarded)
+            report.averageFinalPower /= Math.Max(1, report.runCount);
+            int floors = 0;
+            int spins = 0;
+            for (int i = 0; i < report.floorAttempts.Length; i++)
             {
-                if (p == null || p.effects == null) continue;
-                foreach (EffectDefinition e in p.effects)
-                    if (e != null) effects.Add(e);
+                report.averageFinalPowerByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                report.averageRequiredPowerByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                floors += report.floorAttempts[i];
+                report.additionalSpinChoicesByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                report.additionalSpinDecisionsByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                report.additionalSpinSuccessesByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                report.additionalSpinLossesByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                report.averageAnteByFloor[i] /= Math.Max(1, report.floorAttempts[i]);
+                if (report.additionalSpinDecisionsByFloor[i] > 0f)
+                    report.additionalSpinChoicesByFloor[i] /= report.additionalSpinDecisionsByFloor[i];
             }
-            return effects;
-        }
-
-        private static float SumWeight(List<PassengerDefinition> boarded)
-        {
-            float sum = 0f;
-            foreach (PassengerDefinition p in boarded) if (p != null) sum += p.weight;
-            return sum;
-        }
-
-        private static float SumAllowedBonus(List<PassengerDefinition> boarded)
-        {
-            float sum = 0f;
-            foreach (PassengerDefinition p in boarded) if (p != null) sum += p.allowedWeightBonus;
-            return sum;
-        }
-
-        private static string Label(PassengerDefinition p)
-            => p == null ? "-" : (string.IsNullOrEmpty(p.displayName) ? p.id : p.displayName);
-
-        private static string DescribeCandidates(List<PassengerDefinition> candidates)
-        {
-            if (candidates == null || candidates.Count == 0) return "-";
-            var sb = new StringBuilder();
-            for (int i = 0; i < candidates.Count; i++)
+            foreach (int count in report.cascadeLengthDistribution.Values) spins += count;
+            for (int i = 0; i < report.floorAttempts.Length; i++)
             {
-                if (i > 0) sb.Append(", ");
-                sb.Append(Label(candidates[i])).Append("(무게").Append(candidates[i].weight.ToString("F0")).Append(')');
+                int denominator = CountSpinsForFloor(report, i);
+                report.basePurificationsByFloor[i] /= Math.Max(1, denominator);
+                report.linesByFloor[i] /= Math.Max(1, denominator);
+                report.clustersByFloor[i] /= Math.Max(1, denominator);
+                report.cascadesByFloor[i] /= Math.Max(1, denominator);
+                report.cascadeAdditionalPowerByFloor[i] /= Math.Max(1, denominator);
+                report.absorberResidualsByFloor[i] /= Math.Max(1, denominator);
+                report.proliferatorResidualsByFloor[i] /= Math.Max(1, denominator);
+                report.residualCostsByFloor[i] /= Math.Max(1, denominator);
             }
-            return sb.ToString();
+            report.totalWeight /= Math.Max(1, floors);
+            report.averageNormalSoulBasePower /= Math.Max(1, spins);
+            var weightKeys = new List<SymbolKind>(report.averageSymbolWeights.Keys);
+            foreach (SymbolKind key in weightKeys)
+                report.averageSymbolWeights[key] /= Math.Max(1, report.symbolWeightSamples);
+            if (report.contractRuns > 0) report.contractAverageFinalPower /= report.contractRuns;
+            int noneRuns = floors - report.contractRuns;
+            if (noneRuns > 0) report.noneAverageFinalPower /= noneRuns;
+            report.firstAdditionalSpinLossRate = report.firstAdditionalSpinCount == 0
+                ? 0f
+                : (float)report.firstAdditionalSpinLossCount / report.firstAdditionalSpinCount;
         }
 
-        private static string Id(List<BallDefinition> balls, int i)
-            => (balls != null && i < balls.Count && balls[i] != null) ? balls[i].id : "-";
-
-        private static string Grade(List<BallDefinition> balls, int i)
-            => (balls != null && i < balls.Count && balls[i] != null) ? balls[i].grade.ToString() : "-";
-
-        private static string FlattenLog(List<EffectLogEntry> log)
+        private static int CountSpinsForFloor(SimPolicyReport report, int floorIndex)
         {
-            if (log == null || log.Count == 0) return string.Empty;
-            var sb = new StringBuilder();
-            foreach (EffectLogEntry e in log)
-            {
-                if (sb.Length > 0) sb.Append(" | ");
-                sb.Append(e.ToDisplayString());
-            }
-            return sb.ToString();
+            int count = 0;
+            foreach (SimRunRecord run in report.runs)
+                foreach (SimFloorRecord floor in run.floors)
+                    if (floor.floor - 1 == floorIndex) count += floor.spins.Count;
+            return count;
+        }
+
+        private static void Add(Dictionary<SymbolKind, int> dictionary, SymbolKind key, int value)
+        {
+            int current;
+            dictionary.TryGetValue(key, out current);
+            dictionary[key] = current + value;
+        }
+
+        private static void Add(Dictionary<SymbolKind, float> dictionary, SymbolKind key, float value)
+        {
+            float current;
+            dictionary.TryGetValue(key, out current);
+            dictionary[key] = current + value;
+        }
+
+        private static void Increment<T>(Dictionary<T, int> dictionary, T key)
+        {
+            int current;
+            dictionary.TryGetValue(key, out current);
+            dictionary[key] = current + 1;
         }
     }
 }

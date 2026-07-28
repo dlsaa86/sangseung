@@ -1,74 +1,101 @@
 using System;
-using UnityEngine;
+using System.Collections.Generic;
+using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype
 {
-    /// <summary>
-    /// Describes how the simulated player behaves for one batch of runs.
-    /// Kept as data so different build directions can be compared without code changes.
-    /// </summary>
-    [Serializable]
-    public class SimPolicy
+    public enum SimPolicyKind
     {
-        public string name = "균형형";
+        Cautious,
+        Greedy,
+        Balanced,
+    }
 
-        [Tooltip("후보 승객을 태울 확률 (0~1).")]
-        [Range(0f, 1f)] public float boardChance = 0.6f;
+    /// <summary>Deterministic virtual player policy used by the balance simulator.</summary>
+    [Serializable]
+    public sealed class SimPolicy
+    {
+        public SimPolicyKind kind;
+        public string name;
 
-        [Tooltip("총무게가 허용 중량의 이 비율을 넘으면 더 태우지 않는다.")]
-        public float weightCeilingRatio = 1.0f;
-
-        [Tooltip("통관 하나를 완벽 정지시킬 확률. 사람의 조작 숙련도를 대신하는 가정값이다.")]
-        [Range(0f, 1f)] public float perfectStopChance = 0.25f;
-
-        [Tooltip("완벽이 아닐 때 '양호'에 들 확률. 나머지는 빗나감이 된다.")]
-        [Range(0f, 1f)] public float goodStopChance = 0.35f;
-
-        [Tooltip("낙하 중인 구슬을 읽고 원하는 구슬을 노려 잡는 데 성공할 확률. " +
-                 "정지 타이밍은 '언제 멈출지'뿐 아니라 '무엇을 잡을지'도 정하므로, " +
-                 "이걸 빼면 숙련자의 실력이 절반만 모델링된다.")]
-        [Range(0f, 1f)] public float ballAimChance = 0f;
-
-        [Tooltip("조준에 성공했을 때 후보로 훑어보는 구슬 수. 통관에 보이는 범위를 뜻한다.")]
-        [Range(1, 6)] public int ballAimWindow = 3;
-
-        [Tooltip("초과 전력을 추가 상승에 쓸 확률. 나머지는 돈으로 바꾼다.")]
-        [Range(0f, 1f)] public float ascendChance = 0.5f;
-
-        public static SimPolicy Light() => new SimPolicy
+        private SimPolicy(SimPolicyKind kind, string name)
         {
-            name = "경량형", boardChance = 0.35f, weightCeilingRatio = 0.8f,
-            perfectStopChance = 0.35f, goodStopChance = 0.40f, ascendChance = 0.3f, ballAimChance = 0.30f
+            this.kind = kind;
+            this.name = name;
+        }
+
+        public static SimPolicy Cautious() => new SimPolicy(SimPolicyKind.Cautious, "Cautious");
+        public static SimPolicy Greedy() => new SimPolicy(SimPolicyKind.Greedy, "Greedy");
+        public static SimPolicy Balanced() => new SimPolicy(SimPolicyKind.Balanced, "균형형");
+
+        // Legacy editor probes remain source-compatible while the new report uses the three
+        // explicit policies above. They are mapped to the closest current behavior.
+        public static SimPolicy Light() => new SimPolicy(SimPolicyKind.Cautious, "경량형");
+        public static SimPolicy Overload() => new SimPolicy(SimPolicyKind.Greedy, "과적형");
+        public static SimPolicy Masher() => new SimPolicy(SimPolicyKind.Cautious, "막누르기");
+        public static SimPolicy Expert() => new SimPolicy(SimPolicyKind.Greedy, "숙련형");
+
+        public static IReadOnlyList<SimPolicy> Defaults => new[]
+        {
+            new SimPolicy(SimPolicyKind.Cautious, "Cautious"),
+            new SimPolicy(SimPolicyKind.Greedy, "Greedy"),
+            new SimPolicy(SimPolicyKind.Balanced, "Balanced"),
         };
 
-        public static SimPolicy Balanced() => new SimPolicy
+        public ResistanceContract ChooseContract(in FloorPlan floor, in ResidualState residual)
         {
-            name = "균형형", boardChance = 0.60f, weightCeilingRatio = 1.0f,
-            perfectStopChance = 0.35f, goodStopChance = 0.40f, ascendChance = 0.5f, ballAimChance = 0.30f
-        };
+            if (kind == SimPolicyKind.Cautious)
+            {
+                if (floor.ContractChoices == null || floor.ContractChoices.Length == 0)
+                    return ResistanceContract.None;
+                foreach (ResistanceContract choice in floor.ContractChoices)
+                    if (choice.IsNone) return ResistanceContract.None;
+                // A floor with no None option forces a contract; preserve cautious behavior
+                // by taking the first offered choice rather than inventing an unavailable None.
+                return floor.ContractChoices[0];
+            }
+            if (floor.ContractChoices == null || floor.ContractChoices.Length == 0)
+                return ResistanceContract.None;
 
-        public static SimPolicy Overload() => new SimPolicy
-        {
-            name = "과적형", boardChance = 0.90f, weightCeilingRatio = 1.6f,
-            perfectStopChance = 0.35f, goodStopChance = 0.40f, ascendChance = 0.7f, ballAimChance = 0.30f
-        };
+            ResistanceContract best = ResistanceContract.None;
+            float bestScore = float.MinValue;
+            foreach (ResistanceContract choice in floor.ContractChoices)
+            {
+                if (choice.IsNone || !Contains(floor.SymbolPool, choice.Target)) continue;
+                if (kind == SimPolicyKind.Balanced && !residual.IsClean &&
+                    residual.AbsorberCount + residual.ProliferatorCount > 1) continue;
 
-        /// <summary>
-        /// Presses at random moments — the "mash the button" baseline. With ballSpacing 1 and the
-        /// default tolerances a uniformly random press lands perfect ~24% and good ~32% of the time.
-        /// If this policy clears the run, timing is not carrying any weight.
-        /// </summary>
-        public static SimPolicy Masher() => new SimPolicy
-        {
-            name = "막누르기", boardChance = 0.60f, weightCeilingRatio = 1.0f,
-            perfectStopChance = 0.24f, goodStopChance = 0.32f, ascendChance = 0.5f, ballAimChance = 0.00f
-        };
+                float score = choice.AppearanceMultiplier * choice.PurifyRewardMultiplier +
+                              choice.PatternBonusAdd * 0.25f - choice.ResidualPenaltyMultiplier * 0.1f;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = choice;
+                }
+            }
+            return best;
+        }
 
-        /// <summary>Near-optimal timing, for the upper bound of what skill can buy.</summary>
-        public static SimPolicy Expert() => new SimPolicy
+        public bool ShouldTakeAdditionalSpin(float power, float requiredPower, int spinsRemaining)
         {
-            name = "숙련형", boardChance = 0.60f, weightCeilingRatio = 1.0f,
-            perfectStopChance = 0.80f, goodStopChance = 0.17f, ascendChance = 0.5f, ballAimChance = 0.65f
-        };
+            if (power < requiredPower) return true;
+            if (spinsRemaining <= 0) return false;
+            switch (kind)
+            {
+                case SimPolicyKind.Greedy:
+                    return true;
+                case SimPolicyKind.Balanced:
+                    return power < requiredPower * 1.30f && spinsRemaining >= 2;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool Contains(SymbolKind[] pool, SymbolKind target)
+        {
+            if (pool == null) return false;
+            foreach (SymbolKind kind in pool) if (kind == target) return true;
+            return false;
+        }
     }
 }

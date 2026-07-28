@@ -1,68 +1,62 @@
+using System;
 using System.Collections.Generic;
+using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype
 {
-    /// <summary>
-    /// Weighted ball draw shared by the simulator.
-    /// Mirrors RouletteController.DrawWeighted exactly so simulated streams match play-mode streams
-    /// for the same seed — if the two ever diverge, simulation results stop describing the game.
-    /// </summary>
-    public class BallDrawer
+    /// <summary>Small headless weighted sampler retained for simulation-side experiments.</summary>
+    public sealed class BallDrawer
     {
-        private readonly BallDatabase _database;
-        private readonly System.Random _rng;
+        private readonly IReadOnlyDictionary<SymbolKind, float> _weights;
+        private readonly Random _random;
 
-        public BallDrawer(BallDatabase database, System.Random rng)
+        public BallDrawer(IReadOnlyDictionary<SymbolKind, float> weights, Random random)
         {
-            _database = database;
-            _rng = rng ?? new System.Random(0);
+            _weights = weights;
+            _random = random ?? new Random(0);
         }
 
-        /// <summary>Draws one ball, or null when the database is empty or has no positive weights.</summary>
-        public BallDefinition Draw()
+        public SymbolKind Draw()
         {
-            if (_database == null || _database.balls == null || _database.balls.Count == 0)
-                return null;
+            if (_weights == null || _weights.Count == 0) return SymbolKind.Empty;
+            float total = 0f;
+            foreach (KeyValuePair<SymbolKind, float> pair in _weights)
+                total += (float)Math.Max(0d, pair.Value);
+            if (total <= 0f) return SymbolKind.Empty;
 
-            float totalWeight = 0f;
-            foreach (BallDefinition ball in _database.balls)
-                if (ball != null) totalWeight += ball.spawnProbability;
+            double roll = _random.NextDouble() * total;
+            foreach (KeyValuePair<SymbolKind, float> pair in _weights)
+            {
+                float weight = (float)Math.Max(0d, pair.Value);
+                if (roll < weight) return pair.Key;
+                roll -= weight;
+            }
+            return SymbolKind.Empty;
+        }
 
-            if (totalWeight <= 0f) return null;
+        public List<SymbolKind> DrawMany(int count)
+        {
+            int safeCount = Math.Max(0, count);
+            var result = new List<SymbolKind>(safeCount);
+            for (int i = 0; i < safeCount; i++) result.Add(Draw());
+            return result;
+        }
 
-            double roll = _rng.NextDouble() * totalWeight;
-            float cumulative = 0f;
-            BallDefinition selected = _database.balls[_database.balls.Count - 1];
-
-            foreach (BallDefinition ball in _database.balls)
+        /// <summary>Retired editor self-test compatibility; read the legacy asset shape by reflection.</summary>
+        public static float SumProbabilities<T>(T database)
+        {
+            if (database == null) return 0f;
+            var ballsField = database.GetType().GetField("balls");
+            var balls = ballsField != null ? ballsField.GetValue(database) as System.Collections.IEnumerable : null;
+            if (balls == null) return 0f;
+            float total = 0f;
+            foreach (object ball in balls)
             {
                 if (ball == null) continue;
-                cumulative += ball.spawnProbability;
-                if (roll < cumulative)
-                {
-                    selected = ball;
-                    break;
-                }
+                var probability = ball.GetType().GetField("spawnProbability");
+                if (probability != null) total += Convert.ToSingle(probability.GetValue(ball));
             }
-            return selected;
-        }
-
-        /// <summary>Draws <paramref name="count"/> balls in sequence.</summary>
-        public List<BallDefinition> DrawMany(int count)
-        {
-            var list = new List<BallDefinition>(count);
-            for (int i = 0; i < count; i++) list.Add(Draw());
-            return list;
-        }
-
-        /// <summary>Sums every registered ball's spawn probability. Used by the probability self-test.</summary>
-        public static float SumProbabilities(BallDatabase database)
-        {
-            if (database == null || database.balls == null) return 0f;
-            float sum = 0f;
-            foreach (BallDefinition ball in database.balls)
-                if (ball != null) sum += ball.spawnProbability;
-            return sum;
+            return total;
         }
     }
 }
