@@ -47,6 +47,7 @@ public static class HumanScaleLayout
 
         LayoutShell();
         LayoutTubes();
+        BuildBoardCells();
         LayoutConsole();
         LayoutPanel();
         HideDeprecated();
@@ -96,6 +97,53 @@ public static class HumanScaleLayout
         if (t == null) return;
         Undo.RecordObject(t, "Human scale layout");
         t.position = pos;
+    }
+
+    /// <summary>
+    /// 월드 텍스트를 폭·정렬·크기까지 고정해서 놓는다. 위치만 옮기면 글자 길이에 따라
+    /// 이웃을 덮으므로, 시작점을 왼쪽으로 고정하고 폭을 명시한다.
+    /// </summary>
+    private static void LabelAt(string name, Vector3 pos, float width)
+    {
+        Transform t = Find(name);
+        if (t == null) return;
+
+        var text = t.GetComponent<TMPro.TMP_Text>();
+        if (text == null) { Move(name, pos); return; }
+
+        Undo.RecordObject(t, "Label layout");
+        t.position = pos;
+
+        // 글자 크기는 추측하지 않고 잰다. TMP의 fontSize가 어떤 월드 크기로 떨어지는지는
+        // 폰트 에셋의 메트릭에 달려 있어서, 숫자를 넣고 눈으로 확인하는 방식으로는
+        // 두 번 연속 틀렸다(0.11 → 깨알, 1.0/스케일 0.1 → 여전히 깨알).
+        // 실제 렌더 크기를 측정해서 목표 높이에 맞춘다.
+        const float targetCapHeight = 0.085f;          // 2.3m 거리에서 읽히는 크기
+
+        var rt = text.rectTransform;
+        rt.pivot = new Vector2(0f, 0.5f);              // 왼쪽 기준 — 글자가 오른쪽으로만 자란다
+        text.alignment = TMPro.TextAlignmentOptions.MidlineLeft;
+        text.enableWordWrapping = false;
+        text.overflowMode = TMPro.TextOverflowModes.Overflow;
+
+        const float probe = 10f;
+        text.fontSize = probe;
+        t.localScale = Vector3.one;
+        rt.sizeDelta = new Vector2(1000f, 100f);       // 측정 중에는 넉넉히
+        text.ForceMeshUpdate();
+
+        // 실제 문자열이 아니라 한 줄짜리 기준 문자열로 잰다. 텍스트가 2줄이면 전체 높이로
+        // 맞춰져 한 줄이 절반 크기가 되는데, 실제로 WeightLabel이 그렇게 작아졌다.
+        // 줄 수와 무관하게 글자 하나의 높이가 같아야 한다.
+        float measured = text.GetPreferredValues("0층").y;
+        float scale = measured > 0.0001f ? targetCapHeight / measured : 0.01f;
+
+        t.localScale = Vector3.one * scale;
+        rt.sizeDelta = new Vector2(width / scale, measured * 1.4f);
+        text.overflowMode = TMPro.TextOverflowModes.Truncate;   // 넘치면 잘린다. 옆을 덮지 않는다.
+        text.ForceMeshUpdate();
+        EditorUtility.SetDirty(text);
+        _log.AppendLine($"    {name}: 측정 {measured:F3} → 스케일 {scale:F4} (목표 {targetCapHeight:F3}m)");
     }
 
     private static void EnsureBoxCollider(GameObject go)
@@ -159,7 +207,7 @@ public static class HumanScaleLayout
         float[] z = { -0.50f, 0f, 0.50f };
         for (int i = 0; i < 3; i++)
         {
-            Move($"Tube_{i}", new Vector3(-1.45f, 1.45f, z[i]));
+            Move($"Tube_{i}", new Vector3(-1.45f, 1.60f, z[i]));
             Transform frame = Find("TubeFrame");   // 이름이 같아 인덱스가 마지막 것만 잡는다
             _ = frame;
         }
@@ -172,7 +220,7 @@ public static class HumanScaleLayout
             {
                 if (child.name == "TubeFrame")
                 {
-                    child.position = new Vector3(-1.45f, 1.45f, z[i]);
+                    child.position = new Vector3(-1.45f, 1.60f, z[i]);
                     child.localScale = new Vector3(0.30f, 1.30f, 0.34f);
                     EnsureBoxCollider(child.gameObject);
                 }
@@ -183,24 +231,142 @@ public static class HumanScaleLayout
                 }
                 else if (child.name == "BallContainer")
                 {
-                    child.position = new Vector3(-1.45f, 1.45f, z[i]);
+                    child.position = new Vector3(-1.45f, 1.60f, z[i]);
                 }
             }
         }
         _log.AppendLine("  통관 3개: 왼쪽 벽, 결과판 y 0.80~2.10m");
     }
 
+    /// <summary>
+    /// 통관마다 결과칸 3개를 만든다. 이것이 없으면 통관은 빈 판때기 세 장이고,
+    /// 판정 엔진이 아무리 정확해도 화면에 게임이 존재하지 않는다.
+    ///
+    /// 칸 사이에 물리적 단차(칸막이)를 둔다. 선을 그리려면 텍스처나 머티리얼이 필요한데
+    /// 그레이박스 단계에서 머티리얼을 건드리면 다른 오브젝트까지 번진다. 형태로 나눈다.
+    /// </summary>
+    private static void BuildBoardCells()
+    {
+        float[] tubeZ = { -0.50f, 0f, 0.50f };
+        // 아래 칸이 콘솔 상판(1.00m)에 가려 안 보였다. 9칸 중 하나가 안 보이면 판독이 성립하지
+        // 않으므로 전체를 0.15m 올린다. 천장이 2.5m라 위쪽에 여유가 있다.
+        float[] rowY  = { 2.00f, 1.60f, 1.20f };   // r=0이 위. SpinBoard 규약과 같다.
+        const float faceX = -1.34f;                // 통관 앞면(플레이어 쪽)보다 살짝 안쪽
+
+        var cells = new Transform[SpinBoard_Cells];
+
+        for (int c = 0; c < 3; c++)
+        {
+            Transform tube = Find($"Tube_{c}");
+            if (tube == null) continue;
+
+            // 칸막이 2개 — 세 칸으로 나뉜다는 것을 실루엣만으로 알 수 있게 한다.
+            for (int d = 0; d < 2; d++)
+            {
+                float y = (rowY[d] + rowY[d + 1]) * 0.5f;
+                GameObject div = EnsureChildPrimitive(tube, $"Divider_{d}", PrimitiveType.Cube);
+                div.transform.position = new Vector3(-1.42f, y, tubeZ[c]);
+                div.transform.localScale = new Vector3(0.20f, 0.035f, 0.38f);
+                EnsureBoxCollider(div);
+            }
+
+            for (int r = 0; r < 3; r++)
+            {
+                GameObject cell = EnsurePlainChild(tube, $"Cell_{r}");
+                cell.transform.position = new Vector3(faceX, rowY[r], tubeZ[c]);
+                cells[c * 3 + r] = cell.transform;
+
+                // 심볼 3종을 미리 만들어두고 하나만 켠다. 런타임에 프리미티브를 만들면
+                // 첫 스핀에서 끊기고, 결정론 캡처에서도 프레임마다 결과가 달라진다.
+                MakeSymbol(cell.transform, "Sym_NormalSoul",   PrimitiveType.Sphere,  0.17f);
+                MakeSymbol(cell.transform, "Sym_Absorber",     PrimitiveType.Cube,    0.16f);
+                MakeSymbol(cell.transform, "Sym_Proliferator", PrimitiveType.Capsule, 0.15f);
+            }
+        }
+
+        Transform runT = Find("AscendRun");
+        if (runT != null)
+        {
+            var view = runT.GetComponent<Ascend.Prototype.View.SpinBoardView>();
+            if (view == null) view = runT.gameObject.AddComponent<Ascend.Prototype.View.SpinBoardView>();
+            SetRef(view, "_run", runT.GetComponent<RunSessionBehaviour>());
+
+            var so = new SerializedObject(view);
+            SerializedProperty arr = so.FindProperty("_cells");
+            arr.arraySize = SpinBoard_Cells;
+            for (int i = 0; i < SpinBoard_Cells; i++)
+                arr.GetArrayElementAtIndex(i).objectReferenceValue = cells[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        _log.AppendLine("  결과칸 9개 + 칸막이 6개 생성 — 심볼은 구/정육면체/캡슐로 형태 구분");
+    }
+
+    private const int SpinBoard_Cells = 9;
+
+    private static void MakeSymbol(Transform cell, string name, PrimitiveType type, float size)
+    {
+        Transform existing = cell.Find(name);
+        GameObject go;
+        if (existing != null) go = existing.gameObject;
+        else
+        {
+            go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(cell, false);
+            Undo.RegisterCreatedObjectUndo(go, "Create " + name);
+            // 심볼은 조준 대상이 아니다. 콜라이더를 두면 뒤의 통관·벽 조준을 방해한다.
+            Collider c = go.GetComponent<Collider>();
+            if (c != null) Object.DestroyImmediate(c);
+        }
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localScale = Vector3.one * size;
+        go.SetActive(false);   // SpinBoardView가 켠다
+    }
+
+    private static GameObject EnsurePlainChild(Transform parent, string name)
+    {
+        Transform t = parent.Find(name);
+        if (t != null) return t.gameObject;
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        Undo.RegisterCreatedObjectUndo(go, "Create " + name);
+        return go;
+    }
+
+    private static GameObject EnsureChildPrimitive(Transform parent, string name, PrimitiveType type)
+    {
+        Transform t = parent.Find(name);
+        if (t != null) return t.gameObject;
+        GameObject go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        go.transform.SetParent(parent, true);
+        Undo.RegisterCreatedObjectUndo(go, "Create " + name);
+        return go;
+    }
+
     private static void LayoutConsole()
     {
         // 통관 앞의 조작대. 상판 1.0m — 서서 손이 닿는 높이다.
-        Place("ConsoleSlab", new Vector3(-1.05f, 0.95f, 0f), new Vector3(0.42f, 0.10f, 1.60f));
+        // 레버가 통관 0번(z=-0.50) 바로 앞에 서서 결과칸을 가리고 있었다. 상판을 앞쪽으로
+        // 늘리고 레버를 통관 폭 밖(z=-0.88)으로 뺀다. 조작부가 판독을 방해해선 안 된다.
+        Place("ConsoleSlab", new Vector3(-1.05f, 0.95f, -0.10f), new Vector3(0.42f, 0.10f, 1.80f));
 
         GameObject lever = EnsurePrimitive("ExecutionLever", PrimitiveType.Cube, Find("Console"));
-        lever.transform.position = new Vector3(-1.05f, 1.18f, -0.55f);
-        lever.transform.localScale = new Vector3(0.09f, 0.38f, 0.09f);
-        lever.transform.rotation = Quaternion.Euler(14f, 0f, 0f);
+        lever.transform.position = new Vector3(-1.05f, 1.20f, -0.88f);
+        lever.transform.localScale = new Vector3(0.10f, 0.42f, 0.10f);
+        lever.transform.rotation = Quaternion.Euler(16f, 0f, 0f);
         EnsureBoxCollider(lever);
         if (lever.GetComponent<InteractableLever>() == null) lever.AddComponent<InteractableLever>();
+
+        // 손잡이. 지금 레버는 상판에 꽂힌 판자 하나라 "당기는 것"으로 안 읽힌다.
+        // 레버의 자식으로 두면 부모 스케일(0.10 × 0.42 × 0.10)에 눌려 찌그러지므로
+        // 콘솔에 붙이고 레버 끝 위치만 따라가게 한다.
+        GameObject knob = EnsurePrimitive("LeverKnob", PrimitiveType.Sphere, Find("Console"));
+        knob.transform.position = lever.transform.position + lever.transform.up * 0.24f;
+        knob.transform.localScale = Vector3.one * 0.11f;
+        Collider knobCol = knob.GetComponent<Collider>();
+        if (knobCol != null) Object.DestroyImmediate(knobCol);   // 레버 콜라이더가 대신 받는다
 
         _log.AppendLine("  콘솔 상판 1.00m / 레버 1.18m — 서서 닿는 높이");
     }
@@ -208,12 +374,16 @@ public static class HumanScaleLayout
     private static void LayoutPanel()
     {
         Place("PanelBack",  new Vector3(-0.80f, PanelMid,  1.45f), new Vector3(1.70f, 0.55f, 0.06f));
-        Place("PowerBarBg", new Vector3(-0.80f, 1.48f,     1.40f), new Vector3(1.40f, 0.14f, 0.04f));
-        Move("PowerBarPivot", new Vector3(-1.50f, 1.48f, 1.38f));
-        Place("PowerBarFill", new Vector3(-1.50f, 1.48f, 1.38f), new Vector3(0.02f, 0.10f, 0.03f));
-        Move("FloorLabel",  new Vector3(-1.50f, 1.76f, 1.38f));
-        Move("PowerLabel",  new Vector3(-0.80f, 1.70f, 1.38f));
-        Move("WeightLabel", new Vector3(-0.15f, 1.76f, 1.38f));
+        // 게이지는 라벨 아래 한 줄로 내린다. 라벨과 같은 높이에 두면 둘이 서로를 가린다.
+        Place("PowerBarBg", new Vector3(-0.72f, 1.30f, 1.40f), new Vector3(1.72f, 0.10f, 0.04f));
+        Move("PowerBarPivot", new Vector3(-1.58f, 1.30f, 1.38f));
+        Place("PowerBarFill", new Vector3(-1.58f, 1.30f, 1.38f), new Vector3(0.02f, 0.07f, 0.03f));
+        // 라벨은 위치만 옮기면 안 된다. 폭을 모른 채 x만 벌려놓으면 글자가 길어지는 순간
+        // 옆 라벨을 덮는다. 실제로 "10 층" 위에 "전력 0 / 0"이 그대로 올라타 있었다.
+        // 폭·정렬·크기를 못 박아 겹칠 수 없게 만든다. 왼쪽 정렬로 시작점을 고정한다.
+        LabelAt("FloorLabel",  new Vector3(-1.58f, 1.74f, 1.38f), 0.52f);
+        LabelAt("PowerLabel",  new Vector3(-1.58f, 1.58f, 1.38f), 0.90f);
+        LabelAt("WeightLabel", new Vector3(-1.58f, 1.42f, 1.38f), 0.90f);
         Place("OverloadLight", new Vector3(0.02f, 1.55f, 1.42f), new Vector3(0.10f, 0.10f, 0.10f));
 
         // 계약 패널과 전력 탱크는 원래 없던 물건이다. 노션이 요구하는 상호작용 대상이므로 만든다.
@@ -448,6 +618,9 @@ public static class HumanScaleLayout
             if (r == null || t.GetComponent<Collider>() != null) continue;
             if (r is TMPro.TMP_SubMesh || r is TMPro.TMP_SubMeshUI) continue;
             if (t.GetComponent<TMPro.TMP_Text>() != null) continue;
+            // 장식은 일부러 콜라이더가 없다. 붙이면 조준을 가로채서 진짜 대상을 못 누르게 된다.
+            // 결과칸 심볼은 읽는 것이고, 레버 손잡이는 레버 본체 콜라이더가 대신 받는다.
+            if (t.name.StartsWith("Sym_") || t.name == "LeverKnob") continue;
             missing.Add(t.name);
         }
         problems += Expect(missing.Count == 0,
