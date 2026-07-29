@@ -51,6 +51,7 @@ public static class HumanScaleLayout
         LayoutPanel();
         HideDeprecated();
         GameObject player = BuildPlayerRig();
+        BuildCrosshairUI(player);
         WireInteractables(player);
 
         EditorSceneManager.MarkSceneDirty(scene);
@@ -323,6 +324,84 @@ public static class HumanScaleLayout
         return player;
     }
 
+    /// <summary>
+    /// 조준점과 프롬프트를 만든다. 없으면 1인칭에서 무엇을 겨냥 중인지 알 수 없고,
+    /// 노션이 요구한 "조준점이 대상에 닿으면 짧은 설명이 나타난다"가 성립하지 않는다.
+    /// </summary>
+    private static void BuildCrosshairUI(GameObject player)
+    {
+        GameObject canvasGo;
+        if (_index.TryGetValue("PlayerHUD", out Transform existing) && existing != null)
+        {
+            canvasGo = existing.gameObject;
+        }
+        else
+        {
+            canvasGo = new GameObject("PlayerHUD",
+                typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
+            Undo.RegisterCreatedObjectUndo(canvasGo, "Create PlayerHUD");
+            _index["PlayerHUD"] = canvasGo.transform;
+            _log.AppendLine("  PlayerHUD 캔버스 생성");
+        }
+
+        var canvas = canvasGo.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+        var scaler = canvasGo.GetComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+
+        // 점 하나. 노션이 정밀 조준을 난이도로 쓰지 말라고 했으므로 조준점은 작게 두되
+        // 판정 부피(SphereCast 0.18m)가 훨씬 넓다 — 보이는 것보다 관대하게 잡힌다.
+        GameObject dot = EnsureChild(canvasGo.transform, "CrosshairDot");
+        var dotImage = dot.GetComponent<UnityEngine.UI.Image>();
+        if (dotImage == null) dotImage = dot.AddComponent<UnityEngine.UI.Image>();
+        var dotRect = dot.GetComponent<RectTransform>();
+        dotRect.anchorMin = dotRect.anchorMax = new Vector2(0.5f, 0.5f);
+        dotRect.pivot = new Vector2(0.5f, 0.5f);
+        dotRect.anchoredPosition = Vector2.zero;
+        dotRect.sizeDelta = new Vector2(8f, 8f);
+
+        GameObject promptGo = EnsureChild(canvasGo.transform, "PromptText");
+        var prompt = promptGo.GetComponent<TMPro.TextMeshProUGUI>();
+        if (prompt == null) prompt = promptGo.AddComponent<TMPro.TextMeshProUGUI>();
+        var promptRect = promptGo.GetComponent<RectTransform>();
+        promptRect.anchorMin = promptRect.anchorMax = new Vector2(0.5f, 0.5f);
+        promptRect.pivot = new Vector2(0.5f, 1f);
+        promptRect.anchoredPosition = new Vector2(0f, -28f);   // 조준점 바로 아래
+        promptRect.sizeDelta = new Vector2(600f, 44f);
+        prompt.alignment = TMPro.TextAlignmentOptions.Top;
+        prompt.fontSize = 26f;
+        prompt.text = string.Empty;
+
+        // 한글 프롬프트가 두부로 나오지 않게 한글 폰트를 명시한다.
+        var font = AssetDatabase.LoadAssetAtPath<TMPro.TMP_FontAsset>(
+            "Assets/Prototype_Elevator/Fonts/NanumGothic SDF.asset");
+        if (font != null) prompt.font = font;
+        else _log.AppendLine("  WARN  NanumGothic SDF 없음 — 프롬프트가 깨질 수 있다");
+
+        var view = canvasGo.GetComponent<CrosshairView>();
+        if (view == null) view = canvasGo.AddComponent<CrosshairView>();
+        SetRef(view, "_crosshairGraphic", dotImage);
+        SetRef(view, "_promptText", prompt);
+
+        var interactor = player.GetComponent<CrosshairInteractor>();
+        if (interactor != null) SetRef(interactor, "_view", view);
+
+        _log.AppendLine("  조준점·프롬프트 연결");
+    }
+
+    private static GameObject EnsureChild(Transform parent, string name)
+    {
+        Transform t = parent.Find(name);
+        if (t != null) return t.gameObject;
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        Undo.RegisterCreatedObjectUndo(go, "Create " + name);
+        _index[name] = go.transform;
+        return go;
+    }
+
     private static void WireInteractables(GameObject player)
     {
         Transform runT = Find("AscendRun");
@@ -386,6 +465,21 @@ public static class HumanScaleLayout
         }
         else { _log.AppendLine("  FAIL  Head 없음 — 도달 거리 확인 불가"); problems++; }
 
+        // 거리가 가까워도 벽이나 콘솔에 가리면 조준이 안 된다. 실제로 CrosshairInteractor와
+        // 같은 SphereCast를 쏴서 첫 히트가 목표인지 본다. "붙였다"와 "잡힌다"는 다르다.
+        if (head != null)
+        {
+            problems += ExpectAimable(head.position, "ExecutionLever");
+            problems += ExpectAimable(head.position, "ContractPanel");
+            problems += ExpectAimable(head.position, "PowerTank");
+        }
+
+        // 조준점 UI가 없으면 무엇을 겨냥 중인지 알 수 없다.
+        Transform hud = Find("PlayerHUD");
+        var view = hud != null ? hud.GetComponent<CrosshairView>() : null;
+        problems += Expect(view != null && view.HasCrosshairGraphic && view.HasPromptText,
+            "조준점·프롬프트 참조 연결됨");
+
         _log.AppendLine();
         _log.AppendLine(problems == 0 ? "  결과: OK" : $"  결과: 문제 {problems}건");
     }
@@ -393,6 +487,32 @@ public static class HumanScaleLayout
     private static int Expect(bool ok, string name)
     {
         _log.AppendLine(ok ? $"  PASS  {name}" : $"  FAIL  {name}");
+        return ok ? 0 : 1;
+    }
+
+    /// <summary>
+    /// CrosshairInteractor와 같은 조건(반경 0.18m, 사거리 5m)으로 대상을 향해 쏜다.
+    /// 첫 히트가 대상이 아니면 무언가에 가려 있다는 뜻이고, 플레이어는 그것을 누를 수 없다.
+    /// </summary>
+    private static int ExpectAimable(Vector3 eye, string name)
+    {
+        Transform t = Find(name);
+        Collider c = t != null ? t.GetComponent<Collider>() : null;
+        if (c == null) { _log.AppendLine($"  FAIL  {name} 조준 확인 불가 (콜라이더 없음)"); return 1; }
+
+        Vector3 target = c.bounds.center;
+        Vector3 dir = (target - eye).normalized;
+
+        if (!Physics.SphereCast(eye, 0.18f, dir, out RaycastHit hit, 5f, ~0, QueryTriggerInteraction.Collide))
+        {
+            _log.AppendLine($"  FAIL  {name} 조준 — 아무것도 맞지 않음");
+            return 1;
+        }
+
+        bool ok = hit.collider == c || hit.collider.transform.IsChildOf(t) || t.IsChildOf(hit.collider.transform);
+        _log.AppendLine(ok
+            ? $"  PASS  {name} 조준 가능 ({hit.distance:F2}m)"
+            : $"  FAIL  {name} 조준 — '{hit.collider.name}'에 가림");
         return ok ? 0 : 1;
     }
 
