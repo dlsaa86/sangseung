@@ -36,6 +36,23 @@ public static class HumanScaleLayout
     private static StringBuilder _log;
     private static Dictionary<string, Transform> _index;
 
+    // ── 명도 위계 ────────────────────────────────────────────────────────
+    //
+    // 알베도만으로는 계층이 서지 않는다. 상자 안에 방향광이 하나뿐이라 광원을 향한 면은
+    // 밝고 등진 면은 어두워지고, 그 차이가 알베도 차이보다 크다. 실제로 같은 레버가
+    // 한 시점에서는 체감 0.2, 다른 시점에서는 0.7로 읽혀 계층이 뒤집혔다.
+    //
+    // 그래서 조작 대상은 자발광으로 만든다. 스스로 빛나는 면은 광원 각도와 무관하게
+    // 일정한 밝기로 읽히므로, 어느 위치에서 봐도 "만질 수 있는 것"이 같은 값을 유지한다.
+    // 구조물은 반대로 발광을 0으로 두어 조명에 따라 자연스럽게 가라앉는다.
+    private const float ReadoutValue      = 0.85f;
+    private const float ReadoutEmission   = 0.55f;   // 결과판 — 가장 밝게 스스로 빛난다
+    private const float InteractiveValue  = 0.62f;
+    private const float InteractiveEmission = 0.30f; // 조작 대상 — 중간. 각도 무관하게 유지된다
+    private const float RecessiveValue    = 0.16f;   // 구조물 — 발광 없음
+
+    private const string MatDir = "Assets/Prototype_Elevator/Materials/Graybox";
+
     [MenuItem("Ascend/Layout — 사람 기준 재배치")]
     public static void Run()
     {
@@ -54,6 +71,7 @@ public static class HumanScaleLayout
         GameObject player = BuildPlayerRig();
         BuildCrosshairUI(player);
         WireInteractables(player);
+        ApplyValueHierarchy();
 
         EditorSceneManager.MarkSceneDirty(scene);
         bool saved = EditorSceneManager.SaveScene(scene);
@@ -146,6 +164,66 @@ public static class HumanScaleLayout
         _log.AppendLine($"    {name}: 측정 {measured:F3} → 스케일 {scale:F4} (목표 {targetCapHeight:F3}m)");
     }
 
+    /// <summary>
+    /// 이름이 정해진 그레이박스 머티리얼을 만들거나 가져온다. 이미 있으면 값만 맞춘다.
+    /// 프로젝트의 기존 머티리얼은 건드리지 않는다.
+    /// </summary>
+    private static Material EnsureMaterial(string name, float value, float emission)
+    {
+        string path = $"{MatDir}/{name}.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            mat = new Material(shader) { name = name };
+            AssetDatabase.CreateAsset(mat, path);
+            _log.AppendLine($"  머티리얼 생성 {name} (값 {value:F2})");
+        }
+
+        var c = new Color(value, value * 1.02f, value * 1.06f, 1f);   // 아주 옅은 청색 — 회색조에선 동일
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
+        if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
+
+        // 발광은 조명 각도를 무시하고 일정한 밝기를 보장한다. 이것이 없으면 같은 물체가
+        // 시점에 따라 다른 계층으로 읽혀 위계 자체가 무의미해진다.
+        if (mat.HasProperty("_EmissionColor"))
+        {
+            if (emission > 0f)
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                mat.SetColor("_EmissionColor", c * emission);
+            }
+            else
+            {
+                mat.DisableKeyword("_EMISSION");
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+                mat.SetColor("_EmissionColor", Color.black);
+            }
+        }
+        EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
+    private static void Paint(string objectName, Material mat) => PaintTree(Find(objectName), mat);
+
+    /// <summary>
+    /// 이름이 아니라 트랜스폼으로 칠한다. 이름으로 찾으면 안 되는 이유는 인덱스가
+    /// 이름당 하나만 들고 있기 때문이다 — 결과칸 심볼 27개가 전부 같은 이름이라
+    /// 이름으로 칠했더니 3개만 칠해졌다.
+    /// </summary>
+    private static void PaintTree(Transform t, Material mat)
+    {
+        if (t == null || mat == null) return;
+        foreach (Renderer r in t.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r is TMPro.TMP_SubMesh || r is TMPro.TMP_SubMeshUI) continue;
+            if (r.GetComponent<TMPro.TMP_Text>() != null) continue;
+            r.sharedMaterial = mat;
+            EditorUtility.SetDirty(r);
+        }
+    }
+
     private static void EnsureBoxCollider(GameObject go)
     {
         // 그레이박스는 MeshRenderer만으로 만들어져 콜라이더가 하나도 없었다.
@@ -197,7 +275,25 @@ public static class HumanScaleLayout
         Place("LobbyFloor", new Vector3(0.65f, -0.10f, 3.2f), new Vector3(3.0f, 0.20f, 3.0f));
         Place("LobbyBack",  new Vector3(0.65f,  1.25f, 4.6f), new Vector3(3.0f, 2.50f, 0.20f));
 
-        _log.AppendLine("  껍데기: 실내 3.2×3.0×2.5m, 바닥 윗면 y=0");
+        // 방이 텅 비어서 "압박감 있는 승강기"가 아니라 "가구 몇 개 놓인 빈 방"으로 보였다.
+        // 손잡이·조명·층 표시등은 승강기라면 당연히 있는 것들이고, 없으면 공간의 정체가
+        // 읽히지 않는다. 접근을 막지 않는 위치에만 놓는다.
+        GameObject rail = EnsurePrimitive("Handrail_R", PrimitiveType.Cube, Find("Car"));
+        rail.transform.position = new Vector3(1.55f, 0.92f, 0.35f);
+        rail.transform.localScale = new Vector3(0.06f, 0.06f, 1.90f);
+        EnsureBoxCollider(rail);
+
+        GameObject railBack = EnsurePrimitive("Handrail_B", PrimitiveType.Cube, Find("Car"));
+        railBack.transform.position = new Vector3(-0.80f, 0.92f, 1.45f);
+        railBack.transform.localScale = new Vector3(1.60f, 0.06f, 0.06f);
+        EnsureBoxCollider(railBack);
+
+        GameObject lamp = EnsurePrimitive("CeilingLamp", PrimitiveType.Cube, Find("Car"));
+        lamp.transform.position = new Vector3(0f, 2.46f, 0f);
+        lamp.transform.localScale = new Vector3(0.85f, 0.05f, 0.45f);
+        EnsureBoxCollider(lamp);
+
+        _log.AppendLine("  껍데기: 실내 3.2×3.0×2.5m, 바닥 윗면 y=0 (손잡이 2·천장등 1)");
     }
 
     private static void LayoutTubes()
@@ -348,14 +444,16 @@ public static class HumanScaleLayout
     private static void LayoutConsole()
     {
         // 통관 앞의 조작대. 상판 1.0m — 서서 손이 닿는 높이다.
-        // 레버가 통관 0번(z=-0.50) 바로 앞에 서서 결과칸을 가리고 있었다. 상판을 앞쪽으로
-        // 늘리고 레버를 통관 폭 밖(z=-0.88)으로 뺀다. 조작부가 판독을 방해해선 안 된다.
-        Place("ConsoleSlab", new Vector3(-1.05f, 0.95f, -0.10f), new Vector3(0.42f, 0.10f, 1.80f));
+        // 상판이 여전히 결과판 아래 줄을 가로질러 가렸다. 서 있는 위치에 따라 9칸 중
+        // 3칸이 잘리는데, 이는 "핵심 결과가 특정 위치에서만 보인다"는 금지 항목에 걸린다.
+        // 상판을 0.88m로 낮추고 폭을 줄여 시야에서 물러나게 한다.
+        Place("ConsoleSlab", new Vector3(-1.02f, 0.83f, -0.20f), new Vector3(0.34f, 0.09f, 1.60f));
 
+        // 레버는 상판 위로 충분히 솟아야 실루엣이 어두운 벽이 아니라 빈 공간을 등진다.
         GameObject lever = EnsurePrimitive("ExecutionLever", PrimitiveType.Cube, Find("Console"));
-        lever.transform.position = new Vector3(-1.05f, 1.20f, -0.88f);
-        lever.transform.localScale = new Vector3(0.10f, 0.42f, 0.10f);
-        lever.transform.rotation = Quaternion.Euler(16f, 0f, 0f);
+        lever.transform.position = new Vector3(-1.02f, 1.16f, -0.88f);
+        lever.transform.localScale = new Vector3(0.11f, 0.52f, 0.11f);
+        lever.transform.rotation = Quaternion.Euler(18f, 0f, 0f);
         EnsureBoxCollider(lever);
         if (lever.GetComponent<InteractableLever>() == null) lever.AddComponent<InteractableLever>();
 
@@ -386,22 +484,68 @@ public static class HumanScaleLayout
         LabelAt("WeightLabel", new Vector3(-1.58f, 1.42f, 1.38f), 0.90f);
         Place("OverloadLight", new Vector3(0.02f, 1.55f, 1.42f), new Vector3(0.10f, 0.10f, 0.10f));
 
+        // 과부하 램프가 전력 게이지 바로 옆에 붙어 있어서 "진행 바 + 정지 버튼"으로 읽혔다.
+        // 폐기한 타이밍 축의 잔재로 오해받는 배치다. 게이지에서 떼어 위로 올리고
+        // 하우징에 앉혀 램프임을 형태로 알린다.
+        Place("OverloadLight", new Vector3(-0.10f, 1.82f, 1.42f), new Vector3(0.09f, 0.09f, 0.09f));
+        GameObject housing = EnsurePrimitive("OverloadHousing", PrimitiveType.Cube, Find("InstrumentPanel"));
+        housing.transform.position = new Vector3(-0.10f, 1.82f, 1.46f);
+        housing.transform.localScale = new Vector3(0.16f, 0.16f, 0.05f);
+        EnsureBoxCollider(housing);
+
         // 계약 패널과 전력 탱크는 원래 없던 물건이다. 노션이 요구하는 상호작용 대상이므로 만든다.
         GameObject contract = EnsurePrimitive("ContractPanel", PrimitiveType.Cube, Find("InstrumentPanel"));
-        contract.transform.position = new Vector3(1.56f, 1.50f, 0.30f);
-        contract.transform.localScale = new Vector3(0.06f, 0.55f, 0.90f);
+        contract.transform.position = new Vector3(1.58f, 1.50f, 0.30f);
+        contract.transform.localScale = new Vector3(0.05f, 0.62f, 0.94f);
         EnsureBoxCollider(contract);
         if (contract.GetComponent<InteractableContractPanel>() == null)
             contract.AddComponent<InteractableContractPanel>();
 
+        // 판에 홈 3줄을 파는 방식은 실패했다 — 환기구·라디에이터와 형태가 같아진다.
+        // 대신 서로 떨어진 명패 3장을 벽에서 띄워 붙인다. 간격이 있는 별개 물체 셋은
+        // 마감재가 아니라 "고르는 것"으로 읽힌다. 계약은 최대 3개다(없음·흡수체·증식체).
+        for (int i = 0; i < 3; i++)
+        {
+            GameObject plaque = EnsurePrimitive($"ContractPlaque_{i}", PrimitiveType.Cube, contract.transform.parent);
+            plaque.transform.position = new Vector3(1.50f, 1.72f - i * 0.22f, 0.30f);
+            plaque.transform.localScale = new Vector3(0.05f, 0.15f, 0.66f);
+            Collider pc = plaque.GetComponent<Collider>();
+            if (pc != null) Object.DestroyImmediate(pc);   // 패널 본체가 조준을 받는다
+        }
+        // 이전 시도의 홈은 지운다. 남겨두면 명패 뒤에서 여전히 환기구로 읽힌다.
+        for (int i = 0; i < 3; i++)
+        {
+            Transform old = Find($"ContractSlot_{i}");
+            if (old != null) Object.DestroyImmediate(old.gameObject);
+        }
+
+        // 탱크를 시선 높이 전경으로 올린 것은 과했다. 결과판보다 크고 밝아 시선을 먼저
+        // 가져갔고, 결과판과 계약 패널이 한 화면에 들어오는 유일한 시점에서 계약 패널을
+        // 가렸다. 소품이 핵심 판독물을 이기면 안 된다.
+        //
+        // 뒷벽 오른쪽 구석으로 밀고 크게 줄인다. 상호작용은 계속 가능하되 화면을
+        // 지배하지 않는 크기다. 눈금은 남긴다 — "임계점이 있는 용기"라는 정보는 유효하다.
         GameObject tank = EnsurePrimitive("PowerTank", PrimitiveType.Cylinder, Find("Car"));
-        tank.transform.position = new Vector3(1.30f, 0.62f, -0.85f);
-        tank.transform.localScale = new Vector3(0.42f, 0.62f, 0.42f);
+        tank.transform.position = new Vector3(1.34f, 1.02f, 1.18f);
+        tank.transform.localScale = new Vector3(0.22f, 0.34f, 0.22f);
         EnsureBoxCollider(tank);
         if (tank.GetComponent<InteractablePowerTank>() == null)
             tank.AddComponent<InteractablePowerTank>();
 
-        _log.AppendLine($"  계기판 중심 {PanelMid:F2}m / 계약 패널 1.50m / 전력 탱크 0.62m");
+        for (int i = 0; i < 4; i++)
+        {
+            GameObject tick = EnsurePrimitive($"TankTick_{i}", PrimitiveType.Cylinder, Find("Car"));
+            tick.transform.position = new Vector3(1.34f, 0.78f + i * 0.16f, 1.18f);
+            tick.transform.localScale = new Vector3(0.25f, 0.008f, 0.25f);
+            Collider tc = tick.GetComponent<Collider>();
+            if (tc != null) Object.DestroyImmediate(tc);   // 탱크 본체가 조준을 받는다
+        }
+        GameObject stand = EnsurePrimitive("TankStand", PrimitiveType.Cylinder, Find("Car"));
+        stand.transform.position = new Vector3(1.34f, 0.34f, 1.18f);
+        stand.transform.localScale = new Vector3(0.16f, 0.34f, 0.16f);
+        EnsureBoxCollider(stand);
+
+        _log.AppendLine($"  계기판 {PanelMid:F2}m / 계약 패널 1.50m(슬롯 3) / 전력 탱크 1.05m(눈금 4)");
     }
 
     private static GameObject EnsurePrimitive(string name, PrimitiveType type, Transform parent)
@@ -451,9 +595,11 @@ public static class HumanScaleLayout
         }
         GameObject player = pt.gameObject;
 
-        // 문을 등지고 통관·계기판을 함께 볼 수 있는 자리.
+        // 스폰 시선에 조작할 것이 하나도 없고 문만 크게 보였다. 시작하자마자 출구를
+        // 바라보는 배치는 "여기서 무엇을 하는가"를 잘못 알려준다. 통관과 계기판이
+        // 함께 들어오도록 더 왼쪽으로 돌린다(통관 -67°, 계기판 -30° 사이).
         player.transform.position = new Vector3(0.55f, 0f, -0.85f);
-        player.transform.rotation = Quaternion.Euler(0f, -32f, 0f);
+        player.transform.rotation = Quaternion.Euler(0f, -50f, 0f);
 
         var cc = player.GetComponent<CharacterController>();
         if (cc == null) cc = player.AddComponent<CharacterController>();
@@ -591,6 +737,71 @@ public static class HumanScaleLayout
 
     // ── 검증 ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// 명도 위계를 실제 오브젝트에 배정한다. 이 단계가 배치 맨 끝인 이유는,
+    /// 앞에서 만들어진 오브젝트가 전부 존재해야 한 번에 칠할 수 있기 때문이다.
+    /// </summary>
+    private static void ApplyValueHierarchy()
+    {
+        Material readout     = EnsureMaterial("M_Gray_Readout",     ReadoutValue,     ReadoutEmission);
+        Material interactive = EnsureMaterial("M_Gray_Interactive", InteractiveValue, InteractiveEmission);
+        Material recessive   = EnsureMaterial("M_Gray_Recessive",   RecessiveValue,   0f);
+
+        // 결과판 — 가장 밝다. 이 게임이 보여줘야 할 것이 여기다.
+        // 칸막이는 어둡게 눌러 칸 경계가 홈처럼 읽히게 한다.
+        int painted = 0;
+        for (int c = 0; c < 3; c++)
+        {
+            Transform tube = Find($"Tube_{c}");
+            if (tube == null) continue;
+            foreach (Transform child in tube.GetComponentsInChildren<Transform>(true))
+            {
+                if (child.name.StartsWith("Sym_")) { PaintTree(child, readout); painted++; }
+                else if (child.name.StartsWith("Divider_")) PaintTree(child, recessive);
+            }
+        }
+        _log.AppendLine($"    심볼 {painted}개 칠함 (9칸 × 3종 = 27이어야 한다)");
+
+        // 조작 대상 — 중간 값. 배경보다 밝고 결과판보다 어둡다.
+        Paint("ExecutionLever", interactive);
+        Paint("LeverKnob", interactive);
+        Paint("ContractPanel", interactive);
+        Paint("PowerTank", interactive);
+        Paint("TankStand", interactive);
+        for (int i = 0; i < 3; i++) Paint($"ContractPlaque_{i}", interactive);
+        for (int i = 0; i < 4; i++) Paint($"TankTick_{i}", recessive);   // 눈금은 탱크보다 어둡게 — 홈처럼 보인다
+
+        // 구조물 — 어둡게 눌러 시선을 뺏지 않게 한다. 문이 화면에서 가장 밝고 큰 면이라
+        // 어느 프레임에서든 시선이 먼저 출구로 갔다. 출구는 목적지가 아니다.
+        // 문만 눌렀더니 문이 붙은 벽 전체가 방에서 가장 밝은 면으로 남았다. 방의 밝은
+        // 절반이 통째로 출구 쪽이면 시선은 계속 그리로 간다. 벽까지 함께 누른다.
+        Paint("DoorLeft", recessive);
+        Paint("DoorRight", recessive);
+        Paint("BackWall_Left", recessive);
+        Paint("BackWall_Right", recessive);
+        Paint("BackWall_Lintel", recessive);
+        Paint("WallR", recessive);
+        Paint("Ceiling", recessive);
+        Paint("Handrail_R", recessive);
+        Paint("Handrail_B", recessive);
+        Paint("OverloadHousing", recessive);
+
+        // 출구 간판이 월드에서 가장 큰 글자였다. 읽히되 지배하지 않을 크기로 줄인다.
+        Transform sign = Find("DoorSign");
+        if (sign != null)
+        {
+            var st = sign.GetComponent<TMPro.TMP_Text>();
+            if (st != null)
+            {
+                sign.localScale = sign.localScale * 0.55f;
+                EditorUtility.SetDirty(st);
+            }
+        }
+
+        AssetDatabase.SaveAssets();
+        _log.AppendLine($"  명도 위계 배정: 결과판 {ReadoutValue:F2} / 조작 {InteractiveValue:F2} / 구조 {RecessiveValue:F2}");
+    }
+
     private static void Verify()
     {
         _log.AppendLine();
@@ -620,7 +831,8 @@ public static class HumanScaleLayout
             if (t.GetComponent<TMPro.TMP_Text>() != null) continue;
             // 장식은 일부러 콜라이더가 없다. 붙이면 조준을 가로채서 진짜 대상을 못 누르게 된다.
             // 결과칸 심볼은 읽는 것이고, 레버 손잡이는 레버 본체 콜라이더가 대신 받는다.
-            if (t.name.StartsWith("Sym_") || t.name == "LeverKnob") continue;
+            if (t.name.StartsWith("Sym_") || t.name.StartsWith("ContractPlaque_")
+                || t.name.StartsWith("TankTick_") || t.name == "LeverKnob") continue;
             missing.Add(t.name);
         }
         problems += Expect(missing.Count == 0,
