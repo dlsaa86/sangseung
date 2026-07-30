@@ -54,8 +54,10 @@ namespace Ascend.Prototype.Run.Tests
             new Pose("board_front", new Vector3(0.42f, 1.60f, 0f), new Vector3(-1.45f, 1.60f, 0f));
         private static readonly Pose ContractWall =
             new Pose("contract", new Vector3(0.45f, 1.58f, 0.30f), new Vector3(1.55f, 1.52f, 0.30f));
+        // "과수확" 명판이 프레임 위로 잘려 나가 레버가 무엇인지 캡처만으로는 알 수 없었다.
+        // 시선을 조금 올리고 물러나 명판·덮개·손잡이·전력 탱크가 한 프레임에 들어오게 한다.
         private static readonly Pose OverharvestApproach =
-            new Pose("overharvest", new Vector3(0.60f, 1.60f, 0.15f), new Vector3(0.72f, 1.28f, 1.34f));
+            new Pose("overharvest", new Vector3(0.55f, 1.62f, -0.15f), new Vector3(0.66f, 1.46f, 1.34f));
 
         private readonly StringBuilder _manifest = new StringBuilder();
         private Camera _camera;

@@ -156,3 +156,41 @@ Warning 진입선 위(3.2)로 올리고 `OverharvestWeight >= WarningEnter` 불�
 유휴 143 KB 중 **127 KB(약 89%)가 IMGUI 디버그 HUD**다. 남은 15.6 KB는 뷰의 매 프레임
 문자열 생성으로 추정된다. 판정 자체는 무관하다.
 **최악 프레임 200 ms 스파이크는 원인 미확정** — GC 수집으로 추정되나 확인하지 않았다.
+
+### 빌드
+
+- **Windows x86-64 빌드 불가** — 이 기기에 Windows Build Support 모듈이 설치되어 있지 않다
+  (`BuildPipeline.IsBuildTargetSupported(StandaloneWindows64) == false`). 명세 대상 플랫폼이므로
+  차단 원인으로 보고한다.
+- **빌드 씬 목록이 잘못돼 있었다.** `Assets/Scenes/SampleScene.unity`를 가리키고 있어, 그대로
+  빌드하면 프로토타입이 들어 있지 않은 실행 파일이 나왔다. `Prototype_Elevator.unity`로 교정.
+- **macOS 개발 빌드는 성공했다** (309 MB, `Build/macOS/Ascend.app`, gitignore 대상).
+  대체 산출물이 아니라 **"플레이어 빌드에서 코드가 컴파일되는가"** 를 확인하기 위한 것이다 —
+  에디터 전용 API가 런타임 코드로 새지 않았음이 증명된다.
+- 빌드가 남긴 부수 변경(URP 프리필터 플래그, `ProjectSettings`, TMP 폰트 아틀라스 스트립,
+  **UnityConnect 분석 활성화 0→1**)은 전부 되돌렸다. 씬 목록 교정만 커밋한다.
+  `CLAUDE.md`가 `Assets/Settings/`를 단일 소유로 두고 URP 변경에 승인을 요구하기 때문이다.
+
+---
+
+# 세션 종료 상태
+
+| Gate | 판정 | 근거 |
+|---|---|---|
+| A — 코어 | **통과** | EditMode 49 PASS / 0 FAIL. 씬 없이 통과, 동일 시드 재현, 캡 20 미초과가 전부 테스트로 고정 |
+| B — 플레이 흐름 | **통과** | PlayMode 34 PASS / 0 FAIL. 디버그 조작 없이 1층 완주 |
+| C — 판독성·위험 | **부분 통과** | Stable/Critical 무음 구분 ✅, 심볼 3종 실루엣 구분 ✅, 레버 혼동 없음 ✅ / 정화 원인 하이라이트는 약함 |
+| D — 기술 증거 | **부분 통과** | 콘솔 오류 0, 시드·캡처·성능 제출 ✅ / GC Alloc 목표 미달, Windows 빌드 차단 |
+
+## 다음 세션 시작점
+
+1. **GC Alloc** — IMGUI 디버그 HUD를 실제 UI(월드 스페이스 또는 UGUI)로 교체하면 유휴 143 KB 중
+   127 KB가 사라진다. 남은 15.6 KB는 뷰의 매 프레임 문자열 생성.
+2. **최악 프레임 200 ms 스파이크** — 원인 미확정. 재현: `Ascend/Measure Hero Slice Performance`.
+3. **정화 원인 하이라이트(B-2.6)** — 현재 맥동 횟수로만 구분한다. 정지 캡처에서는 개수/직선/연결이
+   구분되지 않는다. 직선에는 선, 연결 덩어리에는 테두리 같은 **형태** 표식이 필요하다.
+4. **계약 없음이 열등 선택지** — 잔류 대가가 출현률·보상 증가를 상쇄하지 못한다(위 측정표).
+5. **폐기 코드 약 5,000줄** (`Core/` `Roulette/` `Effects/` `Data/Ball*` `Sim/` `UI/PrototypeUI`,
+   `Assets/Editor/`의 구 하네스) — 컴파일에는 참여하나 아무도 쓰지 않는다. 별도 제거 티켓.
+6. **과수확 잠금 해제 연출** — 현재 덮개가 열리기만 한다. `VISUAL_SPEC.md` §7의 "조명·소리·기계
+   반응이 집중된다"는 아직 없다.
