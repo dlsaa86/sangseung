@@ -72,7 +72,8 @@ namespace Ascend.Prototype.Run.Tests
             // ── 2. 유휴 프레임 ──
             run.ResetRun(1337);
             yield return null;
-            for (int i = 0; i < 60; i++) yield return null;   // 워밍업
+            // Play 진입 직후는 셰이더 컴파일·에셋 임포트로 가장 시끄럽다. 충분히 지나보낸다.
+            for (int i = 0; i < 240; i++) yield return null;   // 워밍업
             yield return MeasureFrames("유휴 (계약 선택 대기)", 180);
 
             // ── 2b. GC Alloc 범인 찾기 ──
@@ -85,9 +86,38 @@ namespace Ascend.Prototype.Run.Tests
                 hud.enabled = false;
                 for (int i = 0; i < 30; i++) yield return null;
                 yield return MeasureFrames("유휴 — IMGUI 디버그 HUD 끔", 180);
-                hud.enabled = true;
-                for (int i = 0; i < 30; i++) yield return null;
             }
+
+            // ── 2c. 남은 바닥이 게임 코드인가, 에디터·URP인가 ──
+            //
+            // HUD를 꺼도 프레임당 할당이 일정하게 남는다면, 그건 상태에 따라 변하는
+            // 게임 코드가 아니라는 뜻이다. 게임 쪽 MonoBehaviour를 전부 끄고 같은 조건을
+            // 재서 확인한다. 여기서도 같은 값이 나오면 남은 바닥은 우리 코드가 아니다.
+            var suspects = new MonoBehaviour[]
+            {
+                FindAnyObjectByType<Risk.RiskStateView>(),
+                FindAnyObjectByType<InstrumentPanelView>(),
+                FindAnyObjectByType<PurifyMarkerView>(),
+                FindAnyObjectByType<SpinBoardView>(),
+                FindAnyObjectByType<CrosshairInteractor>(),
+                bridge,
+                presenter,
+            };
+
+            var wasEnabled = new bool[suspects.Length];
+            for (int i = 0; i < suspects.Length; i++)
+            {
+                if (suspects[i] == null) continue;
+                wasEnabled[i] = suspects[i].enabled;
+                suspects[i].enabled = false;
+            }
+            for (int i = 0; i < 60; i++) yield return null;
+            yield return MeasureFrames("유휴 — 게임 뷰 컴포넌트까지 전부 끔", 180);
+
+            for (int i = 0; i < suspects.Length; i++)
+                if (suspects[i] != null) suspects[i].enabled = wasEnabled[i];
+            if (hud != null) hud.enabled = true;
+            for (int i = 0; i < 60; i++) yield return null;
 
             // ── 3. 스핀 + 캐스케이드 재생 중 ──
             int guard = 0;
@@ -159,23 +189,10 @@ namespace Ascend.Prototype.Run.Tests
             float p95 = samples[Mathf.Min(frames - 1, Mathf.RoundToInt(frames * 0.95f))];
             float worst = samples[frames - 1];
 
-            long allocSum = 0;
-            long allocMax = 0;
-            int allocValid = 0;
-            foreach (long a in alloc)
-            {
-                if (a < 0) continue;
-                allocValid++;
-                allocSum += a;
-                if (a > allocMax) allocMax = a;
-            }
-
             _report.AppendLine($"[{label}] {frames}프레임");
             _report.AppendLine($"  프레임타임 중앙 {median:F2} ms ({1000f / Mathf.Max(0.01f, median):F0} FPS) / " +
                                $"95% {p95:F2} ms / 최악 {worst:F2} ms");
-            _report.AppendLine(allocValid > 0
-                ? $"  GC Alloc 프레임당 평균 {allocSum / (float)allocValid:F0} B / 최대 {allocMax} B"
-                : "  GC Alloc 측정 불가 (ProfilerRecorder 무효)");
+            AppendAllocStats(alloc, alloc.Length);
             _report.AppendLine();
         }
 
@@ -221,23 +238,49 @@ namespace Ascend.Prototype.Run.Tests
             float p95 = samples[Mathf.Min(samples.Count - 1, Mathf.RoundToInt(samples.Count * 0.95f))];
             float worst = samples[samples.Count - 1];
 
-            long allocSum = 0, allocMax = 0;
-            int valid = 0;
-            foreach (long a in allocs)
-            {
-                if (a < 0) continue;
-                valid++; allocSum += a;
-                if (a > allocMax) allocMax = a;
-            }
-
             _report.AppendLine($"[스핀·캐스케이드 재생 중] {samples.Count}프레임 / 스핀 {spins}회 / 최대 연쇄 {maxDepth}단계");
             _report.AppendLine($"  프레임타임 중앙 {median:F2} ms ({1000f / Mathf.Max(0.01f, median):F0} FPS) / " +
                                $"95% {p95:F2} ms / 최악 {worst:F2} ms");
-            _report.AppendLine(valid > 0
-                ? $"  GC Alloc 프레임당 평균 {allocSum / (float)valid:F0} B / 최대 {allocMax} B"
-                : "  GC Alloc 측정 불가");
+            AppendAllocStats(allocs.ToArray(), allocs.Count);
             _report.AppendLine($"  스파이크 판정: 최악 프레임이 중앙의 {worst / Mathf.Max(0.01f, median):F1}배");
             _report.AppendLine();
+        }
+
+        /// <summary>
+        /// **중앙값과 0B 프레임 비율을 함께 낸다.** 평균만 보면 판단을 그르친다 —
+        /// 에디터는 셰이더 컴파일·에셋 임포트로 수십 MB짜리 프레임을 이따금 섞고,
+        /// 180프레임 표본에서 22MB 한 방이면 평균이 124KB 올라간다.
+        /// "게임 루프가 매 프레임 할당하는가"는 중앙값과 0B 프레임 비율이 답한다.
+        /// </summary>
+        private void AppendAllocStats(long[] alloc, int count)
+        {
+            var valid = new System.Collections.Generic.List<long>(count);
+            for (int i = 0; i < count; i++)
+                if (alloc[i] >= 0) valid.Add(alloc[i]);
+
+            if (valid.Count == 0)
+            {
+                _report.AppendLine("  GC Alloc 측정 불가 (ProfilerRecorder 무효)");
+                return;
+            }
+
+            valid.Sort();
+            long median = valid[valid.Count / 2];
+            long p95 = valid[Mathf.Min(valid.Count - 1, Mathf.RoundToInt(valid.Count * 0.95f))];
+            long max = valid[valid.Count - 1];
+
+            long sum = 0;
+            int zeroFrames = 0;
+            foreach (long a in valid)
+            {
+                sum += a;
+                if (a == 0) zeroFrames++;
+            }
+
+            _report.AppendLine($"  GC Alloc 중앙 {median} B / 95% {p95} B / 최대 {max} B / " +
+                               $"평균 {sum / (float)valid.Count:F0} B");
+            _report.AppendLine($"  0 B 프레임 {zeroFrames}/{valid.Count} " +
+                               $"({zeroFrames * 100f / valid.Count:F0}%)");
         }
 
         private void Finish()

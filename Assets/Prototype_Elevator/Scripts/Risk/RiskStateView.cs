@@ -52,6 +52,7 @@ namespace Ascend.Prototype.Risk
         private Vector3 _swayHome;
         private Vector3 _cameraHome;
         private float _phase;
+        private int _reasonKey = int.MinValue;
 
         /// <summary>현재 위험 단계. HUD·계기판·검증 하네스가 읽는다.</summary>
         public RiskLevel Level => _evaluator.Current;
@@ -86,7 +87,19 @@ namespace Ascend.Prototype.Risk
         {
             RiskInputs inputs = ReadInputs();
             RiskLevel level = _evaluator.Evaluate(in inputs);
-            Reason = _evaluator.Explain(in inputs);
+
+            // Explain 은 리스트와 string.Join 을 쓴다. 매 프레임 부르면 같은 문장을
+            // 60번 새로 만든다. 위험 요인 구성이 바뀔 때만 짓는다.
+            int reasonKey = inputs.AbsorberResidual
+                          | (inputs.ProliferatorResidual << 5)
+                          | (inputs.ExtraSpinsTaken << 10)
+                          | ((inputs.Overloaded ? 1 : 0) << 15)
+                          | ((inputs.SpinsRemaining == 0 && inputs.PowerRatio < 1f ? 1 : 0) << 16);
+            if (reasonKey != _reasonKey)
+            {
+                _reasonKey = reasonKey;
+                Reason = _evaluator.Explain(in inputs);
+            }
 
             RiskProfile target = _profiles[Mathf.Clamp((int)level, 0, _profiles.Length - 1)];
             _blended = Blend(_blended, target, Time.deltaTime * _blendSpeed);

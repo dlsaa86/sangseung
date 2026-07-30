@@ -53,12 +53,28 @@ namespace Ascend.Prototype.View
         private MaterialPropertyBlock _block;
         private readonly StringBuilder _text = new StringBuilder(160);
 
+        // 라벨 세 줄을 매 프레임 새로 조립하면 프레임당 문자열 세 개가 버려진다.
+        // 표시값이 실제로 바뀔 때만 짓고, TMP 에는 StringBuilder 오버로드로 넘긴다
+        // (string 오버로드는 내부에서 또 한 번 복사한다).
+        private int _floorKey = int.MinValue;
+        private int _powerKey = int.MinValue;
+        private int _statusKey = int.MinValue;
+
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             if (_bridge == null) _bridge = FindAnyObjectByType<RouletteInteractionBridge>();
             if (_risk == null) _risk = FindAnyObjectByType<RiskStateView>();
+            if (_run != null) _run.RunStarted += _ => InvalidateCache();
+        }
+
+        /// <summary>런이 새로 시작되면 캐시 키를 푼다. 안 그러면 종료 화면이 그대로 남는다.</summary>
+        private void InvalidateCache()
+        {
+            _floorKey = int.MinValue;
+            _powerKey = int.MinValue;
+            _statusKey = int.MinValue;
         }
 
         private void LateUpdate()
@@ -76,37 +92,85 @@ namespace Ascend.Prototype.View
             float ratio = floor.RequiredPower > 0f ? floor.Power / floor.RequiredPower : 0f;
 
             // "위험 위험"으로 읽히던 것을 고친다 — 항목 이름과 값이 같은 단어였다.
-            SetText(_floorLabel, $"{floor.Plan.Floor}층 / {run.Floors.LastFloor}   " +
-                                 $"위험도 {(_risk != null ? _risk.Level.DisplayName() : "—")}");
+            int riskLevel = _risk != null ? (int)_risk.Level : -1;
+            int floorKey = floor.Plan.Floor * 16 + riskLevel + 1;
+            if (floorKey != _floorKey)
+            {
+                _floorKey = floorKey;
+                _text.Clear();
+                _text.Append(floor.Plan.Floor).Append("층 / ").Append(run.Floors.LastFloor)
+                     .Append("   위험도 ")
+                     .Append(_risk != null ? _risk.Level.DisplayName() : "—");
+                Apply(_floorLabel, _text);
+            }
 
-            SetText(_powerLabel, $"전력 {floor.Power:F0} / 요구 {floor.RequiredPower:F0}   " +
-                                 $"{ratio:P0}  {floor.CurrentBand.DisplayName()}");
+            // 전력은 정수 단위로만 표시하므로 반올림 값이 같으면 다시 만들 이유가 없다.
+            int powerKey = Mathf.RoundToInt(floor.Power) * 8 + (int)floor.CurrentBand;
+            if (powerKey != _powerKey)
+            {
+                _powerKey = powerKey;
+                _text.Clear();
+                _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
+                     .Append(" / 요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
+                     .Append("   ").AppendFormat("{0:P0}", ratio)
+                     .Append("  ").Append(floor.CurrentBand.DisplayName());
+                Apply(_powerLabel, _text);
+            }
 
-            SetText(_statusLabel, BuildStatus(floor));
+            int statusKey = floor.SpinsRemaining
+                          | (floor.ExtraSpinsTaken << 4)
+                          | (floor.Residual.AbsorberCount << 8)
+                          | (floor.Residual.ProliferatorCount << 12)
+                          | ((int)floor.Phase << 16)
+                          | ((floor.CanBank ? 1 : 0) << 20);
+            if (statusKey != _statusKey)
+            {
+                _statusKey = statusKey;
+                BuildStatus(floor);
+                Apply(_statusLabel, _text);
+            }
+
             ApplyBar(ratio, floor);
             ApplyPlaques(floor);
         }
 
-        private string BuildStatus(FloorSession floor)
+        /// <summary>결과를 <see cref="_text"/>에 남긴다. 문자열을 돌려주지 않는다 — 그게 할당이다.</summary>
+        private void BuildStatus(FloorSession floor)
         {
             // **두 줄을 넘기지 않는다.** 세 줄이 되면 아래의 전력 게이지를 덮어
             // 잔류 경고와 눈금이 서로를 가린다 — 실제로 첫 캡처에서 그렇게 나왔다.
             _text.Clear();
-            _text.Append($"스핀 {floor.SpinsRemaining}/{floor.Plan.Spins}");
-            if (floor.ExtraSpinsTaken > 0) _text.Append($"   과수확 {floor.ExtraSpinsTaken}회");
+            _text.Append("스핀 ").Append(floor.SpinsRemaining).Append('/').Append(floor.Plan.Spins);
+            if (floor.ExtraSpinsTaken > 0)
+                _text.Append("   과수확 ").Append(floor.ExtraSpinsTaken).Append('회');
             if (floor.Phase == FloorPhase.Decision && floor.CanBank && floor.SpinsRemaining > 0)
-                _text.Append($"   판돈 {floor.PendingAnte:F0}");
+                _text.Append("   판돈 ").AppendFormat("{0:F0}", floor.PendingAnte);
             _text.AppendLine();
 
             // 잔류 저항은 "숫자만 작게" 두면 위협으로 안 읽힌다(visual-criteria B-3.10).
             // 그래서 계기판 본문에 원인 문장으로 올린다.
             ResidualState residual = floor.Residual;
-            _text.Append(residual.IsClean ? "잔류 없음" : residual.Describe());
-            return _text.ToString();
+            if (residual.IsClean) _text.Append("잔류 없음");
+            else
+            {
+                if (residual.AbsorberCount > 0)
+                    _text.Append("흡수체 ").Append(residual.AbsorberCount)
+                         .Append("개 → 저장 전력 −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
+                if (residual.AbsorberCount > 0 && residual.ProliferatorCount > 0)
+                    _text.Append("  /  ");
+                if (residual.ProliferatorCount > 0)
+                    _text.Append("증식체 ").Append(residual.ProliferatorCount)
+                         .Append("개 → 다음 스핀 출현 +")
+                         .AppendFormat("{0:F2}", residual.NextProliferatorWeightAdd);
+            }
         }
 
         private void ShowRunOver(RunSession run)
         {
+            int key = run.IsFailed ? -1 : -2;
+            if (key == _floorKey) return;   // 종료 화면은 더 바뀌지 않는다
+            _floorKey = key;
+
             SetText(_floorLabel, run.IsFailed ? "층 실패" : "층 확정");
             var results = run.Results;
             if (results.Count > 0)
@@ -186,6 +250,12 @@ namespace Ascend.Prototype.View
 
         private static bool SameContract(in ResistanceContract a, in ResistanceContract b)
             => a.Target == b.Target && a.Label == b.Label;
+
+        /// <summary>TMP의 StringBuilder 오버로드는 중간 string을 만들지 않는다.</summary>
+        private static void Apply(TextMeshPro label, StringBuilder value)
+        {
+            if (label != null) label.SetText(value);
+        }
 
         private static void SetText(TextMeshPro label, string value)
         {

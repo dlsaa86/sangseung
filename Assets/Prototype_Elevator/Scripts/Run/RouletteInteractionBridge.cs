@@ -35,6 +35,12 @@ namespace Ascend.Prototype.Run
         private ISpinPresentation _presentation;
         private int _previewIndex;
 
+        // 프롬프트는 매 프레임 같은 문자열을 다시 만들기 쉽다. 세 오브젝트 × 60fps 면
+        // 초당 180개의 쓰레기가 된다. 상태 키가 바뀔 때만 문자열을 짓는다.
+        private int _leverPromptKey = int.MinValue;
+        private int _tankPromptKey = int.MinValue;
+        private int _panelPromptKey = int.MinValue;
+
         /// <summary>계약 패널이 지금 가리키고 있는 선택지. HUD가 읽어서 표시한다.</summary>
         public int PreviewIndex => _previewIndex;
 
@@ -115,9 +121,15 @@ namespace Ascend.Prototype.Run
             bool usable = alive && f.Phase == FloorPhase.ContractSelection &&
                           choices != null && choices.Length > 1;
             _contractPanel.SetCanInteract(usable);
-            _contractPanel.SetPrompt(usable
-                ? $"계약 넘기기 — {PreviewContract.Label}"
-                : "계약 패널");
+
+            int key = usable ? 1 + _previewIndex * 2 : 0;
+            if (key != _panelPromptKey)
+            {
+                _panelPromptKey = key;
+                _contractPanel.SetPrompt(usable
+                    ? $"계약 넘기기 — {PreviewContract.Label}"
+                    : "계약 패널");
+            }
         }
 
         private void UpdateExecutionLever(FloorSession f, bool alive)
@@ -130,9 +142,16 @@ namespace Ascend.Prototype.Run
             bool contractStep = alive && f.Phase == FloorPhase.ContractSelection;
             bool spinStep = alive && f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0;
             _lever.SetCanInteract(contractStep || spinStep);
-            _lever.SetPrompt(contractStep
-                ? $"{PreviewContract.Label} 확정"
-                : $"실행 레버 — 스핀 {(f != null ? f.SpinsRemaining : 0)}회 남음");
+
+            int spinsRemaining = f != null ? f.SpinsRemaining : 0;
+            int key = contractStep ? 1000 + _previewIndex : spinsRemaining;
+            if (key != _leverPromptKey)
+            {
+                _leverPromptKey = key;
+                _lever.SetPrompt(contractStep
+                    ? $"{PreviewContract.Label} 확정"
+                    : $"실행 레버 — 스핀 {spinsRemaining}회 남음");
+            }
         }
 
         private void UpdatePowerTank(FloorSession f, bool alive)
@@ -146,9 +165,15 @@ namespace Ascend.Prototype.Run
                                !f.CanBank && f.SpinsRemaining == 0;
 
             _powerTank.SetCanInteract(canBank || mustResolve);
-            _powerTank.SetPrompt(canBank
-                ? $"전력 확정 — {f.CurrentBand.DisplayName()}"
-                : mustResolve ? "결과 확인 — 요구 전력 미달" : "전력 탱크");
+
+            int key = canBank ? 100 + (int)f.CurrentBand : mustResolve ? 1 : 0;
+            if (key != _tankPromptKey)
+            {
+                _tankPromptKey = key;
+                _powerTank.SetPrompt(canBank
+                    ? $"전력 확정 — {f.CurrentBand.DisplayName()}"
+                    : mustResolve ? "결과 확인 — 요구 전력 미달" : "전력 탱크");
+            }
         }
 
         private void UpdateOverharvestLever(FloorSession f, bool alive)

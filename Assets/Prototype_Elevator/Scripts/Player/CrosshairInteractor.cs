@@ -104,16 +104,14 @@ namespace Ascend.Prototype.Player
             return closest;
         }
 
+        /// <summary>
+        /// 상호작용물 조회. `GetComponentsInParent`(복수형)는 호출마다 **배열을 새로 만든다.**
+        /// 이 함수는 매 프레임 스피어캐스트 히트마다 불리므로, 그 배열이 프레임당 최대 16개씩
+        /// 쌓였다. 인터페이스도 단수형 조회가 되므로 배열이 필요 없다.
+        /// </summary>
         private static IInteractable FindInteractable(Collider collider)
         {
-            MonoBehaviour[] behaviours = collider.GetComponentsInParent<MonoBehaviour>(true);
-            for (int i = 0; i < behaviours.Length; i++)
-            {
-                if (behaviours[i] is IInteractable interactable)
-                    return interactable;
-            }
-
-            return null;
+            return collider.GetComponentInParent<IInteractable>(true);
         }
 
         private void SetCurrentTarget(IInteractable target)
