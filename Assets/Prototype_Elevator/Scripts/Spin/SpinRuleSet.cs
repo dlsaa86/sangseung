@@ -59,8 +59,15 @@ namespace Ascend.Prototype.Spin
 
         // ── 캐스케이드 ──
 
-        /// <summary>캐스케이드 최대 연쇄 깊이. 무한 루프 방지선이자 연출 상한이다.</summary>
-        public int MaxCascadeDepth = 8;
+        /// <summary>
+        /// 캐스케이드 최대 연쇄 깊이 = 무한 루프 방지 하드 캡.
+        ///
+        /// 20은 `MASTER_PRD.md` §6과 `TECH_SPEC.md` §9가 못박은 값이라 밸런스 다이얼이 아니다.
+        /// 낮추면 "연쇄가 20까지 간다"는 명세를 검증할 수 없고, 높이면 방지선이 사라진다.
+        /// 연출이 감당 못 하는 길이가 문제라면 캡이 아니라 재생 속도로 푼다
+        /// (§9 "10회 연쇄까지 시각 판독성을 유지해야 한다").
+        /// </summary>
+        public int MaxCascadeDepth = 20;
 
         /// <summary>연쇄 단계마다 전체 전력에 더해지는 배수 증분. 2연쇄부터 적용된다.</summary>
         public float CascadeMultiplierStep = 0.5f;

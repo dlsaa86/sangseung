@@ -101,10 +101,11 @@ public static class SceneIntegration
             host.AddComponent<RunSessionBehaviour>();
             log.AppendLine("  RunSessionBehaviour 부착");
         }
-        if (host.GetComponent<RouletteHud>() == null)
+        if (host.GetComponent<GameHudView>() == null)
         {
-            host.AddComponent<RouletteHud>();
-            log.AppendLine("  RouletteHud 부착");
+            // 화면 UI는 Canvas 계층까지 필요하므로 여기서 부착하지 않는다.
+            // Ascend/Build Hero Slice Scene Objects 가 만든다.
+            log.AppendLine("  화면 UI 없음 — Ascend/Build Hero Slice Scene Objects 실행 필요");
         }
 
         EditorSceneManager.MarkSceneDirty(scene);
@@ -115,7 +116,7 @@ public static class SceneIntegration
         var check = new StringBuilder();
         int problems = 0;
         if (host.GetComponent<RunSessionBehaviour>() == null) { check.AppendLine("    RunSessionBehaviour 없음"); problems++; }
-        if (host.GetComponent<RouletteHud>() == null)         { check.AppendLine("    RouletteHud 없음"); problems++; }
+        if (Object.FindAnyObjectByType<GameHudView>() == null) { check.AppendLine("    GameHudView 없음"); problems++; }
         if (!saved)                                            { check.AppendLine("    씬이 저장되지 않음"); problems++; }
 
         log.AppendLine();

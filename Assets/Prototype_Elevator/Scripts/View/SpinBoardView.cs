@@ -17,6 +17,10 @@ namespace Ascend.Prototype.View
     ///   흡수체   — 정육면체
     ///   증식체   — 캡슐(세로로 긴 알약)
     /// 실루엣이 셋 다 다르다.
+    ///
+    /// 갱신 주체가 둘이다:
+    ///   · <see cref="SpinPresenter"/>가 붙으면 연출자가 단계별로 밀어 넣는다.
+    ///   · 없으면 이 클래스가 최종 보드를 스스로 따라간다(연출 없이도 게임은 돌아야 한다).
     /// </summary>
     public sealed class SpinBoardView : MonoBehaviour
     {
@@ -25,17 +29,79 @@ namespace Ascend.Prototype.View
         /// <summary>9칸. SpinBoard.Index(column, row) 순서를 그대로 따른다.</summary>
         [SerializeField] private Transform[] _cells = new Transform[SpinBoard.Cells];
 
+        [Header("정화 하이라이트")]
+        [Tooltip("맥동 최대 배율.")]
+        [SerializeField, Min(1f)] private float _highlightScale = 1.35f;
+        [SerializeField] private Color _purifyEmission = new Color(1f, 0.86f, 0.55f);
+        [SerializeField, Min(0f)] private float _purifyEmissionStrength = 3f;
+
+        private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
+        /// <summary>칸별 하이라이트 세기(0~1). 연출자가 프레임마다 갱신한다.</summary>
+        private readonly float[] _highlight = new float[SpinBoard.Cells];
+
+        /// <summary>
+        /// 칸별 심볼 자식과 **씬에서 저작된 원래 스케일**.
+        ///
+        /// 캐시가 필요한 이유: 심볼들은 저마다 다른 크기로 배치돼 있다(구 0.17 / 정육면체 0.16 /
+        /// 캡슐 0.15 — 실루엣 대비를 위한 값이다). 하이라이트가 이걸 모른 채 스케일을 1로
+        /// 덮어쓰면 심볼이 6배로 부풀어 결과판을 통째로 가린다. 실제로 첫 캡처에서 그렇게 나왔다.
+        /// </summary>
+        private struct SymbolSlot
+        {
+            public Transform Child;
+            public Vector3 BaseScale;
+            public Renderer Renderer;
+        }
+
+        private SymbolSlot[][] _slots;
+        private MaterialPropertyBlock _block;
         private int _lastSpinCount = -1;
         private int _lastFloor = -1;
 
+        /// <summary>연출자가 붙어 있으면 이 뷰는 스스로 보드를 바꾸지 않는다.</summary>
+        public bool DrivenExternally { get; set; }
+
+        /// <summary>칸 하나의 Transform. 연출자가 패턴 마커를 놓을 좌표를 얻는다.</summary>
+        public Transform CellTransform(int index)
+            => index >= 0 && index < _cells.Length ? _cells[index] : null;
+
         private void Awake()
         {
+            _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
+            CacheSlots();
             ClearAll();
+        }
+
+        private void CacheSlots()
+        {
+            _slots = new SymbolSlot[_cells.Length][];
+            for (int i = 0; i < _cells.Length; i++)
+            {
+                Transform cell = _cells[i];
+                if (cell == null) { _slots[i] = System.Array.Empty<SymbolSlot>(); continue; }
+
+                var slots = new SymbolSlot[cell.childCount];
+                for (int c = 0; c < cell.childCount; c++)
+                {
+                    Transform child = cell.GetChild(c);
+                    slots[c] = new SymbolSlot
+                    {
+                        Child = child,
+                        BaseScale = child.localScale,
+                        Renderer = child.GetComponent<Renderer>(),
+                    };
+                }
+                _slots[i] = slots;
+            }
         }
 
         private void Update()
         {
+            ApplyHighlights();
+            if (DrivenExternally) return;
+
             FloorSession floor = _run != null && _run.Session != null ? _run.Session.Current : null;
             if (floor == null) { ClearAll(); return; }
 
@@ -50,12 +116,9 @@ namespace Ascend.Prototype.View
 
             if (spins == 0) { ClearAll(); return; }
 
-            SpinResolution last = floor.History[spins - 1];
-
             // 캐스케이드까지 끝난 뒤의 판을 보여준다. 비워진 칸은 "정화됐다"는 뜻이고,
-            // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다. 초기 판을 보여주면
-            // 그 두 정보가 사라진다.
-            Show(last.FinalBoard);
+            // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다.
+            ShowBoard(floor.History[spins - 1].FinalBoard);
         }
 
         /// <summary>
@@ -68,12 +131,55 @@ namespace Ascend.Prototype.View
                 SetCell(_cells[i], board[i]);
         }
 
-        private void Show(SpinBoard board) => ShowBoard(board);
-
-        private void ClearAll()
+        /// <summary>칸 하나의 하이라이트 세기(0~1). 연출자가 맥동을 만든다.</summary>
+        public void SetHighlight(int index, float amount)
         {
+            if (index < 0 || index >= _highlight.Length) return;
+            _highlight[index] = Mathf.Clamp01(amount);
+        }
+
+        public void ClearHighlights()
+        {
+            for (int i = 0; i < _highlight.Length; i++) _highlight[i] = 0f;
+        }
+
+        public void ClearAll()
+        {
+            ClearHighlights();
             for (int i = 0; i < _cells.Length; i++)
                 SetCell(_cells[i], SymbolKind.Empty);
+            _lastSpinCount = -1;
+            _lastFloor = -1;
+        }
+
+        /// <summary>
+        /// 하이라이트를 크기와 발광 **양쪽**에 건다. 발광만 쓰면 회색조에서 사라지고,
+        /// 크기만 쓰면 밝은 장면에서 묻힌다(visual-criteria B-2.6).
+        /// </summary>
+        private void ApplyHighlights()
+        {
+            if (_slots == null) return;
+
+            for (int i = 0; i < _slots.Length; i++)
+            {
+                float amount = _highlight[i];
+                float scale = Mathf.Lerp(1f, _highlightScale, amount);
+
+                SymbolSlot[] slots = _slots[i];
+                for (int s = 0; s < slots.Length; s++)
+                {
+                    SymbolSlot slot = slots[s];
+                    if (slot.Child == null || !slot.Child.gameObject.activeSelf) continue;
+
+                    // 저작된 스케일에 **곱한다**. 덮어쓰지 않는다.
+                    slot.Child.localScale = slot.BaseScale * scale;
+
+                    if (slot.Renderer == null) continue;
+                    slot.Renderer.GetPropertyBlock(_block);
+                    _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
+                    slot.Renderer.SetPropertyBlock(_block);
+                }
+            }
         }
 
         private static void SetCell(Transform cell, SymbolKind kind)

@@ -7,9 +7,7 @@ namespace Ascend.Prototype.Run
     /// <summary>Pure-C# ten-floor run coordinator.</summary>
     public sealed class RunSession
     {
-        private const int FirstFloor = 1;
-        private const int LastFloor = 10;
-
+        private readonly IFloorPlanSource _floors;
         private readonly SpinEngine _engine;
         private readonly PowerThresholds _thresholds;
         private readonly List<FloorResult> _results = new List<FloorResult>();
@@ -26,7 +24,18 @@ namespace Ascend.Prototype.Run
 
         public RunSession(int seed, float startingWeight, float startingMoney,
             float anteRatio, float anteEscalation)
+            : this(seed, startingWeight, startingMoney, anteRatio, anteEscalation, null)
         {
+        }
+
+        /// <summary>
+        /// <paramref name="floors"/>가 null이면 10층 커리큘럼. Hero Slice는
+        /// <see cref="HeroSliceFloorSource"/>를 넘긴다.
+        /// </summary>
+        public RunSession(int seed, float startingWeight, float startingMoney,
+            float anteRatio, float anteEscalation, IFloorPlanSource floors)
+        {
+            _floors = floors ?? new TenFloorSource();
             _engine = new SpinEngine(seed);
             _thresholds = PowerThresholds.Default;
             Seed = seed;
@@ -34,9 +43,15 @@ namespace Ascend.Prototype.Run
             Money = startingMoney;
             _anteRatio = Math.Max(0f, anteRatio);
             _anteEscalation = Math.Max(0f, anteEscalation);
-            CurrentFloor = FirstFloor;
+            CurrentFloor = _floors.FirstFloor;
             CreateCurrentFloor();
         }
+
+        /// <summary>이 런의 층 구성. HUD가 "1층 중 1층"인지 "10층 중 3층"인지 표시할 때 쓴다.</summary>
+        public IFloorPlanSource Floors => _floors;
+
+        /// <summary>엔진이 캐스케이드 하드 캡에 걸렸을 때 알림을 받으려는 어댑터용.</summary>
+        public SpinEngine Engine => _engine;
 
         public int Seed { get; }
         public int CurrentFloor { get; private set; }
@@ -97,14 +112,14 @@ namespace Ascend.Prototype.Run
 
         private void CreateCurrentFloor()
         {
-            if (CurrentFloor < FirstFloor || CurrentFloor > LastFloor)
+            if (CurrentFloor < _floors.FirstFloor || CurrentFloor > _floors.LastFloor)
             {
                 IsComplete = true;
                 _current = null;
                 return;
             }
 
-            FloorPlan plan = PrototypeCurriculum.For(CurrentFloor);
+            FloorPlan plan = _floors.For(CurrentFloor);
             _current = new FloorSession(plan, _engine, _thresholds,
                 CarriedWeight, _residual, _anteRatio, _anteEscalation);
         }

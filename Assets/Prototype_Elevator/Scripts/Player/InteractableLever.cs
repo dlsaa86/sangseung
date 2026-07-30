@@ -9,7 +9,16 @@ namespace Ascend.Prototype.Player
         [SerializeField] private bool _canInteract = true;
         [SerializeField] public UnityEvent onPulled = new UnityEvent();
 
-        public string Prompt => "레버 당기기";
+        [SerializeField] private string _prompt = "레버 당기기";
+
+        /// <summary>조준 시 뜨는 문구. 상태에 따라 브리지가 갈아끼운다 —
+        /// 상황과 다른 문구가 떠 있으면 그건 거짓 정보다.</summary>
+        public string Prompt => _prompt;
+
+        public void SetPrompt(string prompt)
+        {
+            if (!string.IsNullOrEmpty(prompt)) _prompt = prompt;
+        }
         public bool CanInteract => _canInteract;
 
         public void SetCanInteract(bool canInteract)

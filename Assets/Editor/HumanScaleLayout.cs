@@ -576,7 +576,7 @@ public static class HumanScaleLayout
                 { kv.Value.gameObject.SetActive(false); n++; }
             }
         }
-        // 옛 uGUI HUD. RouletteHud(IMGUI)가 대신한다. 참조가 비활성 GameSystems를 가리켜
+        // 옛 uGUI HUD. GameHudView(UGUI)가 대신한다. 참조가 비활성 GameSystems를 가리켜
         // 켜두면 매 프레임 null을 만진다.
         SetActive("PrototypeUI", false);
         SetActive("Canvas", false);

@@ -40,8 +40,8 @@ public static class PlayModeSmokeTest
         var behaviour = host.GetComponent<RunSessionBehaviour>();
         Check(behaviour != null, "RunSessionBehaviour 부착됨");
 
-        var hudType = Type.GetType("Ascend.Prototype.UI.RouletteHud, Assembly-CSharp");
-        Check(hudType != null && host.GetComponent(hudType) != null, "RouletteHud 부착됨");
+        var hudType = Type.GetType("Ascend.Prototype.UI.GameHudView, Assembly-CSharp");
+        Check(hudType != null && UnityEngine.Object.FindAnyObjectByType(hudType) != null, "GameHudView 존재");
 
         // 옛 루프가 꺼져 있어야 한다. 켜져 있으면 두 상태 기계가 같은 키를 먹는다.
         var legacy = GameObject.Find("GameSystems");

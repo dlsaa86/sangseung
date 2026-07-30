@@ -21,6 +21,13 @@ namespace Ascend.Prototype.Spin
             Reseed(seed);
         }
 
+        /// <summary>
+        /// 이 엔진이 시작한 런 시드. 호출자가 <see cref="SpinSeed.Derive"/>로 층·스핀
+        /// 좌표를 붙일 때 필요하다. 엔진이 시드를 숨기고 있으면 파생 규칙을 단일 출처로
+        /// 둘 수 없어 각 호출부가 자기 시드를 따로 들고 다니게 된다.
+        /// </summary>
+        public int RunSeed => _seed;
+
         public void Reseed(int seed)
         {
             _seed = seed;
@@ -47,12 +54,30 @@ namespace Ascend.Prototype.Spin
                                             SpinRuleSet rules,
                                             in ResistanceContract contract,
                                             in ResidualState carriedResidual)
+            => SpinWithSeed(spinSeed, rules, in contract, in carriedResidual, 0, 0);
+
+        /// <summary>
+        /// 층·스핀 좌표까지 기록하는 스핀. 좌표는 판정에 영향을 주지 않고
+        /// <see cref="SpinResolution"/>에 그대로 실려 나간다 — 로그 한 줄만 보고
+        /// 같은 스핀을 다시 만들 수 있어야 하기 때문이다.
+        /// </summary>
+        public SpinResolution SpinWithSeed(int spinSeed,
+                                            SpinRuleSet rules,
+                                            in ResistanceContract contract,
+                                            in ResidualState carriedResidual,
+                                            int floor,
+                                            int spinIndex)
         {
             SpinRuleSet effectiveRules = PrepareRules(rules, carriedResidual);
             var spinRandom = new Random(spinSeed);
             SpinBoard initial = DrawBoard(effectiveRules, false, spinRandom);
             ApplyGuaranteedNormalSouls(ref initial, effectiveRules.GuaranteedNormalSouls);
-            return ResolveBoardInternal(effectiveRules, contract, spinRandom, spinSeed, initial);
+            SpinResolution resolution =
+                ResolveBoardInternal(effectiveRules, contract, spinRandom, spinSeed, initial);
+            resolution.RunSeed = _seed;
+            resolution.Floor = floor;
+            resolution.SpinIndex = spinIndex;
+            return resolution;
         }
 
         /// <summary>
@@ -194,6 +219,7 @@ namespace Ascend.Prototype.Spin
             float normalSoulPower = 0f;
             float purifyPower = 0f;
             int maxDepth = Math.Max(1, rules.MaxCascadeDepth);
+            bool capReached = false;
 
             for (int depth = 1; depth <= maxDepth; depth++)
             {
@@ -252,6 +278,7 @@ namespace Ascend.Prototype.Spin
                         Kind = match.Kind,
                         Pattern = match.Pattern,
                         Cells = cells,
+                        PatternCells = match.PatternCells,
                         Line = match.LineKind,
                         Power = eventPower,
                         PatternMultiplier = patternMultiplier,
@@ -270,6 +297,10 @@ namespace Ascend.Prototype.Spin
                 float totalStepNormalPower = stepNormalPower;
                 if (triggersRefill && depth == maxDepth)
                 {
+                    // 여기가 하드 캡이다. 판이 아직 더 무너질 수 있는데 규칙이 끊은 것이므로
+                    // 자연 종료와 구분해 기록한다(MASTER_PRD §6 "명확한 로그를 남긴 뒤 정상 종료").
+                    capReached = true;
+
                     // 최대 깊이에서 재충전된 보드는 다음 판정을 수행하지 않으므로,
                     // 이 단계의 연쇄 배수로 정상 영혼을 즉시 수확하고 빈칸으로 만든다.
                     int terminalNormalCount = after.CountOf(SymbolKind.NormalSoul);
@@ -303,9 +334,10 @@ namespace Ascend.Prototype.Spin
             ResidualState residual = BuildResidual(board, rules);
             float grossPower = normalSoulPower + purifyPower;
 
-            return new SpinResolution
+            var resolution = new SpinResolution
             {
                 Seed = spinSeed,
+                RunSeed = _seed,
                 InitialBoard = initialBoard,
                 FinalBoard = board,
                 Steps = steps.ToArray(),
@@ -315,8 +347,19 @@ namespace Ascend.Prototype.Spin
                 Residual = residual,
                 NetPower = grossPower - residual.StoredPowerLoss,
                 Contract = contract,
+                CascadeCapReached = capReached,
             };
+
+            if (capReached) CascadeCapReached?.Invoke(resolution);
+            return resolution;
         }
+
+        /// <summary>
+        /// 하드 캡으로 캐스케이드가 끊겼을 때 발생한다. 엔진은 순수 C#이라 `Debug.Log`를
+        /// 직접 부르지 않는다 — 로그 채널은 호출자(Unity 어댑터·테스트)가 붙인다.
+        /// 구독자가 없어도 캡 자체는 <see cref="SpinResolution.CascadeCapReached"/>에 남는다.
+        /// </summary>
+        public event Action<SpinResolution> CascadeCapReached;
 
         private ResidualState BuildResidual(SpinBoard board, SpinRuleSet rules)
         {
@@ -344,40 +387,52 @@ namespace Ascend.Prototype.Spin
                 if (board.CountOf(kind) < rules.MinimumCountFor(kind)) continue;
 
                 bool fullBoard = board.CountOf(kind) == SpinBoard.Cells;
-                bool cluster = HasConnectedComponent(board, kind, rules.DiagonalCountsAsConnected);
+                int[] clusterCells = FindConnectedComponent(board, kind, rules.DiagonalCountsAsConnected);
+                bool cluster = clusterCells != null;
                 LineKind lineKind;
-                bool line = TryFindLine(board, kind, out lineKind);
+                int[] lineCells = TryFindLine(board, kind, out lineKind);
+                bool line = lineCells != null;
+
+                // 패턴을 이룬 칸을 그대로 실어 보낸다. 화면이 "직선이라서 터졌다"를
+                // 형태로 그리려면 어느 줄이었는지가 필요하고, 그건 판정만 알고 있다.
+                int[] fullBoardCells = fullBoard ? CellsOf(board, kind) : null;
 
                 if (!rules.AllowMultiplePatternsPerKind)
                 {
                     if (fullBoard)
-                        matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
                     else if (cluster)
-                        matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                     else if (line)
-                        matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
                     else
-                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
                     continue;
                 }
 
                 // 업그레이드로 중복 패턴이 열린 경우에도 종류별 개수의 정화는 한 번이며,
                 // 각 성립 패턴을 별도 이벤트로 남겨 로그와 보상에 모두 반영한다.
                 if (fullBoard)
-                    matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
                 if (cluster)
-                    matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                 if (line)
-                    matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind));
-                matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
+                matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
             }
             return matches;
         }
 
-        private bool HasConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal)
+        /// <summary>
+        /// 4칸 이상 직교(또는 대각) 연결 덩어리를 찾아 **그 칸들을** 돌려준다. 없으면 null.
+        /// 여러 덩어리가 성립하면 가장 큰 것을 고른다 — 화면이 하나만 감쌀 수 있고,
+        /// 가장 큰 덩어리가 곧 이 판이 무너진 이유이기 때문이다.
+        /// </summary>
+        private int[] FindConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal)
         {
             var visited = new bool[SpinBoard.Cells];
             var queue = new int[SpinBoard.Cells];
+            int[] best = null;
 
             for (int start = 0; start < SpinBoard.Cells; start++)
             {
@@ -385,14 +440,12 @@ namespace Ascend.Prototype.Spin
 
                 int head = 0;
                 int tail = 0;
-                int componentSize = 0;
                 queue[tail++] = start;
                 visited[start] = true;
 
                 while (head < tail)
                 {
                     int index = queue[head++];
-                    componentSize++;
                     int neighbourCount = diagonal
                         ? SpinBoard.AllNeighbours(index, _neighbourBuffer)
                         : SpinBoard.OrthogonalNeighbours(index, _neighbourBuffer);
@@ -405,12 +458,21 @@ namespace Ascend.Prototype.Spin
                     }
                 }
 
-                if (componentSize >= 4) return true;
+                if (tail < 4 || (best != null && tail <= best.Length)) continue;
+
+                var component = new int[tail];
+                Array.Copy(queue, component, tail);
+                Array.Sort(component);   // 인덱스 오름차순 — 로그·테스트가 순서에 흔들리지 않게
+                best = component;
             }
-            return false;
+            return best;
         }
 
-        private static bool TryFindLine(SpinBoard board, SymbolKind kind, out LineKind lineKind)
+        /// <summary>
+        /// 3칸 직선을 찾아 **그 줄의 칸들을** 돌려준다. 없으면 null.
+        /// 여러 줄이 성립하면 <see cref="SpinBoard.Lines"/> 순서상 첫 줄을 쓴다(결정론).
+        /// </summary>
+        private static int[] TryFindLine(SpinBoard board, SymbolKind kind, out LineKind lineKind)
         {
             for (int i = 0; i < SpinBoard.Lines.Length; i++)
             {
@@ -418,11 +480,12 @@ namespace Ascend.Prototype.Spin
                 if (board[line[0]] != kind || board[line[1]] != kind || board[line[2]] != kind)
                     continue;
                 lineKind = SpinBoard.LineKinds[i];
-                return true;
+                // 원본 배열을 그대로 내보내면 소비자가 정렬·수정해 SpinBoard.Lines 를 오염시킨다.
+                return new[] { line[0], line[1], line[2] };
             }
 
             lineKind = LineKind.Column;
-            return false;
+            return null;
         }
 
         private static int[] CellsOf(SpinBoard board, SymbolKind kind)
@@ -439,11 +502,15 @@ namespace Ascend.Prototype.Spin
             public readonly PatternKind Pattern;
             public readonly LineKind LineKind;
 
-            public PatternMatch(SymbolKind kind, PatternKind pattern, LineKind lineKind)
+            /// <summary>패턴을 이룬 칸. 개수 정화는 모양이 없으므로 null.</summary>
+            public readonly int[] PatternCells;
+
+            public PatternMatch(SymbolKind kind, PatternKind pattern, LineKind lineKind, int[] patternCells)
             {
                 Kind = kind;
                 Pattern = pattern;
                 LineKind = lineKind;
+                PatternCells = patternCells;
             }
         }
     }
