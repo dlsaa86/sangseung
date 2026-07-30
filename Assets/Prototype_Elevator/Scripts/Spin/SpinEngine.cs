@@ -278,6 +278,7 @@ namespace Ascend.Prototype.Spin
                         Kind = match.Kind,
                         Pattern = match.Pattern,
                         Cells = cells,
+                        PatternCells = match.PatternCells,
                         Line = match.LineKind,
                         Power = eventPower,
                         PatternMultiplier = patternMultiplier,
@@ -386,40 +387,52 @@ namespace Ascend.Prototype.Spin
                 if (board.CountOf(kind) < rules.MinimumCountFor(kind)) continue;
 
                 bool fullBoard = board.CountOf(kind) == SpinBoard.Cells;
-                bool cluster = HasConnectedComponent(board, kind, rules.DiagonalCountsAsConnected);
+                int[] clusterCells = FindConnectedComponent(board, kind, rules.DiagonalCountsAsConnected);
+                bool cluster = clusterCells != null;
                 LineKind lineKind;
-                bool line = TryFindLine(board, kind, out lineKind);
+                int[] lineCells = TryFindLine(board, kind, out lineKind);
+                bool line = lineCells != null;
+
+                // 패턴을 이룬 칸을 그대로 실어 보낸다. 화면이 "직선이라서 터졌다"를
+                // 형태로 그리려면 어느 줄이었는지가 필요하고, 그건 판정만 알고 있다.
+                int[] fullBoardCells = fullBoard ? CellsOf(board, kind) : null;
 
                 if (!rules.AllowMultiplePatternsPerKind)
                 {
                     if (fullBoard)
-                        matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
                     else if (cluster)
-                        matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                     else if (line)
-                        matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
                     else
-                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind));
+                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
                     continue;
                 }
 
                 // 업그레이드로 중복 패턴이 열린 경우에도 종류별 개수의 정화는 한 번이며,
                 // 각 성립 패턴을 별도 이벤트로 남겨 로그와 보상에 모두 반영한다.
                 if (fullBoard)
-                    matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
                 if (cluster)
-                    matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                 if (line)
-                    matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind));
-                matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind));
+                    matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
+                matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
             }
             return matches;
         }
 
-        private bool HasConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal)
+        /// <summary>
+        /// 4칸 이상 직교(또는 대각) 연결 덩어리를 찾아 **그 칸들을** 돌려준다. 없으면 null.
+        /// 여러 덩어리가 성립하면 가장 큰 것을 고른다 — 화면이 하나만 감쌀 수 있고,
+        /// 가장 큰 덩어리가 곧 이 판이 무너진 이유이기 때문이다.
+        /// </summary>
+        private int[] FindConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal)
         {
             var visited = new bool[SpinBoard.Cells];
             var queue = new int[SpinBoard.Cells];
+            int[] best = null;
 
             for (int start = 0; start < SpinBoard.Cells; start++)
             {
@@ -427,14 +440,12 @@ namespace Ascend.Prototype.Spin
 
                 int head = 0;
                 int tail = 0;
-                int componentSize = 0;
                 queue[tail++] = start;
                 visited[start] = true;
 
                 while (head < tail)
                 {
                     int index = queue[head++];
-                    componentSize++;
                     int neighbourCount = diagonal
                         ? SpinBoard.AllNeighbours(index, _neighbourBuffer)
                         : SpinBoard.OrthogonalNeighbours(index, _neighbourBuffer);
@@ -447,12 +458,21 @@ namespace Ascend.Prototype.Spin
                     }
                 }
 
-                if (componentSize >= 4) return true;
+                if (tail < 4 || (best != null && tail <= best.Length)) continue;
+
+                var component = new int[tail];
+                Array.Copy(queue, component, tail);
+                Array.Sort(component);   // 인덱스 오름차순 — 로그·테스트가 순서에 흔들리지 않게
+                best = component;
             }
-            return false;
+            return best;
         }
 
-        private static bool TryFindLine(SpinBoard board, SymbolKind kind, out LineKind lineKind)
+        /// <summary>
+        /// 3칸 직선을 찾아 **그 줄의 칸들을** 돌려준다. 없으면 null.
+        /// 여러 줄이 성립하면 <see cref="SpinBoard.Lines"/> 순서상 첫 줄을 쓴다(결정론).
+        /// </summary>
+        private static int[] TryFindLine(SpinBoard board, SymbolKind kind, out LineKind lineKind)
         {
             for (int i = 0; i < SpinBoard.Lines.Length; i++)
             {
@@ -460,11 +480,12 @@ namespace Ascend.Prototype.Spin
                 if (board[line[0]] != kind || board[line[1]] != kind || board[line[2]] != kind)
                     continue;
                 lineKind = SpinBoard.LineKinds[i];
-                return true;
+                // 원본 배열을 그대로 내보내면 소비자가 정렬·수정해 SpinBoard.Lines 를 오염시킨다.
+                return new[] { line[0], line[1], line[2] };
             }
 
             lineKind = LineKind.Column;
-            return false;
+            return null;
         }
 
         private static int[] CellsOf(SpinBoard board, SymbolKind kind)
@@ -481,11 +502,15 @@ namespace Ascend.Prototype.Spin
             public readonly PatternKind Pattern;
             public readonly LineKind LineKind;
 
-            public PatternMatch(SymbolKind kind, PatternKind pattern, LineKind lineKind)
+            /// <summary>패턴을 이룬 칸. 개수 정화는 모양이 없으므로 null.</summary>
+            public readonly int[] PatternCells;
+
+            public PatternMatch(SymbolKind kind, PatternKind pattern, LineKind lineKind, int[] patternCells)
             {
                 Kind = kind;
                 Pattern = pattern;
                 LineKind = lineKind;
+                PatternCells = patternCells;
             }
         }
     }

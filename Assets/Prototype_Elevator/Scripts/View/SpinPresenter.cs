@@ -34,6 +34,7 @@ namespace Ascend.Prototype.View
         }
 
         [SerializeField] private SpinBoardView _board;
+        [SerializeField] private PurifyMarkerView _markers;
         [SerializeField] private Tempo _tempo = Tempo.Standard;
 
         [Header("템포 (초)")]
@@ -71,6 +72,7 @@ namespace Ascend.Prototype.View
         private void Awake()
         {
             if (_board == null) _board = FindAnyObjectByType<SpinBoardView>();
+            if (_markers == null) _markers = FindAnyObjectByType<PurifyMarkerView>();
             ApplyTempoPreset();
         }
 
@@ -108,6 +110,7 @@ namespace Ascend.Prototype.View
             if (_playing != null) { StopCoroutine(_playing); _playing = null; }
             CurrentDepth = 0;
             CurrentCause = string.Empty;
+            _markers?.Clear();
             if (_board != null)
             {
                 _board.DrivenExternally = false;
@@ -169,6 +172,7 @@ namespace Ascend.Prototype.View
 
             _board.ShowBoard(resolution.FinalBoard);
             _board.ClearHighlights();
+            _markers?.Clear();
             _board.DrivenExternally = false;
             CurrentDepth = 0;
             CurrentCause = string.Empty;
@@ -208,13 +212,20 @@ namespace Ascend.Prototype.View
                 float phase = Mathf.Clamp01(elapsed / Mathf.Max(0.0001f, duration));
                 float wave = Mathf.Abs(Mathf.Sin(phase * Mathf.PI * pulses));
 
+                // 맥동은 "어느 칸이" 터졌는지, 표식은 "왜" 터졌는지를 말한다.
+                // 맥동만 있으면 정지 화면에서 개수·직선·연결이 전부 같아 보인다(B-2.6).
+                _markers?.Begin();
                 foreach (PurifyEvent purify in step.Purifies)
                 {
-                    if (purify.Cells == null) continue;
-                    foreach (int cell in purify.Cells) _board.SetHighlight(cell, wave);
+                    if (purify.Cells != null)
+                        foreach (int cell in purify.Cells) _board.SetHighlight(cell, wave);
+                    _markers?.Add(in purify, wave);
                 }
+                _markers?.End();
                 yield return null;
             }
+
+            _markers?.Clear();
         }
 
         private static int PulseCountFor(PatternKind pattern)

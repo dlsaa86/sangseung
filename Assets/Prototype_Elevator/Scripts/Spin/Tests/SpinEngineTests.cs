@@ -39,6 +39,11 @@ namespace Ascend.Prototype.Spin.Tests
             Run("증식체 잔류가 다음 스핀 가중치를 올림", TestProliferatorResidualWeight, ref passed, ref failed, report);
             Run("계약이 네 값을 함께 움직임", TestContractApplication, ref passed, ref failed, report);
             Run("로그 한 줄로 스핀 재현", TestLogLineReproduction, ref passed, ref failed, report);
+            Run("직선 패턴이 그 줄의 3칸을 보고", TestLinePatternCells, ref passed, ref failed, report);
+            Run("연결 패턴이 덩어리 칸을 보고", TestClusterPatternCells, ref passed, ref failed, report);
+            Run("개수 정화는 모양 칸이 없다", TestScatteredHasNoPatternCells, ref passed, ref failed, report);
+            Run("잭팟은 9칸을 모양으로 보고", TestFullBoardPatternCells, ref passed, ref failed, report);
+            Run("패턴 칸 보고가 SpinBoard.Lines 를 오염시키지 않음", TestPatternCellsDoNotAliasLines, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Spin Engine Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -598,6 +603,120 @@ namespace Ascend.Prototype.Spin.Tests
             int end = start;
             while (end < line.Length && (char.IsDigit(line[end]) || (end == start && line[end] == '-'))) end++;
             return int.TryParse(line.Substring(start, end - start), out int value) ? value : int.MinValue;
+        }
+
+
+        // ── 패턴 칸 보고 (화면이 "왜 터졌는가"를 형태로 그리기 위한 데이터) ──
+
+        private static string TestLinePatternCells()
+        {
+            // 세로줄(통관 0)에 흡수체 3개 + 다른 곳에 1개. 정화된 칸은 4개지만
+            // 패턴을 이룬 칸은 그 줄의 3개여야 한다.
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.Absorber,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.Absorber);
+            SpinResolution result = Resolve(board, rules);
+
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Pattern != PatternKind.Line) return $"패턴 {purify.Pattern}";
+            if (purify.Cells.Length != 4) return $"정화 칸 {purify.Cells.Length}, 기대 4";
+            if (purify.PatternCells == null) return "PatternCells 가 null";
+            if (purify.PatternCells.Length != 3)
+                return $"모양 칸 {purify.PatternCells.Length}, 기대 3";
+
+            foreach (int cell in purify.PatternCells)
+            {
+                if (board[cell] != SymbolKind.Absorber) return $"모양 칸 {cell} 이 흡수체가 아님";
+                if (SpinBoard.ColumnOf(cell) != 0) return $"모양 칸 {cell} 이 통관 0 이 아님";
+            }
+            if (purify.Line != LineKind.Column) return $"라인 종류 {purify.Line}";
+            return null;
+        }
+
+        private static string TestClusterPatternCells()
+        {
+            // 흡수체 4개가 직교로 붙은 덩어리 + 떨어진 1개. 덩어리 칸만 보고해야 한다.
+            SpinRuleSet rules = SpinRuleSet.CreateDefault();
+            rules.MaxCascadeDepth = 1;
+            SpinBoard board = Board(
+                SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.NormalSoul,
+                SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.Absorber);
+            SpinResolution result = Resolve(board, rules);
+
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Pattern != PatternKind.Cluster) return $"패턴 {purify.Pattern}";
+            if (purify.Cells.Length != 5) return $"정화 칸 {purify.Cells.Length}, 기대 5";
+            if (purify.PatternCells == null) return "PatternCells 가 null";
+            if (purify.PatternCells.Length != 4)
+                return $"덩어리 칸 {purify.PatternCells.Length}, 기대 4";
+
+            // 인덱스 0,1,3,4 가 붙어 있는 네 칸. 8 번은 떨어져 있으므로 들어오면 안 된다.
+            var expected = new[] { 0, 1, 3, 4 };
+            for (int i = 0; i < expected.Length; i++)
+                if (purify.PatternCells[i] != expected[i])
+                    return $"덩어리 칸 {string.Join(",", purify.PatternCells)}, 기대 {string.Join(",", expected)}";
+            return null;
+        }
+
+        private static string TestScatteredHasNoPatternCells()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinResolution result = Resolve(Board(
+                SymbolKind.Absorber,   SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.Absorber,   SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.Absorber,   SymbolKind.NormalSoul), rules);
+
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Pattern != PatternKind.Scattered) return $"패턴 {purify.Pattern}";
+            // 흩어진 정화는 그릴 모양이 없다. 빈 값이어야 화면이 선을 잘못 긋지 않는다.
+            if (purify.PatternCells != null && purify.PatternCells.Length > 0)
+                return $"모양 칸이 {purify.PatternCells.Length}개 보고됨";
+            return null;
+        }
+
+        private static string TestFullBoardPatternCells()
+        {
+            SpinRuleSet rules = BoardRules();
+            rules.Weights[SymbolKind.NormalSoul] = 1f;
+            rules.Weights[SymbolKind.Absorber] = 0f;
+            rules.Weights[SymbolKind.Proliferator] = 0f;
+            SpinResolution result = Resolve(Board(
+                SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.Absorber,
+                SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.Absorber,
+                SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.Absorber), rules);
+
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Pattern != PatternKind.FullBoard) return $"패턴 {purify.Pattern}";
+            if (purify.PatternCells == null || purify.PatternCells.Length != 9)
+                return $"모양 칸 {purify.PatternCells?.Length ?? 0}, 기대 9";
+            return null;
+        }
+
+        private static string TestPatternCellsDoNotAliasLines()
+        {
+            // 보고된 배열이 SpinBoard.Lines 원본이면, 소비자가 정렬만 해도
+            // 이후 모든 판정의 직선 정의가 조용히 바뀐다.
+            SpinRuleSet rules = BoardRules();
+            SpinResolution result = Resolve(Board(
+                SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.Absorber,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul), rules);
+
+            int[] reported = result.Steps[0].Purifies[0].PatternCells;
+            foreach (int[] line in SpinBoard.Lines)
+                if (ReferenceEquals(reported, line))
+                    return "보고된 배열이 SpinBoard.Lines 원본과 같은 참조다";
+
+            // 실제로 망가뜨려 본 뒤 원본이 멀쩡한지 확인한다.
+            int[] before = { SpinBoard.Lines[0][0], SpinBoard.Lines[0][1], SpinBoard.Lines[0][2] };
+            reported[0] = -999;
+            for (int i = 0; i < 3; i++)
+                if (SpinBoard.Lines[0][i] != before[i])
+                    return "보고 배열을 수정했더니 SpinBoard.Lines 가 바뀌었다";
+            return null;
         }
 
         private static SpinResolution Resolve(SpinBoard board, SpinRuleSet rules)

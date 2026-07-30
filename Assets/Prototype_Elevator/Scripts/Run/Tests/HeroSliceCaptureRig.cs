@@ -105,6 +105,9 @@ namespace Ascend.Prototype.Run.Tests
             // ── 패스 C: 5연쇄 이상 ──
             yield return StartCoroutine(PassC(run, bridge, presenter, lever, panel));
 
+            // ── 패스 D: 직선 패턴 표식 ──
+            yield return StartCoroutine(PassD(run, bridge, presenter, lever, panel));
+
             WriteManifest();
             Stop();
         }
@@ -248,6 +251,47 @@ namespace Ascend.Prototype.Run.Tests
 
             if (!captured)
                 _manifest.AppendLine("07_cascade_deep : 실패 — 4단계 이상 연쇄를 잡지 못했다");
+        }
+
+        /// <summary>
+        /// 직선 정화의 표식을 잡는다. 연결(패스 C)과 나란히 놓고 보면 "형태가 다른가"를
+        /// 판정할 수 있다 — `.claude/visual-criteria.md` B-2.6 이 요구하는 비교다.
+        ///
+        /// 시드 1 / 계약 없음 / 첫 스핀에서 대각선 [0,4,8] 이 성립한다(헤드리스 탐색 결과).
+        /// </summary>
+        private IEnumerator PassD(RunSessionBehaviour run, RouletteInteractionBridge bridge,
+                                  SpinPresenter presenter, InteractableLever lever,
+                                  InteractableContractPanel panel)
+        {
+            const int seed = 1;
+            run.ResetRun(seed);
+            yield return null;
+            yield return null;
+
+            yield return CycleContractTo(bridge, panel, 0);
+            lever.Interact(gameObject);
+            yield return null;
+            lever.Interact(gameObject);
+            yield return null;
+
+            bool captured = false;
+            float deadline = Time.realtimeSinceStartup + 30f;
+            while (presenter != null && presenter.IsPresenting &&
+                   Time.realtimeSinceStartup < deadline && !captured)
+            {
+                // 표식은 정화 맥동 동안에만 서 있다. 그 창을 놓치면 빈 판만 찍힌다.
+                if (!string.IsNullOrEmpty(presenter.CurrentCause) &&
+                    presenter.CurrentCause.Contains("직선"))
+                {
+                    yield return Shot("08_pattern_line", BoardFront, seed,
+                                      $"직선 정화 표식 — {presenter.CurrentCause}", null);
+                    captured = true;
+                }
+                yield return null;
+            }
+
+            if (!captured)
+                _manifest.AppendLine("08_pattern_line : 실패 — 직선 정화 순간을 잡지 못했다");
         }
 
         // ── 조작 헬퍼 ──

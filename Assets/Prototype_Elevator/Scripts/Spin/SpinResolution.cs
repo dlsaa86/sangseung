@@ -16,6 +16,18 @@ namespace Ascend.Prototype.Spin
         /// <summary>정화된 칸 인덱스. 개수 정화는 보드 전체의 해당 종류 칸이 전부 들어간다.</summary>
         public int[] Cells;
 
+        /// <summary>
+        /// **패턴을 이룬** 칸. `Cells`(정화된 전부)와 다르다.
+        ///
+        /// 직선이면 그 줄의 3칸, 연결이면 덩어리를 이룬 칸, 잭팟이면 9칸이다.
+        /// 개수 정화(Scattered)는 모양이 없으므로 비어 있다.
+        ///
+        /// 이 필드가 없으면 "왜 터졌는가"를 화면이 형태로 표시할 수 없다.
+        /// 뷰가 보드를 다시 훑어 직선·덩어리를 찾는 것은 판정의 두 번째 구현이 되므로 금지다
+        /// (`TECH_SPEC.md` §5 "UI와 연출은 SpinResult를 소비한다").
+        /// </summary>
+        public int[] PatternCells;
+
         /// <summary>직선 패턴일 때 어떤 줄이었는지. 그 외에는 의미 없음.</summary>
         public LineKind Line;
 

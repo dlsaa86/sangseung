@@ -138,8 +138,25 @@ namespace Ascend.Prototype.EditorTools
             var presenter = run.GetComponent<SpinPresenter>();
             if (presenter == null) presenter = run.gameObject.AddComponent<SpinPresenter>();
 
+            // 정화 표식은 전용 오브젝트에 둔다. 막대 풀을 자식으로 만들기 때문에
+            // 런 오브젝트에 붙이면 하이라키가 막대 28개로 덮인다.
+            Transform markerRoot = GameObject.Find("PurifyMarkers")?.transform;
+            if (markerRoot == null)
+            {
+                var go = new GameObject("PurifyMarkers");
+                markerRoot = go.transform;
+            }
+            var markers = markerRoot.GetComponent<PurifyMarkerView>();
+            if (markers == null) markers = markerRoot.gameObject.AddComponent<PurifyMarkerView>();
+
+            var boardView = Object.FindAnyObjectByType<SpinBoardView>();
+            var mso = new SerializedObject(markers);
+            mso.FindProperty("_board").objectReferenceValue = boardView;
+            mso.ApplyModifiedPropertiesWithoutUndo();
+
             var so = new SerializedObject(presenter);
-            so.FindProperty("_board").objectReferenceValue = Object.FindAnyObjectByType<SpinBoardView>();
+            so.FindProperty("_board").objectReferenceValue = boardView;
+            so.FindProperty("_markers").objectReferenceValue = markers;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
