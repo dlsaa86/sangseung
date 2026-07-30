@@ -75,8 +75,9 @@ namespace Ascend.Prototype.View
 
             float ratio = floor.RequiredPower > 0f ? floor.Power / floor.RequiredPower : 0f;
 
+            // "위험 위험"으로 읽히던 것을 고친다 — 항목 이름과 값이 같은 단어였다.
             SetText(_floorLabel, $"{floor.Plan.Floor}층 / {run.Floors.LastFloor}   " +
-                                 $"위험 {(_risk != null ? _risk.Level.DisplayName() : "—")}");
+                                 $"위험도 {(_risk != null ? _risk.Level.DisplayName() : "—")}");
 
             SetText(_powerLabel, $"전력 {floor.Power:F0} / 요구 {floor.RequiredPower:F0}   " +
                                  $"{ratio:P0}  {floor.CurrentBand.DisplayName()}");
@@ -88,18 +89,19 @@ namespace Ascend.Prototype.View
 
         private string BuildStatus(FloorSession floor)
         {
+            // **두 줄을 넘기지 않는다.** 세 줄이 되면 아래의 전력 게이지를 덮어
+            // 잔류 경고와 눈금이 서로를 가린다 — 실제로 첫 캡처에서 그렇게 나왔다.
             _text.Clear();
             _text.Append($"스핀 {floor.SpinsRemaining}/{floor.Plan.Spins}");
             if (floor.ExtraSpinsTaken > 0) _text.Append($"   과수확 {floor.ExtraSpinsTaken}회");
+            if (floor.Phase == FloorPhase.Decision && floor.CanBank && floor.SpinsRemaining > 0)
+                _text.Append($"   판돈 {floor.PendingAnte:F0}");
             _text.AppendLine();
 
             // 잔류 저항은 "숫자만 작게" 두면 위협으로 안 읽힌다(visual-criteria B-3.10).
             // 그래서 계기판 본문에 원인 문장으로 올린다.
             ResidualState residual = floor.Residual;
             _text.Append(residual.IsClean ? "잔류 없음" : residual.Describe());
-
-            if (floor.Phase == FloorPhase.Decision && floor.CanBank && floor.SpinsRemaining > 0)
-                _text.Append($"\n확정 가능 / 과수확 판돈 {floor.PendingAnte:F0}");
             return _text.ToString();
         }
 

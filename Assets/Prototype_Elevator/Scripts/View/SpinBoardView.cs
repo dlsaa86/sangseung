@@ -40,6 +40,21 @@ namespace Ascend.Prototype.View
         /// <summary>칸별 하이라이트 세기(0~1). 연출자가 프레임마다 갱신한다.</summary>
         private readonly float[] _highlight = new float[SpinBoard.Cells];
 
+        /// <summary>
+        /// 칸별 심볼 자식과 **씬에서 저작된 원래 스케일**.
+        ///
+        /// 캐시가 필요한 이유: 심볼들은 저마다 다른 크기로 배치돼 있다(구 0.17 / 정육면체 0.16 /
+        /// 캡슐 0.15 — 실루엣 대비를 위한 값이다). 하이라이트가 이걸 모른 채 스케일을 1로
+        /// 덮어쓰면 심볼이 6배로 부풀어 결과판을 통째로 가린다. 실제로 첫 캡처에서 그렇게 나왔다.
+        /// </summary>
+        private struct SymbolSlot
+        {
+            public Transform Child;
+            public Vector3 BaseScale;
+            public Renderer Renderer;
+        }
+
+        private SymbolSlot[][] _slots;
         private MaterialPropertyBlock _block;
         private int _lastSpinCount = -1;
         private int _lastFloor = -1;
@@ -55,7 +70,31 @@ namespace Ascend.Prototype.View
         {
             _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
+            CacheSlots();
             ClearAll();
+        }
+
+        private void CacheSlots()
+        {
+            _slots = new SymbolSlot[_cells.Length][];
+            for (int i = 0; i < _cells.Length; i++)
+            {
+                Transform cell = _cells[i];
+                if (cell == null) { _slots[i] = System.Array.Empty<SymbolSlot>(); continue; }
+
+                var slots = new SymbolSlot[cell.childCount];
+                for (int c = 0; c < cell.childCount; c++)
+                {
+                    Transform child = cell.GetChild(c);
+                    slots[c] = new SymbolSlot
+                    {
+                        Child = child,
+                        BaseScale = child.localScale,
+                        Renderer = child.GetComponent<Renderer>(),
+                    };
+                }
+                _slots[i] = slots;
+            }
         }
 
         private void Update()
@@ -119,22 +158,26 @@ namespace Ascend.Prototype.View
         /// </summary>
         private void ApplyHighlights()
         {
-            for (int i = 0; i < _cells.Length; i++)
+            if (_slots == null) return;
+
+            for (int i = 0; i < _slots.Length; i++)
             {
-                Transform cell = _cells[i];
-                if (cell == null) continue;
                 float amount = _highlight[i];
+                float scale = Mathf.Lerp(1f, _highlightScale, amount);
 
-                foreach (Transform child in cell)
+                SymbolSlot[] slots = _slots[i];
+                for (int s = 0; s < slots.Length; s++)
                 {
-                    if (!child.gameObject.activeSelf) continue;
-                    child.localScale = Vector3.one * Mathf.Lerp(1f, _highlightScale, amount);
+                    SymbolSlot slot = slots[s];
+                    if (slot.Child == null || !slot.Child.gameObject.activeSelf) continue;
 
-                    var renderer = child.GetComponent<Renderer>();
-                    if (renderer == null) continue;
-                    renderer.GetPropertyBlock(_block);
+                    // 저작된 스케일에 **곱한다**. 덮어쓰지 않는다.
+                    slot.Child.localScale = slot.BaseScale * scale;
+
+                    if (slot.Renderer == null) continue;
+                    slot.Renderer.GetPropertyBlock(_block);
                     _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
-                    renderer.SetPropertyBlock(_block);
+                    slot.Renderer.SetPropertyBlock(_block);
                 }
             }
         }

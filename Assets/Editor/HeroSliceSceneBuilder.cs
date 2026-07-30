@@ -41,6 +41,7 @@ namespace Ascend.Prototype.EditorTools
             DisableDeadGrayboxView();
             BuildPowerGauge();
             EnsureInstrumentPanelView();
+            WidenPanelLabels();
             EnsureRiskStateView(car.transform);
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
@@ -102,8 +103,7 @@ namespace Ascend.Prototype.EditorTools
             GameObject lockLight = Box(root.transform, "LockLight",
                 new Vector3(0f, 0.30f, -0.125f), new Vector3(0.13f, 0.07f, 0.02f), light);
 
-            Label(root.transform, "OverharvestLabel", new Vector3(0f, 0.52f, -0.13f),
-                "과수확", 0.16f, TextAlignmentOptions.Center);
+            Label(root.transform, "OverharvestLabel", new Vector3(0f, 0.50f, -0.14f), "과수확");
 
             var lever = root.AddComponent<InteractableOverharvestLever>();
             var so = new SerializedObject(lever);
@@ -354,23 +354,60 @@ namespace Ascend.Prototype.EditorTools
             return go;
         }
 
-        private static void Label(Transform parent, string name, Vector3 localPosition,
-                                  string text, float size, TextAlignmentOptions align)
+        /// <summary>
+        /// 3D 라벨. 기존 계기판 라벨과 **같은 규약**을 쓴다 — 스케일 0.07 / fontSize 10.
+        ///
+        /// 처음에는 fontSize 를 월드 단위로 계산하고 Y 180° 를 걸었다가, 캡처에서 글자가
+        /// 벽 하나를 덮고 좌우가 뒤집혀 나왔다. TMP 3D 텍스트는 회전 없이 이미 방 안쪽을
+        /// 향하고, 크기는 transform 스케일로 잡는 것이 이 씬의 기존 방식이다.
+        /// </summary>
+        private static void Label(Transform parent, string name, Vector3 localPosition, string text)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPosition;
-            // 뒷벽에 붙은 글자는 방 안쪽(-Z)을 봐야 한다.
-            go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            go.transform.localScale = Vector3.one * 0.05f;
 
             var tmp = go.AddComponent<TextMeshPro>();
             tmp.text = text;
-            tmp.fontSize = size * 40f;
-            tmp.alignment = align;
+            tmp.fontSize = 10f;
+            tmp.alignment = TextAlignmentOptions.Center;
             tmp.enableWordWrapping = false;
             var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
             if (font != null) tmp.font = font;
-            tmp.rectTransform.sizeDelta = new Vector2(1.2f, 0.3f);
+            tmp.rectTransform.sizeDelta = new Vector2(5f, 1.2f);
+        }
+
+        /// <summary>
+        /// 계기판 라벨이 오른쪽에서 잘려 "위험 안정"이 "위험 안"으로 보이고 있었다.
+        /// rect 가 좁아서 생긴 문제라 폭만 넓힌다.
+        /// </summary>
+        private static void WidenPanelLabels()
+        {
+            Transform panel = GameObject.Find("InstrumentPanel")?.transform;
+            if (panel == null) return;
+
+            // 세로 위치도 다시 잡는다. 상태 라벨(2줄)이 게이지 눈금 위에서 끝나야 한다.
+            var rows = new (string Name, float Y)[]
+            {
+                ("FloorLabel", 1.76f),
+                ("PowerLabel", 1.62f),
+                ("StatusLabel", 1.50f),
+            };
+
+            foreach ((string name, float y) in rows)
+            {
+                var tmp = Tmp(panel, name);
+                if (tmp == null) continue;
+                tmp.rectTransform.sizeDelta = new Vector2(26f, 6f);
+                tmp.enableWordWrapping = false;
+                tmp.overflowMode = TextOverflowModes.Overflow;
+                tmp.alignment = TextAlignmentOptions.TopLeft;
+
+                Vector3 position = tmp.transform.localPosition;
+                position.y = y;
+                tmp.transform.localPosition = position;
+            }
         }
 
         private static Material Mat(string name)

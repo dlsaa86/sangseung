@@ -59,5 +59,53 @@ namespace Ascend.Prototype.EditorTools
             EditorApplication.EnterPlaymode();
             Debug.Log($"[상승] PlayMode 검증 시작. 끝나면 자동 종료하고 {HeroSliceAutoPilot.ReportPath} 에 남긴다.");
         }
+
+        [MenuItem("Ascend/Capture Hero Slice Set")]
+        public static void RunCaptureSet()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string manifest = Path.Combine(Directory.GetCurrentDirectory(), HeroSliceCaptureRig.ManifestPath);
+            if (File.Exists(manifest)) File.Delete(manifest);
+
+            HeroSliceCaptureRig.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 고정 캡처 시작 → {HeroSliceCaptureRig.OutputDirectory}");
+        }
+
+        [MenuItem("Ascend/Measure Hero Slice Performance")]
+        public static void RunPerfProbe()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string report = Path.Combine(Directory.GetCurrentDirectory(), HeroSlicePerfProbe.ReportPath);
+            if (File.Exists(report)) File.Delete(report);
+
+            HeroSlicePerfProbe.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 성능 측정 시작 → {HeroSlicePerfProbe.ReportPath}");
+        }
     }
 }
