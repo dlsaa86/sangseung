@@ -1,10 +1,12 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Risk;
 using Ascend.Prototype.Run;
+using Ascend.Prototype.UI;
 using Ascend.Prototype.View;
 
 namespace Ascend.Prototype.EditorTools
@@ -43,6 +45,7 @@ namespace Ascend.Prototype.EditorTools
             EnsureInstrumentPanelView();
             WidenPanelLabels();
             EnsureRiskStateView(car.transform);
+            BuildScreenUi();
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
@@ -342,6 +345,158 @@ namespace Ascend.Prototype.EditorTools
             }
         }
 
+        // ── 화면 UI ──
+
+        private const float UiWidth = 1920f;
+        private const float UiHeight = 1080f;
+
+        /// <summary>
+        /// 화면 UI를 UGUI로 세운다. IMGUI HUD를 대체한다.
+        ///
+        /// 배치 원칙은 `VISUAL_SPEC.md` §5의 우선순위다. 화면에는 **공간이 담을 수 없는 것만**
+        /// 남긴다 — 전력·요구·스핀·잔류·계약은 이미 벽면 계기판이 말하고 있으므로 올리지 않는다.
+        /// </summary>
+        private static void BuildScreenUi()
+        {
+            Replace(null, "GameHUD", out GameObject root);
+
+            var canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 10;   // 조준 HUD 위
+
+            var scaler = root.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(UiWidth, UiHeight);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            // 레이캐스터를 붙이지 않는다. 이 UI는 클릭 대상이 아니고,
+            // 붙이면 1인칭 조준 클릭을 가로챈다.
+
+            // 지금 무엇을 할 수 있는가 — 화면 아래 가운데, 한 줄
+            GameObject hint = Panel(root.transform, "Hint",
+                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 132f),
+                new Vector2(1100f, 46f));
+            TextMeshProUGUI hintText = Label(hint.transform, "HintText", 26f,
+                TextAlignmentOptions.Center, new Color(0.92f, 0.93f, 0.96f));
+
+            // 지금 무엇 때문에 터졌는가 — 화면 위 가운데, 연출 중에만
+            GameObject cascade = Panel(root.transform, "Cascade",
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -96f),
+                new Vector2(1200f, 130f));
+            TextMeshProUGUI depthText = Label(cascade.transform, "DepthText", 54f,
+                TextAlignmentOptions.Top, new Color(1f, 0.88f, 0.58f));
+            TextMeshProUGUI causeText = Label(cascade.transform, "CauseText", 28f,
+                TextAlignmentOptions.Bottom, new Color(0.88f, 0.90f, 0.94f));
+
+            // 층 결과 — 사고 기록기 요약
+            GameObject result = Panel(root.transform, "Result",
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 40f),
+                new Vector2(1000f, 420f));
+            TextMeshProUGUI resultTitle = Label(result.transform, "ResultTitle", 62f,
+                TextAlignmentOptions.Top, new Color(1f, 0.92f, 0.72f));
+            TextMeshProUGUI resultBody = Label(result.transform, "ResultBody", 28f,
+                TextAlignmentOptions.Center, new Color(0.90f, 0.92f, 0.96f));
+
+            // 디버그 — 좌하단, 기본 꺼짐
+            GameObject debug = Panel(root.transform, "Debug",
+                new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f),
+                new Vector2(760f, 210f));
+            var debugRect = debug.GetComponent<RectTransform>();
+            debugRect.pivot = new Vector2(0f, 0f);
+            TextMeshProUGUI debugText = Label(debug.transform, "DebugText", 22f,
+                TextAlignmentOptions.BottomLeft, new Color(0.80f, 0.86f, 0.92f));
+
+            var hud = root.AddComponent<GameHudView>();
+            var hudSo = new SerializedObject(hud);
+            hudSo.FindProperty("_run").objectReferenceValue = Object.FindAnyObjectByType<RunSessionBehaviour>();
+            hudSo.FindProperty("_bridge").objectReferenceValue = Object.FindAnyObjectByType<RouletteInteractionBridge>();
+            hudSo.FindProperty("_presenter").objectReferenceValue = Object.FindAnyObjectByType<SpinPresenter>();
+            hudSo.FindProperty("_recorder").objectReferenceValue = Object.FindAnyObjectByType<AccidentRecorder>();
+            hudSo.FindProperty("_hintGroup").objectReferenceValue = hint.GetComponent<CanvasGroup>();
+            hudSo.FindProperty("_hintText").objectReferenceValue = hintText;
+            hudSo.FindProperty("_cascadeGroup").objectReferenceValue = cascade.GetComponent<CanvasGroup>();
+            hudSo.FindProperty("_cascadeDepthText").objectReferenceValue = depthText;
+            hudSo.FindProperty("_cascadeCauseText").objectReferenceValue = causeText;
+            hudSo.FindProperty("_resultGroup").objectReferenceValue = result.GetComponent<CanvasGroup>();
+            hudSo.FindProperty("_resultTitleText").objectReferenceValue = resultTitle;
+            hudSo.FindProperty("_resultBodyText").objectReferenceValue = resultBody;
+            hudSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var panel = root.AddComponent<DebugPanelView>();
+            var panelSo = new SerializedObject(panel);
+            panelSo.FindProperty("_run").objectReferenceValue = Object.FindAnyObjectByType<RunSessionBehaviour>();
+            panelSo.FindProperty("_bridge").objectReferenceValue = Object.FindAnyObjectByType<RouletteInteractionBridge>();
+            panelSo.FindProperty("_risk").objectReferenceValue = Object.FindAnyObjectByType<RiskStateView>();
+            panelSo.FindProperty("_group").objectReferenceValue = debug.GetComponent<CanvasGroup>();
+            panelSo.FindProperty("_bodyText").objectReferenceValue = debugText;
+            panelSo.FindProperty("_visible").boolValue = false;
+            panelSo.ApplyModifiedPropertiesWithoutUndo();
+
+            RemoveLegacyImguiHud();
+        }
+
+        /// <summary>
+        /// 옛 IMGUI HUD 컴포넌트를 씬에서 뗀다. 남겨 두면 UGUI와 같은 정보를 두 벌 그리고,
+        /// 프레임당 GC 할당도 그대로 남는다.
+        /// </summary>
+        private static void RemoveLegacyImguiHud()
+        {
+            var run = Object.FindAnyObjectByType<RunSessionBehaviour>();
+            if (run == null) return;
+
+            foreach (MonoBehaviour behaviour in run.GetComponents<MonoBehaviour>())
+            {
+                if (behaviour == null) continue;
+                if (behaviour.GetType().Name != "RouletteHud") continue;
+                Object.DestroyImmediate(behaviour);
+                Debug.Log("[상승] 옛 IMGUI HUD(RouletteHud) 제거 — UGUI GameHudView 로 대체.");
+            }
+        }
+
+        private static GameObject Panel(Transform parent, string name,
+                                        Vector2 anchorMin, Vector2 anchorMax,
+                                        Vector2 anchoredPosition, Vector2 size)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasGroup));
+            go.transform.SetParent(parent, false);
+
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            // 클릭을 먹지 않는다 — 1인칭 조준이 화면 UI에 가리면 안 된다.
+            go.GetComponent<CanvasGroup>().blocksRaycasts = false;
+            return go;
+        }
+
+        private static TextMeshProUGUI Label(Transform parent, string name, float size,
+                                             TextAlignmentOptions alignment, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var label = go.AddComponent<TextMeshProUGUI>();
+            label.fontSize = size;
+            label.alignment = alignment;
+            label.color = color;
+            label.raycastTarget = false;
+            label.text = string.Empty;
+
+            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+            if (font != null) label.font = font;
+            return label;
+        }
+
         private static TMP_Text Tmp(Transform parent, string name)
         {
             Transform t = parent.Find(name);
@@ -350,12 +505,20 @@ namespace Ascend.Prototype.EditorTools
 
         // ── 헬퍼 ──
 
+        /// <summary>parent가 null이면 씬 루트에 만든다.</summary>
         private static void Replace(Transform parent, string name, out GameObject created)
         {
-            Transform existing = parent.Find(name);
+            Transform existing = parent != null ? parent.Find(name) : FindSceneRoot(name);
             if (existing != null) Object.DestroyImmediate(existing.gameObject);
             created = new GameObject(name);
-            created.transform.SetParent(parent, false);
+            if (parent != null) created.transform.SetParent(parent, false);
+        }
+
+        private static Transform FindSceneRoot(string name)
+        {
+            foreach (GameObject root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+                if (root.name == name) return root.transform;
+            return null;
         }
 
         private static GameObject Box(Transform parent, string name, Vector3 localPosition,

@@ -6,6 +6,7 @@ using UnityEngine;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Risk;
 using Ascend.Prototype.Spin;
+using Ascend.Prototype.UI;
 using Ascend.Prototype.View;
 
 namespace Ascend.Prototype.Run.Tests
@@ -122,6 +123,22 @@ namespace Ascend.Prototype.Run.Tests
             Check("계약 확정이 스핀을 소비하지 않는다", floor.SpinsUsed == 0, floor.SpinsUsed.ToString());
             Check("확정 후 계약 패널 비활성", !panel.CanInteract, "계약을 다시 바꿀 수 있다");
 
+            // ── 3b. 화면 UI ──
+            var hud = FindAnyObjectByType<GameHudView>();
+            var debugPanel = FindAnyObjectByType<DebugPanelView>();
+            Check("화면 UI(GameHudView)가 있다", hud != null, "없음");
+            Check("디버그 패널이 분리되어 있다", debugPanel != null, "없음");
+            if (debugPanel != null)
+                Check("디버그 패널 기본 꺼짐", !debugPanel.IsVisible,
+                      "기본으로 켜져 있으면 캡처·성능에 상시 끼어든다");
+            if (hud != null)
+            {
+                yield return null;
+                Check("안내 문구가 표시된다", hud.HintVisible && hud.HintCharacters > 0,
+                      $"visible={hud.HintVisible} chars={hud.HintCharacters}");
+                Check("층 결과는 아직 숨겨져 있다", !hud.ResultVisible, "층이 안 끝났는데 결과가 뜸");
+            }
+
             // ── 4. 첫 스핀 + 연출 중 입력 잠금 ──
             lever.Interact(gameObject);
             yield return null;
@@ -140,8 +157,22 @@ namespace Ascend.Prototype.Run.Tests
                 Check("연출 중 중복 입력이 상태를 바꾸지 않는다", floor.SpinsUsed == usedBefore,
                       $"{usedBefore} → {floor.SpinsUsed}");
 
+                if (hud != null)
+                {
+                    yield return null;
+                    Check("연출 중 연쇄 표시가 즉시 뜬다", hud.CascadeVisible && hud.CascadeCharacters > 0,
+                          $"visible={hud.CascadeVisible} chars={hud.CascadeCharacters}");
+                }
+
                 yield return WaitForPresentation(presenter);
                 Check("연출 종료 후 입력 복구", !bridge.IsLocked, "잠금이 안 풀린다");
+
+                if (hud != null)
+                {
+                    yield return WaitSeconds(0.6f);   // 페이드 아웃. 프레임 수로 세면 안 된다 —
+                                                      // 에디터는 1000fps 라 30프레임이 0.03초다.
+                    Check("연출이 끝나면 연쇄 표시가 사라진다", !hud.CascadeVisible, "계속 떠 있다");
+                }
             }
 
             // ── 5. 요구 전력까지 스핀 ──
@@ -255,6 +286,14 @@ namespace Ascend.Prototype.Run.Tests
                 }
             }
 
+            if (hud != null)
+            {
+                yield return WaitSeconds(0.6f);   // 페이드 인
+                Check("층 종료 후 결과가 표시된다", hud.ResultVisible && hud.ResultCharacters > 0,
+                      $"visible={hud.ResultVisible} chars={hud.ResultCharacters}");
+                Check("층 종료 후 안내 문구는 사라진다", !hud.HintVisible, "계속 떠 있다");
+            }
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
 
             Finish();
@@ -272,6 +311,16 @@ namespace Ascend.Prototype.Run.Tests
             float deadline = Time.realtimeSinceStartup + 30f;
             while (presenter.IsPresenting && Time.realtimeSinceStartup < deadline) yield return null;
             if (presenter.IsPresenting) Fail("연출 종료 대기", "30초 안에 끝나지 않음 — 연출이 멈춰 있다");
+        }
+
+        /// <summary>
+        /// 프레임 수가 아니라 **시간**으로 기다린다. 에디터 Play 는 1000fps 로도 돌기 때문에
+        /// "30프레임 대기"가 0.03초가 되어 페이드가 끝나기 전에 검사하게 된다.
+        /// </summary>
+        private static IEnumerator WaitSeconds(float seconds)
+        {
+            float deadline = Time.realtimeSinceStartup + seconds;
+            while (Time.realtimeSinceStartup < deadline) yield return null;
         }
 
         private IEnumerator WaitForCover(InteractableOverharvestLever lever)

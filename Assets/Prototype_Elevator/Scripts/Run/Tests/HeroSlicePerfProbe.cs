@@ -83,13 +83,13 @@ namespace Ascend.Prototype.Run.Tests
             // ── 2b. GC Alloc 범인 찾기 ──
             //
             // 숫자만 적고 "할당이 많다"로 끝내면 다음 세션이 처음부터 다시 조사한다.
-            // IMGUI 디버그 HUD를 끄고 같은 조건을 다시 재서 기여분을 분리한다.
-            var hud = FindAnyObjectByType<UI.RouletteHud>();
+            // 화면 UI를 끄고 같은 조건을 다시 재서 기여분을 분리한다.
+            var hud = FindAnyObjectByType<UI.GameHudView>();
             if (hud != null)
             {
                 hud.enabled = false;
                 for (int i = 0; i < 30; i++) yield return null;
-                yield return MeasureFrames("유휴 — IMGUI 디버그 HUD 끔", 180);
+                yield return MeasureFrames("유휴 — 화면 UI 끔", 180);
             }
 
             // ── 2c. 남은 바닥이 게임 코드인가, 에디터·URP인가 ──
@@ -475,7 +475,7 @@ namespace Ascend.Prototype.Run.Tests
                                                InteractableLever lever, string label,
                                                bool hudOn, bool markersOn)
         {
-            var hud = FindAnyObjectByType<UI.RouletteHud>();
+            var hud = FindAnyObjectByType<UI.GameHudView>();
             var markers = FindAnyObjectByType<PurifyMarkerView>();
             if (hud != null) hud.enabled = hudOn;
             if (markers != null) markers.enabled = markersOn;
@@ -536,16 +536,16 @@ namespace Ascend.Prototype.Run.Tests
         /// </summary>
         private IEnumerator MeasureHudContribution()
         {
-            var hud = FindAnyObjectByType<UI.RouletteHud>();
+            var hud = FindAnyObjectByType<UI.GameHudView>();
             if (hud == null) yield break;
 
             hud.enabled = true;
             for (int i = 0; i < 60; i++) yield return null;
-            yield return MeasureFrames("스핀 이후 — HUD 켬 (결과판 미러 포함)", 300);
+            yield return MeasureFrames("스핀 이후 — 화면 UI 켬", 300);
 
             hud.enabled = false;
             for (int i = 0; i < 60; i++) yield return null;
-            yield return MeasureFrames("스핀 이후 — HUD 끔", 300);
+            yield return MeasureFrames("스핀 이후 — 화면 UI 끔", 300);
 
             hud.enabled = true;
             for (int i = 0; i < 30; i++) yield return null;
@@ -564,7 +564,8 @@ namespace Ascend.Prototype.Run.Tests
                 if (found != null && found.enabled) { found.enabled = false; suspects.Add(found); }
             }
 
-            Disable<UI.RouletteHud>();
+            Disable<UI.GameHudView>();
+            Disable<UI.DebugPanelView>();
             Disable<Risk.RiskStateView>();
             Disable<InstrumentPanelView>();
             Disable<PurifyMarkerView>();

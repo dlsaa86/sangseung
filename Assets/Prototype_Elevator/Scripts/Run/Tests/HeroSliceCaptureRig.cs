@@ -129,6 +129,10 @@ namespace Ascend.Prototype.Run.Tests
             yield return Shot("03_contract_select", ContractWall, seed,
                               "계약 선택 — 출현률·보상·대가가 함께 걸린다", risk);
 
+            // 화면 UI는 Overlay 라 위 캡처들에 안 나온다. 따로 잡는다.
+            yield return ScreenShot("09_screen_ui_hint", Interior, seed,
+                                    "화면 UI — 계약 선택 안내 한 줄. 숫자는 계기판이 말한다");
+
             // 흡수체 계약으로 확정한 뒤 요구 전력까지 돌린다.
             yield return CycleContractTo(bridge, panel, 1);
             lever.Interact(gameObject);
@@ -292,6 +296,11 @@ namespace Ascend.Prototype.Run.Tests
 
             if (!captured)
                 _manifest.AppendLine("08_pattern_line : 실패 — 직선 정화 순간을 잡지 못했다");
+
+            // 연출 중 화면 UI(연쇄 배너)도 한 장.
+            if (presenter != null && presenter.IsPresenting)
+                yield return ScreenShot("10_screen_ui_cascade", BoardFront, seed,
+                                        "화면 UI — 연출 중 연쇄 단계와 발동 원인");
         }
 
         // ── 조작 헬퍼 ──
@@ -327,6 +336,54 @@ namespace Ascend.Prototype.Run.Tests
             if (presenter == null) yield break;
             float deadline = Time.realtimeSinceStartup + 30f;
             while (presenter.IsPresenting && Time.realtimeSinceStartup < deadline) yield return null;
+        }
+
+        /// <summary>
+        /// 화면 UI가 포함된 캡처. Screen Space Overlay 캔버스는 카메라의 RenderTexture에
+        /// **렌더되지 않으므로** 고정 시점 캡처(전용 카메라 → RT)에는 절대 나오지 않는다.
+        /// 그래서 화면 자체를 잡는다.
+        ///
+        /// 해상도가 게임 뷰 크기라 **고정 비교 세트가 아니다.** UI가 실제로 뜨는지 확인하는
+        /// 용도이고, 매니페스트에도 그렇게 적는다.
+        /// </summary>
+        private IEnumerator ScreenShot(string name, Pose pose, int seed, string note)
+        {
+            // 화면 캡처는 **플레이어 카메라**가 찍는다(전용 카메라가 아니다). UI만 맞고 뒤가
+            // 아무 데나 보이면 평가에 못 쓰므로, 플레이어 시점을 고정 좌표로 옮긴다.
+            Camera player = Camera.main;
+            Vector3 savedPosition = default;
+            Quaternion savedRotation = default;
+            if (player != null)
+            {
+                savedPosition = player.transform.position;
+                savedRotation = player.transform.rotation;
+                player.transform.position = pose.Position;
+                player.transform.rotation = Quaternion.LookRotation(pose.LookAt - pose.Position);
+            }
+
+            yield return null;
+            yield return new WaitForEndOfFrame();
+
+            Texture2D screen = ScreenCapture.CaptureScreenshotAsTexture();
+            try
+            {
+                string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), screen.EncodeToPNG());
+
+                _manifest.AppendLine($"{name,-34} 시드 {seed,-6} 화면 캡처 {screen.width}×{screen.height} " +
+                                     "(게임 뷰 해상도 — 고정 비교 세트 아님)");
+                _manifest.AppendLine($"{"",-34} {note}");
+            }
+            finally
+            {
+                Destroy(screen);
+                if (player != null)
+                {
+                    player.transform.position = savedPosition;
+                    player.transform.rotation = savedRotation;
+                }
+            }
         }
 
         // ── 캡처 ──
