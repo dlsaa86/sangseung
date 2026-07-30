@@ -14,6 +14,7 @@ namespace Ascend.Prototype.Run
         private readonly List<FloorResult> _results = new List<FloorResult>();
         private readonly BuildLoadout _loadout = new BuildLoadout();
         private readonly List<BuildItem> _lastDeparted = new List<BuildItem>();
+        private readonly List<FloorAscent> _ascents = new List<FloorAscent>();
         private ResidualState _residual;
         private FloorSession _current;
         private float _baseWeight;
@@ -47,8 +48,44 @@ namespace Ascend.Prototype.Run
             Money = startingMoney;
             _anteRatio = Math.Max(0f, anteRatio);
             _anteEscalation = Math.Max(0f, anteEscalation);
+
+            // 적재가 어느 경로로 바뀌든 현재 층이 즉시 안다. 호출부마다 갱신을 기억하게
+            // 하면 하나만 빠져도 무게와 요구 전력이 조용히 어긋난다 — 실제로 그렇게 됐다.
+            _loadout.Changed += OnLoadoutChanged;
+
             CurrentFloor = _floors.FirstFloor;
             CreateCurrentFloor();
+        }
+
+        private void OnLoadoutChanged() => _current?.RefreshLoad(_baseWeight);
+
+        /// <summary>
+        /// 한 층의 상승 정산. **클램프 뒤** 실제로 오른 층수와 실제로 지급한 돈을 담는다.
+        ///
+        /// `FloorResult.FloorsAscended`는 클램프 **전** 값이라 정산을 검증하는 데 쓸 수 없다.
+        /// 그 차이 때문에 이중 지급 회귀 테스트가 잘못된 기대값을 계산했고, 결국
+        /// 아무것도 검사하지 않는 단언으로 끝났다. 정산의 근거는 정산한 쪽이 남겨야 한다.
+        /// </summary>
+        public readonly struct FloorAscent
+        {
+            public readonly int FromFloor;
+            public readonly int FloorsAscended;
+            public readonly float ExcessPower;
+            public readonly float PowerPerExtraFloor;
+            public readonly float MoneyCredited;
+
+            public FloorAscent(int fromFloor, int floorsAscended, float excessPower,
+                float powerPerExtraFloor, float moneyCredited)
+            {
+                FromFloor = fromFloor;
+                FloorsAscended = floorsAscended;
+                ExcessPower = excessPower;
+                PowerPerExtraFloor = powerPerExtraFloor;
+                MoneyCredited = moneyCredited;
+            }
+
+            /// <summary>기본 1층을 넘어 추가로 산 층 수.</summary>
+            public int ExtraFloors => Math.Max(0, FloorsAscended - 1);
         }
 
         /// <summary>이 런의 층 구성. HUD가 "1층 중 1층"인지 "10층 중 3층"인지 표시할 때 쓴다.</summary>
@@ -66,6 +103,9 @@ namespace Ascend.Prototype.Run
 
         /// <summary>직전 층 도착에서 내린 승객. HUD와 사고 기록기가 읽는다.</summary>
         public IReadOnlyList<BuildItem> LastDeparted => _lastDeparted;
+
+        /// <summary>층별 상승 정산 기록. 클램프 뒤 실제 층수와 실제 지급액이 담긴다.</summary>
+        public IReadOnlyList<FloorAscent> Ascents => _ascents;
 
         /// <summary>기본 무게 + 적재 무게. 요구 전력과 위험 점수가 이 값을 본다.</summary>
         public float CarriedWeight => _baseWeight + _loadout.TotalWeight;
@@ -182,6 +222,7 @@ namespace Ascend.Prototype.Run
                 return;
             }
 
+            int from = CurrentFloor;
             int ascended = ClampAscent(CurrentFloor, result.FloorsAscended);
 
             // 도달 층은 건물 높이를 넘지 않는다. 10층 건물에서 "13층 도달"은 보고서에
@@ -199,7 +240,10 @@ namespace Ascend.Prototype.Run
             // (`AscendResult.AllocateSurplus`가 원래 막으려던 지점).
             float spentOnExtraFloors = Math.Max(0, ascended - result.Ascent.BaseFloors) *
                                        result.Ascent.PowerPerExtraFloor;
-            Money += Math.Max(0f, result.ExcessPower - spentOnExtraFloors);
+            float credited = Math.Max(0f, result.ExcessPower - spentOnExtraFloors);
+            Money += credited;
+            _ascents.Add(new FloorAscent(from, ascended, result.ExcessPower,
+                result.Ascent.PowerPerExtraFloor, credited));
             CreateCurrentFloor();
         }
 

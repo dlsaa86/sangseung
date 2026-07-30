@@ -69,7 +69,15 @@ namespace Ascend.Prototype.Build
         private Material _candidateMaterial;
         private Risk.RiskStateView _risk;
         private Transform _head;
-        private string _signature = string.Empty;
+        private int _signature = int.MinValue;
+        private int _doorPromptKey = int.MinValue;
+
+        /// <summary>
+        /// `RiskStateView`·`Camera.main` 탐색을 매 프레임 반복하지 않기 위한 표식.
+        /// 씬에 대상이 없으면 `null` 검사만으로는 영구히 매 프레임 전역 탐색이 돈다.
+        /// </summary>
+        private bool _searchedRisk;
+        private bool _searchedHead;
 
         private void Awake()
         {
@@ -100,7 +108,8 @@ namespace Ascend.Prototype.Build
 
         private void OnRunStarted(RunSession session)
         {
-            _signature = string.Empty;
+            _signature = int.MinValue;
+            _doorPromptKey = int.MinValue;
             Rebuild();
         }
 
@@ -119,10 +128,16 @@ namespace Ascend.Prototype.Build
             // 상태 키가 바뀔 때만 다시 세운다. 매 프레임 재생성하면 초당 수백 개의
             // GameObject 쓰레기가 나온다 — 이 프로젝트가 GC를 134KB에서 3.8KB로
             // 끌어내린 작업을 그대로 되돌리는 짓이다.
-            string signature = floor == null
-                ? "none"
-                : floor.Plan.Floor + "/" + floor.Phase + "/" + floor.BuildOffers.Count + "/" +
-                  (run.Loadout != null ? run.Loadout.Count : 0);
+            //
+            // 키를 **정수로** 만든다. 처음엔 문자열로 이었는데, 그 자체가 매 프레임
+            // `object[]` 배열 + enum 박싱 + `ToString()` 문자열을 낳아 바로 위 주석이
+            // 경계한 일을 캐시 키가 저지르고 있었다. 독립 감사가 지목했다.
+            // `RouletteInteractionBridge`와 `GameHudView`가 이미 정수 키를 쓴다 — 그 규약을 따른다.
+            int loadCount = run.Loadout != null ? run.Loadout.Count : 0;
+            int signature = floor == null
+                ? -1
+                : (floor.Plan.Floor << 12) | ((int)floor.Phase << 8) |
+                  (floor.BuildOffers.Count << 4) | loadCount;
 
             if (signature != _signature)
             {
@@ -133,11 +148,15 @@ namespace Ascend.Prototype.Build
             if (_doorControl != null)
             {
                 _doorControl.SetCanInteract(boarding);
-                _doorControl.SetPrompt(boarding
-                    ? (floor.Loadout != null && floor.Loadout.Count > 0
-                        ? $"문 닫고 출발 — {floor.Loadout.Count}개 적재"
-                        : "문 닫고 출발 — 적재 없음")
-                    : "문");
+                // 프롬프트 문자열도 상태가 바뀔 때만 짓는다. 문구는 적재 개수에만 달려 있다.
+                int promptKey = boarding ? 1 + loadCount : 0;
+                if (promptKey != _doorPromptKey)
+                {
+                    _doorPromptKey = promptKey;
+                    _doorControl.SetPrompt(boarding
+                        ? (loadCount > 0 ? $"문 닫고 출발 — {loadCount}개 적재" : "문 닫고 출발 — 적재 없음")
+                        : "문");
+                }
             }
 
             for (int i = 0; i < _candidates.Count; i++)
@@ -164,6 +183,8 @@ namespace Ascend.Prototype.Build
             if (_carFigures.Count == 0) return;
             if (_risk == null)
             {
+                if (_searchedRisk) return;
+                _searchedRisk = true;
                 _risk = FindAnyObjectByType<Risk.RiskStateView>();
                 if (_risk == null) return;
             }
@@ -205,6 +226,10 @@ namespace Ascend.Prototype.Build
         {
             if (_head == null)
             {
+                // 한 번만 찾는다. 못 찾았을 때 매 프레임 다시 찾으면 카메라가 없는 씬에서
+                // 영구적으로 전역 탐색이 돈다.
+                if (_searchedHead) return;
+                _searchedHead = true;
                 Camera camera = Camera.main;
                 if (camera == null) return;
                 _head = camera.transform;

@@ -32,6 +32,7 @@ namespace Ascend.Prototype.Build.Tests
             Run("과적이 요구 전력에 배수를 건다", TestOverloadMultiplier, ref passed, ref failed, report);
             Run("적재 무게가 다음 층으로 이어진다", TestLoadCarriesToNextFloor, ref passed, ref failed, report);
             Run("무게 변경이 현재 층에 즉시 반영된다", TestWeightChangePropagates, ref passed, ref failed, report);
+            Run("적재 직접 변경도 현재 층에 반영된다", TestLoadoutMutationPropagates, ref passed, ref failed, report);
 
             // ── 규칙 변경 (Gate C 핵심) ──
             Run("승객이 정화 문턱을 낮춘다", TestPassengerLowersPurifyThreshold, ref passed, ref failed, report);
@@ -50,6 +51,8 @@ namespace Ascend.Prototype.Build.Tests
             Run("다층 상승이 최종 층을 건너뛰지 않는다", TestFinalFloorNeverSkipped, ref passed, ref failed, report);
             Run("다층 상승이 적재 층을 건너뛰지 않는다", TestBuildFloorNeverSkipped, ref passed, ref failed, report);
             Run("추가 층 전력이 돈으로 중복 지급되지 않는다", TestNoDoubleSpendOfSurplus, ref passed, ref failed, report);
+            Run("고정 시드 3개 이상이 10층을 완주한다", TestSeedsCompleteTenFloors, ref passed, ref failed, report);
+            Run("적재하고도 10층을 완주할 수 있다", TestLoadedRunCanAlsoComplete, ref passed, ref failed, report);
             Run("10층 연속 런에 진행 불가 상태가 없다", TestTenFloorRunNeverStalls, ref passed, ref failed, report);
             Run("동일 시드·동일 선택이 동일 결과", TestTenFloorDeterminism, ref passed, ref failed, report);
             Run("서로 다른 두 빌드가 결과를 바꾼다", TestTwoBuildsDiverge, ref passed, ref failed, report);
@@ -441,25 +444,135 @@ namespace Ascend.Prototype.Build.Tests
             return null;
         }
 
+        /// <summary>
+        /// 추가 층을 산 층에서는 그만큼의 전력이 돈에서 빠져야 한다.
+        ///
+        /// 이 테스트의 첫 판은 **아무것도 검사하지 않았다.** 기대값을 계산해 놓고 버린 채
+        /// `Money > 잉여총합 + 1000` 하나만 단언했는데, 무적재 런에서는
+        /// `Money = Σ max(0, 잉여 − 소비) ≤ Σ 잉여`가 수학적으로 항상 성립하므로 그 조건은
+        /// 어떤 시드에서도 참이 될 수 없었다. 고치기 전 버그(`Money += ExcessPower`)에서도
+        /// `Money == 잉여총합`이라 그대로 통과했다 — 회귀 방지선이 아니었다.
+        ///
+        /// 원인은 기대값을 `FloorResult.FloorsAscended`(클램프 **전**)로 계산한 것이었다.
+        /// 정산은 클램프 **후** 값으로 이뤄지므로 애초에 비교가 성립하지 않았다.
+        /// 이제 `RunSession.Ascents`가 정산한 쪽의 기록을 내주므로 정확히 검사한다.
+        /// </summary>
         private static string TestNoDoubleSpendOfSurplus()
         {
-            // 추가 층을 산 층에서는 그만큼의 전력이 돈에서 빠져야 한다.
+            int multiFloorAscents = 0;
+
             for (int seed = 1; seed <= 40; seed++)
             {
-                RunSession run = NewTenFloorRun(seed * 104729);
-                float money = 0f;
                 var driven = Drive(seed * 104729, null);
-                foreach (FloorResult result in driven.run.Results)
+                foreach (RunSession.FloorAscent ascent in driven.run.Ascents)
                 {
-                    int extra = Math.Max(0, result.FloorsAscended - result.Ascent.BaseFloors);
-                    money += Math.Max(0f, result.ExcessPower - extra * result.Ascent.PowerPerExtraFloor);
+                    float spent = ascent.ExtraFloors * ascent.PowerPerExtraFloor;
+                    float expected = Math.Max(0f, ascent.ExcessPower - spent);
+
+                    if (Math.Abs(ascent.MoneyCredited - expected) > 0.01f)
+                        return $"시드 {seed * 104729} {ascent.FromFloor}층: 지급 {ascent.MoneyCredited:F2} " +
+                               $"(기대 {expected:F2} = 잉여 {ascent.ExcessPower:F2} − 추가층 {ascent.ExtraFloors}×{ascent.PowerPerExtraFloor:F0})";
+
+                    if (ascent.ExtraFloors <= 0) continue;
+                    multiFloorAscents++;
+
+                    // 이중 지급의 정의: 추가 층을 사고도 잉여를 그대로 돈으로 받는 것.
+                    if (ascent.MoneyCredited >= ascent.ExcessPower - 0.01f)
+                        return $"시드 {seed * 104729} {ascent.FromFloor}층: 추가 층 {ascent.ExtraFloors}개를 " +
+                               $"샀는데 잉여 {ascent.ExcessPower:F2} 전액을 돈으로도 받았다 — 이중 지급";
                 }
-                // 하차 요금이 더해지므로 돈은 이 값 이상이어야 하고, 잉여 전체보다는 작아야 한다.
-                float naive = 0f;
-                foreach (FloorResult result in driven.run.Results) naive += result.ExcessPower;
-                if (driven.run.Money > naive + 1000f)
-                    return $"시드 {seed * 104729}: 돈 {driven.run.Money} 이 잉여 총합 {naive} 을 크게 넘음";
             }
+
+            // 다층 상승이 한 번도 안 나왔다면 위 검사가 아무것도 통과시키지 않은 것과 같다.
+            // 이 테스트가 다시 빈 테스트가 되는 것을 막는 자기 검사다.
+            if (multiFloorAscents == 0)
+                return "40개 시드에서 다층 상승이 한 번도 발생하지 않았다 — 이 테스트는 아무것도 검증하지 못했다";
+            return null;
+        }
+
+        /// <summary>
+        /// **`P2-Gate B`의 헤드리스 증거다.**
+        ///
+        /// 기존 "10층 진행" 테스트 7개는 전부 실패 런을 `continue`로 건너뛰거나
+        /// 상한만 확인해서, **모든 시드가 1층에서 죽어도 전원 통과**했다. 완주를 요구하는
+        /// 단언이 하나도 없었으므로 Gate B는 PlayMode 로그 한 줄 외에 근거가 없었다.
+        /// 독립 QA 감사가 이 사각지대를 지목했다.
+        /// </summary>
+        private static string TestSeedsCompleteTenFloors()
+        {
+            const int required = 3;
+            int completed = 0;
+            var failures = new StringBuilder();
+
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828, 555555, 8675309, 20260731 })
+            {
+                var driven = Drive(seed, null);
+                bool ok = driven.run.IsComplete && !driven.run.IsFailed && driven.visited.Contains(10);
+                if (ok)
+                {
+                    completed++;
+                    if (completed >= required) return null;
+                }
+                else
+                {
+                    failures.Append(seed).Append("→").Append(driven.run.HighestFloorReached).Append("층 ");
+                }
+            }
+            return $"10층 완주가 {completed}회 — 최소 {required}회 필요. 미완주 [{failures.ToString().Trim()}]";
+        }
+
+        /// <summary>
+        /// 적재를 하고도 10층을 완주할 수 있는 시드가 존재하는가.
+        ///
+        /// 무적재 완주만으로는 Gate B와 Gate C가 충돌한다 — "완주 가능한 유일한 방법이
+        /// 아무것도 싣지 않는 것"이면 적재 시스템은 순수한 함정이다.
+        /// </summary>
+        private static string TestLoadedRunCanAlsoComplete()
+        {
+            var failures = new StringBuilder();
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828, 8675309, 20260731 })
+            {
+                var driven = Drive(seed, (f, slot) => slot < 1);
+                if (driven.run.IsComplete && !driven.run.IsFailed && driven.visited.Contains(10))
+                {
+                    if (driven.run.Loadout.Count == 0)
+                        return $"시드 {seed}: 완주했지만 아무것도 싣지 않았다 — 적재 경로가 검증되지 않음";
+                    return null;
+                }
+                failures.Append(seed).Append("→").Append(driven.run.HighestFloorReached).Append("층 ");
+            }
+            return $"적재하면서 10층을 완주한 시드가 없다. [{failures.ToString().Trim()}]";
+        }
+
+        /// <summary>
+        /// 적재를 `Loadout`으로 직접 바꿔도 현재 층의 무게·요구 전력이 따라오는가.
+        ///
+        /// `AddWeight` 경로만 고쳤을 때 이 경로가 그대로 새어 나갔고, 캡처 리그가 6개를
+        /// 실은 상태에서 층은 옛 무게를 들고 있어 과적인데 위험 단계가 Stable로 찍혔다.
+        /// </summary>
+        private static string TestLoadoutMutationPropagates()
+        {
+            RunSession run = NewTenFloorRun(1337);
+            FloorSession floor = run.Current;
+            if (floor == null) return "1층이 없다";
+
+            float requiredBefore = floor.RequiredPower;
+            float weightBefore = floor.CarriedWeight;
+
+            BuildItem heavy = BuildCatalog.ById("PRT_DIAGONAL_BINDER");   // 26kg
+            if (heavy == null) return "PRT_DIAGONAL_BINDER 를 찾지 못함";
+            if (!run.Loadout.Add(heavy)) return "Loadout.Add 가 거부됨";
+
+            if (Math.Abs(floor.CarriedWeight - (weightBefore + heavy.Weight)) > 0.01f)
+                return $"층 무게가 {floor.CarriedWeight} (기대 {weightBefore + heavy.Weight})";
+            if (floor.RequiredPower <= requiredBefore)
+                return $"요구 전력이 {requiredBefore} → {floor.RequiredPower} 로 오르지 않음";
+
+            if (!run.Loadout.Remove(heavy.Id)) return "Loadout.Remove 가 거부됨";
+            if (Math.Abs(floor.CarriedWeight - weightBefore) > 0.01f)
+                return $"내린 뒤 무게가 {floor.CarriedWeight} (기대 {weightBefore})";
+            if (Math.Abs(floor.RequiredPower - requiredBefore) > 0.01f)
+                return $"내린 뒤 요구 전력이 {floor.RequiredPower} (기대 {requiredBefore})";
             return null;
         }
 

@@ -139,6 +139,7 @@ namespace Ascend.Prototype.Run.Tests
             bool sawBoarding = false;
             bool sawContract = false;
             bool reachedContractFloor = false;
+            int totalExtraSpins = 0;
             bool sawOverharvest = false;
             bool sawLockedOverharvest = false;
             float peakWeight = 0f;
@@ -279,8 +280,11 @@ namespace Ascend.Prototype.Run.Tests
                         Check($"{number}층 덮개가 열리면 손잡이를 잡을 수 있다",
                               overharvest.CanInteract,
                               $"덮개열림={overharvest.IsCoverOpen} 조작={overharvest.CanInteract}");
-                        if (!overharvest.CanInteract) { sawOverharvest = true; }
-                        else
+                        // 잡을 수 없으면 그대로 둔다. 예전에는 여기서 `sawOverharvest = true`로
+                        // 세워 뒤쪽 "당길 수 있다" 단언을 통과시켰다 — 실패를 성공으로 뒤집는
+                        // 코드였다. 위 Check 가 이미 FAIL 을 남기므로 은폐는 아니었지만,
+                        // 그 단언 자체가 반증 불가능해졌다.
+                        if (overharvest.CanInteract)
                         {
                         int extraBefore = floor.ExtraSpinsTaken;
                         overharvest.Interact(gameObject);
@@ -293,6 +297,10 @@ namespace Ascend.Prototype.Run.Tests
                         continue;   // 결과를 다시 판정받는다
                         }
                     }
+
+                    // 층이 끝나기 직전 한 번만 누적한다. 과수확 분기에서 더하면
+                    // 같은 층을 두 번 세게 된다(그 분기는 `continue`로 되돌아온다).
+                    totalExtraSpins += floor.ExtraSpinsTaken;
 
                     Check($"{number}층 탱크로 층을 끝낼 수 있다", tank.CanInteract,
                           $"CanBank={floor.CanBank} 남은스핀={floor.SpinsRemaining}");
@@ -333,11 +341,21 @@ namespace Ascend.Prototype.Run.Tests
                   "요구 전력 미달 상태에서 잠금이 관찰되지 않음");
 
             if (useOverharvest)
+            {
                 Check($"[{policy}] 요구 전력 달성 후 과수확을 당길 수 있다", sawOverharvest,
                       "런 내내 과수확 레버가 한 번도 해제되지 않음 — 대표 선택이 존재하지 않는다");
+                Check($"[{policy}] 과수확이 실제로 추가 스핀을 소비했다", totalExtraSpins > 0,
+                      $"추가 스핀 누적 {totalExtraSpins}");
+            }
             else
-                Check($"[{policy}] 과수확을 안 당기면 추가 스핀이 소비되지 않는다", !sawOverharvest,
-                      "당기지 않았는데 추가 스핀이 기록됐다");
+            {
+                // 예전에는 `!sawOverharvest`를 단언했는데, 그 플래그가 `useOverharvest`
+                // 블록 안에서만 대입되므로 보수 정책에서는 **정의상 항상 참**이었다.
+                // 이름은 "추가 스핀이 소비되지 않는다"인데 `ExtraSpinsTaken`을 한 번도
+                // 읽지 않았다. 이제 층마다 누적한 실제 값을 본다.
+                Check($"[{policy}] 과수확을 안 당기면 추가 스핀이 0이다", totalExtraSpins == 0,
+                      $"당기지 않았는데 추가 스핀이 {totalExtraSpins}회 기록됐다");
+            }
 
             if (session.IsComplete && !session.IsFailed)
             {

@@ -18,6 +18,17 @@ namespace Ascend.Prototype.Build
         /// <summary>승객·부품을 합쳐 실을 수 있는 최대 개수. 공간이 동선을 막지 않는 상한이다.</summary>
         public const int MaxSlots = 6;
 
+        /// <summary>
+        /// 적재가 바뀔 때마다 발생한다. 무게가 요구 전력과 위험 점수의 입력이므로,
+        /// 바뀐 사실을 층이 즉시 알아야 한다.
+        ///
+        /// 이게 없을 때 실제로 무슨 일이 있었는가: `RunSession.AddWeight`에만 갱신을 붙였더니
+        /// `Loadout.Add`로 직접 실은 경로가 그대로 새어 나갔다. 캡처 리그가 6개를 실었는데
+        /// 층은 옛 무게를 들고 있었고, 과적 상태에서 위험 단계가 Stable로 찍혔다.
+        /// 호출부마다 갱신을 기억하게 하는 대신 **변경 자체가 알리도록** 뒤집는다.
+        /// </summary>
+        public event Action Changed;
+
         public IReadOnlyList<BuildItem> Items => _items;
         public int Count => _items.Count;
         public bool IsFull => _items.Count >= MaxSlots;
@@ -54,6 +65,7 @@ namespace Ascend.Prototype.Build
         {
             if (item == null || IsFull || Contains(item.Id)) return false;
             _items.Add(item);
+            Changed?.Invoke();
             return true;
         }
 
@@ -63,12 +75,18 @@ namespace Ascend.Prototype.Build
             {
                 if (!string.Equals(_items[i].Id, id, StringComparison.Ordinal)) continue;
                 _items.RemoveAt(i);
+                Changed?.Invoke();
                 return true;
             }
             return false;
         }
 
-        public void Clear() => _items.Clear();
+        public void Clear()
+        {
+            if (_items.Count == 0) return;
+            _items.Clear();
+            Changed?.Invoke();
+        }
 
         /// <summary>
         /// 이 층에서 내리는 승객을 떼어내고 요금 합계를 돌려준다.
@@ -86,6 +104,7 @@ namespace Ascend.Prototype.Build
                 _items.RemoveAt(i);
             }
             leaving.Reverse();
+            if (leaving.Count > 0) Changed?.Invoke();
             return leaving;
         }
 
