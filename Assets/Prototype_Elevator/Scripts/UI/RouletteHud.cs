@@ -3,121 +3,83 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Ascend.Prototype.Run;
 using Ascend.Prototype.Spin;
+using Ascend.Prototype.View;
 
 namespace Ascend.Prototype.UI
 {
     /// <summary>
-    /// 새 자동 룰렛 루프를 키보드만으로 끝까지 돌려보기 위한 임시 HUD.
+    /// 상태 표시와 디버그 패널.
     ///
-    /// IMGUI를 쓴다. Canvas·TMP·프리팹 참조가 하나도 없어서 씬 배선이 "GameObject 하나 추가"로
-    /// 끝나기 때문이다. 씬은 YAML이라 손댈수록 조용히 깨질 여지가 늘어나는데, 지금 확인해야 할
-    /// 것은 화면의 완성도가 아니라 "계약 → 스핀 → 정화 → 캐스케이드 → 확정/추가 스핀"이
-    /// 실제로 재미있는가다. 최종 UI는 이걸 버리고 다시 만든다.
+    /// **게임 조작은 여기 없다.** 계약 선택·스핀·확정·과수확은 전부 엘리베이터 안의 물체로만
+    /// 한다(`CURRENT_PHASE.md` Gate B "디버그 조작 없이 1층을 종료할 수 있다").
+    /// 키보드 단축키가 같은 동작을 겸하면 코드 경로가 둘이 되어, 물체 쪽이 망가져도
+    /// 키보드로 테스트가 통과해 버린다. 그러면 검증이 검증이 아니다.
+    ///
+    /// 남아 있는 키는 재현·조사용이다:
+    ///   [F1] 디버그 패널 · [R] 같은 시드로 재시작 · [T] 시드 입력 · [L] 마지막 스핀 로그
+    ///
+    /// IMGUI를 쓴다 — 씬(YAML) 배선이 "GameObject 하나"로 끝나기 때문이다. 최종 UI가 아니다.
     /// </summary>
     [RequireComponent(typeof(RunSessionBehaviour))]
     public sealed class RouletteHud : MonoBehaviour
     {
         [SerializeField] private int _fontSize = 14;
+        [SerializeField] private bool _showDebugPanel = true;
 
         private RunSessionBehaviour _behaviour;
-        private SpinResolution _lastSpin;
-        private bool _hasSpun;
-        private string _message = "계약을 고르고 스핀하라.";
+        private SpinPresenter _presenter;
+        private RouletteInteractionBridge _bridge;
 
         private GUIStyle _box;
         private GUIStyle _cell;
+        private string _seedField = string.Empty;
+        private bool _editingSeed;
+        private string _debugNote = string.Empty;
 
-        private void Awake() => _behaviour = GetComponent<RunSessionBehaviour>();
+        private void Awake()
+        {
+            _behaviour = GetComponent<RunSessionBehaviour>();
+            _presenter = GetComponent<SpinPresenter>();
+            _bridge = GetComponent<RouletteInteractionBridge>();
+            _seedField = _behaviour.Seed.ToString();
+        }
 
         private void Update()
         {
             Keyboard k = Keyboard.current;
-            if (k == null || _behaviour == null || _behaviour.Session == null) return;
+            if (k == null || _behaviour == null) return;
 
-            RunSession run = _behaviour.Session;
+            if (k.f1Key.wasPressedThisFrame) _showDebugPanel = !_showDebugPanel;
 
-            if (k.rKey.wasPressedThisFrame)
+            if (k.rKey.wasPressedThisFrame && !_editingSeed)
             {
                 _behaviour.ResetRun();
-                _hasSpun = false;
-                _message = "런 재시작.";
-                return;
+                _debugNote = $"시드 {_behaviour.Seed} 로 재시작.";
             }
 
-            if (run.IsComplete || run.IsFailed) return;
-
-            FloorSession floor = run.Current;
-            if (floor == null) return;
-
-            switch (floor.Phase)
+            if (k.tKey.wasPressedThisFrame)
             {
-                case FloorPhase.ContractSelection:
-                    // 계약이 없는 층은 0번(계약 없음)만 있으므로 Space로도 넘어갈 수 있게 둔다.
-                    if (k.digit1Key.wasPressedThisFrame) TrySelect(floor, 0);
-                    else if (k.digit2Key.wasPressedThisFrame) TrySelect(floor, 1);
-                    else if (k.digit3Key.wasPressedThisFrame) TrySelect(floor, 2);
-                    else if (k.spaceKey.wasPressedThisFrame) TrySelect(floor, 0);
-                    break;
-
-                case FloorPhase.Spinning:
-                    if (k.spaceKey.wasPressedThisFrame) DoSpin(run);
-                    break;
-
-                case FloorPhase.Decision:
-                    if (k.bKey.wasPressedThisFrame)
-                    {
-                        // Bank() 하면 런이 다음 층으로 넘어가므로 층 번호를 먼저 잡아둔다.
-                        int bankedFloor = floor.Plan.Floor;
-                        FloorResult r = run.Bank();
-                        _message = r != null
-                            ? $"{bankedFloor}층 확정 — {r.Band.DisplayName()} " +
-                              $"(전력 {r.FinalPower:F0} / 요구 {r.RequiredPower:F0}, +{r.FloorsAscended}층 상승)"
-                            : "확정 실패.";
-                        _hasSpun = false;
-                    }
-                    else if (k.pKey.wasPressedThisFrame)
-                    {
-                        float ante = floor.PendingAnte;
-                        if (run.PushYourLuck())
-                        {
-                            _message = $"판돈 {ante:F0} 지불 — 한 번 더 돌린다. [Space]";
-                        }
-                        else _message = "추가 스핀 불가 (남은 스핀 없음).";
-                    }
-                    else if (k.spaceKey.wasPressedThisFrame) DoSpin(run);
-                    break;
+                _editingSeed = !_editingSeed;
+                if (!_editingSeed) _debugNote = "시드 입력 취소.";
+                else _seedField = _behaviour.Seed.ToString();
             }
+
+            if (k.lKey.wasPressedThisFrame) DumpLastSpin();
         }
 
-        private void TrySelect(FloorSession floor, int index)
+        /// <summary>
+        /// 마지막 스핀을 로그 한 줄 + 단계별 진단으로 남긴다. 이 줄만 있으면
+        /// 헤드리스로 같은 스핀을 재현할 수 있다(`TECH_SPEC.md` §11).
+        /// </summary>
+        private void DumpLastSpin()
         {
-            var choices = floor.Plan.ContractChoices;
-            if (choices == null || choices.Length == 0)
-            {
-                if (floor.SelectContract(0)) _message = "계약 없음 — 스핀하라. [Space]";
-                return;
-            }
-            if (index >= choices.Length) return;
-            if (floor.SelectContract(index))
-                _message = $"{choices[index].Label} 선택 — 스핀하라. [Space]";
-        }
+            FloorSession floor = _behaviour.Session != null ? _behaviour.Session.Current : null;
+            var history = floor != null ? floor.History : null;
+            if (history == null || history.Count == 0) { _debugNote = "기록된 스핀이 없다."; return; }
 
-        private void DoSpin(RunSession run)
-        {
-            FloorSession floor = run.Current;
-            if (floor == null || floor.SpinsRemaining <= 0) { _message = "남은 스핀 없음. [B] 확정"; return; }
-
-            _lastSpin = run.Spin();
-            _hasSpun = true;
-            _message = _lastSpin.Summary();
-
-            if (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining == 0)
-            {
-                FloorResult r = run.ForceResolve();
-                if (r != null)
-                    _message = $"스핀 소진 — {r.Band.DisplayName()} (전력 {r.FinalPower:F0} / 요구 {r.RequiredPower:F0})";
-                _hasSpun = false;
-            }
+            SpinResolution last = history[history.Count - 1];
+            Debug.Log($"[상승] 마지막 스핀 재현 정보\n{last.DescribeCascade()}");
+            _debugNote = "마지막 스핀을 콘솔에 기록했다.";
         }
 
         private void EnsureStyles()
@@ -149,13 +111,50 @@ namespace Ascend.Prototype.UI
             if (_behaviour == null || _behaviour.Session == null) return;
             EnsureStyles();
 
-            RunSession run = _behaviour.Session;
-
-            GUILayout.BeginArea(new Rect(12, 12, 470, Screen.height - 24));
-            GUILayout.Label(BuildStatus(run), _box);
+            GUILayout.BeginArea(new Rect(12, 12, 420, Screen.height - 24));
+            GUILayout.Label(BuildStatus(_behaviour.Session), _box);
+            if (_showDebugPanel) DrawDebugPanel();
             GUILayout.EndArea();
 
-            if (_hasSpun) DrawBoard(_lastSpin);
+            DrawBoard();
+        }
+
+        /// <summary>
+        /// 디버그 패널 — 시드 재현이 이번 Phase의 통과 조건이라 시드 입력이 UI에 있어야 한다
+        /// (`MASTER_PRD.md` §4.1 "디버그 패널, 결정론적 시드, 텔레메트리").
+        /// </summary>
+        private void DrawDebugPanel()
+        {
+            GUILayout.Space(6);
+            GUILayout.Label("<b>디버그</b>   [F1] 숨기기", _box);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"시드 {_behaviour.Seed}", GUILayout.Width(110));
+            if (_editingSeed)
+            {
+                _seedField = GUILayout.TextField(_seedField, 12, GUILayout.Width(110));
+                if (GUILayout.Button("적용", GUILayout.Width(50)))
+                {
+                    if (int.TryParse(_seedField, out int seed))
+                    {
+                        _behaviour.ResetRun(seed);
+                        _debugNote = $"시드 {seed} 로 재시작.";
+                        _editingSeed = false;
+                    }
+                    else _debugNote = "정수만 받는다.";
+                }
+            }
+            else if (GUILayout.Button("[T] 시드 입력", GUILayout.Width(120)))
+            {
+                _editingSeed = true;
+                _seedField = _behaviour.Seed.ToString();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label($"모드 {_behaviour.Mode}    " +
+                            $"입력잠금 {(_bridge != null && _bridge.IsLocked ? "예(연출중)" : "아니오")}", _box);
+            GUILayout.Label("[R] 같은 시드 재시작    [L] 마지막 스핀 로그", _box);
+            if (!string.IsNullOrEmpty(_debugNote)) GUILayout.Label($"<i>{_debugNote}</i>", _box);
         }
 
         private string BuildStatus(RunSession run)
@@ -166,15 +165,11 @@ namespace Ascend.Prototype.UI
             {
                 sb.AppendLine($"<b>런 실패</b> — {run.FailureReason}");
                 sb.AppendLine($"최고 도달 {run.HighestFloorReached}층");
-                sb.AppendLine();
-                sb.AppendLine("[R] 재시작");
                 return sb.ToString();
             }
             if (run.IsComplete)
             {
-                sb.AppendLine($"<b>런 성공</b> — {run.HighestFloorReached}층 도달, 돈 {run.Money:F0}");
-                sb.AppendLine();
-                sb.AppendLine("[R] 재시작");
+                sb.AppendLine($"<b>런 종료</b> — {run.HighestFloorReached}층 도달, 잉여 전력 {run.Money:F0}");
                 return sb.ToString();
             }
 
@@ -183,56 +178,64 @@ namespace Ascend.Prototype.UI
 
             FloorPlan p = f.Plan;
             sb.AppendLine($"<b>{p.Floor}층</b>  —  {p.CoreQuestion}");
-            sb.AppendLine($"<i>{p.TeachesRule}</i>");
             sb.AppendLine();
 
             float ratio = f.RequiredPower > 0f ? f.Power / f.RequiredPower : 0f;
             sb.AppendLine($"전력 <b>{f.Power:F0}</b> / 요구 {f.RequiredPower:F0}   ({ratio:P0}, {f.CurrentBand.DisplayName()})");
             sb.AppendLine(ThresholdBar(ratio));
-            sb.AppendLine($"남은 스핀 {f.SpinsRemaining} / {p.Spins}    무게 {f.CarriedWeight:F0}" +
-                          (f.IsOverloaded ? "  <b>[과적]</b>" : string.Empty));
+            sb.AppendLine($"남은 스핀 {f.SpinsRemaining} / {p.Spins}");
             sb.AppendLine($"계약: {(f.SelectedContract.IsNone ? "없음" : f.SelectedContract.Label)}");
             sb.AppendLine($"잔류: {f.Residual.Describe()}");
             sb.AppendLine();
 
+            // 연출 중에는 "지금 무엇 때문에 터졌는가" 하나만 강조한다.
+            // 한 화면에 모든 숫자를 동시에 띄우지 않는다(MASTER_PRD §6.1).
+            if (_presenter != null && _presenter.IsPresenting)
+            {
+                sb.AppendLine($"<b>연쇄 {_presenter.CurrentDepth}단계</b>");
+                if (!string.IsNullOrEmpty(_presenter.CurrentCause))
+                    sb.AppendLine(_presenter.CurrentCause);
+                return sb.ToString();
+            }
+
             switch (f.Phase)
             {
                 case FloorPhase.ContractSelection:
-                    sb.AppendLine("<b>계약 선택</b>  (걸기 전에 대가까지 공개된다)");
-                    var choices = p.ContractChoices;
-                    if (choices == null || choices.Length == 0)
-                        sb.AppendLine("  [1] 또는 [Space] — 계약 없음");
-                    else
-                        for (int i = 0; i < choices.Length; i++)
-                            sb.AppendLine($"  [{i + 1}] {choices[i].Label}\n      {choices[i].Preview()}");
+                    sb.AppendLine("<b>계약을 고른다</b>");
+                    sb.AppendLine("계약 패널을 눌러 넘기고, 실행 레버로 확정한다.");
+                    if (_bridge != null)
+                        sb.AppendLine($"  → {_bridge.PreviewContract.Label}\n     {_bridge.PreviewContract.Preview()}");
                     break;
 
                 case FloorPhase.Spinning:
-                    sb.AppendLine("[Space] 레버를 당긴다");
+                    sb.AppendLine("<b>실행 레버를 당긴다</b>");
                     break;
 
                 case FloorPhase.Decision:
-                    sb.AppendLine("<b>확정할 것인가, 한 번 더 돌릴 것인가</b>");
-                    sb.AppendLine($"  [B] 전력 확정 — 지금 {f.CurrentBand.DisplayName()}");
-                    if (f.SpinsRemaining > 0)
-                        sb.AppendLine($"  [P] 추가 스핀 — <b>판돈 {f.PendingAnte:F0}</b> 를 먼저 잃는다 " +
+                    if (f.CanBank && f.SpinsRemaining > 0)
+                    {
+                        sb.AppendLine("<b>확정할 것인가, 한 번 더 돌릴 것인가</b>");
+                        sb.AppendLine($"  전력 탱크 — 확정. 지금 {f.CurrentBand.DisplayName()}");
+                        sb.AppendLine($"  과수확 레버 — 판돈 <b>{f.PendingAnte:F0}</b> 을 먼저 잃는다 " +
                                       $"(누적 {f.TotalAnte:F0}, 순손익 {f.NetProfit:+0;−0;0})");
+                    }
+                    else if (f.CanBank)
+                    {
+                        sb.AppendLine("<b>스핀 소진</b> — 전력 탱크로 확정한다.");
+                    }
                     else
-                        sb.AppendLine("  (남은 스핀 없음)");
+                    {
+                        sb.AppendLine("<b>요구 전력 미달</b> — 전력 탱크로 결과를 확인한다.");
+                    }
                     break;
             }
-
-            sb.AppendLine();
-            sb.AppendLine($"<b>{_message}</b>");
-            sb.AppendLine();
-            sb.AppendLine("<i>[R] 런 재시작</i>");
             return sb.ToString();
         }
 
         /// <summary>임계점을 눈금으로 보여준다. 숫자만으로는 "조금만 더"가 안 느껴진다.</summary>
         private static string ThresholdBar(float ratio)
         {
-            const int width = 40;
+            const int width = 36;
             var sb = new StringBuilder(width + 8);
             int filled = Mathf.Clamp(Mathf.RoundToInt(ratio / 3f * width), 0, width);
             sb.Append('[');
@@ -250,14 +253,22 @@ namespace Ascend.Prototype.UI
             bool IsNear(float a, float b) => Mathf.Abs(a - b) < (3f / width) * 0.5f;
         }
 
-        private void DrawBoard(SpinResolution spin)
+        /// <summary>
+        /// 공간의 결과판을 보조하는 2D 미러. 3×3 구조가 화면에서도 한 번 더 읽히게 한다.
+        /// </summary>
+        private void DrawBoard()
         {
-            const float size = 62f;
-            float ox = Screen.width - (size * 3f + 40f);
-            float oy = 40f;
+            FloorSession floor = _behaviour.Session != null ? _behaviour.Session.Current : null;
+            var history = floor != null ? floor.History : null;
+            if (history == null || history.Count == 0) return;
 
-            GUI.Label(new Rect(ox, oy - 24f, size * 3f, 22f),
-                      $"결과판  (연쇄 {spin.ChainDepth})", _box);
+            SpinResolution spin = history[history.Count - 1];
+            const float size = 54f;
+            float ox = Screen.width - (size * 3f + 32f);
+            float oy = 44f;
+
+            GUI.Label(new Rect(ox, oy - 26f, size * 3f, 22f),
+                      $"결과판  연쇄 {spin.ChainDepth}{(spin.CascadeCapReached ? " (상한)" : string.Empty)}", _box);
 
             SpinBoard board = spin.InitialBoard;
             for (int c = 0; c < SpinBoard.Columns; c++)
@@ -274,7 +285,7 @@ namespace Ascend.Prototype.UI
             }
 
             float y = oy + size * 3f + 8f;
-            GUI.Label(new Rect(ox - 120f, y, size * 3f + 120f, 120f),
+            GUI.Label(new Rect(ox - 130f, y, size * 3f + 130f, 110f),
                       $"정상 영혼 {spin.NormalSoulPower:F0}\n정화 {spin.PurifyPower:F0}\n" +
                       $"잔류 −{spin.Residual.StoredPowerLoss:F0}\n<b>순 전력 {spin.NetPower:+0;−0;0}</b>", _box);
         }

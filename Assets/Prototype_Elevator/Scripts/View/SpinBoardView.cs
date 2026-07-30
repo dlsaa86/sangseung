@@ -17,6 +17,10 @@ namespace Ascend.Prototype.View
     ///   흡수체   — 정육면체
     ///   증식체   — 캡슐(세로로 긴 알약)
     /// 실루엣이 셋 다 다르다.
+    ///
+    /// 갱신 주체가 둘이다:
+    ///   · <see cref="SpinPresenter"/>가 붙으면 연출자가 단계별로 밀어 넣는다.
+    ///   · 없으면 이 클래스가 최종 보드를 스스로 따라간다(연출 없이도 게임은 돌아야 한다).
     /// </summary>
     public sealed class SpinBoardView : MonoBehaviour
     {
@@ -25,17 +29,40 @@ namespace Ascend.Prototype.View
         /// <summary>9칸. SpinBoard.Index(column, row) 순서를 그대로 따른다.</summary>
         [SerializeField] private Transform[] _cells = new Transform[SpinBoard.Cells];
 
+        [Header("정화 하이라이트")]
+        [Tooltip("맥동 최대 배율.")]
+        [SerializeField, Min(1f)] private float _highlightScale = 1.35f;
+        [SerializeField] private Color _purifyEmission = new Color(1f, 0.86f, 0.55f);
+        [SerializeField, Min(0f)] private float _purifyEmissionStrength = 3f;
+
+        private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
+        /// <summary>칸별 하이라이트 세기(0~1). 연출자가 프레임마다 갱신한다.</summary>
+        private readonly float[] _highlight = new float[SpinBoard.Cells];
+
+        private MaterialPropertyBlock _block;
         private int _lastSpinCount = -1;
         private int _lastFloor = -1;
 
+        /// <summary>연출자가 붙어 있으면 이 뷰는 스스로 보드를 바꾸지 않는다.</summary>
+        public bool DrivenExternally { get; set; }
+
+        /// <summary>칸 하나의 Transform. 연출자가 패턴 마커를 놓을 좌표를 얻는다.</summary>
+        public Transform CellTransform(int index)
+            => index >= 0 && index < _cells.Length ? _cells[index] : null;
+
         private void Awake()
         {
+            _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             ClearAll();
         }
 
         private void Update()
         {
+            ApplyHighlights();
+            if (DrivenExternally) return;
+
             FloorSession floor = _run != null && _run.Session != null ? _run.Session.Current : null;
             if (floor == null) { ClearAll(); return; }
 
@@ -50,12 +77,9 @@ namespace Ascend.Prototype.View
 
             if (spins == 0) { ClearAll(); return; }
 
-            SpinResolution last = floor.History[spins - 1];
-
             // 캐스케이드까지 끝난 뒤의 판을 보여준다. 비워진 칸은 "정화됐다"는 뜻이고,
-            // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다. 초기 판을 보여주면
-            // 그 두 정보가 사라진다.
-            Show(last.FinalBoard);
+            // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다.
+            ShowBoard(floor.History[spins - 1].FinalBoard);
         }
 
         /// <summary>
@@ -68,12 +92,51 @@ namespace Ascend.Prototype.View
                 SetCell(_cells[i], board[i]);
         }
 
-        private void Show(SpinBoard board) => ShowBoard(board);
-
-        private void ClearAll()
+        /// <summary>칸 하나의 하이라이트 세기(0~1). 연출자가 맥동을 만든다.</summary>
+        public void SetHighlight(int index, float amount)
         {
+            if (index < 0 || index >= _highlight.Length) return;
+            _highlight[index] = Mathf.Clamp01(amount);
+        }
+
+        public void ClearHighlights()
+        {
+            for (int i = 0; i < _highlight.Length; i++) _highlight[i] = 0f;
+        }
+
+        public void ClearAll()
+        {
+            ClearHighlights();
             for (int i = 0; i < _cells.Length; i++)
                 SetCell(_cells[i], SymbolKind.Empty);
+            _lastSpinCount = -1;
+            _lastFloor = -1;
+        }
+
+        /// <summary>
+        /// 하이라이트를 크기와 발광 **양쪽**에 건다. 발광만 쓰면 회색조에서 사라지고,
+        /// 크기만 쓰면 밝은 장면에서 묻힌다(visual-criteria B-2.6).
+        /// </summary>
+        private void ApplyHighlights()
+        {
+            for (int i = 0; i < _cells.Length; i++)
+            {
+                Transform cell = _cells[i];
+                if (cell == null) continue;
+                float amount = _highlight[i];
+
+                foreach (Transform child in cell)
+                {
+                    if (!child.gameObject.activeSelf) continue;
+                    child.localScale = Vector3.one * Mathf.Lerp(1f, _highlightScale, amount);
+
+                    var renderer = child.GetComponent<Renderer>();
+                    if (renderer == null) continue;
+                    renderer.GetPropertyBlock(_block);
+                    _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
+                    renderer.SetPropertyBlock(_block);
+                }
+            }
         }
 
         private static void SetCell(Transform cell, SymbolKind kind)
