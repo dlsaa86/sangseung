@@ -174,6 +174,9 @@ namespace Ascend.Prototype.Spin
                 TeachesRule   = "개수 안전망 — 위치와 무관한 3개 기본 정화",
                 RequiredPower = 355f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = Array.Empty<ResistanceContract>(),
+                // 첫 적재 기회. 무게가 요구 전력을 올린다는 사실을 계약보다 먼저 겪게 한다 —
+                // 계약이 없는 층이라 배울 것이 하나뿐이다.
+                OffersBuildReward = true,
             },
             new FloorPlan
             {
@@ -232,6 +235,8 @@ namespace Ascend.Prototype.Spin
                 TeachesRule   = "계약 비교와 적재 무게로 인한 요구 전력 증가",
                 RequiredPower = 480f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { ResistanceContract.None, AbsorberContract, ProliferatorContract },
+                // 마지막 적재 기회. 이 층의 핵심 질문이 "내 빌드"이므로 빌드를 완성할 자리를 준다.
+                OffersBuildReward = true,
             },
             new FloorPlan
             {

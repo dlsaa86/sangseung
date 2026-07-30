@@ -38,6 +38,17 @@ namespace Ascend.Prototype.Run
             ResetRun();
         }
 
+        /// <summary>
+        /// 모드를 바꿔 런을 다시 시작한다. 하네스(캡처·성능·PlayMode 검증)가 씬의
+        /// 직렬화 값을 고치지 않고 10층 런을 돌리기 위한 유일한 경로다.
+        /// </summary>
+        public void ResetRun(RunMode mode, int seed)
+        {
+            _mode = mode;
+            _seed = seed;
+            ResetRun();
+        }
+
         public void ResetRun()
         {
             IFloorPlanSource floors = _mode == RunMode.HeroSlice
@@ -62,6 +73,8 @@ namespace Ascend.Prototype.Run
             ResetRun();
         }
 
+        public bool TakeBuildOffer(int index) => Session != null && Session.TakeBuildOffer(index);
+        public bool FinishBoarding() => Session != null && Session.FinishBoarding();
         public bool SelectContract(int choiceIndex) => Session != null && Session.SelectContract(choiceIndex);
         public bool PushYourLuck() => Session != null && Session.PushYourLuck();
         public SpinResolution Spin() => Session == null ? default(SpinResolution) : Session.Spin();

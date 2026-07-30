@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Ascend.Prototype.Build;
 using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Run
@@ -11,8 +12,11 @@ namespace Ascend.Prototype.Run
         private readonly SpinEngine _engine;
         private readonly PowerThresholds _thresholds;
         private readonly List<FloorResult> _results = new List<FloorResult>();
+        private readonly BuildLoadout _loadout = new BuildLoadout();
+        private readonly List<BuildItem> _lastDeparted = new List<BuildItem>();
         private ResidualState _residual;
         private FloorSession _current;
+        private float _baseWeight;
         private readonly float _anteRatio;
         private readonly float _anteEscalation;
 
@@ -39,7 +43,7 @@ namespace Ascend.Prototype.Run
             _engine = new SpinEngine(seed);
             _thresholds = PowerThresholds.Default;
             Seed = seed;
-            CarriedWeight = Math.Max(0f, startingWeight);
+            _baseWeight = Math.Max(0f, startingWeight);
             Money = startingMoney;
             _anteRatio = Math.Max(0f, anteRatio);
             _anteEscalation = Math.Max(0f, anteEscalation);
@@ -56,7 +60,20 @@ namespace Ascend.Prototype.Run
         public int Seed { get; }
         public int CurrentFloor { get; private set; }
         public int HighestFloorReached { get; private set; }
-        public float CarriedWeight { get; private set; }
+
+        /// <summary>지금 실려 있는 승객·부품. 층을 건너 살아남으며 무게와 규칙을 함께 바꾼다.</summary>
+        public BuildLoadout Loadout => _loadout;
+
+        /// <summary>직전 층 도착에서 내린 승객. HUD와 사고 기록기가 읽는다.</summary>
+        public IReadOnlyList<BuildItem> LastDeparted => _lastDeparted;
+
+        /// <summary>기본 무게 + 적재 무게. 요구 전력과 위험 점수가 이 값을 본다.</summary>
+        public float CarriedWeight => _baseWeight + _loadout.TotalWeight;
+
+        /// <summary>허용 중량(짐꾼 보너스 포함). 넘으면 과적이다.</summary>
+        public float WeightCapacity => FloorSession.AllowedWeight + _loadout.TotalCapacityBonus;
+
+        public bool IsOverloaded => CarriedWeight > WeightCapacity;
         public float Money { get; private set; }
         public bool IsComplete { get; private set; }
         public bool IsFailed { get; private set; }
@@ -90,18 +107,24 @@ namespace Ascend.Prototype.Run
             return result;
         }
 
+        /// <summary>적재 단계에서 후보 하나를 싣는다.</summary>
+        public bool TakeBuildOffer(int index) => _current != null && _current.TakeOffer(index);
+
+        /// <summary>문을 닫고 다음 단계로 넘어간다. 아무것도 싣지 않아도 진행된다.</summary>
+        public bool FinishBoarding() => _current != null && _current.FinishBoarding();
+
         /// <summary>Updates the load before the next floor is created.</summary>
         public bool AddWeight(float amount)
         {
             if (amount < 0f || IsComplete || IsFailed) return false;
-            CarriedWeight += amount;
+            _baseWeight += amount;
             return true;
         }
 
         public bool SetCarriedWeight(float weight)
         {
             if (weight < 0f || IsComplete || IsFailed) return false;
-            CarriedWeight = weight;
+            _baseWeight = weight;
             return true;
         }
 
@@ -120,8 +143,26 @@ namespace Ascend.Prototype.Run
             }
 
             FloorPlan plan = _floors.For(CurrentFloor);
+            // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
+            // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                CarriedWeight, _residual, _anteRatio, _anteEscalation);
+                _baseWeight, _residual, _anteRatio, _anteEscalation, _loadout);
+        }
+
+        /// <summary>
+        /// 목적지에 닿은 승객을 내리고 요금을 받는다. 부품은 목적지가 없어 남는다.
+        ///
+        /// 층 도착 직후, 다음 층을 만들기 **전에** 호출한다. 순서가 뒤집히면 이미 내린
+        /// 승객의 무게로 요구 전력을 계산하게 된다.
+        /// </summary>
+        private void DisembarkAt(int floor)
+        {
+            _lastDeparted.Clear();
+            List<BuildItem> leaving = _loadout.TakeDeparting(floor, out float reward);
+            if (leaving.Count == 0) return;
+
+            _lastDeparted.AddRange(leaving);
+            Money += reward;
         }
 
         private void CompleteFloor(FloorResult result)
@@ -137,13 +178,57 @@ namespace Ascend.Prototype.Run
                 return;
             }
 
+            int ascended = ClampAscent(CurrentFloor, result.FloorsAscended);
+
+            // 도달 층은 건물 높이를 넘지 않는다. 10층 건물에서 "13층 도달"은 보고서에
+            // 넣을 수 없는 숫자다.
             HighestFloorReached = Math.Max(HighestFloorReached,
-                CurrentFloor + result.FloorsAscended);
-            CurrentFloor += result.FloorsAscended;
-            // The default run banks surplus between floors. A caller that wants a
-            // different economy can allocate from result.Ascent before continuing.
-            Money += result.ExcessPower;
+                Math.Min(_floors.LastFloor, CurrentFloor + ascended));
+            CurrentFloor += ascended;
+
+            // 도착한 층에서 내린다. 다음 층을 만들기 전에 해야 이미 내린 승객의 무게가
+            // 요구 전력에 섞이지 않는다. 건물 밖으로 나간 런은 전원 하차로 본다.
+            DisembarkAt(Math.Min(CurrentFloor, _floors.LastFloor));
+
+            // 추가 층에 쓴 전력은 돈이 되지 않는다. 예전에는 잉여 전체를 돈으로 주면서
+            // 동시에 그 잉여로 층까지 올랐다 — 같은 전력을 두 번 쓴 것이다
+            // (`AscendResult.AllocateSurplus`가 원래 막으려던 지점).
+            float spentOnExtraFloors = Math.Max(0, ascended - result.Ascent.BaseFloors) *
+                                       result.Ascent.PowerPerExtraFloor;
+            Money += Math.Max(0f, result.ExcessPower - spentOnExtraFloors);
             CreateCurrentFloor();
+        }
+
+        /// <summary>
+        /// 다층 상승이 삼켜서는 안 되는 층 앞에서 멈춘다.
+        ///
+        /// 자동 다층 상승은 높은 임계점의 보상이지만, 그대로 두면 커리큘럼을 지운다.
+        /// 실측(시드 1337·4242)에서 1→2→3→4→**8**→9로 뛰어 5·6·7층을 통째로 건너뛰었고,
+        /// 5개 시드 중 2개가 최종 층인 10층을 치르지 않고 런을 끝냈다. 가르치는 층과
+        /// 종합 시험을 건너뛴 완주는 "10층까지 진행했다"의 증거가 되지 못한다.
+        ///
+        /// 두 가지만 막는다. 그 외의 건너뛰기는 보상으로 남긴다.
+        ///   1) 최종 층 — 종합 시험은 반드시 치른다.
+        ///   2) 빌드 보상 층 — 승객·부품을 얻는 유일한 지점이라 건너뛰면 빌드가 성립하지 않는다.
+        /// </summary>
+        private int ClampAscent(int from, int floorsAscended)
+        {
+            if (floorsAscended <= 1) return floorsAscended;
+
+            // 최종 층에서의 상승은 런 종료다. 여기서 자르면 층을 벗어나지 못해
+            // 같은 층이 무한히 다시 생성된다.
+            if (from >= _floors.LastFloor) return floorsAscended;
+
+            int target = Math.Min(from + floorsAscended, _floors.LastFloor);
+            for (int floor = from + 1; floor < target; floor++)
+            {
+                if (_floors.For(floor).OffersBuildReward)
+                {
+                    target = floor;
+                    break;
+                }
+            }
+            return Math.Max(1, target - from);
         }
     }
 }

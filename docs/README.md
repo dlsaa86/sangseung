@@ -6,19 +6,47 @@ Notion은 계속 수정되는 기획 원본이다. 실제 구현 세션에서는
 
 ## 문서 우선순위
 
-충돌이 발생하면 아래 순서가 우선한다.
+우선순위는 **두 축**으로 나뉜다. 하나의 일렬 목록으로 합치면 "무엇을 만드는가"와
+"어떻게 만들어야 유효한가"가 뒤섞여 매번 잘못된 결론이 나온다.
 
-1. [`MASTER_PRD.md`](./MASTER_PRD.md) — 제품 범위, 핵심 경험, 완료 조건
-2. [`TECH_SPEC.md`](./TECH_SPEC.md) — Unity 구조, 상태 모델, 테스트 및 성능 기준
-3. [`CURRENT_PHASE.md`](./CURRENT_PHASE.md) — 이번 개발 세션의 허용 범위
-4. [`VISUAL_SPEC.md`](./VISUAL_SPEC.md) — 비주얼 방향과 시각 검증 기준
-5. [`DECISION_LOG.md`](./DECISION_LOG.md) — 확정된 결정과 변경 이력
-6. [`ASSUMPTION_LOG.md`](./ASSUMPTION_LOG.md) — 에이전트가 사용한 임시 기본값과 교체 위치
-7. `Assets/Plans/` — 세부 작업 티켓
-8. [`handoff/`](./handoff/) — 기기 이전·세션 인수인계
-9. 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
+### 축 1 — 요구사항 ("무엇을 만드는가")
 
-제품 범위는 `CURRENT_PHASE.md`가 아니라 `MASTER_PRD.md`가 정의한다. 단, 현재 세션에서 무엇을 구현할 수 있는지는 `CURRENT_PHASE.md`가 제한한다.
+요구사항의 출처가 충돌하면 아래 순서가 우선한다.
+
+1. [`DECISION_LOG.md`](./DECISION_LOG.md) — 확정된 결정. 뒤집으려면 새 결정 항목이 필요하다.
+2. [`CURRENT_PHASE.md`](./CURRENT_PHASE.md) — 이번 세션의 허용 범위
+3. [`MASTER_PRD.md`](./MASTER_PRD.md) — 제품 범위, 핵심 경험, 완료 조건
+4. Notion MASTER PRD와 부록 — 상세 기획·비주얼 원본
+5. 기존 코드의 현재 동작
+
+제품 **범위 전체**는 `MASTER_PRD.md`가 정의한다. 단, 이번 세션에서 무엇을 구현할 수
+있는지는 `CURRENT_PHASE.md`가 제한한다. `CURRENT_PHASE.md`가 `MASTER_PRD.md`보다
+앞에 오는 것은 범위를 **좁히는 방향으로만** 유효하다 — 세션 범위 문서가 제품 범위를
+넓히려면 `DECISION_LOG.md` 항목이 있어야 한다.
+
+### 축 2 — 기술·시각 제약 ("어떻게 만들어야 유효한가")
+
+아래 둘은 축 1의 어느 단계에도 종속되지 않는 **직교 제약**이다. 요구사항이 어디서
+왔든 이 조건을 만족해야 완료로 인정한다.
+
+- [`TECH_SPEC.md`](./TECH_SPEC.md) — Unity 구조, 상태 모델, 테스트 및 성능 기준
+- [`VISUAL_SPEC.md`](./VISUAL_SPEC.md) — 비주얼 방향과 시각 검증 기준
+  (상세 루브릭: `.claude/visual-criteria.md`)
+
+- 축 1의 문서가 이 둘보다 **더 구체적이고 더 엄격하면** 그쪽을 따르고, 내용을
+  `TECH_SPEC.md`/`VISUAL_SPEC.md` 또는 전용 설계 문서로 동결한다.
+- 축 1의 문서가 이 둘의 제약을 **완화하는** 것으로 읽히면 `TECH_SPEC.md`/`VISUAL_SPEC.md`가
+  우선한다. 완화는 `DECISION_LOG.md` 항목 없이 성립하지 않는다.
+
+### 그 외
+
+- [`AUTONOMOUS_PROTOTYPE_GOAL.md`](./AUTONOMOUS_PROTOTYPE_GOAL.md) — 장기 자율 실행의
+  작업 명세와 완료 게이트. 범위는 `CURRENT_PHASE.md`에 반영해 사용한다.
+- [`ASSUMPTION_LOG.md`](./ASSUMPTION_LOG.md) — 임시 기본값과 교체 위치
+- `Assets/Plans/` — 세부 작업 티켓
+- [`handoff/`](./handoff/) — 기기 이전·세션 인수인계
+- `runtime/` — 세션 산출물(감사·계획·진행 로그). 명세가 아니다.
+- 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
 
 ## 원본
 
