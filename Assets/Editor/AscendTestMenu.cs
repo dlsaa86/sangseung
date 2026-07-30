@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using Ascend.Prototype.Build.Tests;
 using Ascend.Prototype.Risk.Tests;
 using Ascend.Prototype.Run.Tests;
 using Ascend.Prototype.Spin.Tests;
@@ -25,10 +26,11 @@ namespace Ascend.Prototype.EditorTools
             var spin = SpinEngineTests.RunAll();
             var run = RunTests.RunAll();
             var risk = RiskEvaluatorTests.RunAll();
-            int passed = spin.passed + run.passed + risk.passed;
-            int failed = spin.failed + run.failed + risk.failed;
+            var build = BuildTests.RunAll();
+            int passed = spin.passed + run.passed + risk.passed + build.passed;
+            int failed = spin.failed + run.failed + risk.failed + build.failed;
 
-            string report = $"{spin.report}\n\n{run.report}\n\n{risk.report}\n\n" +
+            string report = $"{spin.report}\n\n{run.report}\n\n{risk.report}\n\n{build.report}\n\n" +
                             $"[상승] 합계: {passed} PASS / {failed} FAIL";
 
             if (failed > 0) Debug.LogError(report);
@@ -58,6 +60,34 @@ namespace Ascend.Prototype.EditorTools
             HeroSliceAutoPilot.Arm();
             EditorApplication.EnterPlaymode();
             Debug.Log($"[상승] PlayMode 검증 시작. 끝나면 자동 종료하고 {HeroSliceAutoPilot.ReportPath} 에 남긴다.");
+        }
+
+        /// <summary>
+        /// 10층 런을 상호작용만으로 끝까지 몬다. `P2-Gate B`의 증거를 만드는 진입점이다.
+        /// Hero Slice 검증과 별개인 이유는 `TenFloorAutoPilot` 주석에 있다.
+        /// </summary>
+        [MenuItem("Ascend/Run PlayMode TenFloor Check")]
+        public static void RunTenFloorCheck()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string path = Path.Combine(Directory.GetCurrentDirectory(), TenFloorAutoPilot.ReportPath);
+            if (File.Exists(path)) File.Delete(path);
+
+            TenFloorAutoPilot.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 10층 PlayMode 검증 시작 → {TenFloorAutoPilot.ReportPath}");
         }
 
         [MenuItem("Ascend/Capture Hero Slice Set")]

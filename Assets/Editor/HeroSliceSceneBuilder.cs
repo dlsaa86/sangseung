@@ -290,7 +290,12 @@ namespace Ascend.Prototype.EditorTools
 
             Replace(panel, "PowerBarTicks", out GameObject ticks);
             Material tickMaterial = Mat("M_Gray_Readout");
-            float[] gates = { 1.0f, 1.3f, 1.7f, 2.2f };
+            // 300%(폭주 상승)가 빠져 있었다. `PowerThresholds`는 임계점을 다섯 개
+            // 정의하는데 게이지에는 넷만 그려져, 마지막 구간만 경계 없이 넘어갔다.
+            // `visual-criteria` B-3.9가 "경계가 게이지 위에 표시되고 넘는 순간이 사건으로
+            // 보이는가"를 묻는 항목이라 하나가 빠지면 그 구간은 판정 자체가 불가능하다.
+            // `BarMaxRatio`가 3이므로 300%는 바의 오른쪽 끝에 정확히 놓인다.
+            float[] gates = { 1.0f, 1.3f, 1.7f, 2.2f, 3.0f };
             foreach (float gate in gates)
             {
                 float x = BarLeftX + BarWidth * (gate / BarMaxRatio);

@@ -189,6 +189,33 @@ namespace Ascend.Prototype.Build
                 },
             },
 
+            // ── Notion 「적재·탑승·빌드 시스템」에서 동결한 2종 ──
+            // 저장소 문서에 없던 설계라 `NotionSyncReport.md` 절차대로 옮겼다.
+            // 나머지 2종(연쇄 코일 = 캐스케이드 칸 1개 추가 재추첨, 검침원 = 잔류 1개 무효화)은
+            // `SpinEngine` 자체를 고쳐야 해서 이번 범위에 넣지 않았다 — 같은 보고서에 기록.
+            new BuildItem
+            {
+                Id = "PSG_SURVEYOR_LINE", Label = "측량사", Kind = BuildItemKind.Passenger,
+                Description = "한 줄로 선 저항의 값을 읽어낸다. 직선 패턴만 강해진다.",
+                Weight = 6f, DestinationFloor = 9, DisembarkReward = 55f,
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.LineMultiplier, 0.5f),
+                },
+            },
+            new BuildItem
+            {
+                Id = "PRT_OVERHARVEST_TRANSFORMER", Label = "과수확 변압기", Kind = BuildItemKind.Part,
+                Description = "정화 보상을 끌어올리는 대신 남긴 저항의 대가도 함께 커진다.",
+                Weight = 24f,
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Absorber, 1.5f),
+                    BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Proliferator, 1.5f),
+                    BuildEffect.Of(BuildEffectKind.ResidualMitigation, 1.25f),
+                },
+            },
+
             // ── 부품: 무겁고, 남고, 규칙 자체를 바꾼다 ──
             new BuildItem
             {

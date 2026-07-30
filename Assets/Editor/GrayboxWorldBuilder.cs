@@ -229,30 +229,20 @@ public static class GrayboxWorldBuilder
         Box(consoleRoot.transform, "ConsoleSlab", new Vector3(slabCenter, -2.75f, ConsoleZ),
             new Vector3(6.4f, 0.35f, 1.5f), m.Console);
 
-        buttons = new Transform[3];
-        rends = new Renderer[3];
-        for (int i = 0; i < 3; i++)
-        {
-            var pivot = new GameObject($"ButtonPivot_{i + 1}");
-            pivot.transform.SetParent(consoleRoot.transform, false);
-            pivot.transform.localPosition = new Vector3(xs[i], -2.5f, ConsoleZ);
-
-            GameObject btn = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            btn.name = $"StopButton_{i + 1}";
-            btn.transform.SetParent(pivot.transform, false);
-            btn.transform.localScale = new Vector3(0.55f, 0.12f, 0.55f);
-            Object.DestroyImmediate(btn.GetComponent<Collider>());
-            btn.GetComponent<Renderer>().sharedMaterial = m.Button;
-
-            buttons[i] = pivot.transform;
-            rends[i] = btn.GetComponent<Renderer>();
-
-            // Upright on the console face rather than lying flat — a flat label is unreadable
-            // from the fixed camera angle.
-            Text(consoleRoot.transform, $"ButtonLabel_{i + 1}",
-                 new Vector3(xs[i], -2.62f, ConsoleZ - 0.78f), 2.6f,
-                 $"[{i + 1}]", new Vector2(2f, 1f), Vector3.zero);
-        }
+        // 통관별 정지 버튼은 **만들지 않는다.**
+        //
+        // `D-20260730-04`가 통관별 정지 버튼·타이밍 정지를 1차 프로토타입에서 제외했고,
+        // `.claude/visual-criteria.md` B-5.13은 "타이밍 바·정지 버튼·반응속도를 요구하는
+        // UI가 남아 있는가 — 잔재가 보이면 실패다"를 감점 항목으로 못박았다.
+        //
+        // 예전에는 여기서 `StopButton_1~3`·`ButtonPivot_1~3`·`ButtonLabel_1~3`을 만든 뒤
+        // `SceneIntegration`과 `HumanScaleLayout`이 나중에 **숨기는** 방식이었다.
+        // 그러면 이 빌더를 다시 돌릴 때마다 폐기된 조작부가 되살아나고, 숨김 패스가
+        // 한 번만 누락돼도 캡처에 노출된다. 안 만드는 것이 유일하게 안전한 상태다.
+        //
+        // 플레이어 판타지는 반응 조작자가 아니라 규칙을 설계하는 운영자다(`MASTER_PRD.md` §2.2).
+        buttons = System.Array.Empty<Transform>();
+        rends = System.Array.Empty<Renderer>();
     }
 
     // ── Instrument panel above the tubes ──

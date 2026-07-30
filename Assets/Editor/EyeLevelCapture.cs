@@ -62,14 +62,24 @@ public static class EyeLevelCapture
 
         // 플레이어가 실제로 서 있는 자리에서 둘러본 방향들. 인위적인 예쁜 각도가 아니라
         // 게임 중 실제로 보게 되는 시야여야 판정이 의미가 있다.
+        // 좌표는 2026-07-31 비례 재조정 이후 기준이다(내부 x[-1.20..1.20] · z[-1.50..1.50] ·
+        // 높이 3.20). 이전 좌표는 통관을 x=-1.45, 계기판을 x=1.56에서 찾았는데, 그 자리는
+        // 지금 벽 **안쪽**이라 카메라가 벽면만 보고 있었다.
         (string name, Vector3 pos, Vector3 look)[] shots =
         {
             ("00_spawn_forward",  eye, eye + player.forward * 3f),
-            ("01_tubes",          eye, new Vector3(-1.45f, 1.45f,  0.00f)),
-            ("02_panel",          eye, new Vector3(-0.80f, 1.55f,  1.45f)),
-            ("03_lever_console",  eye, new Vector3(-1.05f, 1.10f, -0.55f)),
-            ("04_contract_panel", eye, new Vector3( 1.56f, 1.50f,  0.30f)),
+            ("01_tubes",          eye, new Vector3(-0.88f, 1.55f,  0.00f)),
+            ("02_panel",          eye, new Vector3(-0.60f, 1.55f,  1.45f)),
+            ("03_lever_console",  eye, new Vector3(-0.85f, 1.10f, -0.55f)),
+            ("04_contract_panel", eye, new Vector3( 1.12f, 1.50f,  0.30f)),
             ("05_door",           eye, new Vector3( 0.65f, 1.20f,  1.60f)),
+            // 요구 캡처 "엘리베이터 입구에서 본 전체 내부". 문지방에 선 시야다.
+            // 승강장(z=2.6)까지 물러나면 어두운 복도와 뒷벽 바깥면만 찍힌다 — 실제로
+            // 그렇게 어둡게 만든 것이 맞지만(§4 "어두운 외부 복도"), 그 장면은
+            // "내부 전체"를 보여주지 못해 요구 캡처의 뜻을 잃는다.
+            ("07_entry",          new Vector3(0.65f, 1.62f, 1.35f), new Vector3(-0.70f, 1.35f, -0.90f)),
+            // 층수 표시등은 출입구 위에 있다. 고개를 든 시야가 따로 필요하다.
+            ("08_floor_sign",     eye, new Vector3( 0.65f, 2.26f,  1.45f)),
         };
 
         foreach (var s in shots)
@@ -82,9 +92,10 @@ public static class EyeLevelCapture
         }
 
         // 공간 전체를 이해할 수 있는 한 장. 사람 크기 대비 방 크기를 판정하려면 필요하다.
-        cam.transform.position = new Vector3(1.45f, 2.15f, -2.20f);
+        // 앞벽이 생긴 뒤로는 밖에서 들여다볼 수 없다 — 안쪽 앞모서리 위에서 내려다본다.
+        cam.transform.position = new Vector3(0.95f, 2.60f, -1.30f);
         cam.transform.rotation = Quaternion.LookRotation(
-            (new Vector3(-0.4f, 1.1f, 0.6f) - cam.transform.position).normalized, Vector3.up);
+            (new Vector3(-0.55f, 1.25f, 0.55f) - cam.transform.position).normalized, Vector3.up);
         Capture(cam, Path.Combine(root, "06_overview.png"));
         log.AppendLine("  06_overview.png");
 

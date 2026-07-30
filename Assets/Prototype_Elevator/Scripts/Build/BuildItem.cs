@@ -57,6 +57,12 @@ namespace Ascend.Prototype.Build
 
         /// <summary>대상 저항의 등장 가중치에 <c>Amount</c>를 곱한다.</summary>
         Appearance,
+
+        /// <summary>직선 3개 패턴 배수에 <c>Amount</c>를 더한다(Notion 「적재·탑승·빌드」 측량사).</summary>
+        LineMultiplier,
+
+        /// <summary>4개 이상 연결 패턴 배수에 <c>Amount</c>를 더한다.</summary>
+        ClusterMultiplier,
     }
 
     /// <summary>규칙 다발에 가하는 변경 하나. 대상이 필요 없는 종류는 <see cref="Target"/>를 무시한다.</summary>
@@ -100,6 +106,10 @@ namespace Ascend.Prototype.Build
                     return "중복 패턴 판정";
                 case BuildEffectKind.Appearance:
                     return $"{Label(Target)} 출현 ×{Amount:F2}";
+                case BuildEffectKind.LineMultiplier:
+                    return $"직선 배수 +{Amount:F1}";
+                case BuildEffectKind.ClusterMultiplier:
+                    return $"연결 배수 +{Amount:F1}";
                 default:
                     return "효과 없음";
             }
@@ -168,6 +178,14 @@ namespace Ascend.Prototype.Build
 
                 case BuildEffectKind.Appearance:
                     rules.Weights[Target] = rules.WeightOf(Target) * Amount;
+                    break;
+
+                case BuildEffectKind.LineMultiplier:
+                    rules.LineMultiplier += Amount;
+                    break;
+
+                case BuildEffectKind.ClusterMultiplier:
+                    rules.ClusterMultiplier += Amount;
                     break;
             }
         }
