@@ -3,6 +3,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using TMPro;
 using Ascend.Prototype.Player;
+using Ascend.Prototype.Risk;
 using Ascend.Prototype.Run;
 using Ascend.Prototype.View;
 
@@ -38,6 +39,9 @@ namespace Ascend.Prototype.EditorTools
             EnsurePresenter();
             WireBridge(overharvest);
             DisableDeadGrayboxView();
+            BuildPowerGauge();
+            EnsureInstrumentPanelView();
+            EnsureRiskStateView(car.transform);
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
@@ -168,6 +172,156 @@ namespace Ascend.Prototype.EditorTools
                 view.enabled = false;
                 Debug.Log("[상승] ElevatorGrayboxView 비활성화 — 폐기된 RunController 참조로 죽어 있던 컴포넌트.");
             }
+        }
+
+        // ── 전력 게이지 ──
+
+        private const float BarLeftX = -1.58f;
+        private const float BarWidth = 1.72f;
+        private const float BarMaxRatio = 3f;
+
+        /// <summary>
+        /// 게이지를 왼쪽 끝에서 자라도록 정규화하고 임계점 눈금을 세운다.
+        ///
+        /// 기존 채움 막대는 pivot 중심에 붙어 있어 절반이 왼쪽으로 삐져나왔다. 그 상태로는
+        /// "지금 몇 %인가"가 눈금과 어긋난다. 여기서 폭 1 기준으로 맞춰 두면 뷰는
+        /// `pivot.localScale.x = 비율 × 폭` 한 줄로 끝난다.
+        ///
+        /// 눈금이 필요한 이유: `visual-criteria.md` B-3.9 "100/130/170/220/300% 경계가
+        /// 게이지 위에 표시되고, 넘는 순간이 사건으로 보이는가."
+        /// </summary>
+        private static void BuildPowerGauge()
+        {
+            Transform panel = GameObject.Find("InstrumentPanel")?.transform;
+            if (panel == null) { Debug.LogWarning("[상승] InstrumentPanel 을 찾지 못했다."); return; }
+
+            Transform pivot = panel.Find("PowerBarPivot");
+            if (pivot == null) { Debug.LogWarning("[상승] PowerBarPivot 을 찾지 못했다."); return; }
+
+            Transform fill = pivot.Find("PowerBarFill");
+            if (fill != null)
+            {
+                fill.localScale = new Vector3(1f, 0.07f, 0.03f);
+                fill.localPosition = new Vector3(0.5f, 0f, 0f);   // pivot 왼쪽 끝에서 오른쪽으로 자란다
+            }
+            pivot.localScale = new Vector3(0f, 1f, 1f);
+
+            // 이름이 실제 내용과 달라 다음 세션을 헷갈리게 한다. 무게가 아니라 상태를 띄운다.
+            Transform weightLabel = panel.Find("WeightLabel");
+            if (weightLabel != null) weightLabel.name = "StatusLabel";
+
+            Replace(panel, "PowerBarTicks", out GameObject ticks);
+            Material tickMaterial = Mat("M_Gray_Readout");
+            float[] gates = { 1.0f, 1.3f, 1.7f, 2.2f };
+            foreach (float gate in gates)
+            {
+                float x = BarLeftX + BarWidth * (gate / BarMaxRatio);
+                // 100%만 굵게 — 나머지 임계점과 "요구 전력"은 무게가 다르다.
+                float width = Mathf.Approximately(gate, 1f) ? 0.030f : 0.016f;
+                float height = Mathf.Approximately(gate, 1f) ? 0.19f : 0.15f;
+                Box(ticks.transform, $"Tick_{Mathf.RoundToInt(gate * 100f)}",
+                    new Vector3(x, 1.30f, 1.36f), new Vector3(width, height, 0.02f), tickMaterial);
+            }
+        }
+
+        // ── 계기판 / 위험 상태 ──
+
+        private static void EnsureInstrumentPanelView()
+        {
+            Transform panel = GameObject.Find("InstrumentPanel")?.transform;
+            if (panel == null) return;
+
+            var view = panel.GetComponent<InstrumentPanelView>();
+            if (view == null) view = panel.gameObject.AddComponent<InstrumentPanelView>();
+
+            var so = new SerializedObject(view);
+            so.FindProperty("_run").objectReferenceValue = Object.FindAnyObjectByType<RunSessionBehaviour>();
+            so.FindProperty("_bridge").objectReferenceValue = Object.FindAnyObjectByType<RouletteInteractionBridge>();
+            so.FindProperty("_floorLabel").objectReferenceValue = Tmp(panel, "FloorLabel");
+            so.FindProperty("_powerLabel").objectReferenceValue = Tmp(panel, "PowerLabel");
+            so.FindProperty("_statusLabel").objectReferenceValue = Tmp(panel, "StatusLabel");
+            so.FindProperty("_barPivot").objectReferenceValue = panel.Find("PowerBarPivot");
+            so.FindProperty("_barWidth").floatValue = BarWidth;
+            so.FindProperty("_maxRatio").floatValue = BarMaxRatio;
+
+            Transform fill = panel.Find("PowerBarPivot/PowerBarFill");
+            so.FindProperty("_barFill").objectReferenceValue = fill != null ? fill.GetComponent<Renderer>() : null;
+
+            SerializedProperty plaques = so.FindProperty("_contractPlaques");
+            plaques.arraySize = 3;
+            for (int i = 0; i < 3; i++)
+            {
+                Transform plaque = panel.Find($"ContractPlaque_{i}");
+                plaques.GetArrayElementAtIndex(i).objectReferenceValue =
+                    plaque != null ? plaque.GetComponent<Renderer>() : null;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// 위험 상태를 실제로 표현하려면 실내등과 소리가 필요하다. 씬에는 방향광 하나뿐이라
+        /// 천장등을 껐다 켜도 실내 밝기가 안 변한다 — Stable과 Critical이 캡처에서 구분되지 않는다.
+        /// </summary>
+        private static void EnsureRiskStateView(Transform car)
+        {
+            Transform lamp = car.Find("CeilingLamp");
+            if (lamp == null) { Debug.LogWarning("[상승] CeilingLamp 를 찾지 못했다."); return; }
+
+            Transform lightTransform = lamp.Find("CabinLight");
+            Light cabinLight;
+            if (lightTransform == null)
+            {
+                var go = new GameObject("CabinLight");
+                go.transform.SetParent(lamp, false);
+                go.transform.localPosition = new Vector3(0f, -0.6f, 0f);
+                cabinLight = go.AddComponent<Light>();
+                cabinLight.type = LightType.Point;
+                cabinLight.range = 7f;
+                cabinLight.shadows = LightShadows.Soft;
+            }
+            else cabinLight = lightTransform.GetComponent<Light>();
+
+            var run = Object.FindAnyObjectByType<RunSessionBehaviour>();
+            if (run == null) return;
+
+            var hum = run.GetComponent<AudioSource>();
+            if (hum == null) hum = run.gameObject.AddComponent<AudioSource>();
+            hum.playOnAwake = false;
+            hum.loop = true;
+            hum.spatialBlend = 0f;   // 기계 험은 방 전체의 상태다. 위치를 갖지 않는다.
+            hum.volume = 0f;
+
+            var view = run.GetComponent<RiskStateView>();
+            if (view == null) view = run.gameObject.AddComponent<RiskStateView>();
+
+            Transform overload = GameObject.Find("InstrumentPanel")?.transform.Find("OverloadLight");
+            Transform head = Object.FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>()
+                                   ?.transform.Find("Head");
+
+            var so = new SerializedObject(view);
+            so.FindProperty("_run").objectReferenceValue = run;
+            so.FindProperty("_cabinLight").objectReferenceValue = cabinLight;
+            so.FindProperty("_lampRenderer").objectReferenceValue = lamp.GetComponent<Renderer>();
+            so.FindProperty("_warningLight").objectReferenceValue =
+                overload != null ? overload.GetComponent<Renderer>() : null;
+            so.FindProperty("_swayTarget").objectReferenceValue = lamp;
+            so.FindProperty("_cameraTarget").objectReferenceValue = head;
+            so.FindProperty("_hum").objectReferenceValue = hum;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            var panelView = Object.FindAnyObjectByType<InstrumentPanelView>();
+            if (panelView != null)
+            {
+                var pso = new SerializedObject(panelView);
+                pso.FindProperty("_risk").objectReferenceValue = view;
+                pso.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        private static TMP_Text Tmp(Transform parent, string name)
+        {
+            Transform t = parent.Find(name);
+            return t != null ? t.GetComponent<TextMeshPro>() : null;
         }
 
         // ── 헬퍼 ──

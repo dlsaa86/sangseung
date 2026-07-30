@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using Ascend.Prototype.Risk.Tests;
 using Ascend.Prototype.Run.Tests;
 using Ascend.Prototype.Spin.Tests;
 
@@ -23,10 +24,11 @@ namespace Ascend.Prototype.EditorTools
         {
             var spin = SpinEngineTests.RunAll();
             var run = RunTests.RunAll();
-            int passed = spin.passed + run.passed;
-            int failed = spin.failed + run.failed;
+            var risk = RiskEvaluatorTests.RunAll();
+            int passed = spin.passed + run.passed + risk.passed;
+            int failed = spin.failed + run.failed + risk.failed;
 
-            string report = $"{spin.report}\n\n{run.report}\n\n" +
+            string report = $"{spin.report}\n\n{run.report}\n\n{risk.report}\n\n" +
                             $"[상승] 합계: {passed} PASS / {failed} FAIL";
 
             if (failed > 0) Debug.LogError(report);

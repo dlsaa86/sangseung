@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 using Ascend.Prototype.Player;
+using Ascend.Prototype.Risk;
 using Ascend.Prototype.Spin;
 using Ascend.Prototype.View;
 
@@ -185,6 +186,23 @@ namespace Ascend.Prototype.Run.Tests
             {
                 _report.AppendLine($"  (이 시드는 요구 전력 미달로 끝났다 — 과수확 경로 미검증. " +
                                    $"전력 {floor.Power:F0}/{floor.RequiredPower:F0})");
+            }
+
+            // ── 7b. 위험 상태가 게임 상태를 따라가는가 ──
+            var risk = FindAnyObjectByType<RiskStateView>();
+            var panelView = FindAnyObjectByType<InstrumentPanelView>();
+            Check("위험 상태 시스템이 씬에 있다", risk != null, "RiskStateView 없음");
+            Check("계기판이 런 상태로 구동된다", panelView != null, "InstrumentPanelView 없음");
+
+            if (risk != null)
+            {
+                yield return null;
+                _report.AppendLine($"  위험 {risk.Level.DisplayName()} (점수 {risk.Score:F1}) — {risk.Reason}");
+                // 잔류 저항과 과수확이 쌓인 뒤라면 Stable 로 남아 있어선 안 된다.
+                // 위험이 게임 상태와 무관하게 고정돼 있으면 Gate C가 성립하지 않는다.
+                if (floor.ExtraSpinsTaken > 0 || !floor.Residual.IsClean)
+                    Check("위험 요인이 있으면 Stable 이 아니다", risk.Level != RiskLevel.Stable,
+                          $"{risk.Level} / 점수 {risk.Score:F1} / {risk.Reason}");
             }
 
             // ── 8. 층 종료 ──
