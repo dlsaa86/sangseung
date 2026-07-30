@@ -15,7 +15,8 @@ Notion은 계속 수정되는 기획 원본이다. 실제 구현 세션에서는
 5. [`DECISION_LOG.md`](./DECISION_LOG.md) — 확정된 결정과 변경 이력
 6. [`ASSUMPTION_LOG.md`](./ASSUMPTION_LOG.md) — 에이전트가 사용한 임시 기본값과 교체 위치
 7. `Assets/Plans/` — 세부 작업 티켓
-8. 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
+8. [`handoff/`](./handoff/) — 기기 이전·세션 인수인계
+9. 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
 
 제품 범위는 `CURRENT_PHASE.md`가 아니라 `MASTER_PRD.md`가 정의한다. 단, 현재 세션에서 무엇을 구현할 수 있는지는 `CURRENT_PHASE.md`가 제한한다.
 
