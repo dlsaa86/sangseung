@@ -232,6 +232,29 @@ namespace Ascend.Prototype.Run.Tests
             if (results.Count == 1)
                 _report.AppendLine($"  결과: {results[0]}");
 
+            // ── 9. 사고 기록기 ──
+            var recorder = FindAnyObjectByType<AccidentRecorder>();
+            Check("사고 기록기가 씬에 있다", recorder != null, "AccidentRecorder 없음");
+            if (recorder != null)
+            {
+                yield return null;   // LateUpdate 가 한 번 더 돌아 기록이 확정될 시간
+                FloorRecord record = recorder.Latest;
+                Check("층 종료 후 기록이 남는다", record != null, "기록 없음");
+                if (record != null)
+                {
+                    Check("기록에 재현 시드가 들어 있다", record.RunSeed == run.Seed,
+                          $"{record.RunSeed} vs {run.Seed}");
+                    Check("기록의 스핀 수가 실제와 일치", record.Spins.Count == record.SpinsUsed,
+                          $"{record.Spins.Count} vs {record.SpinsUsed}");
+                    Check("기록이 과수확 여부를 담는다",
+                          record.ExtraSpinsTaken == results[0].ExtraSpinsTaken,
+                          $"{record.ExtraSpinsTaken} vs {results[0].ExtraSpinsTaken}");
+                    _report.AppendLine("  --- 사고 기록기 요약 ---");
+                    foreach (string line in record.Summary().Split('\n'))
+                        if (!string.IsNullOrWhiteSpace(line)) _report.AppendLine($"    {line.TrimEnd()}");
+                }
+            }
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
 
             Finish();

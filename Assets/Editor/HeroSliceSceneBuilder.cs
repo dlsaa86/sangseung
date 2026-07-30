@@ -294,6 +294,13 @@ namespace Ascend.Prototype.EditorTools
             var view = run.GetComponent<RiskStateView>();
             if (view == null) view = run.gameObject.AddComponent<RiskStateView>();
 
+            var recorder = run.GetComponent<AccidentRecorder>();
+            if (recorder == null) recorder = run.gameObject.AddComponent<AccidentRecorder>();
+            var rso = new SerializedObject(recorder);
+            rso.FindProperty("_run").objectReferenceValue = run;
+            rso.FindProperty("_risk").objectReferenceValue = view;
+            rso.ApplyModifiedPropertiesWithoutUndo();
+
             Transform overload = GameObject.Find("InstrumentPanel")?.transform.Find("OverloadLight");
             Transform head = Object.FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>()
                                    ?.transform.Find("Head");

@@ -29,6 +29,7 @@ namespace Ascend.Prototype.UI
         private RunSessionBehaviour _behaviour;
         private SpinPresenter _presenter;
         private RouletteInteractionBridge _bridge;
+        private AccidentRecorder _recorder;
 
         private GUIStyle _box;
         private GUIStyle _cell;
@@ -41,6 +42,7 @@ namespace Ascend.Prototype.UI
             _behaviour = GetComponent<RunSessionBehaviour>();
             _presenter = GetComponent<SpinPresenter>();
             _bridge = GetComponent<RouletteInteractionBridge>();
+            _recorder = GetComponent<AccidentRecorder>();
             _seedField = _behaviour.Seed.ToString();
         }
 
@@ -161,15 +163,23 @@ namespace Ascend.Prototype.UI
         {
             var sb = new StringBuilder(1024);
 
-            if (run.IsFailed)
+            if (run.IsFailed || run.IsComplete)
             {
-                sb.AppendLine($"<b>런 실패</b> — {run.FailureReason}");
-                sb.AppendLine($"최고 도달 {run.HighestFloorReached}층");
-                return sb.ToString();
-            }
-            if (run.IsComplete)
-            {
-                sb.AppendLine($"<b>런 종료</b> — {run.HighestFloorReached}층 도달, 잉여 전력 {run.Money:F0}");
+                sb.AppendLine(run.IsFailed
+                    ? $"<b>층 실패</b> — {run.FailureReason}"
+                    : "<b>층 확정</b>");
+
+                // 사고 기록기가 결과 화면의 본문이다. 숫자만 남기면 왜 그렇게 됐는지
+                // 설명할 수 없다(MASTER_PRD §10, 경험 완료 조건 "실패 원인을 설명할 수 있음").
+                FloorRecord record = _recorder != null ? _recorder.Latest : null;
+                if (record != null)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(record.Summary());
+                    sb.AppendLine($"<i>재현: 시드 {record.RunSeed} · {record.Floor}층 · 계약 {record.Contract}</i>");
+                }
+                sb.AppendLine();
+                sb.AppendLine("[R] 같은 시드 재시작   [T] 다른 시드");
                 return sb.ToString();
             }
 
