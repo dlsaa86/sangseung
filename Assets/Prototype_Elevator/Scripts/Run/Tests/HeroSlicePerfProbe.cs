@@ -1,6 +1,8 @@
 using System.Collections;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
+using TMPro;
 using Unity.Profiling;
 using UnityEngine;
 using Ascend.Prototype.Player;
@@ -66,6 +68,8 @@ namespace Ascend.Prototype.Run.Tests
                 yield break;
             }
 
+            CollectFonts();
+
             // ── 1. 판정 자체의 비용 (연출·렌더 없이) ──
             MeasureResolverCost();
 
@@ -126,6 +130,30 @@ namespace Ascend.Prototype.Run.Tests
             yield return null;
 
             yield return MeasureDuringPlay(run, bridge, presenter, lever, overharvest);
+
+            // ── 3c. 재생 구간 이분 탐색 ──
+            //
+            // 스파이크는 오직 "연출 재생 중"에만 나온다(정착 상태 300프레임에는 0개).
+            // 어느 컴포넌트가 만드는지 하나씩 꺼가며 같은 재생을 반복해 좁힌다.
+            _report.AppendLine("[재생 구간 이분 탐색] 시드 12 고정 — 세 번 모두 같은 연쇄를 재생한다");
+            yield return BisectPresentation(run, bridge, lever, "① 전부 켬", true, true);
+            yield return BisectPresentation(run, bridge, lever, "② HUD 끔", false, true);
+            yield return BisectPresentation(run, bridge, lever, "③ HUD + 표식 끔", false, false);
+            _report.AppendLine();
+
+            // ── 3b. 스핀 이후 상태에서 HUD 기여 분리 ──
+            //
+            // "유휴(계약 선택)"에서는 결과판 미러가 그려지지 않는다(스핀 기록이 없으니까).
+            // 스핀이 쌓인 뒤에는 HUD가 매 OnGUI마다 9칸 GUI.Box + 라벨을 더 그린다.
+            // 그 차이를 같은 게임 상태에서 재야 정직하다.
+            yield return MeasureHudContribution();
+
+            // ── 4. 대조군: 같은 길이 동안 아무것도 안 하고 재기 ──
+            //
+            // 3번에서 나온 스파이크는 스핀·연쇄와 상관이 없었다(스핀 입력 1/37, 글리프 성장 0/37).
+            // 그렇다면 게임 코드가 아닐 수 있다. 게임 컴포넌트와 HUD를 전부 끄고 같은 시간을
+            // 재서 같은 크기의 스파이크가 또 나오는지 본다. 나오면 원인은 우리 코드 밖이다.
+            yield return MeasureIdleSpikes(60f);
 
             Finish();
         }
@@ -196,53 +224,209 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine();
         }
 
+        /// <summary>
+        /// 스파이크 한 프레임의 정황. 느린 프레임이 **왜** 느렸는지는 프레임타임만으로는
+        /// 절대 알 수 없다. 그래서 같은 프레임의 GC 수집 횟수, TMP 동적 아틀라스 성장,
+        /// 연출 단계를 함께 찍어두고 나중에 대조한다.
+        /// </summary>
+        private struct FrameSample
+        {
+            public int Index;
+            public float Milliseconds;
+            public long GcAlloc;
+            public int Gen0, Gen1, Gen2;      // 누적 수집 횟수
+            public int TmpGlyphs;             // 폰트에 올라온 글리프 수(동적 아틀라스)
+            public int TmpAtlasTextures;      // 아틀라스 텍스처 장수
+            public int PresenterDepth;
+            public bool SpinTriggered;
+        }
+
+        private TMP_FontAsset[] _fonts;
+
+        /// <summary>씬에서 실제로 쓰이는 폰트를 모은다. 폴백까지 포함해야 성장이 안 새어 나간다.</summary>
+        private void CollectFonts()
+        {
+            var found = new List<TMP_FontAsset>();
+            foreach (TMP_Text text in FindObjectsByType<TMP_Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (text.font == null || found.Contains(text.font)) continue;
+                found.Add(text.font);
+                if (text.font.fallbackFontAssetTable == null) continue;
+                foreach (TMP_FontAsset fallback in text.font.fallbackFontAssetTable)
+                    if (fallback != null && !found.Contains(fallback)) found.Add(fallback);
+            }
+            _fonts = found.ToArray();
+
+            _report.AppendLine("[폰트 상태] 동적 아틀라스는 새 글자가 처음 나올 때 래스터라이즈된다");
+            foreach (TMP_FontAsset font in _fonts)
+                _report.AppendLine($"  {font.name}: 모드 {font.atlasPopulationMode} / " +
+                                   $"글리프 {font.characterTable.Count} / 아틀라스 {font.atlasTextures.Length}장 " +
+                                   $"({font.atlasWidth}×{font.atlasHeight})");
+            _report.AppendLine();
+        }
+
+        private int TotalGlyphs()
+        {
+            int total = 0;
+            if (_fonts != null)
+                foreach (TMP_FontAsset font in _fonts)
+                    if (font != null) total += font.characterTable.Count;
+            return total;
+        }
+
+        private int TotalAtlasTextures()
+        {
+            int total = 0;
+            if (_fonts != null)
+                foreach (TMP_FontAsset font in _fonts)
+                    if (font != null) total += font.atlasTextures.Length;
+            return total;
+        }
+
+        /// <summary>느린 프레임 상위 N개를 정황과 함께 뱉는다.</summary>
+        private void ReportSpikes(List<FrameSample> samples, float medianMs)
+        {
+            if (samples.Count < 2) return;
+
+            var sorted = new List<FrameSample>(samples);
+            sorted.Sort((a, b) => b.Milliseconds.CompareTo(a.Milliseconds));
+
+            _report.AppendLine("[스파이크 상위 8프레임] — 같은 프레임의 정황");
+            _report.AppendLine("  #프레임      ms   GC할당(B)  GC수집(g0/g1/g2)  글리프Δ  아틀라스Δ  연쇄  스핀입력");
+
+            int shown = Mathf.Min(8, sorted.Count);
+            for (int i = 0; i < shown; i++)
+            {
+                FrameSample s = sorted[i];
+                FrameSample previous = FindPrevious(samples, s.Index);
+                _report.AppendLine(
+                    $"  {s.Index,7}  {s.Milliseconds,7:F1}  {s.GcAlloc,10}  " +
+                    $"{s.Gen0 - previous.Gen0}/{s.Gen1 - previous.Gen1}/{s.Gen2 - previous.Gen2,-12}  " +
+                    $"{s.TmpGlyphs - previous.TmpGlyphs,6}  {s.TmpAtlasTextures - previous.TmpAtlasTextures,8}  " +
+                    $"{s.PresenterDepth,4}  {(s.SpinTriggered ? "예" : "-"),6}");
+            }
+
+            // 상관 요약 — 눈으로 세지 않아도 되게.
+            int spikeCount = 0, withGc = 0, withGlyphGrowth = 0, withSpin = 0;
+            float threshold = Mathf.Max(medianMs * 8f, 5f);
+            foreach (FrameSample s in samples)
+            {
+                if (s.Milliseconds < threshold) continue;
+                FrameSample previous = FindPrevious(samples, s.Index);
+                spikeCount++;
+                if (s.Gen0 > previous.Gen0 || s.Gen1 > previous.Gen1 || s.Gen2 > previous.Gen2) withGc++;
+                if (s.TmpGlyphs > previous.TmpGlyphs) withGlyphGrowth++;
+                if (s.SpinTriggered) withSpin++;
+            }
+
+            _report.AppendLine();
+            _report.AppendLine($"  기준 {threshold:F1} ms 초과 프레임 {spikeCount}개 중");
+            _report.AppendLine($"    GC 수집이 함께 일어난 프레임   {withGc}개");
+            _report.AppendLine($"    TMP 글리프가 늘어난 프레임     {withGlyphGrowth}개");
+            _report.AppendLine($"    스핀 입력이 있던 프레임        {withSpin}개");
+            _report.AppendLine();
+        }
+
+        private static FrameSample FindPrevious(List<FrameSample> samples, int index)
+        {
+            for (int i = 0; i < samples.Count; i++)
+                if (samples[i].Index == index)
+                    return i > 0 ? samples[i - 1] : samples[i];
+            return samples[0];
+        }
+
         private IEnumerator MeasureDuringPlay(RunSessionBehaviour run, RouletteInteractionBridge bridge,
                                               SpinPresenter presenter, InteractableLever lever,
                                               InteractableOverharvestLever overharvest)
         {
             var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
-            var samples = new System.Collections.Generic.List<float>(2048);
-            var allocs = new System.Collections.Generic.List<long>(2048);
+            var frames = new List<FrameSample>(4096);
             int maxDepth = 0;
             int spins = 0;
+            int index = 0;
 
+            // 벽시계 60초를 재면 대부분이 '아무 일도 없는 대기'라 통계가 희석된다.
+            // 스핀이 끝나면 즉시 멈춘다.
             float deadline = Time.realtimeSinceStartup + 60f;
+            float wallStart = Time.realtimeSinceStartup;
+            float accumulated = 0f;
             while (Time.realtimeSinceStartup < deadline)
             {
                 FloorSession floor = run.Session.Current;
                 if (floor == null) break;
+                if (!bridge.IsLocked && floor.Phase == FloorPhase.Decision &&
+                    (floor.SpinsRemaining <= 0 || !floor.CanBank)) break;
 
+                bool spunThisFrame = false;
                 if (!bridge.IsLocked)
                 {
                     if (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0)
-                    { lever.Interact(gameObject); spins++; }
+                    { lever.Interact(gameObject); spins++; spunThisFrame = true; }
                     else if (floor.Phase == FloorPhase.Decision)
                     {
                         if (floor.SpinsRemaining <= 0 || !floor.CanBank) break;
                         if (overharvest != null && overharvest.CanInteract)
-                        { overharvest.Interact(gameObject); spins++; }
+                        { overharvest.Interact(gameObject); spins++; spunThisFrame = true; }
                     }
                 }
 
                 yield return null;
-                samples.Add(Time.unscaledDeltaTime * 1000f);
-                allocs.Add(recorder.Valid ? recorder.LastValue : -1);
+
+                frames.Add(new FrameSample
+                {
+                    Index = index++,
+                    Milliseconds = Time.unscaledDeltaTime * 1000f,
+                    GcAlloc = recorder.Valid ? recorder.LastValue : -1,
+                    Gen0 = System.GC.CollectionCount(0),
+                    Gen1 = System.GC.CollectionCount(1),
+                    Gen2 = System.GC.CollectionCount(2),
+                    TmpGlyphs = TotalGlyphs(),
+                    TmpAtlasTextures = TotalAtlasTextures(),
+                    PresenterDepth = presenter != null ? presenter.CurrentDepth : 0,
+                    SpinTriggered = spunThisFrame,
+                });
+                accumulated += Time.unscaledDeltaTime;
                 if (presenter != null && presenter.CurrentDepth > maxDepth) maxDepth = presenter.CurrentDepth;
             }
             recorder.Dispose();
 
-            if (samples.Count == 0) { _report.AppendLine("[스핀·캐스케이드 중] 표본 없음"); yield break; }
+            // 벽시계와 누적 프레임타임이 크게 어긋나면 에디터가 프레임을 스로틀했다는 뜻이다.
+            // 그 상태의 프레임타임 통계는 빌드 성능을 대표하지 않는다.
+            float wall = Time.realtimeSinceStartup - wallStart;
+            _report.AppendLine($"[측정 신뢰도] 벽시계 {wall:F1}s vs 누적 프레임타임 {accumulated:F1}s " +
+                               $"(비 {wall / Mathf.Max(0.01f, accumulated):F1}×)");
+            if (wall > accumulated * 1.5f)
+                _report.AppendLine("  → 어긋남. 에디터가 프레임을 스로틀했다(포커스 상실 등). " +
+                                   "이 구간의 프레임타임 수치는 빌드 성능의 근거로 쓸 수 없다.");
+            _report.AppendLine();
 
-            samples.Sort();
-            float median = samples[samples.Count / 2];
-            float p95 = samples[Mathf.Min(samples.Count - 1, Mathf.RoundToInt(samples.Count * 0.95f))];
-            float worst = samples[samples.Count - 1];
+            if (frames.Count == 0) { _report.AppendLine("[스핀·캐스케이드 중] 표본 없음"); yield break; }
 
-            _report.AppendLine($"[스핀·캐스케이드 재생 중] {samples.Count}프레임 / 스핀 {spins}회 / 최대 연쇄 {maxDepth}단계");
+            var times = new float[frames.Count];
+            var allocs = new long[frames.Count];
+            for (int i = 0; i < frames.Count; i++)
+            {
+                times[i] = frames[i].Milliseconds;
+                allocs[i] = frames[i].GcAlloc;
+            }
+            System.Array.Sort(times);
+            float median = times[times.Length / 2];
+            float p95 = times[Mathf.Min(times.Length - 1, Mathf.RoundToInt(times.Length * 0.95f))];
+            float worst = times[times.Length - 1];
+
+            _report.AppendLine($"[스핀·캐스케이드 재생 중] {frames.Count}프레임 / 스핀 {spins}회 / 최대 연쇄 {maxDepth}단계");
             _report.AppendLine($"  프레임타임 중앙 {median:F2} ms ({1000f / Mathf.Max(0.01f, median):F0} FPS) / " +
                                $"95% {p95:F2} ms / 최악 {worst:F2} ms");
-            AppendAllocStats(allocs.ToArray(), allocs.Count);
+            AppendAllocStats(allocs, allocs.Length);
             _report.AppendLine($"  스파이크 판정: 최악 프레임이 중앙의 {worst / Mathf.Max(0.01f, median):F1}배");
+            _report.AppendLine();
+
+            ReportSpikes(frames, median);
+
+            _report.AppendLine("[측정 후 폰트 상태]");
+            foreach (TMP_FontAsset font in _fonts)
+                _report.AppendLine($"  {font.name}: 글리프 {font.characterTable.Count} / " +
+                                   $"아틀라스 {font.atlasTextures.Length}장");
             _report.AppendLine();
         }
 
@@ -281,6 +465,163 @@ namespace Ascend.Prototype.Run.Tests
                                $"평균 {sum / (float)valid.Count:F0} B");
             _report.AppendLine($"  0 B 프레임 {zeroFrames}/{valid.Count} " +
                                $"({zeroFrames * 100f / valid.Count:F0}%)");
+        }
+
+        /// <summary>
+        /// 같은 재생을 조건만 바꿔 반복하고 스파이크 수·최대 할당을 비교한다.
+        /// 시드를 고정하므로 세 번 모두 **같은 연쇄**가 재생된다 — 비교가 성립하는 근거다.
+        /// </summary>
+        private IEnumerator BisectPresentation(RunSessionBehaviour run, RouletteInteractionBridge bridge,
+                                               InteractableLever lever, string label,
+                                               bool hudOn, bool markersOn)
+        {
+            var hud = FindAnyObjectByType<UI.RouletteHud>();
+            var markers = FindAnyObjectByType<PurifyMarkerView>();
+            if (hud != null) hud.enabled = hudOn;
+            if (markers != null) markers.enabled = markersOn;
+
+            run.ResetRun(12);   // 연쇄가 깊게 나오는 시드
+            yield return null;
+            yield return null;
+            for (int i = 0; i < 30; i++) yield return null;
+
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            var times = new List<float>(4096);
+            var allocs = new List<long>(4096);
+
+            float deadline = Time.realtimeSinceStartup + 45f;
+            int spins = 0;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                FloorSession floor = run.Session.Current;
+                if (floor == null) break;
+                if (!bridge.IsLocked)
+                {
+                    if (floor.Phase == FloorPhase.ContractSelection) run.Session.SelectContract(2);
+                    else if (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0)
+                    { lever.Interact(gameObject); spins++; }
+                    else break;
+                }
+                yield return null;
+                times.Add(Time.unscaledDeltaTime * 1000f);
+                allocs.Add(recorder.Valid ? recorder.LastValue : -1);
+            }
+            recorder.Dispose();
+
+            if (times.Count == 0) yield break;
+
+            var sortedTimes = times.ToArray();
+            System.Array.Sort(sortedTimes);
+            float median = sortedTimes[sortedTimes.Length / 2];
+            float worst = sortedTimes[sortedTimes.Length - 1];
+
+            long maxAlloc = 0, sumAlloc = 0;
+            int spikes = 0;
+            float threshold = Mathf.Max(median * 8f, 5f);
+            foreach (long a in allocs) { if (a > maxAlloc) maxAlloc = a; if (a > 0) sumAlloc += a; }
+            foreach (float t in times) if (t > threshold) spikes++;
+
+            _report.AppendLine($"  {label,-18} 프레임 {times.Count,5} / 스핀 {spins} / " +
+                               $"중앙 {median:F2} ms / 최악 {worst:F1} ms / " +
+                               $"스파이크 {spikes,3}개 / 최대할당 {maxAlloc / 1024f / 1024f:F1} MB / " +
+                               $"총할당 {sumAlloc / 1024f / 1024f:F0} MB");
+
+            if (hud != null) hud.enabled = true;
+            if (markers != null) markers.enabled = true;
+        }
+
+        /// <summary>
+        /// 스핀 기록이 쌓인 **같은 게임 상태**에서 HUD만 껐다 켜며 잰다.
+        /// 앞의 유휴 측정은 기록이 없어 결과판 미러가 안 그려지던 상태라 비교 대상이 아니었다.
+        /// </summary>
+        private IEnumerator MeasureHudContribution()
+        {
+            var hud = FindAnyObjectByType<UI.RouletteHud>();
+            if (hud == null) yield break;
+
+            hud.enabled = true;
+            for (int i = 0; i < 60; i++) yield return null;
+            yield return MeasureFrames("스핀 이후 — HUD 켬 (결과판 미러 포함)", 300);
+
+            hud.enabled = false;
+            for (int i = 0; i < 60; i++) yield return null;
+            yield return MeasureFrames("스핀 이후 — HUD 끔", 300);
+
+            hud.enabled = true;
+            for (int i = 0; i < 30; i++) yield return null;
+        }
+
+        /// <summary>
+        /// 게임 코드를 전부 끄고 같은 시간을 재는 대조군. 여기서도 같은 스파이크가 나오면
+        /// 원인은 게임 루프가 아니라 에디터·URP 쪽이다.
+        /// </summary>
+        private IEnumerator MeasureIdleSpikes(float seconds)
+        {
+            var suspects = new List<MonoBehaviour>();
+            void Disable<T>() where T : MonoBehaviour
+            {
+                T found = FindAnyObjectByType<T>();
+                if (found != null && found.enabled) { found.enabled = false; suspects.Add(found); }
+            }
+
+            Disable<UI.RouletteHud>();
+            Disable<Risk.RiskStateView>();
+            Disable<InstrumentPanelView>();
+            Disable<PurifyMarkerView>();
+            Disable<SpinBoardView>();
+            Disable<SpinPresenter>();
+            Disable<RouletteInteractionBridge>();
+            Disable<AccidentRecorder>();
+            Disable<CrosshairInteractor>();
+            Disable<FirstPersonController>();
+
+            for (int i = 0; i < 120; i++) yield return null;
+
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            var frames = new List<FrameSample>(4096);
+            int index = 0;
+            float deadline = Time.realtimeSinceStartup + seconds;
+
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                frames.Add(new FrameSample
+                {
+                    Index = index++,
+                    Milliseconds = Time.unscaledDeltaTime * 1000f,
+                    GcAlloc = recorder.Valid ? recorder.LastValue : -1,
+                    Gen0 = System.GC.CollectionCount(0),
+                    Gen1 = System.GC.CollectionCount(1),
+                    Gen2 = System.GC.CollectionCount(2),
+                    TmpGlyphs = TotalGlyphs(),
+                    TmpAtlasTextures = TotalAtlasTextures(),
+                    PresenterDepth = 0,
+                    SpinTriggered = false,
+                });
+            }
+            recorder.Dispose();
+
+            foreach (MonoBehaviour behaviour in suspects)
+                if (behaviour != null) behaviour.enabled = true;
+
+            if (frames.Count == 0) yield break;
+
+            var times = new float[frames.Count];
+            var allocs = new long[frames.Count];
+            for (int i = 0; i < frames.Count; i++)
+            {
+                times[i] = frames[i].Milliseconds;
+                allocs[i] = frames[i].GcAlloc;
+            }
+            System.Array.Sort(times);
+            float median = times[times.Length / 2];
+            float p95 = times[Mathf.Min(times.Length - 1, Mathf.RoundToInt(times.Length * 0.95f))];
+            float worst = times[times.Length - 1];
+
+            _report.AppendLine($"[대조군 — 게임 코드 전부 끄고 {seconds:F0}초] {frames.Count}프레임");
+            _report.AppendLine($"  프레임타임 중앙 {median:F2} ms / 95% {p95:F2} ms / 최악 {worst:F2} ms");
+            AppendAllocStats(allocs, allocs.Length);
+            ReportSpikes(frames, median);
         }
 
         private void Finish()
