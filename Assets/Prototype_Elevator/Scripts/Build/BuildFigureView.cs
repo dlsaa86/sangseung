@@ -239,6 +239,13 @@ namespace Ascend.Prototype.Build
             {
                 TMP_Text label = _labels[i];
                 if (label == null) continue;
+                // TMP 는 +Z 가 글자 정면이고, `LookRotation(label − head)`가 그 +Z 를
+                // 카메라에서 멀어지는 쪽으로 돌린다. 결과적으로 글자는 카메라를 향한다.
+                //
+                // 한 번 이걸 뒤집으려다 되돌렸다. 캡처에서 반전으로 보인 글자
+                // ("물성더변", "도수확")는 승객 라벨이 아니라 **씬에 원래 있던 라벨**을
+                // 이 시점에서 뒤에서 본 것이었다. 같은 캡처에서 승객 이름
+                // (정비공·계측 기사·짐꾼)은 정상으로 읽힌다. 오진이었다.
                 Vector3 toReader = label.transform.position - _head.position;
                 toReader.y = 0f;
                 if (toReader.sqrMagnitude > 0.0001f)

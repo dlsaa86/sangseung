@@ -59,7 +59,11 @@ namespace Ascend.Prototype.Run.Tests
         private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
         private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
         private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3(-0.30f, 1.62f,  0.00f), new Vector3(-0.84f, 1.60f,  0.00f));
-        private static readonly Pose CargoBay    = new Pose("CargoBay",    new Vector3( 0.60f, 1.62f,  1.25f), new Vector3(-0.10f, 0.55f, -1.00f));
+        // 화물칸 시점은 **문지방 위**에서 내려다본다. 처음에는 (0.60, 1.62, 1.25)에 뒀는데
+        // 최대 적재 상태에서 오른쪽 열 승객(x=0.85, z=0.35)이 카메라 코앞에 서서 화면의
+        // 대부분을 검게 가렸다 — "동선이 살아 있는가"를 판정할 수 없는 그림이 나왔다.
+        // 문 개구부 중심(x=0.65) 위 2.35m에서 안쪽을 내려다보면 여섯 자리가 모두 들어온다.
+        private static readonly Pose CargoBay    = new Pose("CargoBay",    new Vector3( 0.65f, 2.35f,  1.42f), new Vector3(-0.20f, 0.35f, -0.80f));
         private static readonly Pose Risk        = new Pose("Risk",        new Vector3( 0.60f, 1.62f, -0.70f), new Vector3(-0.55f, 1.55f,  0.55f));
         private static readonly Pose Overharvest = new Pose("Overharvest", new Vector3( 0.62f, 1.55f,  0.50f), new Vector3( 0.55f, 1.35f,  1.40f));
         private static readonly Pose Contract    = new Pose("Contract",    new Vector3( 0.10f, 1.62f,  0.30f), new Vector3( 1.12f, 1.50f,  0.30f));
@@ -144,12 +148,30 @@ namespace Ascend.Prototype.Run.Tests
                 $"Critical — 실제 단계 {LevelName(risk)} / 점수 {(risk != null ? risk.Score : 0f):F1}");
 
             // ── 4) 과수확 3단계 ──
-            run.ResetRun(RunMode.TenFloor, 12);
-            yield return WaitFrames(4);
+            //
+            // 해제 조건은 `Decision && CanBank && SpinsRemaining > 0`이다. 시드 하나로는
+            // 요구 전력을 마지막 스핀에서야 넘길 수 있고, 그러면 남은 스핀이 0이라
+            // 영영 해제되지 않는다. 실제로 첫 촬영이 `unlocked=False`로 나왔다.
+            // 조건을 만족하는 시드를 찾을 때까지 돌린다.
             var overharvest = FindAnyObjectByType<InteractableOverharvestLever>();
+            int chosenSeed = 12;
+            foreach (int seed in new[] { 12, 1337, 7, 4242, 90210, 1, 31415, 271828 })
+            {
+                run.ResetRun(RunMode.TenFloor, seed);
+                yield return WaitFrames(3);
+                chosenSeed = seed;
+                yield return SpinUntilBankable(run, bridge);
+                yield return WaitFrames(2);
+                FloorSession probe = run.Session.Current;
+                if (probe != null && probe.Phase == FloorPhase.Decision &&
+                    probe.CanBank && probe.SpinsRemaining > 0) break;
+            }
 
+            // 잠금 상태는 조건을 만족하기 **전** 상태여야 하므로 새 런에서 찍는다.
+            run.ResetRun(RunMode.TenFloor, chosenSeed);
+            yield return WaitFrames(4);
             yield return Shot("11_overharvest_locked", Overharvest, risk,
-                $"잠금 상태 — unlocked={(overharvest != null && overharvest.IsUnlocked)}");
+                $"잠금 상태 — 시드 {chosenSeed} / unlocked={(overharvest != null && overharvest.IsUnlocked)}");
 
             yield return SpinUntilBankable(run, bridge);
             // 브리지가 해제를 반영하고 보호 덮개가 다 열릴 때까지 기다린다. 해제와
@@ -275,21 +297,30 @@ namespace Ascend.Prototype.Run.Tests
             RouletteInteractionBridge bridge, RiskStateView risk)
         {
             var presenter = FindAnyObjectByType<SpinPresenter>();
-            // 1층은 저항 가중치 보정이 없어 4개 연결이 드물다 — 첫 시도에서 6시드 최대
-            // 3단계에 그쳤다. 4층은 `ResistanceWeightScale = 1.9`로 캐스케이드를 처음
-            // 보여주려고 설계된 층이므로 거기서 찾는다.
-            int[] seeds = { 12, 7, 1, 99, 2024, 31415, 271828, 8675309, 42, 1234567 };
+            // 깊은 연쇄는 자연 발생이 드물다. 성능 측정이 1000스핀 평균 연쇄 **1.74**를
+            // 보고했고, 1층·4층에서 시드 10개를 훑어 최대 4단계에 그쳤다.
+            //
+            // 그래서 **실제 빌드로 확률을 올린다.** 연출된 상황이 아니라 플레이어가 만들 수
+            // 있는 판이어야 캡처가 증거가 된다:
+            //   사선 결속기 — 대각 연결을 열어 4칸 덩어리가 훨씬 자주 성립한다
+            //   연쇄 조속기 — 연쇄 배수 증분을 올린다
+            //   증식체 계약 — 대상 저항의 출현률을 1.5배로
+            // 셋 다 카탈로그와 커리큘럼에 실재하는 것이고, 8층은 FullPool + 계약 3종이다.
+            int[] seeds = { 12, 7, 1, 99, 2024, 31415, 271828, 8675309, 42, 1234567, 20260731, 555 };
             int bestDepth = 0;
 
             foreach (int seed in seeds)
             {
                 run.ResetRun(RunMode.TenFloor, seed);
                 yield return WaitFrames(2);
-                yield return DriveToFloor(run, bridge, 4);
+                run.Session.Loadout.Add(BuildCatalog.ById("PRT_DIAGONAL_BINDER"));
+                run.Session.Loadout.Add(BuildCatalog.ById("PRT_CASCADE_GOVERNOR"));
+                yield return DriveToFloor(run, bridge, 8);
                 FloorSession floor = run.Session.Current;
                 if (floor == null) continue;
                 if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
-                if (floor.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
+                if (floor.Phase == FloorPhase.ContractSelection)
+                    run.SelectContract(floor.Plan.ContractChoices.Length - 1);   // 증식체 계약
 
                 int guard = 0;
                 while (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0 && guard++ < 8)
@@ -305,7 +336,8 @@ namespace Ascend.Prototype.Run.Tests
                                presenter.CurrentDepth < 3 && Time.realtimeSinceStartup < deadline)
                             yield return null;
                         yield return Shot("15_cascade_deep", DeviceFront, risk,
-                            $"시드 {seed} / 연쇄 {depth}단계 / 재생 중 깊이 {(presenter != null ? presenter.CurrentDepth : -1)}");
+                            $"시드 {seed} / 8층 / 사선 결속기+연쇄 조속기+증식체 계약 / " +
+                            $"연쇄 {depth}단계 / 재생 중 깊이 {(presenter != null ? presenter.CurrentDepth : -1)}");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -349,16 +381,28 @@ namespace Ascend.Prototype.Run.Tests
                 $"{record} / 기록 {(recorder != null ? recorder.Records.Count : 0)}건 / " +
                 $"시드 {run.Session.Seed} / 도달 {run.Session.HighestFloorReached}층");
 
-            // 완주 직전 — 성공 런으로 10층까지 몰고 간다.
-            run.ResetRun(RunMode.TenFloor, 1337);
-            yield return WaitFrames(2);
-            yield return DriveToFloor(run, bridge, 10);
-            yield return WaitFrames(4);
-            FloorSession last = run.Session.Current;
+            // 완주 직전 — 10층에 **실제로 서 있는** 런을 찾는다. 시드 하나로 몰다가
+            // 중간에 사고가 나면 "도달 8층"이 찍히고, 그건 §12가 요구한 그림이 아니다.
+            FloorSession last = null;
+            int finalSeed = 0;
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828, 8675309, 20260731 })
+            {
+                run.ResetRun(RunMode.TenFloor, seed);
+                yield return WaitFrames(2);
+                yield return DriveToFloor(run, bridge, 10);
+                yield return WaitFrames(3);
+                FloorSession candidate = run.Session.Current;
+                if (candidate != null && candidate.Plan.Floor == 10)
+                {
+                    last = candidate;
+                    finalSeed = seed;
+                    break;
+                }
+            }
             yield return Shot("18_final_floor", Risk, risk,
                 last != null
-                    ? $"{last.Plan.Floor}층 — 요구 {last.RequiredPower:F0} / 완주 직전"
-                    : $"런 종료 — 도달 {run.Session.HighestFloorReached}층 / 소지금 {run.Session.Money:F0}");
+                    ? $"시드 {finalSeed} / 10층 도달 — 요구 {last.RequiredPower:F0} / 완주 직전"
+                    : $"10층에 선 런을 찾지 못했다 — 마지막 도달 {run.Session.HighestFloorReached}층");
         }
 
         // ── 촬영 ────────────────────────────────────────────────────────────
