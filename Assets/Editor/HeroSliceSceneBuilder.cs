@@ -37,6 +37,9 @@ namespace Ascend.Prototype.EditorTools
             GameObject car = GameObject.Find("Car");
             if (car == null) { Debug.LogError("[상승] Car 를 찾지 못했다. 씬이 열려 있는지 확인한다."); return; }
 
+            // 실내등을 먼저 세운다 — 과수확 해제 연출이 "실내등을 어둡게" 하려면 참조가 필요하다.
+            EnsureRiskStateView(car.transform);
+
             GameObject overharvest = BuildOverharvestLever(car.transform);
             EnsurePresenter();
             WireBridge(overharvest);
@@ -44,7 +47,6 @@ namespace Ascend.Prototype.EditorTools
             BuildPowerGauge();
             EnsureInstrumentPanelView();
             WidenPanelLabels();
-            EnsureRiskStateView(car.transform);
             BuildScreenUi();
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
@@ -73,47 +75,73 @@ namespace Ascend.Prototype.EditorTools
             Material button = Mat("M_Gray_Button");
 
             // 덩어리 자체가 커야 "크고 무거운 별도 레버"로 읽힌다(MASTER_PRD §7).
-            // 실행 레버는 축 0.11×0.52. 여기는 하우징만 0.46×0.80이다.
-            GameObject housing = Box(root.transform, "Housing", Vector3.zero,
-                new Vector3(0.46f, 0.80f, 0.22f), recessive);
+            // 실행 레버는 축 0.11×0.52. 여기는 하우징만 0.60×0.84다.
+            //
+            // **깊이 배치가 이 물체의 전부다.** 잠김이 잠김으로 보이려면 덮개가 손잡이보다
+            // 확실히 앞에 있어야 한다. 두 번 틀렸다:
+            //   1차 — 덮개를 손잡이보다 0.22m 뒤에 둬서 잠겨도 손잡이가 그대로 보였다.
+            //   2차 — 앞으로 옮겼지만 0.022m 만 앞이라 손잡이가 덮개를 **관통**했다.
+            // 지금은 하우징을 오목한 함으로 만들고 손잡이를 그 안에 넣는다.
+            //
+            //   z 축(앞이 −):  덮개 앞면 −0.435 │ 덮개 뒷면 −0.405 │ 손잡이 앞면 −0.367 │ 하우징 안쪽
+            //   손잡이 앞면이 덮개 뒷면보다 0.038m 뒤 — 닫히면 실제로 가려진다.
+            GameObject housing = Box(root.transform, "Housing", new Vector3(0f, 0f, -0.15f),
+                new Vector3(0.60f, 0.84f, 0.52f), recessive);
             BoxCollider housingCollider = housing.AddComponent<BoxCollider>();
 
-            // 색 하나로 위험을 말하지 않는다(VISUAL_SPEC §7). 사선 경고 띠는 회색조에서도 남는다.
-            Box(root.transform, "WarningStripe", new Vector3(0f, -0.30f, -0.115f),
-                new Vector3(0.46f, 0.09f, 0.02f), button);
-            Box(root.transform, "WarningStripe_Upper", new Vector3(0f, 0.30f, -0.115f),
-                new Vector3(0.46f, 0.09f, 0.02f), button);
+            // 경고 띠는 덮개 **바깥쪽**(x=±0.26)에 세로로 세운다. 덮개 폭이 0.44라
+            // 그 안쪽에 두면 닫혔을 때 띠까지 같이 가려져 잠김/해제 구분이 사라진다.
+            // 색 하나로 위험을 말하지 않는다(VISUAL_SPEC §7) — 밝기와 발광이 함께 뒤집힌다.
+            GameObject stripeLower = Box(root.transform, "WarningStripe",
+                new Vector3(-0.26f, 0f, -0.42f), new Vector3(0.06f, 0.76f, 0.02f), button);
+            GameObject stripeUpper = Box(root.transform, "WarningStripe_Upper",
+                new Vector3(0.26f, 0f, -0.42f), new Vector3(0.06f, 0.76f, 0.02f), button);
 
-            // 손잡이 — 덮개 뒤에 있다.
+            // 손잡이 — 하우징 안쪽. 덮개가 닫히면 가려진다.
             var handlePivot = new GameObject("HandlePivot");
             handlePivot.transform.SetParent(root.transform, false);
-            handlePivot.transform.localPosition = new Vector3(0f, -0.12f, -0.14f);
+            handlePivot.transform.localPosition = new Vector3(0f, -0.12f, -0.05f);
             Box(handlePivot.transform, "HandleShaft", new Vector3(0f, 0.26f, 0f),
                 new Vector3(0.09f, 0.52f, 0.09f), interactive);
             GameObject grip = Box(handlePivot.transform, "HandleGrip", new Vector3(0f, 0.54f, -0.05f),
                 new Vector3(0.24f, 0.13f, 0.17f), interactive);
             BoxCollider gripCollider = grip.AddComponent<BoxCollider>();
 
-            // 보호 덮개 — 잠금의 물리적 표현. 닫혀 있으면 손잡이가 실제로 가려진다.
+            // 보호 덮개 — 잠금의 물리적 표현. 하우징 앞면을 막는다.
             var coverPivot = new GameObject("CoverPivot");
             coverPivot.transform.SetParent(root.transform, false);
-            coverPivot.transform.localPosition = new Vector3(0f, 0.36f, -0.13f);
-            Box(coverPivot.transform, "CoverPlate", new Vector3(0f, -0.24f, -0.02f),
-                new Vector3(0.42f, 0.48f, 0.03f), panel);
-            Box(coverPivot.transform, "CoverRib", new Vector3(0f, -0.24f, -0.04f),
-                new Vector3(0.06f, 0.48f, 0.02f), recessive);
+            coverPivot.transform.localPosition = new Vector3(0f, 0.46f, -0.42f);
+            Box(coverPivot.transform, "CoverPlate", new Vector3(0f, -0.28f, 0f),
+                new Vector3(0.44f, 0.56f, 0.03f), panel);
+            Box(coverPivot.transform, "CoverRib", new Vector3(0f, -0.28f, -0.02f),
+                new Vector3(0.07f, 0.56f, 0.02f), recessive);
 
+            // 잠금등은 덮개 아래(y=-0.30)에 둔다. 덮개는 y -0.10~0.46 을 차지하므로
+            // 그 안에 두면 닫혔을 때 등까지 가려진다.
             GameObject lockLight = Box(root.transform, "LockLight",
-                new Vector3(0f, 0.30f, -0.125f), new Vector3(0.13f, 0.07f, 0.02f), light);
+                new Vector3(0f, -0.30f, -0.42f), new Vector3(0.18f, 0.07f, 0.02f), light);
 
-            Label(root.transform, "OverharvestLabel", new Vector3(0f, 0.50f, -0.14f), "과수확");
+            // 해제 순간을 비추는 전용 등. 실내등만으로는 "이 레버가 지금 살아났다"가
+            // 공간에서 읽히지 않는다(VISUAL_SPEC §7 "해제 순간 조명·소리·기계 반응이 집중된다").
+            var spotObject = new GameObject("UnlockSpot");
+            spotObject.transform.SetParent(root.transform, false);
+            spotObject.transform.localPosition = new Vector3(0f, 0.66f, -0.62f);
+            spotObject.transform.localRotation = Quaternion.Euler(34f, 0f, 0f);
+            Light spot = spotObject.AddComponent<Light>();
+            spot.type = LightType.Spot;
+            spot.range = 3.2f;
+            spot.spotAngle = 74f;
+            spot.intensity = 0f;
+            spot.shadows = LightShadows.None;
+
+            Label(root.transform, "OverharvestLabel", new Vector3(0f, 0.56f, -0.43f), "과수확");
 
             var lever = root.AddComponent<InteractableOverharvestLever>();
             var so = new SerializedObject(lever);
             so.FindProperty("_grip").objectReferenceValue = gripCollider;
             so.FindProperty("_coverPivot").objectReferenceValue = coverPivot.transform;
             so.FindProperty("_closedAngle").floatValue = 0f;
-            so.FindProperty("_openAngle").floatValue = 105f;      // 앞·위로 젖혀져 열린 것이 보인다
+            so.FindProperty("_openAngle").floatValue = -105f;     // 위·뒤로 젖혀 하우징에 붙는다 (앞으로 젖히면 손잡이를 가린다)
             so.FindProperty("_handlePivot").objectReferenceValue = handlePivot.transform;
             so.FindProperty("_handleRestAngle").floatValue = -20f;
             so.FindProperty("_handlePulledAngle").floatValue = 55f;
@@ -124,7 +152,37 @@ namespace Ascend.Prototype.EditorTools
             // "왜 못 쓰는지"가 프롬프트로 읽힌다. 클릭은 CanInteract가 막는다.
             housingCollider.enabled = true;
 
+            WireUnlockEffect(root, lever, spot, stripeLower, stripeUpper);
             return root;
+        }
+
+        /// <summary>
+        /// 해제 순간 연출을 붙인다. `InteractableOverharvestLever.Unlocked` 이벤트는
+        /// 진작 있었지만 **구독자가 없어서** 덮개만 조용히 열리고 끝났다.
+        /// </summary>
+        private static void WireUnlockEffect(GameObject root, InteractableOverharvestLever lever,
+                                             Light spot, GameObject stripeLower, GameObject stripeUpper)
+        {
+            var audio = root.AddComponent<AudioSource>();
+            audio.playOnAwake = false;
+            audio.loop = false;
+            audio.spatialBlend = 0.6f;   // 레버 쪽에서 나되 방 전체에 들린다
+            audio.volume = 0f;
+
+            var effect = root.AddComponent<OverharvestUnlockEffect>();
+            var so = new SerializedObject(effect);
+            so.FindProperty("_lever").objectReferenceValue = lever;
+            so.FindProperty("_spotLight").objectReferenceValue = spot;
+            so.FindProperty("_shakeTarget").objectReferenceValue = root.transform.Find("Housing");
+            so.FindProperty("_audio").objectReferenceValue = audio;
+
+            so.FindProperty("_riskView").objectReferenceValue = Object.FindAnyObjectByType<RiskStateView>();
+
+            SerializedProperty stripes = so.FindProperty("_warningStripes");
+            stripes.arraySize = 2;
+            stripes.GetArrayElementAtIndex(0).objectReferenceValue = stripeLower.GetComponent<Renderer>();
+            stripes.GetArrayElementAtIndex(1).objectReferenceValue = stripeUpper.GetComponent<Renderer>();
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ── 배선 ──

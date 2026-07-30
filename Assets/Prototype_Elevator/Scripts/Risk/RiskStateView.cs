@@ -63,6 +63,17 @@ namespace Ascend.Prototype.Risk
         /// <summary>왜 이 단계인지 한 줄.</summary>
         public string Reason { get; private set; } = "위험 요인 없음";
 
+        /// <summary>
+        /// 실내등 밝기에 곱해지는 외부 배수. 과수확 해제 같은 **일시적 사건**이 실내등을
+        /// 끌어내릴 때 쓴다.
+        ///
+        /// 왜 배수를 따로 두는가: 실내등은 이 컴포넌트가 매 LateUpdate 마다 절대값으로 다시
+        /// 쓴다. 다른 컴포넌트가 코루틴에서 intensity 를 곱해봐야 같은 프레임의 LateUpdate 가
+        /// 그대로 덮어써서 **아무 일도 일어나지 않는다.** 실제로 처음엔 그렇게 만들어서
+        /// 해제 순간의 "기계 반응"이 전혀 보이지 않았다. 소유자는 하나여야 한다.
+        /// </summary>
+        public float CabinLightMultiplier { get; set; } = 1f;
+
         /// <summary>런타임에 강도 프리셋을 바꾼다. 승인 비교용 캡처를 같은 조건에서 뽑기 위한 통로다.</summary>
         public void SetIntensity(RiskIntensity intensity)
         {
@@ -144,7 +155,8 @@ namespace Ascend.Prototype.Risk
 
             if (_cabinLight != null)
             {
-                _cabinLight.intensity = _baseLightIntensity * _blended.LightIntensity * flicker;
+                _cabinLight.intensity = _baseLightIntensity * _blended.LightIntensity * flicker
+                                        * Mathf.Clamp01(CabinLightMultiplier);
                 _cabinLight.color = _blended.LightColor;
             }
 

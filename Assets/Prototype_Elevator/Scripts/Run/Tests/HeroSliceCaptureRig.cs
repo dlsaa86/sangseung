@@ -125,6 +125,11 @@ namespace Ascend.Prototype.Run.Tests
             yield return null;
 
             yield return Shot("01_interior", Interior, seed, "계약 선택 단계 — 엘리베이터 내부 전경", risk);
+
+            // 과수확 레버 잠김 상태. 아래 06(해제)과 **같은 좌표**라 나란히 비교할 수 있다 —
+            // Gate C "과수확 레버가 일반 실행 레버와 혼동되지 않는다"의 증거다.
+            yield return Shot("05b_overharvest_locked", OverharvestApproach, seed,
+                              "과수확 레버 — 잠김(덮개 닫힘·띠 어두움). 06과 같은 좌표", risk);
             yield return Shot("02_board_front", BoardFront, seed, "3×3 결과판 정면", risk);
             yield return Shot("03_contract_select", ContractWall, seed,
                               "계약 선택 — 출현률·보상·대가가 함께 걸린다", risk);
@@ -142,9 +147,8 @@ namespace Ascend.Prototype.Run.Tests
             // Stable/Critical 은 반드시 같은 좌표에서 찍는다 — 무음 비교의 전제다.
             yield return Shot("04_stable", Interior, seed, "Stable — 기준 상태", risk);
             yield return Shot("06_overharvest_access", OverharvestApproach, seed,
-                              "과수확 레버 접근 — 덮개가 열린 순간", risk);
-            yield return Shot("06b_overharvest_locked_compare", OverharvestApproach, seed,
-                              "(참고) 위 좌표에서 잠금 상태는 패스 C 첫 캡처와 비교", risk);
+                              "과수확 레버 — 해제(덮개 열림·띠 발광·전용 등). 05b와 같은 좌표", risk);
+
         }
 
         private IEnumerator PassB(RunSessionBehaviour run, RouletteInteractionBridge bridge,

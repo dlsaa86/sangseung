@@ -199,6 +199,31 @@ namespace Ascend.Prototype.Run.Tests
                 Check("덮개가 열려야 과수확을 당길 수 있다", overharvest.CanInteract,
                       $"cover={overharvest.IsCoverOpen}");
 
+                // 해제가 "사건"으로 보이는가 — VISUAL_SPEC §7.
+                // 덮개 대기 뒤에 본다. 잠금이 풀린 **그 프레임**에 확인하면 레버의 Update가
+                // 아직 안 돌아 이벤트가 발생하기 전이다.
+                var unlockEffect = FindAnyObjectByType<OverharvestUnlockEffect>();
+                Check("해제 연출이 씬에 있다", unlockEffect != null, "OverharvestUnlockEffect 없음");
+                if (unlockEffect != null)
+                {
+                    Check("잠금 해제 순간 연출이 재생됐다", unlockEffect.HasPlayed,
+                          "Unlocked 이벤트에 구독자가 없거나 연출이 시작되지 않았다");
+                    Check("풀린 동안 경고 띠가 발광한다", unlockEffect.IsArmedVisual,
+                          "잠김/해제가 정지 화면에서 구분되지 않는다");
+                    // 연출 중에는 실내등이 실제로 어두워져야 한다 — "기계 반응"이 없으면
+                    // VISUAL_SPEC §7 의 네 채널 중 하나가 비는 것이다.
+                    Check("해제 순간 실내등이 어두워진다", unlockEffect.CabinDipAmount > 0.05f,
+                          $"실내등 변화 {unlockEffect.CabinDipAmount:P0} — 기계 반응이 없다");
+
+                    // 그리고 끝나면 반드시 돌아와야 한다. 안 돌아오면 방이 영구히 어둡다.
+                    float deadline = Time.realtimeSinceStartup + 5f;
+                    while (unlockEffect.IsPlaying && Time.realtimeSinceStartup < deadline)
+                        yield return null;
+                    Check("해제 연출이 실내등을 원래대로 되돌린다",
+                          Mathf.Abs(unlockEffect.CabinDipAmount) < 0.01f,
+                          $"실내등이 {unlockEffect.CabinDipAmount:P0} 어두운 채로 남음");
+                }
+
                 // ── 7. 과수확 — 판돈이 먼저 빠진다 ──
                 float powerBefore = floor.Power;
                 float ante = floor.PendingAnte;
