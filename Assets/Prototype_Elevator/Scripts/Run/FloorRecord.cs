@@ -28,6 +28,22 @@ namespace Ascend.Prototype.Run
         public float TotalAnte { get; private set; }
         public float NetProfit { get; private set; }
         public float CarriedWeight { get; private set; }
+
+        /// <summary>허용 중량(짐꾼 보너스 포함). 무게만으로는 과적인지 알 수 없다.</summary>
+        public float WeightCapacity { get; private set; }
+
+        /// <summary>
+        /// 그 층에서 싣고 있던 승객·부품. `AUTONOMOUS_PROTOTYPE_GOAL.md` §3이 사고 기록기의
+        /// 필수 항목으로 지정한 11가지 중 하나인데 빠져 있었다 — 독립 감사가 지목했다.
+        ///
+        /// 이게 없으면 "왜 요구 전력이 그렇게 높았는가"와 "왜 규칙이 그렇게 굴러갔는가"를
+        /// 설명할 수 없다. 무게와 규칙 변경이 전부 적재에서 나오기 때문이다.
+        /// </summary>
+        public string Loadout { get; private set; }
+
+        /// <summary>적재 상세 — 각 항목의 무게와 효과. 전문 보고에만 쓴다.</summary>
+        public string LoadoutDetail { get; private set; }
+
         public bool Overloaded { get; private set; }
         public PowerBand Band { get; private set; }
         public bool Succeeded { get; private set; }
@@ -76,6 +92,9 @@ namespace Ascend.Prototype.Run
                 TotalAnte = floor.TotalAnte,
                 NetProfit = floor.NetProfit,
                 CarriedWeight = floor.CarriedWeight,
+                WeightCapacity = floor.Capacity,
+                Loadout = floor.Loadout != null ? floor.Loadout.DescribeShort() : "없음",
+                LoadoutDetail = floor.Loadout != null ? floor.Loadout.Describe() : "적재 없음",
                 Overloaded = floor.IsOverloaded,
                 Band = result != null ? result.Band : floor.CurrentBand,
                 Succeeded = result != null && result.Succeeded,
@@ -113,8 +132,14 @@ namespace Ascend.Prototype.Run
 
             sb.AppendLine($"위험 최고 {PeakRisk.DisplayName()}  ({RiskReason})");
             sb.AppendLine(FinalResidual.IsClean ? "잔류 없음" : $"잔류 — {FinalResidual.Describe()}");
-            if (Overloaded) sb.AppendLine($"과적 — 무게 {CarriedWeight:F0}");
-            if (!string.IsNullOrEmpty(FailureReason)) sb.AppendLine($"원인: {FailureReason}");
+
+            // 무게는 허용치와 함께 적어야 뜻이 생긴다. 33kg 이 위험한지 아닌지는
+            // 허용 중량을 봐야 알 수 있고, 그 허용 중량은 짐꾼이 바꾼다.
+            sb.AppendLine($"적재 {Loadout}   무게 {CarriedWeight:F0}/{WeightCapacity:F0}" +
+                          (Overloaded ? "  ⚠ 과적" : string.Empty));
+
+            if (!string.IsNullOrEmpty(FailureReason))
+                sb.AppendLine($"원인: {LocalizeFailure(FailureReason)}");
             return sb.ToString();
         }
 
@@ -128,6 +153,8 @@ namespace Ascend.Prototype.Run
             sb.AppendLine($"=== 사고 기록기 / 런 시드 {RunSeed} / {Floor}층 ===");
             sb.AppendLine($"핵심 질문: {CoreQuestion}");
             sb.AppendLine(Summary());
+            sb.AppendLine("--- 적재 ---");
+            sb.AppendLine(LoadoutDetail);
             sb.AppendLine("--- 스핀별 ---");
 
             foreach (SpinRecord spin in _spins)
@@ -136,6 +163,26 @@ namespace Ascend.Prototype.Run
                 sb.Append(spin.Resolution.DescribeCascade());
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 실패 사유를 플레이어가 읽는 말로 바꾼다.
+        ///
+        /// `AscendResult`가 `"Crash"` / `"Jettison required"`를 영어로 하드코딩해 두어
+        /// 사고 기록기가 `원인: Crash`를 출력하고 있었다. 나머지 화면이 전부 한국어인데
+        /// 실패 원인만 영어라면, 하필 가장 설명이 필요한 순간에 설명이 끊긴다.
+        ///
+        /// 문자열 매핑으로 두는 이유: `AscendResult`는 순수 C#이고 표시 언어를 몰라야 한다.
+        /// 표시 계층에서 바꾸는 것이 맞다.
+        /// </summary>
+        private static string LocalizeFailure(string reason)
+        {
+            switch (reason)
+            {
+                case "Crash":             return "추락 — 요구 전력의 70% 미만";
+                case "Jettison required": return "화물 포기 — 요구 전력의 70~89%";
+                default:                  return reason;
+            }
         }
     }
 }
