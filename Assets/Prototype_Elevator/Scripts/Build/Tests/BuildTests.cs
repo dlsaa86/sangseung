@@ -31,6 +31,7 @@ namespace Ascend.Prototype.Build.Tests
             Run("짐꾼이 허용 중량을 올린다", TestPorterRaisesCapacity, ref passed, ref failed, report);
             Run("과적이 요구 전력에 배수를 건다", TestOverloadMultiplier, ref passed, ref failed, report);
             Run("적재 무게가 다음 층으로 이어진다", TestLoadCarriesToNextFloor, ref passed, ref failed, report);
+            Run("무게 변경이 현재 층에 즉시 반영된다", TestWeightChangePropagates, ref passed, ref failed, report);
 
             // ── 규칙 변경 (Gate C 핵심) ──
             Run("승객이 정화 문턱을 낮춘다", TestPassengerLowersPurifyThreshold, ref passed, ref failed, report);
@@ -262,6 +263,35 @@ namespace Ascend.Prototype.Build.Tests
             var driven = Drive(4242, (f, slot) => slot < 1);
             if (driven.run.Loadout.Count == 0 && !driven.run.IsFailed)
                 return "런 내내 아무것도 실리지 않음";
+            return null;
+        }
+
+        /// <summary>
+        /// 층이 이미 만들어진 뒤에 무게가 바뀌어도 요구 전력과 과적이 따라와야 한다.
+        ///
+        /// 실제로 캡처 리그가 과적 218/130 상태에서 위험 단계 **Stable**을 찍어서 찾았다.
+        /// `_carriedWeight`와 `_requiredPower`가 층 생성 시점에 고정돼 있었고,
+        /// `RunSession.AddWeight`는 `_baseWeight`만 바꿔 층은 그 사실을 몰랐다.
+        /// 무게가 위험 점수의 입력이므로, 이게 어긋나면 Gate F 전체가 조용히 무너진다.
+        /// </summary>
+        private static string TestWeightChangePropagates()
+        {
+            RunSession run = NewTenFloorRun(1337);
+            FloorSession floor = run.Current;
+            if (floor == null) return "1층이 없다";
+            if (floor.IsOverloaded) return "시작부터 과적";
+
+            float requiredBefore = floor.RequiredPower;
+            float weightBefore = floor.CarriedWeight;
+
+            if (!run.AddWeight(200f)) return "AddWeight 가 거부됨";
+
+            if (Math.Abs(floor.CarriedWeight - (weightBefore + 200f)) > 0.01f)
+                return $"층 무게가 {floor.CarriedWeight} (기대 {weightBefore + 200f})";
+            if (!floor.IsOverloaded)
+                return $"200kg 을 더했는데 과적이 아님: {floor.CarriedWeight}/{floor.Capacity}";
+            if (floor.RequiredPower <= requiredBefore)
+                return $"요구 전력이 {requiredBefore} → {floor.RequiredPower} 로 오르지 않음";
             return null;
         }
 

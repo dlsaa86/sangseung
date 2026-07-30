@@ -399,8 +399,12 @@ namespace Ascend.Prototype.EditorTools
             Tint(car, "BackWall_Left",    new Color(0.239f, 0.267f, 0.247f), report);
             Tint(car, "BackWall_Right",   new Color(0.239f, 0.267f, 0.247f), report);
             Tint(car, "BackWall_Lintel",  new Color(0.192f, 0.216f, 0.200f), report);
-            Tint(car, "Handrail_R",       new Color(0.325f, 0.318f, 0.286f), report);
-            Tint(car, "Handrail_B",       new Color(0.325f, 0.318f, 0.286f), report);
+            // 핸드레일은 **차갑게** 둔다. 처음에 따뜻한 회색(0.325,0.318,0.286)으로 칠했더니
+            // 블라인드 평가자가 "레버 바로 아래 핸드레일이 같은 갈색이라 조작 장치와 벽면
+            // 부속이 한 난색 덩어리로 묶인다"고 잡아냈다 — `visual-criteria` B-1.1의
+            // 실패 조건 그대로다. 벽면 부속은 벽 쪽 계열로, 난색은 조작 장치에만 남긴다.
+            Tint(car, "Handrail_R",       new Color(0.298f, 0.318f, 0.302f), report);
+            Tint(car, "Handrail_B",       new Color(0.298f, 0.318f, 0.302f), report);
             Tint(car, "TankStand",        new Color(0.278f, 0.263f, 0.231f), report);
 
             Transform lobby = Find("GrayboxWorld/Lobby");

@@ -118,6 +118,9 @@ namespace Ascend.Prototype.Run
         {
             if (amount < 0f || IsComplete || IsFailed) return false;
             _baseWeight += amount;
+            // 이미 만들어진 층에도 알린다. 안 그러면 층이 옛 무게로 요구 전력을 들고 있고
+            // `IsOverloaded`가 거짓으로 남아 위험 단계가 올라가지 않는다.
+            _current?.RefreshLoad(_baseWeight);
             return true;
         }
 
@@ -125,6 +128,7 @@ namespace Ascend.Prototype.Run
         {
             if (weight < 0f || IsComplete || IsFailed) return false;
             _baseWeight = weight;
+            _current?.RefreshLoad(_baseWeight);
             return true;
         }
 

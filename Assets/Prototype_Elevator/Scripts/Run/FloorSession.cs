@@ -28,7 +28,7 @@ namespace Ascend.Prototype.Run
         private readonly PowerThresholds _thresholds;
         private readonly List<SpinResolution> _history = new List<SpinResolution>();
         private readonly BuildLoadout _loadout;
-        private readonly float _baseWeight;
+        private float _baseWeight;
         private BuildItem[] _offers = Array.Empty<BuildItem>();
         private float _carriedWeight;
         private float _requiredPower;
@@ -164,6 +164,26 @@ namespace Ascend.Prototype.Run
             if (Phase == FloorPhase.Spinning)
                 BuildRules(_contract);
             return true;
+        }
+
+        /// <summary>
+        /// 적재가 층 바깥에서 바뀌었을 때 무게와 요구 전력을 다시 계산한다.
+        ///
+        /// 필요한 이유: `_carriedWeight`와 `_requiredPower`는 층이 만들어질 때 한 번,
+        /// 그리고 적재 단계에서 갱신된다. `RunSession.AddWeight`처럼 층이 이미 존재하는
+        /// 상태에서 무게가 바뀌면 층은 그 사실을 모른 채 옛 요구 전력을 들고 있고,
+        /// `IsOverloaded`도 거짓으로 남는다. 실제로 캡처 리그가 과적 218/130 상태에서
+        /// 위험 단계 Stable을 찍었다 — 무게는 늘었는데 층이 모르고 있었다.
+        /// </summary>
+        /// <param name="baseWeight">
+        /// 런이 들고 있는 기본 무게. 층의 사본이 아니라 **런의 현재 값**을 받아야 한다 —
+        /// 인자 없이 자기 사본으로 다시 계산하면 아무것도 바뀌지 않는다.
+        /// 처음에 인자 없는 형태로 만들었다가 테스트가 "층 무게가 0 (기대 200)"으로 잡았다.
+        /// </param>
+        public void RefreshLoad(float baseWeight)
+        {
+            _baseWeight = Math.Max(0f, baseWeight);
+            RecomputeLoad();
         }
 
         private void RecomputeLoad()

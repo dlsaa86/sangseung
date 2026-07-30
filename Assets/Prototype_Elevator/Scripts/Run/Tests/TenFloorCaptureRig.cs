@@ -152,9 +152,20 @@ namespace Ascend.Prototype.Run.Tests
                 $"잠금 상태 — unlocked={(overharvest != null && overharvest.IsUnlocked)}");
 
             yield return SpinUntilBankable(run, bridge);
+            // 브리지가 해제를 반영하고 보호 덮개가 다 열릴 때까지 기다린다. 해제와
+            // 조작 가능은 같은 순간이 아니다 — 첫 촬영에서 `unlocked=False`가 찍힌 이유다.
             yield return WaitFrames(3);
+            if (overharvest != null)
+            {
+                float deadline = Time.realtimeSinceStartup + 8f;
+                while (!overharvest.IsCoverOpen && Time.realtimeSinceStartup < deadline)
+                    yield return null;
+                yield return WaitFrames(2);
+            }
             yield return Shot("12_overharvest_unlocked", Overharvest, risk,
-                $"해제 순간 — unlocked={(overharvest != null && overharvest.IsUnlocked)}");
+                $"해제 순간 — unlocked={(overharvest != null && overharvest.IsUnlocked)} " +
+                $"덮개열림={(overharvest != null && overharvest.IsCoverOpen)} " +
+                $"조작={(overharvest != null && overharvest.CanInteract)}");
 
             if (overharvest != null && overharvest.CanInteract)
             {
@@ -264,13 +275,17 @@ namespace Ascend.Prototype.Run.Tests
             RouletteInteractionBridge bridge, RiskStateView risk)
         {
             var presenter = FindAnyObjectByType<SpinPresenter>();
-            int[] seeds = { 12, 7, 1, 99, 2024, 31415 };
+            // 1층은 저항 가중치 보정이 없어 4개 연결이 드물다 — 첫 시도에서 6시드 최대
+            // 3단계에 그쳤다. 4층은 `ResistanceWeightScale = 1.9`로 캐스케이드를 처음
+            // 보여주려고 설계된 층이므로 거기서 찾는다.
+            int[] seeds = { 12, 7, 1, 99, 2024, 31415, 271828, 8675309, 42, 1234567 };
             int bestDepth = 0;
 
             foreach (int seed in seeds)
             {
                 run.ResetRun(RunMode.TenFloor, seed);
                 yield return WaitFrames(2);
+                yield return DriveToFloor(run, bridge, 4);
                 FloorSession floor = run.Session.Current;
                 if (floor == null) continue;
                 if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
