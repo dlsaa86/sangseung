@@ -114,6 +114,31 @@ namespace Ascend.Prototype.EditorTools
             Debug.Log($"[상승] 고정 캡처 시작 → {HeroSliceCaptureRig.OutputDirectory}");
         }
 
+        /// <summary>`AUTONOMOUS_PROTOTYPE_GOAL.md` §12의 필수 캡처 세트를 만든다.</summary>
+        [MenuItem("Ascend/Capture Ten Floor Set")]
+        public static void RunTenFloorCaptureSet()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string manifest = Path.Combine(Directory.GetCurrentDirectory(), TenFloorCaptureRig.ManifestPath);
+            if (File.Exists(manifest)) File.Delete(manifest);
+
+            TenFloorCaptureRig.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 10층 고정 캡처 시작 → {TenFloorCaptureRig.OutputDirectory}");
+        }
+
         [MenuItem("Ascend/Measure Hero Slice Performance")]
         public static void RunPerfProbe()
         {

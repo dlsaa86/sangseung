@@ -1,9 +1,11 @@
 # 자율 프로토타입 개발 목표 — 완전 플레이 가능 프로토타입
 
-> 상태: 저장 완료 / **실행 대기 (구현 미개시)**
+> 상태: **실행 중** (2026-07-31 개시)
 > 저장일: 2026-07-31
 > 지시자: 사용자
-> 대상 브랜치: `agent/phase2-full-prototype` (아직 생성하지 않음)
+> 대상 브랜치: `agent/phase2-full-prototype`
+> 진행 상황: `docs/runtime/ProgressLog.md` · 요구사항 매핑: `docs/runtime/GapAnalysis.md`
+> 비주얼 감사: `docs/runtime/VisualGapAnalysis.md` · Notion: `docs/runtime/NotionSyncReport.md`
 > 원문 보존: §1 ~ §15는 사용자 지시 원문이며 **편집하지 않는다.**
 
 이 문서는 다음 장시간 자율 개발 실행의 **목표·절차·완료 조건**을 저장소 안에 동결한 것이다.

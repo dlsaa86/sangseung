@@ -57,6 +57,8 @@ namespace Ascend.Prototype.Build
         };
 
         private readonly List<GameObject> _carFigures = new List<GameObject>();
+        private readonly List<Vector3> _carBasePositions = new List<Vector3>();
+        private readonly List<bool> _carIsPassenger = new List<bool>();
         private readonly List<GameObject> _lobbyFigures = new List<GameObject>();
         private readonly List<InteractableBuildCandidate> _candidates =
             new List<InteractableBuildCandidate>();
@@ -65,6 +67,7 @@ namespace Ascend.Prototype.Build
         private Material _passengerMaterial;
         private Material _partMaterial;
         private Material _candidateMaterial;
+        private Risk.RiskStateView _risk;
         private Transform _head;
         private string _signature = string.Empty;
 
@@ -141,6 +144,60 @@ namespace Ascend.Prototype.Build
                 if (_candidates[i] != null) _candidates[i].SetCanInteract(boarding);
 
             FaceReader();
+            ReactToRisk();
+        }
+
+        /// <summary>
+        /// 승객이 위험 상태에 반응한다. `AUTONOMOUS_PROTOTYPE_GOAL.md` §3이 위험을 표현할
+        /// 공간 채널로 "승객 불안 반응"을 지목했고, `MASTER_PRD.md` §9는 "특정 감각 채널
+        /// 하나에만 의존하지 않는다"고 요구한다. 조명과 험만으로는 채널이 둘뿐이다.
+        ///
+        /// 흔드는 것은 **승객뿐**이다. 궤짝은 묶여 있으므로 같이 떨면 "누가 불안한가"라는
+        /// 정보가 사라진다. 무작위가 아니라 사인파를 쓰는 이유는 캡처 재현성이다 —
+        /// `Random`을 쓰면 같은 시드·같은 상태의 캡처가 매번 달라진다.
+        ///
+        /// 진폭은 판독성을 해치지 않는 선에서 멈춘다(§3 "과도한 화면 흔들림 금지").
+        /// Critical에서도 최대 2cm다.
+        /// </summary>
+        private void ReactToRisk()
+        {
+            if (_carFigures.Count == 0) return;
+            if (_risk == null)
+            {
+                _risk = FindAnyObjectByType<Risk.RiskStateView>();
+                if (_risk == null) return;
+            }
+
+            float amplitude;
+            float speed;
+            switch (_risk.Level)
+            {
+                case Risk.RiskLevel.Warning:  amplitude = 0.006f; speed = 3.2f;  break;
+                case Risk.RiskLevel.Critical: amplitude = 0.017f; speed = 9.5f;  break;
+                case Risk.RiskLevel.Collapse: amplitude = 0.020f; speed = 14.0f; break;
+                default:                      amplitude = 0f;     speed = 0f;    break;
+            }
+
+            float time = Time.time;
+            for (int i = 0; i < _carFigures.Count; i++)
+            {
+                GameObject figure = _carFigures[i];
+                if (figure == null || i >= _carBasePositions.Count) continue;
+
+                Vector3 basePosition = _carBasePositions[i];
+                if (amplitude <= 0f || !_carIsPassenger[i])
+                {
+                    figure.transform.position = basePosition;
+                    continue;
+                }
+
+                // 위상을 자리마다 어긋나게 둔다. 전원이 같은 박자로 흔들리면
+                // 사람이 아니라 하나의 기계로 읽힌다.
+                float phase = i * 1.7f;
+                float sway = Mathf.Sin(time * speed + phase) * amplitude;
+                float bob = Mathf.Sin(time * speed * 0.63f + phase) * amplitude * 0.5f;
+                figure.transform.position = basePosition + new Vector3(sway, bob, sway * 0.6f);
+            }
         }
 
         /// <summary>라벨이 플레이어를 본다. 정면에서 읽히지 않으면 배치의 뜻이 사라진다.</summary>
@@ -181,8 +238,11 @@ namespace Ascend.Prototype.Build
                 for (int i = 0; i < loadout.Count && i < CarSlots.Length; i++)
                 {
                     BuildItem item = loadout.Items[i];
-                    GameObject figure = CreateFigure(item, carOrigin + CarSlots[i], false, -1);
+                    Vector3 position = carOrigin + CarSlots[i];
+                    GameObject figure = CreateFigure(item, position, false, -1);
                     _carFigures.Add(figure);
+                    _carBasePositions.Add(position);
+                    _carIsPassenger.Add(item.Kind == BuildItemKind.Passenger);
                 }
             }
 
@@ -204,6 +264,8 @@ namespace Ascend.Prototype.Build
                 if (_candidates[i] != null) _candidates[i].Picked -= OnCandidatePicked;
             _candidates.Clear();
             _labels.Clear();
+            _carBasePositions.Clear();
+            _carIsPassenger.Clear();
             DestroyAll(_carFigures);
             DestroyAll(_lobbyFigures);
         }

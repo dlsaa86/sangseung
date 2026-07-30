@@ -103,8 +103,42 @@ namespace Ascend.Prototype.Run.Tests
 
             yield return null;
 
+            // 두 정책을 모두 돈다. 하나로는 둘 다 증명할 수 없다 — 과수확 판돈이 런을
+            // 흔들어 계약이 처음 나오는 6층 전에 사고가 나기 때문이다. 실제로 그렇게 됐고,
+            // "계약 단계를 거쳤다"가 도달 불가능한 검사가 되어 실패했다.
+            //
+            //   보수 — 과수확을 당기지 않는다. 완주와 계약 단계를 증명한다.
+            //   공격 — 첫 기회에 과수확을 당긴다. 대표 선택과 사고 경로를 증명한다.
+            //
+            // 같은 시드를 쓴다. 정책만 달라야 두 결과의 차이가 정책 때문임이 성립한다.
+            // 보수 정책은 **아무것도 싣지 않는다.** 층마다 두 개씩 실으면 무게가 요구 전력을
+            // 밀어올려 시드 1337에서 5층에 사고가 났고, 그러면 완주 경로 자체를 증명하지
+            // 못한다. `P2-Gate B`가 요구하는 것은 "진행 **가능**"이므로 한 정책은
+            // 그 가능성을 보여야 한다. 적재의 대가는 공격 정책이 보여준다.
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                0, false, "보수(무적재·과수확 없음)");
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                2, true, "공격(층당 2개 적재·과수확 1회)");
+
+            Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
+            _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
+            Finish();
+        }
+
+        private IEnumerator DriveRun(RunSessionBehaviour run, RouletteInteractionBridge bridge,
+            InteractableLever lever, InteractableContractPanel panel, InteractablePowerTank tank,
+            InteractableOverharvestLever overharvest, InteractableDoorControl door,
+            BuildFigureView figures, int boardCount, bool useOverharvest, string policy)
+        {
+            _report.AppendLine();
+            _report.AppendLine($"  ══════ {policy} ══════");
+            run.ResetRun(RunMode.TenFloor, run.Seed);
+            _visited.Clear();
+            for (int i = 0; i < 3; i++) yield return null;
+
             bool sawBoarding = false;
             bool sawContract = false;
+            bool reachedContractFloor = false;
             bool sawOverharvest = false;
             bool sawLockedOverharvest = false;
             float peakWeight = 0f;
@@ -122,6 +156,8 @@ namespace Ascend.Prototype.Run.Tests
                 if (floor == null) break;
 
                 int number = floor.Plan.Floor;
+                if (floor.Plan.ContractChoices != null && floor.Plan.ContractChoices.Length > 0)
+                    reachedContractFloor = true;
                 if (_visited.Count == 0 || _visited[_visited.Count - 1] != number)
                 {
                     _visited.Add(number);
@@ -145,10 +181,8 @@ namespace Ascend.Prototype.Run.Tests
                     Check($"{number}층 승강장에 후보가 서 있다", candidates.Length > 0,
                           "후보 오브젝트가 하나도 없다 — 메뉴로만 존재한다는 뜻");
 
-                    // 두 개만 태운다. 전부 태우면 과적으로 죽는 시드가 생겨 10층 진행 자체를
-                    // 검증하지 못하고, 하나도 안 태우면 적재 경로가 검증되지 않는다.
                     int taken = 0;
-                    while (taken < 2)
+                    while (taken < boardCount)
                     {
                         candidates = FindObjectsByType<InteractableBuildCandidate>(
                             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -218,6 +252,14 @@ namespace Ascend.Prototype.Run.Tests
                 // ── 결정 ──
                 if (floor.Phase == FloorPhase.Decision)
                 {
+                    // 왜 과수확을 못 당겼는지는 이 한 줄이 없으면 알 수 없다.
+                    // 브리지의 해제 조건은 `Decision && CanBank && SpinsRemaining > 0`인데,
+                    // 탱크는 스핀 소진 시에도 눌리므로 "탱크가 눌린다"가 `CanBank`를 증명하지 않는다.
+                    _report.AppendLine($"      결정: 전력 {floor.Power:F0}/{floor.RequiredPower:F0} " +
+                        $"확정가능={floor.CanBank} 남은스핀={floor.SpinsRemaining} " +
+                        $"과수확(해제={overharvest.IsUnlocked} 조작={overharvest.CanInteract}) " +
+                        $"연출잠금={bridge.IsLocked}");
+
                     if (!floor.CanBank && floor.SpinsRemaining > 0)
                     {
                         Fail($"{number}층 결정 단계", "확정도 못 하고 스핀도 남았다 — 진행 불가");
@@ -226,9 +268,20 @@ namespace Ascend.Prototype.Run.Tests
 
                     // 요구 전력을 넘겼고 스핀이 남았으면 한 번은 과수확을 당겨 본다.
                     // 대표 장면이 실제로 눌리는지 검증해야 하기 때문이다.
-                    if (!sawOverharvest && floor.CanBank && floor.SpinsRemaining > 0 &&
-                        overharvest.IsUnlocked && overharvest.CanInteract)
+                    if (useOverharvest && !sawOverharvest && floor.CanBank &&
+                        floor.SpinsRemaining > 0 && overharvest.IsUnlocked)
                     {
+                        // 해제와 조작 가능은 같은 순간이 아니다. `SetUnlocked(true)`가 걸린
+                        // 뒤에도 보호 덮개가 열리는 동안에는 손잡이를 잡을 수 없다
+                        // (`D-20260730-08` — 잠금 해제를 "사건"으로 만드는 연출).
+                        // 계측에서 `해제=True 조작=False`가 반복적으로 찍혀 이걸 찾았다.
+                        yield return WaitForCover(overharvest);
+                        Check($"{number}층 덮개가 열리면 손잡이를 잡을 수 있다",
+                              overharvest.CanInteract,
+                              $"덮개열림={overharvest.IsCoverOpen} 조작={overharvest.CanInteract}");
+                        if (!overharvest.CanInteract) { sawOverharvest = true; }
+                        else
+                        {
                         int extraBefore = floor.ExtraSpinsTaken;
                         overharvest.Interact(gameObject);
                         yield return null;
@@ -238,6 +291,7 @@ namespace Ascend.Prototype.Run.Tests
                               $"{extraBefore} → {floor.ExtraSpinsTaken}");
                         sawOverharvest = true;
                         continue;   // 결과를 다시 판정받는다
+                        }
                     }
 
                     Check($"{number}층 탱크로 층을 끝낼 수 있다", tank.CanInteract,
@@ -259,22 +313,37 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"  최고 무게 {peakWeight:F0} / 소지금 {session.Money:F0} / " +
                                $"적재 [{session.Loadout.DescribeShort()}]");
 
-            Check("런이 완주 또는 사고로 끝났다", session.IsComplete || session.IsFailed,
+            Check($"[{policy}] 런이 완주 또는 사고로 끝났다", session.IsComplete || session.IsFailed,
                   $"complete={session.IsComplete} failed={session.IsFailed} guard={guard}");
-            Check("도달 층이 건물 높이를 넘지 않는다", session.HighestFloorReached <= 10,
+            Check($"[{policy}] 도달 층이 건물 높이를 넘지 않는다", session.HighestFloorReached <= 10,
                   session.HighestFloorReached.ToString());
-            Check("적재 단계를 실제로 거쳤다", sawBoarding, "Boarding 단계가 한 번도 안 나왔다");
-            Check("계약 단계를 실제로 거쳤다", sawContract, "ContractSelection 이 한 번도 안 나왔다");
-            Check("요구 전력 전에는 과수확이 잠겨 있다", sawLockedOverharvest,
+            Check($"[{policy}] 적재 단계를 실제로 거쳤다", sawBoarding, "Boarding 단계가 한 번도 안 나왔다");
+
+            // 계약은 6층에 처음 나온다. 그 전에 사고가 나면 이 검사는 **도달 불가능**이
+            // 되므로, 계약이 있는 층에 실제로 닿았을 때만 요구한다. 닿지 못한 이유는
+            // 남긴다 — 조건을 지운 것과 도달하지 못한 것은 다른 사실이다.
+            if (reachedContractFloor)
+                Check($"[{policy}] 계약 단계를 실제로 거쳤다", sawContract,
+                      "계약 층에 닿았는데 ContractSelection 이 안 나왔다");
+            else
+                _report.AppendLine($"  건너뜀: 계약이 있는 층(6층)에 닿기 전에 런이 끝났다 " +
+                                   $"— 도달 {session.HighestFloorReached}층");
+
+            Check($"[{policy}] 요구 전력 전에는 과수확이 잠겨 있다", sawLockedOverharvest,
                   "요구 전력 미달 상태에서 잠금이 관찰되지 않음");
-            Check("요구 전력 달성 후 과수확을 당길 수 있다", sawOverharvest,
-                  "런 내내 과수확 레버가 한 번도 해제되지 않음 — 대표 선택이 존재하지 않는다");
+
+            if (useOverharvest)
+                Check($"[{policy}] 요구 전력 달성 후 과수확을 당길 수 있다", sawOverharvest,
+                      "런 내내 과수확 레버가 한 번도 해제되지 않음 — 대표 선택이 존재하지 않는다");
+            else
+                Check($"[{policy}] 과수확을 안 당기면 추가 스핀이 소비되지 않는다", !sawOverharvest,
+                      "당기지 않았는데 추가 스핀이 기록됐다");
 
             if (session.IsComplete && !session.IsFailed)
             {
-                Check("완주 런은 10층을 거친다", _visited.Contains(10),
+                Check($"[{policy}] 완주 런은 10층을 거친다", _visited.Contains(10),
                       $"방문 [{string.Join(",", _visited)}]");
-                Check("완주 런은 적재 층을 거친다",
+                Check($"[{policy}] 완주 런은 적재 층을 거친다",
                       _visited.Contains(2) && _visited.Contains(5) && _visited.Contains(8),
                       $"방문 [{string.Join(",", _visited)}]");
             }
@@ -285,13 +354,9 @@ namespace Ascend.Prototype.Run.Tests
 
             // 사고 기록기
             var recorder = FindAnyObjectByType<AccidentRecorder>();
-            Check("사고 기록기가 층마다 기록했다",
+            Check($"[{policy}] 사고 기록기가 층마다 기록했다",
                   recorder != null && recorder.Records.Count >= _visited.Count - 1,
                   recorder == null ? "기록기 없음" : $"기록 {recorder.Records.Count}건 / 방문 {_visited.Count}층");
-
-            Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
-            _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
-            Finish();
         }
 
         private static int CountChildren(Transform parent, string prefix)
@@ -306,6 +371,14 @@ namespace Ascend.Prototype.Run.Tests
         /// 연출이 재생 중이면 입력이 잠긴다. 프레임이 아니라 **시간**으로 기다린다 —
         /// 에디터 Play 는 1000fps 로도 돌아 "N프레임 대기"가 순식간에 끝나기 때문이다.
         /// </summary>
+        /// <summary>보호 덮개가 다 열릴 때까지 기다린다. 열려야 손잡이에 손이 닿는다.</summary>
+        private static IEnumerator WaitForCover(InteractableOverharvestLever lever)
+        {
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (!lever.IsCoverOpen && Time.realtimeSinceStartup < deadline) yield return null;
+            yield return null;   // 콜라이더 활성이 반영될 한 프레임
+        }
+
         private IEnumerator WaitWhileLocked(RouletteInteractionBridge bridge)
         {
             float deadline = Time.realtimeSinceStartup + 60f;
