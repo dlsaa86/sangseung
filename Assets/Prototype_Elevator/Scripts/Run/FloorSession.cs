@@ -147,7 +147,12 @@ namespace Ascend.Prototype.Run
             if (Phase != FloorPhase.Spinning || SpinsRemaining <= 0 || _rules == null)
                 return default(SpinResolution);
 
-            SpinResolution resolution = _engine.Spin(_rules, in _contract, in _residual);
+            // 시드는 순차 스트림이 아니라 (런 시드, 층, 스핀 인덱스) 좌표에서 파생한다.
+            // 그래야 "이 층 이 스핀"을 앞선 진행과 무관하게 단독 재현할 수 있다 —
+            // TECH_SPEC §7, 파생 규칙의 단일 출처는 SpinSeed다.
+            int spinSeed = SpinSeed.Derive(_engine.RunSeed, Plan.Floor, SpinsUsed);
+            SpinResolution resolution = _engine.SpinWithSeed(
+                spinSeed, _rules, in _contract, in _residual, Plan.Floor, SpinsUsed);
             _history.Add(resolution);
             _residual = resolution.Residual;
             Power += resolution.NetPower;

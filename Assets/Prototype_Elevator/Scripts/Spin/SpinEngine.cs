@@ -21,6 +21,13 @@ namespace Ascend.Prototype.Spin
             Reseed(seed);
         }
 
+        /// <summary>
+        /// 이 엔진이 시작한 런 시드. 호출자가 <see cref="SpinSeed.Derive"/>로 층·스핀
+        /// 좌표를 붙일 때 필요하다. 엔진이 시드를 숨기고 있으면 파생 규칙을 단일 출처로
+        /// 둘 수 없어 각 호출부가 자기 시드를 따로 들고 다니게 된다.
+        /// </summary>
+        public int RunSeed => _seed;
+
         public void Reseed(int seed)
         {
             _seed = seed;
@@ -47,12 +54,30 @@ namespace Ascend.Prototype.Spin
                                             SpinRuleSet rules,
                                             in ResistanceContract contract,
                                             in ResidualState carriedResidual)
+            => SpinWithSeed(spinSeed, rules, in contract, in carriedResidual, 0, 0);
+
+        /// <summary>
+        /// 층·스핀 좌표까지 기록하는 스핀. 좌표는 판정에 영향을 주지 않고
+        /// <see cref="SpinResolution"/>에 그대로 실려 나간다 — 로그 한 줄만 보고
+        /// 같은 스핀을 다시 만들 수 있어야 하기 때문이다.
+        /// </summary>
+        public SpinResolution SpinWithSeed(int spinSeed,
+                                            SpinRuleSet rules,
+                                            in ResistanceContract contract,
+                                            in ResidualState carriedResidual,
+                                            int floor,
+                                            int spinIndex)
         {
             SpinRuleSet effectiveRules = PrepareRules(rules, carriedResidual);
             var spinRandom = new Random(spinSeed);
             SpinBoard initial = DrawBoard(effectiveRules, false, spinRandom);
             ApplyGuaranteedNormalSouls(ref initial, effectiveRules.GuaranteedNormalSouls);
-            return ResolveBoardInternal(effectiveRules, contract, spinRandom, spinSeed, initial);
+            SpinResolution resolution =
+                ResolveBoardInternal(effectiveRules, contract, spinRandom, spinSeed, initial);
+            resolution.RunSeed = _seed;
+            resolution.Floor = floor;
+            resolution.SpinIndex = spinIndex;
+            return resolution;
         }
 
         /// <summary>
@@ -194,6 +219,7 @@ namespace Ascend.Prototype.Spin
             float normalSoulPower = 0f;
             float purifyPower = 0f;
             int maxDepth = Math.Max(1, rules.MaxCascadeDepth);
+            bool capReached = false;
 
             for (int depth = 1; depth <= maxDepth; depth++)
             {
@@ -270,6 +296,10 @@ namespace Ascend.Prototype.Spin
                 float totalStepNormalPower = stepNormalPower;
                 if (triggersRefill && depth == maxDepth)
                 {
+                    // 여기가 하드 캡이다. 판이 아직 더 무너질 수 있는데 규칙이 끊은 것이므로
+                    // 자연 종료와 구분해 기록한다(MASTER_PRD §6 "명확한 로그를 남긴 뒤 정상 종료").
+                    capReached = true;
+
                     // 최대 깊이에서 재충전된 보드는 다음 판정을 수행하지 않으므로,
                     // 이 단계의 연쇄 배수로 정상 영혼을 즉시 수확하고 빈칸으로 만든다.
                     int terminalNormalCount = after.CountOf(SymbolKind.NormalSoul);
@@ -303,9 +333,10 @@ namespace Ascend.Prototype.Spin
             ResidualState residual = BuildResidual(board, rules);
             float grossPower = normalSoulPower + purifyPower;
 
-            return new SpinResolution
+            var resolution = new SpinResolution
             {
                 Seed = spinSeed,
+                RunSeed = _seed,
                 InitialBoard = initialBoard,
                 FinalBoard = board,
                 Steps = steps.ToArray(),
@@ -315,8 +346,19 @@ namespace Ascend.Prototype.Spin
                 Residual = residual,
                 NetPower = grossPower - residual.StoredPowerLoss,
                 Contract = contract,
+                CascadeCapReached = capReached,
             };
+
+            if (capReached) CascadeCapReached?.Invoke(resolution);
+            return resolution;
         }
+
+        /// <summary>
+        /// 하드 캡으로 캐스케이드가 끊겼을 때 발생한다. 엔진은 순수 C#이라 `Debug.Log`를
+        /// 직접 부르지 않는다 — 로그 채널은 호출자(Unity 어댑터·테스트)가 붙인다.
+        /// 구독자가 없어도 캡 자체는 <see cref="SpinResolution.CascadeCapReached"/>에 남는다.
+        /// </summary>
+        public event Action<SpinResolution> CascadeCapReached;
 
         private ResidualState BuildResidual(SpinBoard board, SpinRuleSet rules)
         {

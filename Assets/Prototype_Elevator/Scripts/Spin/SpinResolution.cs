@@ -98,6 +98,24 @@ namespace Ascend.Prototype.Spin
         /// <summary>이 스핀에 쓰인 시드. 같은 시드 + 같은 규칙이면 같은 결과가 나와야 한다.</summary>
         public int Seed;
 
+        /// <summary>이 스핀을 파생시킨 런 시드. Seed 하나만으로는 어느 런인지 되짚을 수 없다.</summary>
+        public int RunSeed;
+
+        /// <summary>층 번호. <see cref="SpinSeed.Derive"/>의 두 번째 좌표.</summary>
+        public int Floor;
+
+        /// <summary>해당 층의 몇 번째 스핀인가(0부터). <see cref="SpinSeed.Derive"/>의 세 번째 좌표.</summary>
+        public int SpinIndex;
+
+        /// <summary>
+        /// 캐스케이드가 하드 캡에 걸려 강제 종료됐는가.
+        ///
+        /// `MASTER_PRD.md` §6은 "캡 도달 시 오류로 멈추지 말고 명확한 로그를 남긴 뒤 정상
+        /// 종료한다"고 요구한다. 플래그 없이 조용히 끝나면 무한 루프 방지가 **동작했는지
+        /// 증명할 수 없다** — 자연 종료와 강제 종료가 구분되지 않기 때문이다.
+        /// </summary>
+        public bool CascadeCapReached;
+
         /// <summary>최초 3×3 결과.</summary>
         public SpinBoard InitialBoard;
 
@@ -143,8 +161,46 @@ namespace Ascend.Prototype.Spin
                         if (p.Pattern > best) best = p.Pattern;
                 }
             }
-            return $"{InitialBoard} | 정화 {purifies}회 (최고 {best.DisplayName()}) | 연쇄 {ChainDepth} | " +
+            return $"{InitialBoard} | 정화 {purifies}회 (최고 {best.DisplayName()}) | 연쇄 {ChainDepth}" +
+                   (CascadeCapReached ? "(캡)" : string.Empty) + " | " +
                    $"전력 {NetPower:+0.#;−0.#;0} | {Residual.Describe()}";
+        }
+
+        /// <summary>
+        /// 재현에 필요한 최소 정보를 한 줄로 직렬화한다. `TECH_SPEC.md` §11의
+        /// "SpinResult 직렬화 또는 로그 재현" 요구를 이 한 줄이 담당한다 —
+        /// 로그에서 이 줄만 떼어내면 헤드리스로 같은 스핀을 다시 돌릴 수 있어야 한다.
+        ///
+        /// 형식: `SPIN run=<런시드> floor=<층> idx=<스핀> seed=<스핀시드> init=<초기판> final=<최종판> depth=<연쇄>[cap] net=<순전력>`
+        /// </summary>
+        public string ToLogLine()
+        {
+            return $"SPIN run={RunSeed} floor={Floor} idx={SpinIndex} seed={Seed} " +
+                   $"init=\"{InitialBoard}\" final=\"{FinalBoard}\" " +
+                   $"depth={ChainDepth}{(CascadeCapReached ? "cap" : string.Empty)} " +
+                   $"gross={GrossPower:0.##} residual={Residual.StoredPowerLoss:0.##} net={NetPower:0.##}";
+        }
+
+        /// <summary>
+        /// 캐스케이드 캡 도달 시 남겨야 하는 진단. `TECH_SPEC.md` §9가 요구하는
+        /// "시드, 초기 보드, 마지막 보드, 단계별 발동"을 전부 포함한다.
+        /// </summary>
+        public string DescribeCascade()
+        {
+            var sb = new System.Text.StringBuilder(256);
+            sb.AppendLine(ToLogLine());
+            if (Steps == null) return sb.ToString();
+
+            foreach (CascadeStep step in Steps)
+            {
+                sb.Append($"  [{step.Depth}] ×{step.ChainMultiplier:0.##}  {step.BoardBefore} → {step.BoardAfter}");
+                sb.Append($"  영혼 {step.NormalSoulsHarvested}개({step.NormalSoulPower:0.#})");
+                if (step.Purifies != null)
+                    foreach (PurifyEvent p in step.Purifies)
+                        sb.Append($"  {p.Kind.DisplayName()}/{p.Pattern.DisplayName()}×{p.Cells?.Length ?? 0}({p.Power:0.#})");
+                sb.AppendLine();
+            }
+            return sb.ToString();
         }
     }
 }
