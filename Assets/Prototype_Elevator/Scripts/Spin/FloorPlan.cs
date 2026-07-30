@@ -54,6 +54,46 @@ namespace Ascend.Prototype.Spin
     }
 
     /// <summary>
+    /// 런이 어떤 층들로 이루어지는가. `RunSession`이 층 번호로 계획을 물어보는 유일한 창구다.
+    ///
+    /// 이 인터페이스가 없으면 10층 커리큘럼과 1층 Hero Slice가 같은 배열을 두고 싸운다.
+    /// `CURRENT_PHASE.md`는 이번 세션 범위를 1층으로 제한하지만 10층 커리큘럼은 Phase 2
+    /// 이후의 자산이므로, 덮어쓰지 않고 나란히 둔다.
+    /// </summary>
+    public interface IFloorPlanSource
+    {
+        int FirstFloor { get; }
+        int LastFloor { get; }
+        FloorPlan For(int floor);
+    }
+
+    /// <summary>
+    /// 1층짜리 Hero Slice. `CURRENT_PHASE.md` §1이 요구하는 흐름
+    /// `계약 선택 → 실행 레버 → 3×3 결과 → 정화·패턴·캐스케이드 → 전력 → 확정 또는 과수확`
+    /// 을 한 층 안에서 전부 겪게 하는 것이 유일한 목적이다.
+    ///
+    /// 10층 커리큘럼의 1층과 다른 이유: 커리큘럼의 1층은 "레버를 당기면 무슨 일이 일어나는가"만
+    /// 가르치는 층이라 계약이 없고(6층에 처음 등장), 증식체도 없다(7층에 처음 등장).
+    /// 그 층으로는 이번 Phase의 통과 조건인 계약 2종·저항체 2종·과수확 선택을 검증할 수 없다.
+    /// </summary>
+    public sealed class HeroSliceFloorSource : IFloorPlanSource
+    {
+        public int FirstFloor => 1;
+        public int LastFloor => 1;
+
+        public FloorPlan For(int floor) => PrototypeCurriculum.HeroSlice;
+    }
+
+    /// <summary>노션 99의 10층 커리큘럼. Phase 2 이후의 기본 런.</summary>
+    public sealed class TenFloorSource : IFloorPlanSource
+    {
+        public int FirstFloor => 1;
+        public int LastFloor => 10;
+
+        public FloorPlan For(int floor) => PrototypeCurriculum.For(floor);
+    }
+
+    /// <summary>
     /// 노션 99 "10층 테스트 구조"를 그대로 옮긴 커리큘럼. Teach → Test → Twist 순서로,
     /// 새 규칙은 한 층에 하나씩만 들어간다.
     ///
@@ -86,6 +126,34 @@ namespace Ascend.Prototype.Spin
 
         private static readonly SymbolKind[] FullPool =
             { SymbolKind.NormalSoul, SymbolKind.Absorber, SymbolKind.Proliferator };
+
+        /// <summary>
+        /// Hero Slice 1층. 이번 Phase의 통과 조건을 한 층에 압축한다.
+        ///
+        /// 요구 전력 460은 헤드리스 400시드 측정으로 정했다(측정표: `docs/runtime/ProgressLog.md`).
+        /// 무계약 기준 5스핀 내 달성률 80%, 달성 스핀 중앙값 3 — 즉 절반 이상이 2스핀을
+        /// 남겨둔 채 요구 전력을 넘긴다. 그 남은 스핀이 곧 과수확 선택지다.
+        /// 너무 낮으면 1스핀에 끝나 선택이 생기지 않고, 너무 높으면 5스핀을 다 써도
+        /// 못 넘겨 선택 자체가 없다. 둘 다 이번 세션이 검증하려는 것을 지운다.
+        ///
+        /// 최종 밸런스가 아니다 — `CURRENT_PHASE.md` §3 제외 항목. 이 숫자만 고치면 된다.
+        /// </summary>
+        public static FloorPlan HeroSlice => new FloorPlan
+        {
+            Floor         = 1,
+            CoreQuestion  = "위험을 더 불러들일 것인가, 지금 확정할 것인가?",
+            TeachesRule   = "계약 → 레버 → 정화·패턴·캐스케이드 → 확정 또는 과수확",
+            RequiredPower = 460f,
+            Spins         = 5,
+            SymbolPool    = FullPool,
+            ContractChoices = new[]
+            {
+                ResistanceContract.None,
+                AbsorberContract,
+                ProliferatorContract,
+            },
+            EmphasizePushYourLuck = true,
+        };
 
         public static IReadOnlyList<FloorPlan> TenFloors => _tenFloors;
 

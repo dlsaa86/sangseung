@@ -29,6 +29,13 @@ namespace Ascend.Prototype.Run.Tests
             Run("무게 증가가 RequiredPower 증가", TestWeightRaisesRequirement, ref passed, ref failed, report);
             Run("동일 시드·선택 결정론", TestDeterminism, ref passed, ref failed, report);
 
+            // ── Hero Slice (CURRENT_PHASE.md) ──
+            Run("Hero Slice 1층에 계약 3종·저항 2종", TestHeroSliceShape, ref passed, ref failed, report);
+            Run("Hero Slice 계약 미선택 시 스핀 거부", TestHeroSliceContractGate, ref passed, ref failed, report);
+            Run("Hero Slice 런은 1층 확정으로 끝난다", TestHeroSliceEndsAfterOneFloor, ref passed, ref failed, report);
+            Run("Hero Slice 요구 전력 달성이 과수확 여지를 남김", TestHeroSliceLeavesSpins, ref passed, ref failed, report);
+            Run("10층 커리큘럼이 보존됨", TestTenFloorCurriculumIntact, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Run Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -223,6 +230,123 @@ namespace Ascend.Prototype.Run.Tests
                     else break;
                 }
             }
+            return null;
+        }
+
+        // ── Hero Slice ──
+
+        private static string TestHeroSliceShape()
+        {
+            FloorPlan plan = PrototypeCurriculum.HeroSlice;
+            if (!plan.IsValid) return "층 계획이 유효하지 않음(핵심 질문·스핀·요구 전력 확인)";
+            if (plan.Floor != 1) return $"층 번호 {plan.Floor}";
+            if (plan.ContractChoices == null || plan.ContractChoices.Length != 3)
+                return $"계약 선택지 {plan.ContractChoices?.Length ?? 0}종, 기대 3";
+
+            // CURRENT_PHASE §2.1은 계약 2종(흡수체·증식체)을 모두 요구한다.
+            bool hasNone = false, hasAbsorber = false, hasProliferator = false;
+            foreach (ResistanceContract c in plan.ContractChoices)
+            {
+                if (c.IsNone) hasNone = true;
+                else if (c.Target == SymbolKind.Absorber) hasAbsorber = true;
+                else if (c.Target == SymbolKind.Proliferator) hasProliferator = true;
+            }
+            if (!hasNone || !hasAbsorber || !hasProliferator)
+                return "계약 없음/흡수체/증식체 중 빠진 것이 있음";
+
+            // 저항체 2종이 모두 풀에 있어야 잔류 두 종류를 다 보여줄 수 있다.
+            SpinRuleSet rules = PrototypeCurriculum.BuildRules(in plan);
+            if (rules.WeightOf(SymbolKind.Absorber) <= 0f || rules.WeightOf(SymbolKind.Proliferator) <= 0f)
+                return "저항체 2종이 심볼 풀에 모두 들어 있지 않음";
+            if (rules.WeightOf(SymbolKind.NormalSoul) <= 0f)
+                return "정상 영혼이 심볼 풀에 없음";
+            return null;
+        }
+
+        private static string TestHeroSliceContractGate()
+        {
+            // Gate B: "계약 미선택 상태에서는 스핀할 수 없다."
+            var run = new RunSession(4242, 0f, 0f,
+                FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation,
+                new HeroSliceFloorSource());
+
+            if (run.Current.Phase != FloorPhase.ContractSelection)
+                return $"1층 진입 단계 {run.Current.Phase}, 기대 ContractSelection";
+            run.Spin();
+            if (run.Current.SpinsUsed != 0) return "계약 전에 스핀이 진행됨";
+            if (!run.SelectContract(1)) return "계약 선택 실패";
+            if (run.Current.Phase != FloorPhase.Spinning) return "계약 후 Spinning 진입 실패";
+            if (run.Current.SelectedContract.Target != SymbolKind.Absorber)
+                return $"선택된 계약 {run.Current.SelectedContract.Label}";
+            run.Spin();
+            if (run.Current.SpinsUsed != 1) return "계약 후 스핀이 진행되지 않음";
+            return null;
+        }
+
+        private static string TestHeroSliceEndsAfterOneFloor()
+        {
+            for (int seed = 0; seed < 400; seed++)
+            {
+                var run = new RunSession(seed, 0f, 0f,
+                    FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation,
+                    new HeroSliceFloorSource());
+                run.SelectContract(1);
+                while (run.Current != null && run.Current.SpinsRemaining > 0 && !run.Current.CanBank)
+                    run.Spin();
+                if (run.Current == null || !run.Current.CanBank) continue;
+
+                FloorResult banked = run.Bank();
+                if (banked == null) return "확정 실패";
+                // 1층짜리 소스이므로 확정 즉시 런이 끝나야 한다. 안 끝나면 2층을 만들려다
+                // TenFloor 계획으로 새어 나갔다는 뜻이다.
+                if (!run.IsComplete) return "1층 확정 후에도 런이 계속됨";
+                if (run.Current != null) return "런 종료 후에도 현재 층이 남아 있음";
+                return null;
+            }
+            return "400시드 안에 요구 전력을 달성하는 케이스가 없음 — 요구 전력이 과다";
+        }
+
+        private static string TestHeroSliceLeavesSpins()
+        {
+            // 요구 전력을 넘긴 시점에 스핀이 남아 있어야 과수확이 선택이 된다.
+            // 남지 않으면 "확정 아니면 없음"이라 푸시 유어 럭이 성립하지 않는다.
+            int achieved = 0, withSpinsLeft = 0;
+            const int samples = 200;
+            for (int n = 0; n < samples; n++)
+            {
+                var run = new RunSession(100000 + n, 0f, 0f,
+                    FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation,
+                    new HeroSliceFloorSource());
+                run.SelectContract(0);   // 가장 불리한 조건(계약 없음)으로 본다
+                FloorSession floor = run.Current;
+                while (floor.SpinsRemaining > 0 && !floor.CanBank) run.Spin();
+                if (!floor.CanBank) continue;
+                achieved++;
+                if (floor.SpinsRemaining > 0) withSpinsLeft++;
+            }
+
+            if (achieved < samples / 2)
+                return $"달성률 {achieved * 100 / samples}% — 절반도 요구 전력을 못 넘김";
+            if (withSpinsLeft * 2 < achieved)
+                return $"달성 {achieved}건 중 스핀이 남은 경우 {withSpinsLeft}건 — 과수확 선택이 거의 생기지 않음";
+            return null;
+        }
+
+        private static string TestTenFloorCurriculumIntact()
+        {
+            // Hero Slice를 넣으면서 10층 커리큘럼을 덮어쓰지 않았는지. Phase 2의 자산이다.
+            var source = new TenFloorSource();
+            if (source.LastFloor != 10) return $"10층 소스의 마지막 층 {source.LastFloor}";
+            for (int floor = 1; floor <= 10; floor++)
+            {
+                FloorPlan plan = source.For(floor);
+                if (plan.Floor != floor) return $"{floor}층 조회가 {plan.Floor}층을 반환";
+                if (!plan.IsValid) return $"{floor}층 계획이 유효하지 않음";
+            }
+            if (source.For(1).ContractChoices.Length != 0)
+                return "10층 커리큘럼 1층에 계약이 생김 — Hero Slice가 새어 들어감";
+            if (source.For(10).ContractChoices.Length != 2)
+                return "10층 커리큘럼 10층 계약 구성이 바뀜";
             return null;
         }
 
