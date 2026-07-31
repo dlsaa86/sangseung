@@ -14,6 +14,17 @@
         ]
       },
       {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/unity-worktree-guard.sh\"",
+            "timeout": 10,
+            "statusMessage": "씬 외부 수정 확인"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
