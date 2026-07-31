@@ -11,14 +11,15 @@ Notion은 계속 수정되는 기획 원본이다. 실제 구현 세션에서는
 1. [`MASTER_PRD.md`](./MASTER_PRD.md) — 제품 범위, 핵심 경험, 완료 조건
 2. [`TECH_SPEC.md`](./TECH_SPEC.md) — Unity 구조, 상태 모델, 테스트 및 성능 기준
 3. [`CURRENT_PHASE.md`](./CURRENT_PHASE.md) — 이번 개발 세션의 허용 범위
-4. [`VISUAL_SPEC.md`](./VISUAL_SPEC.md) — 비주얼 방향과 시각 검증 기준
-5. [`DECISION_LOG.md`](./DECISION_LOG.md) — 확정된 결정과 변경 이력
-6. [`ASSUMPTION_LOG.md`](./ASSUMPTION_LOG.md) — 에이전트가 사용한 임시 기본값과 교체 위치
-7. `Assets/Plans/` — 세부 작업 티켓
-8. [`handoff/`](./handoff/) — 기기 이전·세션 인수인계
-9. 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
+4. [`AGENT_MODEL_POLICY.md`](./AGENT_MODEL_POLICY.md) — Opus 구현·Sol 감사 역할, 인수인계 및 승인 규칙
+5. [`VISUAL_SPEC.md`](./VISUAL_SPEC.md) — 비주얼 방향과 시각 검증 기준
+6. [`DECISION_LOG.md`](./DECISION_LOG.md) — 확정된 결정과 변경 이력
+7. [`ASSUMPTION_LOG.md`](./ASSUMPTION_LOG.md) — 에이전트가 사용한 임시 기본값과 교체 위치
+8. `Assets/Plans/` — 세부 작업 티켓
+9. [`handoff/`](./handoff/) — 기기 이전·세션 인수인계
+10. 아카이브 및 폐기된 초기 아이디어 — 구현 근거로 사용하지 않음
 
-제품 범위는 `CURRENT_PHASE.md`가 아니라 `MASTER_PRD.md`가 정의한다. 단, 현재 세션에서 무엇을 구현할 수 있는지는 `CURRENT_PHASE.md`가 제한한다.
+제품 범위는 `CURRENT_PHASE.md`가 아니라 `MASTER_PRD.md`가 정의한다. 단, 현재 세션에서 무엇을 구현할 수 있는지는 `CURRENT_PHASE.md`가 제한한다. `AGENT_MODEL_POLICY.md`는 제품 요구사항을 변경하지 않고 구현자와 감사자의 책임을 분리한다.
 
 ## 원본
 
@@ -35,10 +36,13 @@ Notion은 계속 수정되는 기획 원본이다. 실제 구현 세션에서는
 
 ## 에이전트 시작 순서
 
-1. 저장소의 `CLAUDE.md`를 읽는다.
-2. 이 문서의 우선순위대로 명세를 읽는다.
-3. 현재 코드와 에셋을 요구사항에 매핑한다.
-4. 누락·충돌·기술 부채를 `docs/runtime/GapAnalysis.md`에 기록한다.
-5. 실행 계획을 `docs/runtime/ImplementationPlan.md`에 기록한다.
-6. `CURRENT_PHASE.md`에 명시된 범위만 구현한다.
-7. 각 통과 조건마다 컴파일, 자동 테스트, 실제 플레이, 캡처, 시각 평가, 성능 측정을 수행한다.
+1. Claude 계열은 저장소의 `CLAUDE.md`, Codex·Sol 계열은 루트 `AGENTS.md`를 먼저 읽는다.
+2. 이 문서의 우선순위대로 명세와 `AGENT_MODEL_POLICY.md`를 읽는다.
+3. 현재 세션에서 자신에게 할당된 역할과 수정 경로를 명시한다.
+4. 역할이 지정되지 않은 Opus 5는 Lead / Integration Owner, 역할이 지정되지 않은 Sol은 Audit / Verification Owner로 시작한다.
+5. 현재 코드와 에셋을 요구사항에 매핑한다.
+6. 누락·충돌·기술 부채를 `docs/runtime/GapAnalysis.md`에 기록한다.
+7. 실행 계획을 `docs/runtime/ImplementationPlan.md`에 기록한다.
+8. `CURRENT_PHASE.md`에 명시된 범위만 구현한다.
+9. 각 통과 조건마다 컴파일, 자동 테스트, 실제 플레이, 캡처, 시각 평가, 성능 측정을 수행한다.
+10. 구현자는 자신의 결과를 최종 승인하지 않으며, 미해결 `BLOCKER` 또는 `HIGH` 감사 항목이 있으면 완료를 선언하지 않는다.
