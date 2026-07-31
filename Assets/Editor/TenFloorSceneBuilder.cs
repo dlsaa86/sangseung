@@ -217,6 +217,18 @@ namespace Ascend.Prototype.EditorTools
                 }
             }
 
+            // ── 4a. 실행 레버를 레버로 보이게 ───────────────────────────────
+            //
+            // 독립 감사가 두 가지를 따로 지적했다 — `02`·`04`·`15` 좌하단의
+            // "정체 불명의 창백한 쐐기"와 "일반 실행 레버가 화면에서 가장 안 보이는
+            // 물건"이라는 것. 좌표로 찾아보니 **같은 물체**였다.
+            //
+            // `ExecutionLever` 는 18° 기울어진 창백한 막대(0.62)에 돔 손잡이 하나뿐이다.
+            // 맥락이 없으니 잡음으로 보이고, 레버로는 읽히지 않는다.
+            // 과수확 레버는 하우징·라벨·경고띠가 있어 "가장 잘 작동하는 부분"으로
+            // 통과했다 — 같은 것을 여기에도 준다.
+            EnsureExecutionLeverContext(car, report);
+
             // ── 4b. 과부하 램프를 글자 띠 밖으로 ────────────────────────────
             //
             // 램프가 `추락 위험` 글자 한가운데를 관통했다. 위험 상태 캡처 8장에서
@@ -633,6 +645,93 @@ namespace Ascend.Prototype.EditorTools
 
             AssetDatabase.SaveAssets();
             report.AppendLine($"  월드 글자 단면 처리 {applied}개 (재질 {made.Count}종)");
+        }
+
+        /// <summary>
+        /// 실행 레버에 배경판과 라벨을 붙여 "조작하는 물건"으로 읽히게 한다.
+        /// 값은 전부 절대값이라 여러 번 돌려도 같다.
+        /// </summary>
+        private static void EnsureExecutionLeverContext(Transform car, StringBuilder report)
+        {
+            Transform console = car != null ? car.Find("Console") : null;
+            Transform lever = console != null ? console.Find("ExecutionLever") : null;
+            if (lever == null)
+            {
+                report.AppendLine("  ⚠ Console/ExecutionLever 없음 — 실행 레버 맥락 생략");
+                return;
+            }
+
+            // 배경판 — 창백한 레버가 어두운 판 위에 서면 형태가 드러난다.
+            // 레버는 월드 x≈-1.03 에서 안쪽(+X)을 향한다. 판은 그보다 바깥에 둔다.
+            GameObject plate = EnsureChild(console, "ExecutionPlate", PrimitiveType.Cube);
+            plate.transform.position = new Vector3(-1.16f, 1.22f, -0.86f);
+            plate.transform.localRotation = Quaternion.identity;
+            plate.transform.localScale = new Vector3(0.03f, 0.66f, 0.44f);
+            Paint(plate, new Color(0.13f, 0.14f, 0.15f));
+
+            // 경고띠 — 과수확 레버와 같은 어휘를 쓴다. 다만 색은 다르다:
+            // 과수확은 주황(위험), 실행은 청록(정상 조작). 색 하나에 의존하지 않도록
+            // 위치와 형태도 다르다.
+            GameObject stripe = EnsureChild(console, "ExecutionStripe", PrimitiveType.Cube);
+            stripe.transform.position = new Vector3(-1.14f, 0.94f, -0.86f);
+            stripe.transform.localRotation = Quaternion.identity;
+            stripe.transform.localScale = new Vector3(0.02f, 0.05f, 0.40f);
+            Paint(stripe, new Color(0.36f, 0.62f, 0.55f));
+
+            // 라벨 — 과수확에는 "과수확"이 붙어 있는데 실행 레버에는 이름이 없었다.
+            // 왼쪽 벽(x≈-1.03)에서 안쪽(+X)을 향하므로 Y 로 -90° 돌린다.
+            var source = Object.FindFirstObjectByType<InstrumentPanelView>(FindObjectsInactive.Include);
+            Transform sibling = source != null ? source.transform.Find("PowerLabel") : null;
+            var font = sibling != null ? sibling.GetComponent<TMPro.TextMeshPro>() : null;
+
+            Transform label = console.Find("ExecutionLabel");
+            if (label == null)
+            {
+                var made = new GameObject("ExecutionLabel");
+                made.transform.SetParent(console, false);
+                made.AddComponent<TMPro.TextMeshPro>();
+                label = made.transform;
+                report.AppendLine("  ExecutionLabel 신설");
+            }
+
+            var text = label.GetComponent<TMPro.TextMeshPro>();
+            if (text != null && font != null)
+            {
+                text.font = font.font;
+                text.fontSize = font.fontSize * 0.62f;
+                text.alignment = TMPro.TextAlignmentOptions.Center;
+                text.color = new Color(0.88f, 0.90f, 0.88f);
+                text.text = "실행";
+                var rect = text.GetComponent<RectTransform>();
+                if (rect != null) rect.sizeDelta = new Vector2(5f, 1.6f);
+            }
+            label.position = new Vector3(-1.12f, 1.60f, -0.86f);
+            label.rotation = Quaternion.Euler(0f, -90f, 0f);
+            label.localScale = new Vector3(0.07f, 0.07f, 0.07f);
+
+            report.AppendLine("  실행 레버 배경판·경고띠·라벨 배치");
+        }
+
+        private static GameObject EnsureChild(Transform parent, string name, PrimitiveType type)
+        {
+            Transform found = parent.Find(name);
+            if (found != null) return found.gameObject;
+
+            GameObject made = GameObject.CreatePrimitive(type);
+            made.name = name;
+            made.transform.SetParent(parent, true);
+            Object.DestroyImmediate(made.GetComponent<Collider>());
+            return made;
+        }
+
+        private static void Paint(GameObject target, Color color)
+        {
+            var renderer = target.GetComponent<Renderer>();
+            if (renderer == null) return;
+            var block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor("_BaseColor", color);
+            renderer.SetPropertyBlock(block);
         }
 
         /// <summary>로컬 y 만 절대값으로 바꾼다. 델타가 아니라 목표값이라 여러 번 돌려도 같다.</summary>

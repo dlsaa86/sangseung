@@ -55,10 +55,22 @@ namespace Ascend.Prototype.Run.Tests
 
         // 좌표는 2026-07-31 비례 재조정 기준이다(내부 x[-1.20..1.20] · z[-1.50..1.50] · 높이 3.20).
         // 눈높이 1.62를 유지한다 — 캡처가 플레이어가 실제로 보는 높이여야 판정이 성립한다.
-        // 입구 시점이 y=1.35 를 내려다봐서 화면 절반 이상이 무특징 검은 바닥·앞벽이
-        // 됐다("볼 곳이 없다"는 지적). 눈높이에 가깝게 들어 결과판·계기판·과수확이
-        // 한 프레임에 오게 한다 — §12가 요구한 "전체 내부"는 그것이다.
-        private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.72f, 1.62f,  1.38f), new Vector3(-0.75f, 1.58f, -0.55f));
+        // 입구 시점을 두 번 틀렸다.
+        //
+        // 처음엔 y=1.35 를 내려다봐서 화면 절반이 무특징 검은 바닥이었다. 눈높이로
+        // 들었더니 이번엔 **카메라가 과수확 레버 하우징 안에 들어갔다** —
+        // `Housing` 은 x[0.25..0.85] · y[0.90..1.74] · z[0.95..1.47] 를 차지하는데
+        // (0.72, 1.62, 1.38) 이 그 안이다. 독립 평가자가 "흰 다각형이 장치를 관통한다"고
+        // 지적한 것은 관통 기하가 아니라 그 상자의 **안쪽 면**이었다.
+        //
+        // 통관 볼륨과 겹치는 렌더러를 전수 조사해서야 알았다 — 외부 기하는 하나도
+        // 없었고, 그래서 원인이 씬이 아니라 카메라라는 것이 드러났다.
+        // 하우징 왼쪽으로 비켜서 실내를 길이 방향으로 훑는다.
+        //
+        // 하우징을 피한 뒤에도 구도가 틀렸다 — 앞벽이 화면 중앙을 채우고 장치가
+        // 오른쪽 끝으로 밀렸다. 시선을 장치 쪽으로 더 돌려 왼쪽 벽(결과판)과
+        // 바닥·천장이 함께 들어오게 한다.
+        private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.12f, 1.62f,  1.30f), new Vector3(-0.85f, 1.35f, -0.35f));
         private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
         private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
         // 결과판은 x[-1.10..-0.76] · y[0.95..2.25] · z[-0.69..0.69]를 차지한다.
@@ -327,19 +339,23 @@ namespace Ascend.Prototype.Run.Tests
             if (step.Purifies == null) return 0;
 
             // 강조를 1.0 으로 줬더니 9칸 중 8칸이 계조 없는 순백으로 날아가
-                // 심볼도 정화 원인도 사라졌다. 연출에서 1.0 은 사인파가 **스치는**
-                // 정점이라 눈이 잔상으로 형태를 유지하지만, 정지 화면에서는 그 값이
-                // 계속 걸려 있다. 움직이는 연출의 최댓값을 정지 샷에 그대로 쓸 수 없다.
-                //
-                // 막대(표식)가 "왜 터졌는가"를 말하므로 칸 강조는 "어디가"만 하면 된다.
-                const float cellHighlight = 0.42f;
+            // 심볼도 정화 원인도 사라졌다. 연출에서 1.0 은 사인파가 **스치는**
+            // 정점이라 눈이 잔상으로 형태를 유지하지만, 정지 화면에서는 그 값이
+            // 계속 걸려 있다. 움직이는 연출의 최댓값을 정지 샷에 그대로 쓸 수 없다.
+            //
+            // 0.42 로 낮췄더니 형태는 살아났지만 이번엔 **사건 둘이 8칸을 같은 값으로
+            // 칠했다.** 어느 칸이 어느 사건에 속하는지 갈리지 않으면 그 채널은 정보를
+            // 나르지 않는다. 사건마다 밝기를 달리해 칸이 원인별로 묶이게 한다.
+            // 막대(표식)가 "왜"를 말하고, 밝기 층이 "어느 것끼리"를 말한다.
+            var levels = new[] { 0.46f, 0.22f, 0.34f, 0.16f };
 
             markers?.Begin();
             int count = 0;
             foreach (PurifyEvent purify in step.Purifies)
             {
+                float level = levels[count % levels.Length];
                 if (board != null && purify.Cells != null)
-                    foreach (int cell in purify.Cells) board.SetHighlight(cell, cellHighlight);
+                    foreach (int cell in purify.Cells) board.SetHighlight(cell, level);
                 markers?.Add(in purify, 1f);   // 막대는 밝아야 한다 — 이게 주 신호다
                 count++;
             }
