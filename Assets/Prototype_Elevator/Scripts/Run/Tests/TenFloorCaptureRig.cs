@@ -58,7 +58,11 @@ namespace Ascend.Prototype.Run.Tests
         private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.65f, 1.62f,  1.35f), new Vector3(-0.70f, 1.35f, -0.90f));
         private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
         private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
-        private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3(-0.30f, 1.62f,  0.00f), new Vector3(-0.84f, 1.60f,  0.00f));
+        // 결과판은 x[-1.10..-0.76] · y[0.95..2.25] · z[-0.69..0.69]를 차지한다.
+        // 처음엔 x=-0.30(판에서 0.54m)에 뒀더니 **카메라가 판 안에 들어가** 조각만
+        // 잡혔다. 1.35m 물러나 가운데 줄 세 칸이 나란히 들어오게 한다 —
+        // 한 화면에 구·정육면체·캡슐이 같은 크기로 놓여야 "3종 비교"가 된다.
+        private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3( 0.40f, 1.60f,  0.00f), new Vector3(-0.90f, 1.60f,  0.00f));
         // 화물칸 시점은 **문지방 위**에서 내려다본다. 처음에는 (0.60, 1.62, 1.25)에 뒀는데
         // 최대 적재 상태에서 오른쪽 열 승객(x=0.85, z=0.35)이 카메라 코앞에 서서 화면의
         // 대부분을 검게 가렸다 — "동선이 살아 있는가"를 판정할 수 없는 그림이 나왔다.
@@ -106,10 +110,29 @@ namespace Ascend.Prototype.Run.Tests
             run.ResetRun(RunMode.TenFloor, 1337);
             yield return WaitFrames(4);
 
-            yield return Shot("01_entry", Entry, risk, "입구에서 본 전체 내부 — 요구 캡처 §12");
-            yield return Shot("02_device_front", DeviceFront, risk, "수확 장치 정면 — 세 통관과 3×3 대응");
+            // **판을 채운 뒤에 찍는다.** 처음에는 이 네 장이 전부 빈 판때기였다 —
+            // 엔진은 스핀이 끝나면 수확·정화된 칸을 비우고 `ResetRun`도 판을 지우므로,
+            // 아무 때나 찍으면 9칸이 전부 공란이다. 독립 평가자가
+            // "세 심볼 비교 샷에 비교 대상이 0개"라고 지적했다.
+            //
+            // 게임의 핵심이 결과판인데 그것이 안 찍히면 이 세트는 무엇을 하는 게임인지
+            // 보여주지 못한다.
+            var board = FindAnyObjectByType<SpinBoardView>();
+
+            // 열마다 한 종류씩. "세 통관이 각각 한 열"이라는 대응과 "세 심볼 구분"을
+            // 한 장에서 동시에 보여준다.
+            ShowBoard(board, ColumnPerKind());
+            yield return WaitFrames(3);
+            yield return Shot("02_device_front", DeviceFront, risk,
+                "수확 장치 정면 — 세 통관과 3×3 대응 / 열마다 한 종류(영혼·흡수체·증식체)");
             yield return Shot("03_device_side", DeviceSide, risk, "1인칭 조작 거리에서 본 장치");
-            yield return Shot("04_symbols", SymbolClose, risk, "세 심볼 비교 — 실루엣만으로 구분되는가");
+            yield return Shot("04_symbols", SymbolClose, risk,
+                "세 심볼 비교 — 왼쪽 열 정상 영혼 / 가운데 흡수체 / 오른쪽 증식체");
+
+            // 실제 추첨 결과도 한 장. 인위적 배열만으로는 "실제로 이렇게 나온다"를 못 보인다.
+            ShowBoard(board, DrawSample(1337, 8, 0));
+            yield return WaitFrames(3);
+            yield return Shot("01_entry", Entry, risk, "입구에서 본 전체 내부 — 요구 캡처 §12");
             yield return Shot("05_cargo_empty", CargoBay, risk, "빈 화물 공간 — 07 과 같은 좌표");
             yield return Shot("06_risk_stable", Risk, risk, "Stable — 09·10·11 과 같은 좌표");
 
@@ -192,14 +215,26 @@ namespace Ascend.Prototype.Run.Tests
                 $"덮개열림={(overharvest != null && overharvest.IsCoverOpen)} " +
                 $"조작={(overharvest != null && overharvest.CanInteract)}");
 
+            // **당긴 직후**를 찍는다. 연출이 끝나기를 기다리면 덮개가 다시 닫혀
+            // 11(잠금)과 기하학적으로 같은 그림이 된다 — 첫 촬영이 그랬다.
+            // 판돈이 빠지고 스핀이 도는 순간이 이 선택의 결과다.
+            float anteBefore = 0f;
+            int extraBefore = 0;
             if (overharvest != null && overharvest.CanInteract)
             {
+                FloorSession before = run.Session.Current;
+                anteBefore = before != null ? before.PendingAnte : 0f;
+                extraBefore = before != null ? before.ExtraSpinsTaken : 0;
                 overharvest.Interact(gameObject);
                 yield return WaitFrames(2);
-                yield return WaitWhileLocked(bridge);
-                yield return WaitFrames(2);
             }
-            yield return Shot("13_overharvest_pulled", Overharvest, risk, "당긴 직후");
+            FloorSession afterPull = run.Session.Current;
+            yield return Shot("13_overharvest_pulled", Overharvest, risk,
+                afterPull != null
+                    ? $"당긴 직후 — 판돈 {anteBefore:F0} 지불 / 추가 스핀 {extraBefore}→{afterPull.ExtraSpinsTaken} / " +
+                      $"전력 {afterPull.Power:F0}/{afterPull.RequiredPower:F0} / 위험 {LevelName(risk)}"
+                    : "당긴 직후");
+            yield return WaitWhileLocked(bridge);
 
             // ── 5) 계약 선택 ──
             run.ResetRun(RunMode.TenFloor, 1337);
@@ -225,6 +260,47 @@ namespace Ascend.Prototype.Run.Tests
 
         private static string LevelName(RiskStateView risk)
             => risk != null ? risk.Level.ToString() : "—";
+
+        // ── 결과판 채우기 ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 결과판에 보드를 밀어 넣고 연출자가 덮어쓰지 못하게 잠근다.
+        ///
+        /// `DrivenExternally`를 세우지 않으면 `SpinBoardView`가 다음 프레임에
+        /// 런의 최종 보드(대개 빈 판)를 따라가 방금 넣은 것을 지운다.
+        /// </summary>
+        private static void ShowBoard(SpinBoardView view, SpinBoard board)
+        {
+            if (view == null) return;
+            view.DrivenExternally = true;
+            view.ShowBoard(board);
+        }
+
+        /// <summary>열마다 한 종류. 통관–열 대응과 심볼 3종 구분을 한 장에 담는다.</summary>
+        private static SpinBoard ColumnPerKind()
+        {
+            var board = default(SpinBoard);
+            for (int row = 0; row < SpinBoard.Rows; row++)
+            {
+                board[0, row] = SymbolKind.NormalSoul;
+                board[1, row] = SymbolKind.Absorber;
+                board[2, row] = SymbolKind.Proliferator;
+            }
+            return board;
+        }
+
+        /// <summary>실제 추첨 결과 하나. 인위적 배열만으로는 "이렇게 나온다"를 못 보인다.</summary>
+        private static SpinBoard DrawSample(int runSeed, int floor, int spinIndex)
+        {
+            FloorPlan plan = PrototypeCurriculum.For(floor);
+            SpinRuleSet rules = PrototypeCurriculum.BuildRules(in plan);
+            var engine = new SpinEngine(runSeed);
+            ResistanceContract none = ResistanceContract.None;
+            ResidualState residual = ResidualState.Empty;
+            SpinResolution resolution = engine.SpinWithSeed(
+                SpinSeed.Derive(runSeed, floor, spinIndex), rules, in none, in residual, floor, spinIndex);
+            return resolution.InitialBoard;
+        }
 
         /// <summary>과적 위에 과수확을 얹어 Critical 문턱을 넘긴다.</summary>
         private IEnumerator ForceCritical(RunSessionBehaviour run,
@@ -333,14 +409,18 @@ namespace Ascend.Prototype.Run.Tests
                     if (depth > bestDepth) bestDepth = depth;
                     if (depth >= 5)
                     {
-                        // 연출 중간에 찍는다. 다 끝난 뒤에는 판이 비어 있어 연쇄를 볼 수 없다.
-                        float deadline = Time.realtimeSinceStartup + 6f;
-                        while (presenter != null && presenter.IsPresenting &&
-                               presenter.CurrentDepth < 3 && Time.realtimeSinceStartup < deadline)
-                            yield return null;
+                        // 연출이 끝나기를 기다렸다가 찍으면 판이 비어 있다 — 엔진이 수확·정화된
+                        // 칸을 전부 비우기 때문이다. 첫 촬영이 "회색 상자 하나"로 나온 이유다.
+                        //
+                        // 그래서 **연쇄 중간 단계의 보드를 직접 밀어 넣는다.** 깊이의 절반쯤이
+                        // 가장 판이 꽉 찬 시점이고, 그것이 "왜 연쇄가 이어졌는가"를 보여준다.
+                        int step = Mathf.Clamp(depth / 2, 0, resolution.Steps.Length - 1);
+                        ShowBoard(FindAnyObjectByType<SpinBoardView>(),
+                                  resolution.Steps[step].BoardBefore);
+                        yield return WaitFrames(3);
                         yield return Shot("15_cascade_deep", DeviceFront, risk,
                             $"시드 {seed} / 8층 / 사선 결속기+연쇄 조속기+증식체 계약 / " +
-                            $"연쇄 {depth}단계 / 재생 중 깊이 {(presenter != null ? presenter.CurrentDepth : -1)}");
+                            $"연쇄 {depth}단계 중 {step + 1}단계 진입 시점의 판");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -354,8 +434,16 @@ namespace Ascend.Prototype.Run.Tests
         private IEnumerator CaptureCollapse(RunSessionBehaviour run, RouletteInteractionBridge bridge,
             RiskStateView risk, AccidentRecorder recorder)
         {
-            // 사고를 만든다: 무겁게 실어 요구 전력을 끌어올린 뒤 스핀을 소진시킨다.
+            // 사고를 만든다. **몇 층은 올라간 뒤에** 무너져야 한다 —
+            // 처음에는 1층에서 곧바로 220kg 을 실어 그 층에서 죽었고, 사고 기록기 캡처가
+            // "기록 1건 / 도달 0층"이 됐다. 아무 일도 없었던 런의 기록은 기록기가 무엇을
+            // 설명할 수 있는지 보여주지 못한다.
+            //
+            // 4층까지 정상 진행한 뒤 과적을 걸어 요구 전력을 감당 못 하게 만든다.
+            // 실제 플레이에서 "욕심내서 싣다가 무너지는" 경로와 같은 모양이다.
             run.ResetRun(RunMode.TenFloor, 555555);
+            yield return WaitFrames(2);
+            yield return DriveToFloor(run, bridge, 4);
             yield return WaitFrames(2);
             run.Session.AddWeight(220f);
 
@@ -378,11 +466,20 @@ namespace Ascend.Prototype.Run.Tests
                 $"Collapse — 실제 단계 {LevelName(risk)} / 실패 {run.Session.IsFailed} " +
                 $"사유 {run.Session.FailureReason ?? "—"} / 06·09·10 과 같은 좌표");
 
+            // 사고 기록기는 `GameHudView`가 화면에 그린다. 그런데 이 리그의 다른 샷은
+            // 전용 카메라의 RenderTexture 렌더라 **화면 UI가 들어가지 않는다** — 그래서
+            // 첫 촬영에서 17이 16과 픽셀 단위로 같은 그림이 됐다. 독립 평가자가
+            // "사고 기록기라는 물체도, 기록 1건이라는 표시도 화면에 없다"고 지적했다.
+            //
+            // 이 한 장만 화면 캡처로 찍는다. 해상도가 게임 뷰에 종속되므로
+            // 고정 비교 세트가 아니라는 것을 매니페스트에 남긴다.
             string record = recorder != null && recorder.Latest != null
                 ? "사고 기록 있음" : "사고 기록 없음";
-            yield return Shot("17_accident_recorder", Risk, risk,
+            yield return ScreenShot("17_accident_recorder",
                 $"{record} / 기록 {(recorder != null ? recorder.Records.Count : 0)}건 / " +
-                $"시드 {run.Session.Seed} / 도달 {run.Session.HighestFloorReached}층");
+                $"시드 {run.Session.Seed} / 도달 {run.Session.HighestFloorReached}층 / " +
+                "**화면 캡처** — 전용 카메라 렌더에는 화면 UI가 들어가지 않아 이 한 장만 방식이 다르다. " +
+                "해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
 
             // 완주 직전 — 10층에 **실제로 서 있는** 런을 찾는다. 시드 하나로 몰다가
             // 중간에 사고가 나면 "도달 8층"이 찍히고, 그건 §12가 요구한 그림이 아니다.
@@ -461,6 +558,29 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine($"{name,-26} 시점 {pose.Name,-12} pos {pose.Position:F2} look {pose.LookAt:F2}  " +
                                  $"위험 {(risk != null ? risk.Level.DisplayName() : "—")}");
             _manifest.AppendLine($"{"",-26} {note}");
+        }
+
+        /// <summary>
+        /// 게임 뷰를 그대로 찍는다. 화면 UI(사고 기록기·HUD)가 포함되는 유일한 경로다.
+        /// 전용 카메라 렌더와 달리 해상도가 에디터 창에 종속되므로 비교용이 아니다.
+        /// </summary>
+        private IEnumerator ScreenShot(string name, string note)
+        {
+            yield return new WaitForEndOfFrame();
+            Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+            try
+            {
+                string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), shot.EncodeToPNG());
+                _shots++;
+                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height}");
+                _manifest.AppendLine($"{"",-26} {note}");
+            }
+            finally
+            {
+                Destroy(shot);
+            }
         }
 
         private static IEnumerator WaitFrames(int frames)
