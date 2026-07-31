@@ -16,6 +16,8 @@ namespace Ascend.Prototype.Spin.Tests
             var report = new StringBuilder();
 
             Run("같은 저항 3개 흩어짐 → Scattered", TestScattered, ref passed, ref failed, report);
+            Run("정화된 칸은 서로 붙어 있다", TestPurifiedCellsAreContiguous, ref passed, ref failed, report);
+            Run("붙어 있으면 모양을 가리지 않는다 (V자·ㄴ자)", TestBentShapesPurify, ref passed, ref failed, report);
             Run("같은 저항 3개 직선 3종 → LineKind", TestLines, ref passed, ref failed, report);
             Run("직교 연결 4개 → Cluster와 재충전", TestClusterRefill, ref passed, ref failed, report);
             Run("대각 연결 규칙", TestDiagonalConnectivity, ref passed, ref failed, report);
@@ -77,20 +79,141 @@ namespace Ascend.Prototype.Spin.Tests
             }
         }
 
+        /// <summary>
+        /// 흩어진 세 칸. 배치는 (0,0)·(1,1)·(2,1) 로 **서로 붙어 있지 않다.**
+        ///
+        /// 기본 규칙(`RequireAdjacencyToPurify = true`)에서는 정화가 성립하지 않아야 한다 —
+        /// 판 반대쪽 칸들이 아무 관계 없이 함께 사라지는 것이 어색하다는 지적에서 나온 규칙이다.
+        /// 스위치를 끄면 예전대로 `Scattered` 로 성립한다. **두 경우를 모두 지킨다** —
+        /// 한쪽만 검사하면 스위치가 실수로 뒤집혀도 통과한다.
+        /// </summary>
         private static string TestScattered()
         {
-            SpinRuleSet rules = BoardRules();
             SpinBoard board = Board(
                 SymbolKind.Absorber, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
                 SymbolKind.NormalSoul, SymbolKind.Absorber, SymbolKind.NormalSoul,
                 SymbolKind.NormalSoul, SymbolKind.Absorber, SymbolKind.NormalSoul);
-            SpinResolution result = Resolve(board, rules);
 
-            if (result.Steps.Length != 1) return $"단계 수 {result.Steps.Length}";
+            SpinRuleSet adjacent = BoardRules();
+            adjacent.RequireAdjacencyToPurify = true;
+            SpinResolution strict = Resolve(board, adjacent);
+
+            // 단계 수로 세면 안 된다 — 정화가 하나도 없어도 정상 영혼 수확 단계는 남는다.
+            // 처음에 `Steps.Length != 0` 으로 썼다가 이 함정에 걸렸다. 세야 할 것은 정화다.
+            int strictPurifies = 0;
+            foreach (CascadeStep step in strict.Steps)
+                if (step.Purifies != null) strictPurifies += step.Purifies.Length;
+            if (strictPurifies != 0)
+                return $"인접을 요구하는데 흩어진 3개가 정화됐다 — 정화 {strictPurifies}건";
+
+            SpinRuleSet loose = BoardRules();
+            loose.RequireAdjacencyToPurify = false;
+            SpinResolution result = Resolve(board, loose);
+            if (result.Steps.Length != 1) return $"스위치를 껐는데 단계 수 {result.Steps.Length}";
             PurifyEvent eventData = result.Steps[0].Purifies[0];
             if (eventData.Pattern != PatternKind.Scattered) return $"패턴 {eventData.Pattern}";
             if (eventData.PatternMultiplier != 1f) return $"배수 {eventData.PatternMultiplier}";
             if (eventData.Cells.Length != 3) return $"정화 칸 수 {eventData.Cells.Length}";
+            return null;
+        }
+
+        /// <summary>
+        /// 정화된 칸은 같은 사건의 다른 칸과 **적어도 대각으로는 닿아 있어야** 한다.
+        ///
+        /// 판정에 인접을 요구해도 제거가 인접을 무시하면 소용이 없었다 —
+        /// 직선 3개가 성립하는 순간 `CellsOf(board, kind)` 가 판에 있는 그 문양을
+        /// 전부 지워서, 반대쪽 구석의 떨어진 칸까지 함께 사라졌다.
+        /// "여전히 인접하지 않은 것도 같이 인정되는 것 같다"는 지적이 이것이었다.
+        ///
+        /// 인위적인 판 하나로는 못 잡는다. 실제 추첨 2000스핀을 전수로 훑어
+        /// **한 건이라도** 떨어진 칸이 섞이면 실패한다.
+        /// </summary>
+        private static string TestPurifiedCellsAreContiguous()
+        {
+            int checkedEvents = 0;
+            foreach (int seed in new[] { 1337, 4242, 271828, 8675309 })
+            {
+                FloorPlan plan = PrototypeCurriculum.For(8);
+                SpinRuleSet rules = PrototypeCurriculum.BuildRules(in plan);
+                var engine = new SpinEngine(seed);
+                ResistanceContract none = ResistanceContract.None;
+                ResidualState residual = ResidualState.Empty;
+
+                for (int i = 0; i < 500; i++)
+                {
+                    SpinResolution res = engine.SpinWithSeed(
+                        SpinSeed.Derive(seed, 8, i), rules, in none, in residual, 8, i);
+                    if (res.Steps == null) continue;
+
+                    foreach (CascadeStep step in res.Steps)
+                    {
+                        if (step.Purifies == null) continue;
+                        foreach (PurifyEvent purify in step.Purifies)
+                        {
+                            checkedEvents++;
+                            int[] cells = purify.Cells;
+                            if (cells == null || cells.Length < 2) continue;
+
+                            foreach (int cell in cells)
+                            {
+                                bool touches = false;
+                                foreach (int other in cells)
+                                {
+                                    if (other == cell) continue;
+                                    int dx = Math.Abs(cell / SpinBoard.Rows - other / SpinBoard.Rows);
+                                    int dy = Math.Abs(cell % SpinBoard.Rows - other % SpinBoard.Rows);
+                                    if (Math.Max(dx, dy) == 1) { touches = true; break; }
+                                }
+                                if (!touches)
+                                    return $"시드 {seed} 스핀 {i}: {purify.Pattern} 정화에 " +
+                                           $"떨어진 칸 {cell} 이 섞였다 " +
+                                           $"(칸 [{string.Join(",", cells)}])";
+                            }
+                        }
+                    }
+                }
+            }
+            if (checkedEvents == 0) return "정화 사건이 하나도 없어 검사가 성립하지 않았다";
+            return null;
+        }
+
+        /// <summary>
+        /// 직선도 아니고 4칸도 안 되지만 **붙어 있는** 세 칸이 정화되는가.
+        ///
+        /// 인접을 요구하게 만들고 나니 V자와 작은 ㄴ자가 통째로 빠졌다.
+        /// 직선 3개와 연결 4개 이상만 등급이 있었고, 그 사이가 비어 있었기 때문이다.
+        /// "어떻게든 인접만 되어 있으면 인정해 달라"는 요청이 그 빈칸을 메운다.
+        ///
+        /// 판은 열 우선이다 — 인덱스 0·1·2 가 통관 0 이다.
+        /// </summary>
+        private static string TestBentShapesPurify()
+        {
+            // ㄴ자: (통관0,행0)·(통관0,행1)·(통관1,행1) = 인덱스 0·1·4
+            var shapes = new (string name, int[] cells)[]
+            {
+                ("ㄴ자", new[] { 0, 1, 4 }),
+                ("V자",  new[] { 0, 4, 6 }),   // (0,0)·(1,1)·(2,0) — 대각으로만 닿는다
+            };
+
+            foreach (var shape in shapes)
+            {
+                var cells = new SymbolKind[SpinBoard.Cells];
+                for (int i = 0; i < cells.Length; i++) cells[i] = SymbolKind.NormalSoul;
+                foreach (int c in shape.cells) cells[c] = SymbolKind.Absorber;
+
+                SpinRuleSet rules = BoardRules();
+                rules.DiagonalCountsAsConnected = true;   // V자는 대각 인접이다
+                SpinResolution result = Resolve(Board(cells), rules);
+
+                int purified = 0;
+                foreach (CascadeStep step in result.Steps)
+                    if (step.Purifies != null)
+                        foreach (PurifyEvent p in step.Purifies)
+                            if (p.Kind == SymbolKind.Absorber) purified += p.Cells.Length;
+
+                if (purified != shape.cells.Length)
+                    return $"{shape.name}: 정화된 칸 {purified}, 기대 {shape.cells.Length}";
+            }
             return null;
         }
 
@@ -269,8 +392,12 @@ namespace Ascend.Prototype.Spin.Tests
             if (result.Steps.Length != 1) return $"단계 수 {result.Steps.Length}";
             if (result.Steps[0].NormalSoulsHarvested != 14)
                 return $"수확 수 {result.Steps[0].NormalSoulsHarvested}, 기대 14";
-            if (result.NormalSoulPower != 140f)
-                return $"정상 영혼 전력 {result.NormalSoulPower}, 기대 140";
+            // 상수 140 을 박아 두었다가 `NormalSoulValue` 가 10→14 로 바뀌자 깨졌다.
+            // 이 테스트가 지키려는 것은 "14개가 1단계 배수로 수확된다"이지 특정 숫자가
+            // 아니다. 규칙에서 값을 끌어와야 밸런스 조정이 테스트를 깨지 않는다.
+            float expectedPower = 14 * rules.NormalSoulValue;
+            if (Math.Abs(result.NormalSoulPower - expectedPower) > 0.001f)
+                return $"정상 영혼 전력 {result.NormalSoulPower}, 기대 {expectedPower}";
             if (result.FinalBoard.CountOf(SymbolKind.NormalSoul) != 0)
                 return "최대 깊이 종료 후 정상 영혼이 남음";
             return null;
@@ -610,8 +737,11 @@ namespace Ascend.Prototype.Spin.Tests
 
         private static string TestLinePatternCells()
         {
-            // 세로줄(통관 0)에 흡수체 3개 + 다른 곳에 1개. 정화된 칸은 4개지만
-            // 패턴을 이룬 칸은 그 줄의 3개여야 한다.
+            // 세로줄(통관 0)에 흡수체 3개 + **떨어진 곳에 1개**.
+            //
+            // 예전에는 줄이 터지면서 떨어진 1개까지 4개가 사라졌다. 판정에 인접을
+            // 요구해도 제거가 인접을 무시했기 때문이다. 이제는 줄의 3칸만 터지고
+            // 떨어진 것은 판에 남는다 — 그것이 "붙은 것만 터진다"의 뜻이다.
             SpinRuleSet rules = BoardRules();
             SpinBoard board = Board(
                 SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.Absorber,
@@ -621,7 +751,11 @@ namespace Ascend.Prototype.Spin.Tests
 
             PurifyEvent purify = result.Steps[0].Purifies[0];
             if (purify.Pattern != PatternKind.Line) return $"패턴 {purify.Pattern}";
-            if (purify.Cells.Length != 4) return $"정화 칸 {purify.Cells.Length}, 기대 4";
+            if (purify.Cells.Length != 3)
+                return $"정화 칸 {purify.Cells.Length}, 기대 3 (떨어진 흡수체가 함께 터졌다)";
+            if (result.FinalBoard.CountOf(SymbolKind.Absorber) != 1)
+                return $"떨어진 흡수체가 판에 남지 않았다 — 남은 수 " +
+                       $"{result.FinalBoard.CountOf(SymbolKind.Absorber)}";
             if (purify.PatternCells == null) return "PatternCells 가 null";
             if (purify.PatternCells.Length != 3)
                 return $"모양 칸 {purify.PatternCells.Length}, 기대 3";
@@ -648,7 +782,10 @@ namespace Ascend.Prototype.Spin.Tests
 
             PurifyEvent purify = result.Steps[0].Purifies[0];
             if (purify.Pattern != PatternKind.Cluster) return $"패턴 {purify.Pattern}";
-            if (purify.Cells.Length != 5) return $"정화 칸 {purify.Cells.Length}, 기대 5";
+            // 덩어리 4칸만 터진다. 떨어진 1개는 판에 남는다(재충전이 덮어쓸 수 있으므로
+            // 여기서는 정화 칸 수만 본다).
+            if (purify.Cells.Length != 4)
+                return $"정화 칸 {purify.Cells.Length}, 기대 4 (떨어진 흡수체가 함께 터졌다)";
             if (purify.PatternCells == null) return "PatternCells 가 null";
             if (purify.PatternCells.Length != 4)
                 return $"덩어리 칸 {purify.PatternCells.Length}, 기대 4";
@@ -664,6 +801,7 @@ namespace Ascend.Prototype.Spin.Tests
         private static string TestScatteredHasNoPatternCells()
         {
             SpinRuleSet rules = BoardRules();
+            rules.RequireAdjacencyToPurify = false;   // 흩어진 정화가 성립해야 검사할 수 있다
             SpinResolution result = Resolve(Board(
                 SymbolKind.Absorber,   SymbolKind.NormalSoul, SymbolKind.NormalSoul,
                 SymbolKind.NormalSoul, SymbolKind.Absorber,   SymbolKind.NormalSoul,

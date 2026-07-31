@@ -268,7 +268,18 @@ namespace Ascend.Prototype.Spin
                 bool triggersRefill = false;
                 foreach (PatternMatch match in matches)
                 {
-                    int[] cells = CellsOf(before, match.Kind);
+                    // **패턴에 참여한 칸만 터진다.**
+                    //
+                    // 예전에는 `CellsOf(before, match.Kind)` 로 판에 있는 그 문양을
+                    // 전부 지웠다. 직선 3개가 성립하면 판 반대쪽 구석의 같은 문양까지
+                    // 함께 사라졌다 — 패턴 판정에 인접을 요구해도 **제거가 인접을
+                    // 무시하고 있었으므로** 화면에서는 여전히 "안 붙은 것도 같이 터진다".
+                    //
+                    // `PatternCells` 가 없는 것은 흩어짐 정화뿐이고, 그건 애초에
+                    // 모양이 없는 패턴이라 전체 제거가 맞다.
+                    int[] cells = rules.PurifyOnlyPatternCells && match.PatternCells != null
+                        ? match.PatternCells
+                        : CellsOf(before, match.Kind);
                     float patternMultiplier = rules.PatternMultiplierFor(match.Pattern, match.Kind);
                     float eventPower = cells.Length * rules.PurifyValuePerSymbol *
                                        rules.PurifyRewardFor(match.Kind) * patternMultiplier * chainMultiplier;
@@ -379,6 +390,12 @@ namespace Ascend.Prototype.Spin
             };
         }
 
+        /// <summary>연결 덩어리가 `Cluster` 등급이 되는 최소 크기. 그 아래는 배수 없는 인접 정화다.</summary>
+        private const int ClusterMinimumSize = 4;
+
+        /// <summary>"모양이 없다"를 뜻하는 표식. null 과 구분하려고 쓴다.</summary>
+        private static readonly int[] EmptyShape = new int[0];
+
         private List<PatternMatch> FindMatches(SpinBoard board, SpinRuleSet rules)
         {
             var matches = new List<PatternMatch>(SymbolKinds.ResistanceKinds.Length);
@@ -387,8 +404,14 @@ namespace Ascend.Prototype.Spin
                 if (board.CountOf(kind) < rules.MinimumCountFor(kind)) continue;
 
                 bool fullBoard = board.CountOf(kind) == SpinBoard.Cells;
-                int[] clusterCells = FindConnectedComponent(board, kind, rules.DiagonalCountsAsConnected);
+                int[] clusterCells = FindConnectedComponent(
+                    board, kind, rules.DiagonalCountsAsConnected, ClusterMinimumSize);
                 bool cluster = clusterCells != null;
+
+                // 붙어 있기만 하면 인정하는 아래 등급. V자·작은 ㄴ자처럼 직선도
+                // 아니고 4칸도 안 되는 모양이 여기 걸린다. 배수는 없다(1.0).
+                int[] touchingCells = FindConnectedComponent(
+                    board, kind, rules.DiagonalCountsAsConnected, rules.MinimumCountFor(kind));
                 LineKind lineKind;
                 int[] lineCells = TryFindLine(board, kind, out lineKind);
                 bool line = lineCells != null;
@@ -396,6 +419,12 @@ namespace Ascend.Prototype.Spin
                 // 패턴을 이룬 칸을 그대로 실어 보낸다. 화면이 "직선이라서 터졌다"를
                 // 형태로 그리려면 어느 줄이었는지가 필요하고, 그건 판정만 알고 있다.
                 int[] fullBoardCells = fullBoard ? CellsOf(board, kind) : null;
+
+                // 가장 낮은 등급. 인접을 요구하면 **붙어 있는 최소 개수**가 그 자리를
+                // 맡고(모양 칸을 그대로 실어 보낸다), 요구하지 않으면 예전처럼
+                // 판 전체의 개수만으로 성립한다(모양이 없으므로 null).
+                int[] scatterCells = rules.RequireAdjacencyToPurify ? touchingCells : EmptyShape;
+                bool scattered = scatterCells != null;
 
                 if (!rules.AllowMultiplePatternsPerKind)
                 {
@@ -405,8 +434,9 @@ namespace Ascend.Prototype.Spin
                         matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                     else if (line)
                         matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
-                    else
-                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
+                    else if (scattered)
+                        matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind,
+                                                     ReferenceEquals(scatterCells, EmptyShape) ? null : scatterCells));
                     continue;
                 }
 
@@ -418,17 +448,25 @@ namespace Ascend.Prototype.Spin
                     matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
                 if (line)
                     matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
-                matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind, null));
+                if (scattered)
+                    matches.Add(new PatternMatch(kind, PatternKind.Scattered, lineKind,
+                                                 ReferenceEquals(scatterCells, EmptyShape) ? null : scatterCells));
             }
             return matches;
         }
 
         /// <summary>
-        /// 4칸 이상 직교(또는 대각) 연결 덩어리를 찾아 **그 칸들을** 돌려준다. 없으면 null.
+        /// <paramref name="minimumSize"/>칸 이상 직교(또는 대각) 연결 덩어리를 찾아
+        /// **그 칸들을** 돌려준다. 없으면 null.
         /// 여러 덩어리가 성립하면 가장 큰 것을 고른다 — 화면이 하나만 감쌀 수 있고,
         /// 가장 큰 덩어리가 곧 이 판이 무너진 이유이기 때문이다.
+        ///
+        /// 최소 크기가 인자인 이유는 등급이 둘이기 때문이다. 4칸 이상은 `Cluster`
+        /// (배수와 재충전), 3칸은 `Scattered`(배수 없음). "V자나 작은 ㄴ자도
+        /// 붙어 있으면 인정하라"는 요청이 뒤쪽 등급이다.
         /// </summary>
-        private int[] FindConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal)
+        private int[] FindConnectedComponent(SpinBoard board, SymbolKind kind, bool diagonal,
+                                             int minimumSize)
         {
             var visited = new bool[SpinBoard.Cells];
             var queue = new int[SpinBoard.Cells];
@@ -458,7 +496,7 @@ namespace Ascend.Prototype.Spin
                     }
                 }
 
-                if (tail < 4 || (best != null && tail <= best.Length)) continue;
+                if (tail < minimumSize || (best != null && tail <= best.Length)) continue;
 
                 var component = new int[tail];
                 Array.Copy(queue, component, tail);

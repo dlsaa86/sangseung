@@ -148,15 +148,19 @@ namespace Ascend.Prototype.Run.Tests
         {
             FloorSession session = NewNormalOnlySession(12, 70f, 5);
             session.Spin();
+            // 첫 스핀 직후의 전력을 그때 읽는다. 예전에는 90 을 박아 뒀는데
+            // (정상 영혼 9개 × 10), `NormalSoulValue` 가 14 로 바뀌자 깨졌다.
+            // 이 테스트가 지키는 것은 "앤티 = 그 시점 전력 × 비율"이라는 관계다.
+            float powerAfterFirst = session.Power;
             float firstAnte = session.PendingAnte;
             if (!session.PushYourLuck()) return "첫 추가 스핀 선택 거부";
             session.Spin();
             float secondAnte = session.PendingAnte;
             float expectedSecondRatio = FloorSession.DefaultAnteRatio *
                 (1f + FloorSession.DefaultAnteEscalation);
-            if (Math.Abs(firstAnte - 90f * FloorSession.DefaultAnteRatio) > 0.001f ||
+            if (Math.Abs(firstAnte - powerAfterFirst * FloorSession.DefaultAnteRatio) > 0.001f ||
                 Math.Abs(secondAnte - session.Power * expectedSecondRatio) > 0.001f)
-                return $"앤티 상승이 잘못됨: {firstAnte}, {secondAnte}";
+                return $"앤티 상승이 잘못됨: {firstAnte} (전력 {powerAfterFirst}), {secondAnte}";
             if (secondAnte <= firstAnte) return "연속 추가 스핀 앤티가 오르지 않음";
             return null;
         }

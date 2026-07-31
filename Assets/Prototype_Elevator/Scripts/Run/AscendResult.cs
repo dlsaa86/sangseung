@@ -62,8 +62,9 @@ namespace Ascend.Prototype.Run
             DeviceDamaged = band == PowerBand.Damaged;
             RequiresJettison = band == PowerBand.Jettison;
             RunEnded = band == PowerBand.Crash;
-            FailureReason = RunEnded ? "Crash" :
-                (RequiresJettison ? "Jettison required" : string.Empty);
+            // `Jettison`은 이제 실패가 아니다 — 대가를 치르고 오르는 구간이다.
+            // 실패 사유에 남겨 두면 성공한 층의 기록에 "화물 포기"가 사유로 찍힌다.
+            FailureReason = RunEnded ? "Crash" : string.Empty;
 
             // The named high bands promise an additional-ascent opportunity, but
             // the player is still allowed to stop short and bank/convert the rest.

@@ -10,7 +10,14 @@ namespace Ascend.Prototype.Spin
         /// <summary>정화 자체가 성립하지 않음.</summary>
         None = 0,
 
-        /// <summary>3개 흩어짐 — 기본 정화, 배수 없음. 개수 안전망이 잡아준 결과다.</summary>
+        /// <summary>
+        /// 최소 개수가 **붙어 있음** — 기본 정화, 배수 없음.
+        ///
+        /// 예전에는 판 어디에 흩어져 있든 개수만 넘으면 성립했다("개수 안전망").
+        /// 지금은 서로 닿아 있어야 한다. 직선도 아니고 4칸도 안 되는 모양 —
+        /// V자, 작은 ㄴ자 — 이 여기 걸린다.
+        /// `RequireAdjacencyToPurify` 를 끄면 예전 의미로 돌아간다.
+        /// </summary>
         Scattered = 1,
 
         /// <summary>가로·세로·대각선 직선 3개 — 정화 배수와 승객 발동.</summary>
@@ -29,7 +36,7 @@ namespace Ascend.Prototype.Spin
         {
             switch (kind)
             {
-                case PatternKind.Scattered: return "기본 정화";
+                case PatternKind.Scattered: return "인접 정화";
                 case PatternKind.Line:      return "직선";
                 case PatternKind.Cluster:   return "연결 붕괴";
                 case PatternKind.FullBoard: return "수확 잭팟";

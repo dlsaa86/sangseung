@@ -20,8 +20,26 @@ namespace Ascend.Prototype.Spin
         /// <summary>종류별 추첨 가중치. 합이 1일 필요는 없다.</summary>
         public readonly Dictionary<SymbolKind, float> Weights = new Dictionary<SymbolKind, float>();
 
-        /// <summary>정상 영혼 1개가 주는 기본 전력.</summary>
-        public float NormalSoulValue = 10f;
+        /// <summary>
+        /// 정상 영혼 1개가 주는 기본 전력.
+        ///
+        /// 10 → 14. 인접 규칙을 켜면서 전력 산출이 줄어든 만큼 되돌린 값이다.
+        ///
+        /// **처음에는 9개 시드로 튜닝하다가 잡음에 과적합했다.** 14.0·14.3·14.7 이
+        /// 9개 시드에서는 4·4·6 완주로 갈렸는데, 20개 시드로 재니 셋 다 13/20 이었다.
+        /// 표본이 작으면 없는 차이가 보인다. 20개 시드가 판단 기준이다.
+        ///
+        /// 20개 시드 완주율 (무적재 보수 정책)
+        ///   옛 규칙(흩어짐 인정·전체 제거)  17/20 (85%)
+        ///   현재 규칙 · 영혼 14.0            13/20 (65%)
+        ///   현재 규칙 · 영혼 12.5            12/20 (60%)
+        ///   현재 규칙 · 영혼 11.0             6/20 (30%)
+        ///
+        /// 옛 규칙보다 **어렵다**. 붙어 있으면 모양을 가리지 않고 인정하지만,
+        /// 떨어진 같은 문양을 더는 같이 지우지 않기 때문이다.
+        /// 85% 로 되돌리려면 이 값을 올리면 된다 — 그건 난이도 결정이다.
+        /// </summary>
+        public float NormalSoulValue = 14f;
 
         /// <summary>스핀마다 정상 영혼을 최소 이만큼 보장한다. 0이면 보장 없음(공정성 안전장치).</summary>
         public int GuaranteedNormalSouls = 0;
@@ -31,8 +49,8 @@ namespace Ascend.Prototype.Spin
         /// <summary>종류별 기본 정화 최소 개수. 기본 3. 승객이 특정 저항만 2로 낮출 수 있다.</summary>
         public readonly Dictionary<SymbolKind, int> MinimumCountToPurify = new Dictionary<SymbolKind, int>();
 
-        /// <summary>정화된 저항체 1개가 주는 기본 전력.</summary>
-        public float PurifyValuePerSymbol = 6f;
+        /// <summary>정화된 저항체 1개가 주는 기본 전력. 6 → 8.4 (영혼과 같은 1.4배).</summary>
+        public float PurifyValuePerSymbol = 8.4f;
 
         /// <summary>종류별 정화 보상 배수(계약이 여기에 곱해진다).</summary>
         public readonly Dictionary<SymbolKind, float> PurifyRewardMultiplier = new Dictionary<SymbolKind, float>();
@@ -56,6 +74,32 @@ namespace Ascend.Prototype.Spin
 
         /// <summary>한 저항체에 대해 여러 패턴을 중복 판정한다(업그레이드 해금).</summary>
         public bool AllowMultiplePatternsPerKind = false;
+
+        /// <summary>
+        /// true면 정화에 **인접**을 요구한다 — 직선(3연속) 또는 연결 덩어리(4개 이상)만
+        /// 인정하고, 판 곳곳에 흩어진 개수만으로는 정화되지 않는다.
+        ///
+        /// 원래는 개수만 넘으면 `Scattered`("기본 정화")가 성립했다. 판 반대쪽 두 칸과
+        /// 구석 한 칸이 서로 아무 관계도 없이 함께 사라지는 그림이라, 무엇이 왜 터졌는지
+        /// 설명되지 않는다. 3×3 에서 직선과 연결 덩어리는 본래 인접하므로,
+        /// 이 스위치는 "붙어 있는 것만 터진다"는 규칙이 된다.
+        ///
+        /// **기본값이며 교체 대상이다**(`ASSUMPTION_LOG` A-20260731-07).
+        /// `Scattered`는 헛스핀을 줄이는 안전망이기도 했으므로 정화율이 내려간다.
+        /// 되돌리려면 이 값을 false 로 두면 된다.
+        /// </summary>
+        public bool RequireAdjacencyToPurify = true;
+
+        /// <summary>
+        /// true면 정화가 **패턴에 참여한 칸만** 지운다. false면 그 종류의 칸을 판에서 전부 지운다.
+        ///
+        /// 판정에 인접을 요구해도(`RequireAdjacencyToPurify`) 제거가 인접을 무시하면
+        /// 화면에서는 여전히 "안 붙은 것도 같이 터진다". 직선 3개가 성립하는 순간
+        /// 판 반대쪽 구석의 같은 문양까지 사라졌다. 두 스위치는 함께 켜져야 뜻이 산다.
+        ///
+        /// **기본값이며 교체 대상이다**(`ASSUMPTION_LOG` A-20260731-07).
+        /// </summary>
+        public bool PurifyOnlyPatternCells = true;
 
         // ── 캐스케이드 ──
 
@@ -163,6 +207,8 @@ namespace Ascend.Prototype.Spin
                 FullBoardMultiplier           = FullBoardMultiplier,
                 DiagonalCountsAsConnected     = DiagonalCountsAsConnected,
                 AllowMultiplePatternsPerKind  = AllowMultiplePatternsPerKind,
+                RequireAdjacencyToPurify      = RequireAdjacencyToPurify,
+                PurifyOnlyPatternCells        = PurifyOnlyPatternCells,
                 MaxCascadeDepth               = MaxCascadeDepth,
                 CascadeMultiplierStep         = CascadeMultiplierStep,
                 RefillNormalSoulBias          = RefillNormalSoulBias,

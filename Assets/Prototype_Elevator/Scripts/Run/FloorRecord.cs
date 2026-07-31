@@ -50,6 +50,9 @@ namespace Ascend.Prototype.Run
         public string FailureReason { get; private set; }
         public RiskLevel PeakRisk { get; private set; }
         public string RiskReason { get; private set; }
+
+        /// <summary>화물 포기 구간(70~89%)에서 실제로 잃은 것. 해당 없으면 null.</summary>
+        public string Jettison { get; private set; }
         public ResidualState FinalResidual { get; private set; }
 
         /// <summary>스핀별 요약. 각 원소가 그 스핀의 재현 정보와 무엇이 터졌는지를 담는다.</summary>
@@ -76,7 +79,8 @@ namespace Ascend.Prototype.Run
         /// 않은 층이므로 진행 중 스냅샷이 된다.
         /// </summary>
         public static FloorRecord Capture(int runSeed, FloorSession floor, FloorResult result,
-                                          RiskLevel peakRisk, string riskReason)
+                                          RiskLevel peakRisk, string riskReason,
+                                          string jettison = null)
         {
             var record = new FloorRecord
             {
@@ -102,6 +106,9 @@ namespace Ascend.Prototype.Run
                 PeakRisk = peakRisk,
                 RiskReason = riskReason,
                 FinalResidual = floor.Residual,
+                // 70~89% 로 올랐다면 무언가를 잃었다. 그것을 적지 않으면 화면이
+                // "화물 포기"라고만 말하고 무엇이 사라졌는지는 말하지 않는다.
+                Jettison = result != null && result.RequiresJettison ? jettison : null,
             };
 
             // 추가 스핀은 뒤쪽부터 ExtraSpinsTaken 개다 — 판돈을 걸고 돌린 스핀이 어느 것인지
@@ -126,6 +133,7 @@ namespace Ascend.Prototype.Run
             // `Contract`는 이미 "계약 없음"·"흡수체 계약"처럼 '계약'을 품고 있다.
             // 앞에 또 붙여서 화면에 "계약 계약 없음"이 찍혔다.
             sb.AppendLine($"{Contract}   스핀 {SpinsUsed}/{SpinsAllowed}");
+            if (!string.IsNullOrEmpty(Jettison)) sb.AppendLine(Jettison);
 
             if (ExtraSpinsTaken > 0)
                 sb.AppendLine($"과수확 {ExtraSpinsTaken}회 — 판돈 {TotalAnte:F0} 지불, 순손익 {NetProfit:+0;−0;0}");

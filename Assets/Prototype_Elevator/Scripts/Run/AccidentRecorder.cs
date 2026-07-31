@@ -63,7 +63,7 @@ namespace Ascend.Prototype.Run
             if (_tracked != null && _tracked.Result != null)
             {
                 _records.Add(FloorRecord.Capture(session.Seed, _tracked, _tracked.Result,
-                                                 _peakRisk, _peakReason));
+                                                 _peakRisk, _peakReason, session.LastJettison));
                 if (_logFullReport) Debug.Log($"[상승]\n{_records[_records.Count - 1].FullReport()}");
                 _tracked = null;
                 ResetPeak();

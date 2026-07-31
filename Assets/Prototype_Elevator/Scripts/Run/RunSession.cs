@@ -72,6 +72,9 @@ namespace Ascend.Prototype.Run
         /// </summary>
         private void OnLoadoutChanged()
         {
+            // 최고치는 층이 확정된 뒤의 하차에도 갱신되어야 하므로 가드 앞에서 잰다.
+            if (CarriedWeight > PeakCarriedWeight) PeakCarriedWeight = CarriedWeight;
+
             if (_current == null || _current.Result != null) return;
             _current.RefreshLoad(_baseWeight);
         }
@@ -127,6 +130,13 @@ namespace Ascend.Prototype.Run
         /// <summary>기본 무게 + 적재 무게. 요구 전력과 위험 점수가 이 값을 본다.</summary>
         public float CarriedWeight => _baseWeight + _loadout.TotalWeight;
 
+        /// <summary>
+        /// 런 전체에서 가장 무거웠던 순간. 완주 시점의 적재는 증거가 되지 못한다 —
+        /// 승객이 목적지 층에서 내리므로 10층에 닿으면 칸이 비어 있는 것이 정상이다.
+        /// "적재 경로를 실제로 지났는가"를 물으려면 최고치를 봐야 한다.
+        /// </summary>
+        public float PeakCarriedWeight { get; private set; }
+
         /// <summary>허용 중량(짐꾼 보너스 포함). 넘으면 과적이다.</summary>
         public float WeightCapacity => FloorSession.AllowedWeight + _loadout.TotalCapacityBonus;
 
@@ -135,6 +145,18 @@ namespace Ascend.Prototype.Run
         public bool IsComplete { get; private set; }
         public bool IsFailed { get; private set; }
         public string FailureReason { get; private set; }
+
+        /// <summary>가장 최근 층에서 화물 포기로 무엇을 잃었는가. 없었으면 null.</summary>
+        public string LastJettison { get; private set; }
+
+        /// <summary>
+        /// 화물 포기 구간에서 소지금으로 낸 대가의 누계.
+        ///
+        /// 원장 검사(`소지금 = 지급 합계`)가 이 변경을 즉시 잡아냈다 — 원장이 모르는
+        /// 지출을 만들었기 때문이다. 검사를 느슨하게 하는 대신 지출을 원장에 넣는다.
+        /// 불변식은 `소지금 = 지급 합계 − 대가 합계`가 된다.
+        /// </summary>
+        public float TotalJettisonPenalty { get; private set; }
         public FloorSession Current => _current;
         public FloorSession Floor => _current;
         public IReadOnlyList<FloorResult> Results => _results;
@@ -239,6 +261,10 @@ namespace Ascend.Prototype.Run
                 return;
             }
 
+            // 70~89% 는 오르되 대가를 치른다. 무엇을 잃었는지 기록에 남긴다.
+            if (result.RequiresJettison) LastJettison = PayJettisonCost();
+            else LastJettison = null;
+
             int from = CurrentFloor;
             int ascended = ClampAscent(CurrentFloor, result.FloorsAscended);
 
@@ -262,6 +288,54 @@ namespace Ascend.Prototype.Run
             _ascents.Add(new FloorAscent(from, ascended, result.ExcessPower,
                 result.Ascent.PowerPerExtraFloor, credited));
             CreateCurrentFloor();
+        }
+
+        /// <summary>
+        /// 요구 전력의 70~89% 로 오를 때 치르는 대가. 무엇을 잃었는지 문장으로 남긴다.
+        ///
+        /// **기본값이며 교체 대상이다** (`ASSUMPTION_LOG` A-20260731-06).
+        /// `MASTER_PRD`도 `PowerBand` 주석도 "승객·화물 포기 또는 큰 대가"까지만 말하고
+        /// 무엇을 얼마나 빼앗는지는 정하지 않았다. 정해지지 않았다고 비워 두면
+        /// 화면이 "화물 포기"라고 말한 뒤 아무 일도 일어나지 않는다 — 그것이
+        /// 독립 감사가 잡아낸 상태다. 규칙이 없는 것보다 바꿀 수 있는 규칙이 낫다.
+        ///
+        /// 규칙: 실은 것이 있으면 **가장 무거운 것부터** 버려서 적재 무게의 절반
+        /// 이상을 덜어낸다(최소 한 개). 실은 것이 없으면 소지금의 40% 를 잃는다.
+        /// 둘 다 없으면 잃을 것이 없으므로 그대로 오른다.
+        /// </summary>
+        private string PayJettisonCost()
+        {
+            if (_loadout != null && _loadout.Count > 0)
+            {
+                float before = _loadout.TotalWeight;
+                float target = before * 0.5f;
+                var dropped = new List<string>();
+
+                while (_loadout.Count > 0 &&
+                       (dropped.Count == 0 || _loadout.TotalWeight > target))
+                {
+                    BuildItem heaviest = null;
+                    foreach (BuildItem item in _loadout.Items)
+                        if (heaviest == null || item.Weight > heaviest.Weight) heaviest = item;
+                    if (heaviest == null) break;
+
+                    if (!_loadout.Remove(heaviest.Id)) break;
+                    dropped.Add(heaviest.Label);
+                }
+
+                float lost = before - _loadout.TotalWeight;
+                return $"화물 포기 — {string.Join(", ", dropped)} ({lost:F0}kg)";
+            }
+
+            if (Money > 0f)
+            {
+                float penalty = Money * 0.4f;
+                Money -= penalty;
+                TotalJettisonPenalty += penalty;
+                return $"대가 지불 — 소지금 {penalty:F0} (실은 것이 없었다)";
+            }
+
+            return "포기할 것도 낼 것도 없었다";
         }
 
         /// <summary>

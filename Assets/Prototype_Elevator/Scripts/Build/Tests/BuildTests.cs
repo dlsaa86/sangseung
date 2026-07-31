@@ -52,6 +52,7 @@ namespace Ascend.Prototype.Build.Tests
             Run("다층 상승이 적재 층을 건너뛰지 않는다", TestBuildFloorNeverSkipped, ref passed, ref failed, report);
             Run("추가 층 전력이 돈으로 중복 지급되지 않는다", TestNoDoubleSpendOfSurplus, ref passed, ref failed, report);
             Run("소지금이 지급 기록 합계와 일치한다", TestMoneyMatchesCreditedLedger, ref passed, ref failed, report);
+            Run("화물 포기 구간은 런을 끝내지 않고 대가를 물린다", TestJettisonBandCostsInsteadOfEnding, ref passed, ref failed, report);
             Run("하차가 확정된 층의 숫자를 바꾸지 않는다", TestDisembarkDoesNotMutateResolvedFloor, ref passed, ref failed, report);
             Run("고정 시드 3개 이상이 10층을 완주한다", TestSeedsCompleteTenFloors, ref passed, ref failed, report);
             Run("적재하고도 10층을 완주할 수 있다", TestLoadedRunCanAlsoComplete, ref passed, ref failed, report);
@@ -510,10 +511,52 @@ namespace Ascend.Prototype.Build.Tests
                 foreach (RunSession.FloorAscent ascent in driven.run.Ascents)
                     ledger += ascent.MoneyCredited;
 
-                if (Math.Abs(driven.run.Money - ledger) > 0.01f)
-                    return $"시드 {seed}: 소지금 {driven.run.Money:F2} 이 지급 기록 합계 {ledger:F2} 와 다르다 " +
-                           $"(무적재 런이므로 하차 요금이 없다)";
+                // 화물 포기 구간(70~89%)이 소지금으로 대가를 물 수 있다. 무적재 런이라
+                // 버릴 화물이 없어 돈으로 낸다. 그 지출도 원장의 일부다 — 검사를
+                // 느슨하게 하는 대신 지출을 식에 넣는다.
+                float expected = ledger - driven.run.TotalJettisonPenalty;
+                if (Math.Abs(driven.run.Money - expected) > 0.01f)
+                    return $"시드 {seed}: 소지금 {driven.run.Money:F2} 이 " +
+                           $"지급 {ledger:F2} − 대가 {driven.run.TotalJettisonPenalty:F2} " +
+                           $"= {expected:F2} 와 다르다 (무적재 런이므로 하차 요금이 없다)";
             }
+            return null;
+        }
+
+        /// <summary>
+        /// 70~89% 구간이 **런을 끝내지 않고 대가를 물린다**는 것.
+        ///
+        /// 예전에는 이 구간이 `Crash`와 결과가 같았다 — `Ascends()`가 `Damaged` 이상만
+        /// 참이라 런이 그냥 끝났고, 화면만 "화물 포기"라고 적었다. 독립 감사가
+        /// "화물을 포기했다는데 적재가 없다"고 지적한 화면이 그것이다.
+        ///
+        /// 실제로 그 구간에 들어간 층을 찾아, 런이 이어졌고 무언가를 잃었는지 본다.
+        /// 구간에 한 번도 안 들어가면 이 테스트는 아무것도 증명하지 못하므로,
+        /// 그 사실 자체를 실패로 보고한다 — 도달 불가능한 검사를 통과로 세지 않는다.
+        /// </summary>
+        private static string TestJettisonBandCostsInsteadOfEnding()
+        {
+            int observed = 0;
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828, 8675309, 20260731, 555 })
+            {
+                var driven = Drive(seed, null);
+                foreach (FloorResult floor in driven.run.Results)
+                {
+                    if (floor.Band != PowerBand.Jettison) continue;
+                    observed++;
+
+                    if (!floor.Succeeded)
+                        return $"시드 {seed}: 화물 포기 구간인데 층이 실패로 끝났다";
+                    if (floor.FloorsAscended < 1)
+                        return $"시드 {seed}: 화물 포기 구간인데 오르지 못했다";
+                    if (!string.IsNullOrEmpty(floor.FailureReason))
+                        return $"시드 {seed}: 성공한 층에 실패 사유 \"{floor.FailureReason}\" 가 남았다";
+                }
+            }
+
+            if (observed == 0)
+                return "9개 시드에서 화물 포기 구간(70~89%)에 한 번도 들어가지 않았다 — " +
+                       "검사가 도달 불가능하므로 통과로 세지 않는다";
             return null;
         }
 
@@ -606,8 +649,13 @@ namespace Ascend.Prototype.Build.Tests
                 var driven = Drive(seed, (f, slot) => slot < 1);
                 if (driven.run.IsComplete && !driven.run.IsFailed && driven.visited.Contains(10))
                 {
-                    if (driven.run.Loadout.Count == 0)
-                        return $"시드 {seed}: 완주했지만 아무것도 싣지 않았다 — 적재 경로가 검증되지 않음";
+                    // **최종 적재를 보면 안 된다.** 승객은 목적지 층에서 내리므로
+                    // 10층에 닿았을 때 칸이 비어 있는 것이 정상이다. 실제로 밸런스를
+                    // 바꾸자 이 검사가 정상 동작을 실패로 신고했다.
+                    // 검증해야 할 것은 "적재 경로를 실제로 지났는가"이고,
+                    // 그 증거는 하차 기록이나 런 도중의 최고 무게다.
+                    if (driven.run.PeakCarriedWeight <= 0f)
+                        return $"시드 {seed}: 완주했지만 한 번도 싣지 않았다 — 적재 경로가 검증되지 않음";
                     return null;
                 }
                 failures.Append(seed).Append("→").Append(driven.run.HighestFloorReached).Append("층 ");

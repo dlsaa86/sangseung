@@ -94,6 +94,17 @@ namespace Ascend.Prototype.Spin
         }
 
         /// <summary>이 구간에서 상승이 성립하는가. Damaged 이하는 대가를 치르고 오르거나 못 오른다.</summary>
-        public static bool Ascends(this PowerBand band) => band >= PowerBand.Damaged;
+        /// <summary>
+        /// 이 구간에서 엘리베이터가 올라가는가.
+        ///
+        /// `Jettison`(70~89%)이 여기 들어오지 않아 **런이 그냥 끝나고 있었다.**
+        /// `Crash`와 결과가 같고 문구만 "화물 포기"로 달랐다 — 독립 감사가
+        /// "화물을 포기했다는데 적재가 없다"고 지적한 화면이 그것이다.
+        ///
+        /// 열거형 주석은 이 구간을 "승객·화물 포기 **또는** 큰 대가"로 선언한다.
+        /// '또는'은 선택지를 뜻하고, 선택지가 있으려면 살아남아야 한다.
+        /// 대가는 `RunSession.PayJettisonCost`가 실제로 물린다.
+        /// </summary>
+        public static bool Ascends(this PowerBand band) => band >= PowerBand.Jettison;
     }
 }
