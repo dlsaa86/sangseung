@@ -143,6 +143,17 @@ namespace Ascend.Prototype.Run.Tests
             yield return BisectPresentation(run, bridge, lever, "① 전부 켬", true, true);
             yield return BisectPresentation(run, bridge, lever, "② HUD 끔", false, true);
             yield return BisectPresentation(run, bridge, lever, "③ HUD + 표식 끔", false, false);
+
+            // **순서를 뒤집어 한 번 더 잰다.** 앞선 감사가 정확히 이 지점을 찔렀다 —
+            // ①②③을 항상 이 순서로만 재면 "③에서 스파이크가 크다"와 "세션 후반에
+            // 스파이크가 크다"를 구분할 수 없다. 컴포넌트를 끈 것이 원인인지 시간이
+            // 흐른 것이 원인인지는 순서를 바꿔 봐야만 갈린다.
+            //
+            // 스파이크가 라벨을 따라가면 컴포넌트 탓이고, 위치를 따라가면 측정 순서 탓이다.
+            _report.AppendLine("  — 순서 반전 대조 (같은 구성, 실행 순서만 ③②①) —");
+            yield return BisectPresentation(run, bridge, lever, "③′ HUD + 표식 끔", false, false);
+            yield return BisectPresentation(run, bridge, lever, "②′ HUD 끔", false, true);
+            yield return BisectPresentation(run, bridge, lever, "①′ 전부 켬", true, true);
             _report.AppendLine();
 
             // ── 3b. 스핀 이후 상태에서 HUD 기여 분리 ──
@@ -493,6 +504,11 @@ namespace Ascend.Prototype.Run.Tests
             var times = new List<float>(4096);
             var allocs = new List<long>(4096);
 
+            // 수거가 몇 번 일어났는지 함께 남긴다. 스파이크가 수거와 같이 움직이면
+            // 그건 "그 컴포넌트를 그리는 비용"이 아니라 "그때 힙이 찼다"는 뜻이다.
+            int gc0 = System.GC.CollectionCount(0);
+            int gc1 = System.GC.CollectionCount(1);
+
             float deadline = Time.realtimeSinceStartup + 45f;
             int spins = 0;
             while (Time.realtimeSinceStartup < deadline)
@@ -528,7 +544,8 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"  {label,-18} 프레임 {times.Count,5} / 스핀 {spins} / " +
                                $"중앙 {median:F2} ms / 최악 {worst:F1} ms / " +
                                $"스파이크 {spikes,3}개 / 최대할당 {maxAlloc / 1024f / 1024f:F1} MB / " +
-                               $"총할당 {sumAlloc / 1024f / 1024f:F0} MB");
+                               $"총할당 {sumAlloc / 1024f / 1024f:F0} MB / " +
+                               $"수거 g0 {System.GC.CollectionCount(0) - gc0} g1 {System.GC.CollectionCount(1) - gc1}");
 
             if (hud != null) hud.enabled = true;
             if (markers != null) markers.enabled = true;
