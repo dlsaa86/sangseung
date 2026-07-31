@@ -108,7 +108,7 @@ namespace Ascend.Prototype.Run.Tests
 
             // ── 1) 공간과 장치 (Stable, 적재 없음) ──
             run.ResetRun(RunMode.TenFloor, 1337);
-            yield return WaitFrames(4);
+            yield return WaitSeconds(2.5f);   // 09·10·16 과 같은 정착 시간을 준다
 
             // **판을 채운 뒤에 찍는다.** 처음에는 이 네 장이 전부 빈 판때기였다 —
             // 엔진은 스핀이 끝나면 수확·정화된 칸을 비우고 `ResetRun`도 판을 지우므로,
@@ -165,7 +165,7 @@ namespace Ascend.Prototype.Run.Tests
             //   Critical ← 과적 + 과수확 (3.0 + 3.2 + 잔류 ≥ CriticalEnter 7.0)
             //   Collapse ← 층 실패 (점수와 무관하게 Collapse)
             run.Session.AddWeight(140f);   // 허용 중량을 확실히 넘긴다
-            yield return WaitFrames(30);   // 조명·험 블렌딩이 끝날 시간
+            yield return WaitSeconds(2.5f);   // 조명·험 블렌딩이 수렴할 시간(2.2/초)
             yield return Shot("09_risk_warning", Risk, risk,
                 $"Warning — 과적 {run.Session.CarriedWeight:F0}/{run.Session.WeightCapacity:F0} / 실제 단계 {LevelName(risk)}");
 
@@ -328,9 +328,9 @@ namespace Ascend.Prototype.Run.Tests
                     yield return WaitWhileLocked(bridge);
                 }
                 else break;
-                yield return WaitFrames(20);
+                yield return WaitSeconds(0.4f);
             }
-            yield return WaitFrames(30);
+            yield return WaitSeconds(2.5f);
         }
 
         private IEnumerator DriveToFloor(RunSessionBehaviour run,
@@ -461,7 +461,7 @@ namespace Ascend.Prototype.Run.Tests
                 yield return null;
             }
 
-            yield return WaitFrames(40);
+            yield return WaitSeconds(2.5f);
             yield return Shot("16_risk_collapse", Risk, risk,
                 $"Collapse — 실제 단계 {LevelName(risk)} / 실패 {run.Session.IsFailed} " +
                 $"사유 {run.Session.FailureReason ?? "—"} / 06·09·10 과 같은 좌표");
@@ -586,6 +586,26 @@ namespace Ascend.Prototype.Run.Tests
         private static IEnumerator WaitFrames(int frames)
         {
             for (int i = 0; i < frames; i++) yield return null;
+        }
+
+        /// <summary>
+        /// **시간**으로 기다린다. 프레임 수가 아니다.
+        ///
+        /// `RiskStateView._blendSpeed`는 2.2/초라 조명·험이 새 단계로 수렴하는 데 약 1.4초가
+        /// 걸린다. 그런데 에디터 Play 모드는 100fps 넘게 돌기 때문에 `WaitFrames(30)`이
+        /// 0.25초밖에 안 된다 — 블렌딩이 시작만 한 시점에 셔터가 열린다.
+        ///
+        /// 그래서 위험 4단계 캡처가 "텍스트와 경고등만 바뀌고 방 안은 그대로"로 나왔다.
+        /// 독립 평가자가 "06→09→10 사이에서 방 안의 어떤 것도 변하지 않는다"고 지적했는데,
+        /// 프리셋에는 밝기 1.0 → 0.80 → 0.58 → 0.34 의 차이가 실제로 들어 있다.
+        /// 연출이 없었던 것이 아니라 **캡처가 기다리지 않았다.**
+        ///
+        /// `HeroSliceAutoPilot`이 이미 같은 함정을 주석으로 경고해 뒀다.
+        /// </summary>
+        private static IEnumerator WaitSeconds(float seconds)
+        {
+            float deadline = Time.realtimeSinceStartup + seconds;
+            while (Time.realtimeSinceStartup < deadline) yield return null;
         }
 
         private static IEnumerator WaitWhileLocked(RouletteInteractionBridge bridge)
