@@ -112,10 +112,17 @@ namespace Ascend.Prototype.View
 
             var holder = new GameObject("Readout");
             holder.transform.SetParent(transform, false);
-            holder.transform.localPosition = new Vector3(0f, 0f, -0.05f);
-            holder.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
 
             var text = holder.AddComponent<TextMeshPro>();
+
+            // **회전을 주지 않는다.** 처음엔 Y 축 180°를 넣었는데 캡처에서 "1 / 10"이
+            // 좌우 반전으로 찍혔다. 회전을 컴포넌트 부착 뒤로 옮겨도 그대로였다 —
+            // 즉 회전이 유실된 것이 아니라 **180°가 원인이었다.**
+            //
+            // 표시등은 출입구 상인방(z≈1.45)에 붙어 실내(-Z 방향)를 향해야 하는데,
+            // 회전이 없는 상태가 이미 그 방향이다. 추론 대신 캡처 두 장으로 확인했다.
+            holder.transform.localPosition = new Vector3(0f, 0f, -0.05f);
+            holder.transform.localRotation = Quaternion.identity;
             text.text = "1";
             text.fontSize = 2.4f;
             text.alignment = TextAlignmentOptions.Center;

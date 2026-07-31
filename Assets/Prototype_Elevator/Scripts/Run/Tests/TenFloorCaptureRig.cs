@@ -65,7 +65,10 @@ namespace Ascend.Prototype.Run.Tests
         // 문 개구부 중심(x=0.65) 위 2.35m에서 안쪽을 내려다보면 여섯 자리가 모두 들어온다.
         private static readonly Pose CargoBay    = new Pose("CargoBay",    new Vector3( 0.65f, 2.35f,  1.42f), new Vector3(-0.20f, 0.35f, -0.80f));
         private static readonly Pose Risk        = new Pose("Risk",        new Vector3( 0.60f, 1.62f, -0.70f), new Vector3(-0.55f, 1.55f,  0.55f));
-        private static readonly Pose Overharvest = new Pose("Overharvest", new Vector3( 0.62f, 1.55f,  0.50f), new Vector3( 0.55f, 1.35f,  1.40f));
+        // 과수확 레버는 x[0.25..0.85] · y[0.90..1.90] · z[0.91..1.47]을 차지한다.
+        // 처음엔 0.9m 앞에 세웠더니 하우징이 화면을 통째로 덮어 "잠겼는가 열렸는가"를
+        // 판정할 수 없었다. 1.5m 물러나 레버와 주변 맥락이 함께 들어오게 한다.
+        private static readonly Pose Overharvest = new Pose("Overharvest", new Vector3( 0.30f, 1.62f, -0.35f), new Vector3( 0.55f, 1.40f,  1.20f));
         private static readonly Pose Contract    = new Pose("Contract",    new Vector3( 0.10f, 1.62f,  0.30f), new Vector3( 1.12f, 1.50f,  0.30f));
 
 #if UNITY_EDITOR
