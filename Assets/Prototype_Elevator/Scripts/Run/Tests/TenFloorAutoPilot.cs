@@ -165,10 +165,31 @@ namespace Ascend.Prototype.Run.Tests
                   Mathf.Abs(run.Session.Money - firstMoney) < 0.01f,
                   $"처음 {firstMoney:F0} vs 재실행 {run.Session.Money:F0}");
 
+            // **완주를 요구하는 단정.** 이것이 없던 동안 무슨 일이 가능했나:
+            // 층 검사 전부가 `if (완주)` 안에 있어서, 모든 런이 1층에서 사고로 끝나도
+            // 하나도 실행되지 않고 0 FAIL 이 나온다. 이 프로젝트가 헤드리스 쪽에서
+            // 이미 한 번 당한 "실패 런을 continue 로 넘긴다" 패턴 그대로다.
+            // Gate B 의 근거가 로그를 눈으로 읽는 것뿐이었다.
+            //
+            // 최소 3회인 이유: `P2-Gate D` 가 고정 시드 3개와 10층 런 3회를 요구한다.
+            // 완주 시드 셋을 헤드리스로 미리 골랐으므로 정책당 하나만 성공해도 3이 된다.
+            Check($"10층 완주가 최소 3회 — 실제 {_runsCompleted}/{_runsDriven}회",
+                  _runsCompleted >= 3,
+                  $"완주 {_runsCompleted}회 / 구동 {_runsDriven}회 — 시드 [{_completedSeeds}]");
+            Check($"서로 다른 완주 시드가 최소 3개 — 실제 {_completedSeedSet.Count}개",
+                  _completedSeedSet.Count >= 3,
+                  $"완주 시드 [{_completedSeeds}]");
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
             _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
             Finish();
         }
+
+        private int _runsDriven;
+        private int _runsCompleted;
+        private string _completedSeeds = string.Empty;
+        private readonly System.Collections.Generic.HashSet<int> _completedSeedSet =
+            new System.Collections.Generic.HashSet<int>();
 
         private IEnumerator DriveRun(RunSessionBehaviour run, RouletteInteractionBridge bridge,
             InteractableLever lever, InteractableContractPanel panel, InteractablePowerTank tank,
@@ -177,6 +198,7 @@ namespace Ascend.Prototype.Run.Tests
         {
             _report.AppendLine();
             _report.AppendLine($"  ══════ {policy} ══════");
+            _runsDriven++;
             run.ResetRun(RunMode.TenFloor, seed);
             _visited.Clear();
             for (int i = 0; i < 3; i++) yield return null;
@@ -401,6 +423,24 @@ namespace Ascend.Prototype.Run.Tests
                   $"건너뜀 [{gaps.Trim()}] 방문 [{string.Join(",", _visited)}]");
             Check($"[{policy}] 1층에서 시작한다", _visited.Count > 0 && _visited[0] == 1,
                   _visited.Count > 0 ? _visited[0].ToString() : "방문 기록 없음");
+
+            // 무엇을 **안** 봤는지 적는다. 완주 단정 집합이 ClampAscent 가 이미 보장하는
+            // 층과 같으면 그 단정은 실패할 수 없다 — 실제로 그런 상태였다.
+            // 이 줄은 단정이 아니라 관측이다. 사고로 끝난 런에서는 남은 층이 당연히 미방문이다.
+            var unseen = new StringBuilder();
+            for (int floor = 1; floor <= 10; floor++)
+                if (!_visited.Contains(floor)) unseen.Append(floor).Append(' ');
+            _report.AppendLine(unseen.Length == 0
+                ? "  미방문 층: 없음 — 열 층을 모두 밟았다"
+                : $"  미방문 층: [{unseen.ToString().Trim()}]");
+
+            bool completed = session.IsComplete && !session.IsFailed && _visited.Contains(10);
+            if (completed)
+            {
+                _runsCompleted++;
+                _completedSeedSet.Add(seed);
+                _completedSeeds += seed + " ";
+            }
 
             // 계약은 4층에 처음 나온다(D-20260801-01 재배치 — 그 전에는 6층이었다).
             // 그 전에 사고가 나면 이 검사는 **도달 불가능**이 되므로, 계약이 있는 층에

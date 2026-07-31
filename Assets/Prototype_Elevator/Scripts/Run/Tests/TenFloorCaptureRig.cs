@@ -112,9 +112,31 @@ namespace Ascend.Prototype.Run.Tests
         public static void Arm() => UnityEditor.EditorPrefs.SetBool(PrefKey, true);
 #endif
 
+        /// <summary>고정 프레임 시간. manifest 머리말에 적어 재현 조건을 남긴다.</summary>
+        public const float CaptureDeltaTime = 1f / 60f;
+        private int _restoreVSync = -1;
+
+        /// <summary>세운 시계를 되돌린다. 안 되돌리면 다음 Play 세션이 캡처 시계로 돈다.</summary>
+        private void RestoreClock()
+        {
+            if (_restoreVSync < 0) return;
+            Time.captureDeltaTime = 0f;
+            QualitySettings.vSyncCount = _restoreVSync;
+            _restoreVSync = -1;
+        }
+
         private IEnumerator Start()
         {
             yield return null;
+
+            // 프레임 시간을 못박는다. 이걸 세우지 않으면 `Time.deltaTime` 이 기계 부하를
+            // 따라가고, 시간으로 재는 모든 대기가 **다른 프레임 수**로 끝난다.
+            // 위험 상태 블렌딩·덮개 각도·승객 기울기가 전부 프레임 단위로 진행하므로
+            // 같은 시드의 두 캡처가 바이트 단위로 달라진다. 고정 캡처 세트의 전제가
+            // "같은 입력이면 같은 그림"이므로 여기서 시계를 고정한다.
+            _restoreVSync = QualitySettings.vSyncCount;
+            QualitySettings.vSyncCount = 0;
+            Time.captureDeltaTime = CaptureDeltaTime;
 
             var run = FindAnyObjectByType<RunSessionBehaviour>();
             var bridge = FindAnyObjectByType<RouletteInteractionBridge>();
@@ -200,9 +222,10 @@ namespace Ascend.Prototype.Run.Tests
                 $"Stable — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
                 $"적재 {run.Session.Loadout.Count}개 {run.Session.CarriedWeight:F0}kg / " +
                 $"요구 {(riskFloor != null ? riskFloor.RequiredPower : 0f):F0} / " +
-                $"실제 단계 {LevelName(risk)} — 09·10 과 같은 층·같은 적재·같은 좌표. " +
-                "요구 전력은 다르다: 과적이 요구를 끌어올리는 것이 Warning 의 정의이므로 " +
-                "그것까지 고정하면 상태 자체를 만들 수 없다");
+                $"실제 단계 {LevelName(risk)} — 대조군. 09·10·16 과 **고정된 것**: 층·카메라 좌표·적재 개수. " +
+                "**달라지는 것**: 무게(09 에서 +140kg)·요구 전력·소비 스핀. " +
+                "과적이 요구를 끌어올리는 것이 Warning 의 정의라 그것까지 고정하면 상태 자체를 만들 수 없다. " +
+                "즉 이 넷은 '같은 판을 같은 각도에서 본 것'이지 '같은 숫자'가 아니다");
 
             run.Session.AddWeight(140f);   // 허용 중량을 확실히 넘긴다
             yield return WaitSeconds(2.5f);   // 조명·험 블렌딩이 수렴할 시간(2.2/초)
@@ -236,8 +259,14 @@ namespace Ascend.Prototype.Run.Tests
             }
 
             // 잠금 상태는 조건을 만족하기 **전** 상태여야 하므로 새 런에서 찍는다.
+            //
+            // `WaitFrames(4)` 였다. 에디터 Play 는 100fps 넘게 돌아 약 0.04초다.
+            // `RiskStateView._blendSpeed` 는 2.2/초라 직전 런의 위험 상태에서
+            // 안정으로 수렴하는 데 1.4초가 걸린다 — 그래서 이 장이 "위험도 안정" 문구와
+            // **적색 램프**를 함께 찍었다. 다른 위험 샷들은 이미 `WaitSeconds(2.5f)` 를 쓴다.
+            // 같은 함정을 두 번 밟았다.
             run.ResetRun(RunMode.TenFloor, chosenSeed);
-            yield return WaitFrames(4);
+            yield return WaitSeconds(2.5f);
             yield return Shot("11_overharvest_locked", Overharvest, risk,
                 $"잠금 상태 — 시드 {chosenSeed} / unlocked={(overharvest != null && overharvest.IsUnlocked)}");
 
@@ -540,33 +569,76 @@ namespace Ascend.Prototype.Run.Tests
             //
             // 4층까지 정상 진행한 뒤 과적을 걸어 요구 전력을 감당 못 하게 만든다.
             // 실제 플레이에서 "욕심내서 싣다가 무너지는" 경로와 같은 모양이다.
-            run.ResetRun(RunMode.TenFloor, 555555);
-            yield return WaitFrames(2);
-            yield return DriveToFloor(run, bridge, 4);
-            yield return WaitFrames(2);
-            run.Session.AddWeight(220f);
+            // 시드 하나에 고정하면 안 된다. 이 자리는 원래 `555555`를 4층까지 몰고
+            // 220kg 을 얹어 사고를 내는 코드였는데, 커리큘럼 재배치와 건너뛰기 금지
+            // (D-20260801-01·02) 이후 그 시드는 거기서 죽지 않았다. 그래서 파일 이름은
+            // `16_risk_collapse` 인데 매니페스트에는 **"실제 단계 Warning / 실패 False"**
+            // 가 적힌 채로 나갔고, 독립 평가자가 "네 번째 상태가 세트에 아예 없다"고 잡았다.
+            //
+            // 캡처가 자기 파일 이름을 못 지키면 그 세트 전체의 신뢰가 무너진다.
+            // 그래서 여러 시드·여러 층·여러 중량으로 **실제로 Collapse 에 닿을 때까지** 찾고,
+            // 못 찾으면 아래에서 그 사실을 매니페스트에 그대로 적는다. 이름을 지키는 것보다
+            // 못 지켰다고 말하는 것이 낫다.
+            bool reachedCollapse = false;
+            int usedSeed = 555555, usedFloor = 4;
+            float usedWeight = 220f;
 
-            int guard = 0;
-            while (!run.Session.IsFailed && !run.Session.IsComplete && guard++ < 40)
+            foreach (int seed in new[] { 555555, 1337, 8675309, 31415, 90210, 20260731, 4242, 7 })
             {
-                FloorSession floor = run.Session.Current;
-                if (floor == null) break;
-                if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
-                if (floor.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
-                while (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0) run.Spin();
-                if (floor.SpinsRemaining == 0 && !floor.CanBank) { run.ForceResolve(); break; }
-                if (floor.CanBank) run.Bank();
-                else break;
-                yield return null;
+                foreach (int targetFloor in new[] { 4, 6, 8 })
+                {
+                    foreach (float extra in new[] { 220f, 320f, 460f })
+                    {
+                        run.ResetRun(RunMode.TenFloor, seed);
+                        yield return WaitFrames(2);
+                        yield return DriveToFloor(run, bridge, targetFloor);
+                        yield return WaitFrames(2);
+                        run.Session.AddWeight(extra);
+
+                        int guard = 0;
+                        while (!run.Session.IsFailed && !run.Session.IsComplete && guard++ < 40)
+                        {
+                            FloorSession floor = run.Session.Current;
+                            if (floor == null) break;
+                            if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
+                            if (floor.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
+                            while (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0) run.Spin();
+                            if (floor.SpinsRemaining == 0 && !floor.CanBank) { run.ForceResolve(); break; }
+                            if (floor.CanBank) run.Bank();
+                            else break;
+                            yield return null;
+                        }
+
+                        // 위험 뷰가 붕괴로 수렴할 시간을 준 뒤에 판정한다. 블렌딩(2.2/초)이
+                        // 끝나기 전에 읽으면 도달했는데 아니라고 판정한다.
+                        yield return WaitSeconds(1.6f);
+                        if (risk != null && risk.Level >= RiskLevel.Collapse)
+                        {
+                            reachedCollapse = true;
+                            usedSeed = seed; usedFloor = targetFloor; usedWeight = extra;
+                        }
+                        if (reachedCollapse) break;
+                    }
+                    if (reachedCollapse) break;
+                }
+                if (reachedCollapse) break;
             }
+
+            if (!reachedCollapse)
+                Debug.LogWarning("[상승] 16_risk_collapse — 어떤 조합으로도 Collapse 에 닿지 못했다. " +
+                                 "매니페스트에 그대로 적는다.");
 
             // 붕괴에서도 결과가 읽혀야 한다 — `VISUAL_SPEC` §6이 "단순한 암전이나
             // 즉사 연출로 정보를 숨기지 않는다"고 요구한다. 그런데 사고 런은 판을
             // 비운 상태로 끝나서 "무엇이 터졌는지 알 수 없다"는 지적을 받았다.
-            ShowBoard(FindAnyObjectByType<SpinBoardView>(), DrawSample(555555, 2, 4));
+            ShowBoard(FindAnyObjectByType<SpinBoardView>(), DrawSample(usedSeed, 2, usedFloor));
             yield return WaitSeconds(2.5f);
             yield return Shot("16_risk_collapse", Risk, risk,
-                $"Collapse — 실제 단계 {LevelName(risk)} / 실패 {run.Session.IsFailed} " +
+                (reachedCollapse
+                    ? $"Collapse 도달 — 시드 {usedSeed} / {usedFloor}층 / 추가 중량 {usedWeight:F0}kg. "
+                    : "**Collapse 미도달** — 시드 8개 × 층 3개 × 중량 3종을 전부 시도했으나 " +
+                      "붕괴 상태를 만들지 못했다. 이 장은 파일 이름이 주장하는 상태가 아니다. ") +
+                $"실제 단계 {LevelName(risk)} / 실패 {run.Session.IsFailed} " +
                 $"사유 {run.Session.FailureReason ?? "—"} / 06·09·10 과 같은 좌표");
 
             // 사고 기록기는 `GameHudView`가 화면에 그린다. 그런데 이 리그의 다른 샷은
@@ -734,10 +806,17 @@ namespace Ascend.Prototype.Run.Tests
         ///
         /// `HeroSliceAutoPilot`이 이미 같은 함정을 주석으로 경고해 뒀다.
         /// </summary>
+        /// <remarks>
+        /// `Time.realtimeSinceStartup` 이 아니라 `Time.time` 을 쓴다.
+        /// <see cref="Start"/>가 `Time.captureDeltaTime = 1/60` 을 세우므로 프레임당
+        /// 게임 시간이 정확히 1/60초씩 흐른다 — 벽시계로 재면 기계 부하에 따라
+        /// 프레임 수가 달라지고, 블렌딩이 프레임 수만큼 진행하므로 **같은 시드로 찍은
+        /// 두 캡처가 픽셀 단위로 달라진다.** 게임 시간으로 재야 프레임 수가 고정된다.
+        /// </remarks>
         private static IEnumerator WaitSeconds(float seconds)
         {
-            float deadline = Time.realtimeSinceStartup + seconds;
-            while (Time.realtimeSinceStartup < deadline) yield return null;
+            float deadline = Time.time + seconds;
+            while (Time.time < deadline) yield return null;
         }
 
         private static IEnumerator WaitWhileLocked(RouletteInteractionBridge bridge)
@@ -757,6 +836,10 @@ namespace Ascend.Prototype.Run.Tests
                 $"{SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
                 $"{SystemInfo.graphicsDeviceName}|{Application.unityVersion}");
             _manifest.AppendLine($"OS {SystemInfo.operatingSystem}");
+            // 재현 조건. 프레임 시간이 고정되지 않으면 같은 시드도 다른 프레임 수에서
+            // 찍혀 블렌딩 진행도가 달라진다 — 두 캡처가 바이트 단위로 갈라진다.
+            _manifest.AppendLine($"captureDeltaTime {CaptureDeltaTime:F5} (vSync off) — " +
+                                 "대기는 벽시계가 아니라 게임 시간으로 잰다");
             _manifest.AppendLine("주의: 전용 카메라의 RenderTexture 렌더다. 화면 UGUI HUD는 포함되지 않는다.");
             _manifest.AppendLine("위험 단계는 연출이 아니라 실제 게임 상태다 — 무엇을 해서 도달했는지 각 줄에 적혀 있다.");
             _manifest.AppendLine();
@@ -785,6 +868,7 @@ namespace Ascend.Prototype.Run.Tests
 
         private void OnDestroy()
         {
+            RestoreClock();
             if (_target != null) { _target.Release(); Destroy(_target); }
             if (_readback != null) Destroy(_readback);
         }

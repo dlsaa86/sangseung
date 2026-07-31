@@ -139,6 +139,34 @@ namespace Ascend.Prototype.EditorTools
             Debug.Log($"[상승] 10층 고정 캡처 시작 → {TenFloorCaptureRig.OutputDirectory}");
         }
 
+        /// <summary>
+        /// `P2-Gate G`의 "최대 적재와 Critical 상태 측정". Hero Slice 측정과 별개인 이유는
+        /// <see cref="LoadedCriticalPerfProbe"/> 주석에 있다 — 그쪽은 무적재·Stable 만 잰다.
+        /// </summary>
+        [MenuItem("Ascend/Measure Loaded + Critical Performance")]
+        public static void RunLoadedCriticalProbe()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string report = Path.Combine(Directory.GetCurrentDirectory(), LoadedCriticalPerfProbe.ReportPath);
+            if (File.Exists(report)) File.Delete(report);
+
+            LoadedCriticalPerfProbe.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 최대적재+Critical 측정 시작 → {LoadedCriticalPerfProbe.ReportPath}");
+        }
+
         [MenuItem("Ascend/Measure Hero Slice Performance")]
         public static void RunPerfProbe()
         {
