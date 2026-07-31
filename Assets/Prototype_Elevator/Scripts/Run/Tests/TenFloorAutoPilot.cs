@@ -115,10 +115,36 @@ namespace Ascend.Prototype.Run.Tests
             // 밀어올려 시드 1337에서 5층에 사고가 났고, 그러면 완주 경로 자체를 증명하지
             // 못한다. `P2-Gate B`가 요구하는 것은 "진행 **가능**"이므로 한 정책은
             // 그 가능성을 보여야 한다. 적재의 대가는 공격 정책이 보여준다.
+            //
+            // **시드도 두 개 돈다.** 앞선 감사가 "PlayMode는 시드 하나만 쓴다"고
+            // 지적했다. 한 시드만 돌면 그 시드에서만 성립하는 배선을 통과시켜 놓고
+            // 전부 검증했다고 적게 된다 — 헤드리스 쪽에서 실제로 그런 일이 있었다.
+            int seedA = run.Seed;
+            const int seedB = 20260731;
+
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                0, false, "보수(무적재·과수확 없음)");
+                seedA, 0, false, $"보수·시드{seedA}(무적재·과수확 없음)");
+            string firstVisits = string.Join(",", _visited);
+            float firstMoney = run.Session.Money;
+
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                2, true, "공격(층당 2개 적재·과수확 1회)");
+                seedA, 2, true, $"공격·시드{seedA}(층당 2개 적재·과수확 1회)");
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                seedB, 0, false, $"보수·시드{seedB}(무적재·과수확 없음)");
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                seedB, 2, true, $"공격·시드{seedB}(층당 2개 적재·과수확 1회)");
+
+            // 재현성은 "같은 시드가 같은 결과를 낸다"이지 "결과가 그럴듯하다"가 아니다.
+            // 중간에 다른 시드 세 런을 끼워 넣은 뒤 처음 것을 다시 돌린다 — 엔진이
+            // 런 사이에 상태를 흘리면 여기서 갈라진다.
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                seedA, 0, false, $"재현·시드{seedA}(첫 런과 같아야 한다)");
+            string replayVisits = string.Join(",", _visited);
+            Check($"시드 {seedA} 재현 — 방문 층이 같다", replayVisits == firstVisits,
+                  $"처음 [{firstVisits}] vs 재실행 [{replayVisits}]");
+            Check($"시드 {seedA} 재현 — 소지금이 같다",
+                  Mathf.Abs(run.Session.Money - firstMoney) < 0.01f,
+                  $"처음 {firstMoney:F0} vs 재실행 {run.Session.Money:F0}");
 
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
             _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
@@ -128,11 +154,11 @@ namespace Ascend.Prototype.Run.Tests
         private IEnumerator DriveRun(RunSessionBehaviour run, RouletteInteractionBridge bridge,
             InteractableLever lever, InteractableContractPanel panel, InteractablePowerTank tank,
             InteractableOverharvestLever overharvest, InteractableDoorControl door,
-            BuildFigureView figures, int boardCount, bool useOverharvest, string policy)
+            BuildFigureView figures, int seed, int boardCount, bool useOverharvest, string policy)
         {
             _report.AppendLine();
             _report.AppendLine($"  ══════ {policy} ══════");
-            run.ResetRun(RunMode.TenFloor, run.Seed);
+            run.ResetRun(RunMode.TenFloor, seed);
             _visited.Clear();
             for (int i = 0; i < 3; i++) yield return null;
 

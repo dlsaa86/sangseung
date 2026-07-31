@@ -459,7 +459,21 @@ namespace Ascend.Prototype.EditorTools
             TextMeshProUGUI resultTitle = Label(result.transform, "ResultTitle", 62f,
                 TextAlignmentOptions.Top, new Color(1f, 0.92f, 0.72f));
             TextMeshProUGUI resultBody = Label(result.transform, "ResultBody", 28f,
-                TextAlignmentOptions.Center, new Color(0.90f, 0.92f, 0.96f));
+                TextAlignmentOptions.Top, new Color(0.90f, 0.92f, 0.96f));
+
+            // **제목과 본문이 같은 사각형을 공유하고 있었다.** `Label`은 부모를 꽉 채우게
+            // 늘어나므로, 제목은 위 정렬이고 본문은 가운데 정렬인 채 1000×420 한 칸에
+            // 겹쳐 있었다. 본문이 길어지는 순간(사고 기록기는 층·전력·요구·화물·원인을
+            // 다 적는다) 제목을 뚫고 올라온다. 독립 평가자가 17번 캡처에서
+            // "대형 '층 실패'가 '2층 … 화물 포기' 줄을 관통한다"고 잡은 것이 이것이다.
+            //
+            // 캡처만의 문제가 아니다 — 실제로 사고가 날 때마다 플레이어가 이 화면을 본다.
+            // 위 96px 은 제목, 그 아래는 본문. 두 칸은 겹치지 않는다.
+            const float titleBand = 96f;
+            var titleRect = resultTitle.rectTransform;
+            titleRect.offsetMin = new Vector2(titleRect.offsetMin.x, 420f - titleBand);
+            var bodyRect = resultBody.rectTransform;
+            bodyRect.offsetMax = new Vector2(bodyRect.offsetMax.x, -(titleBand + 12f));
 
             // 디버그 — 좌하단, 기본 꺼짐
             GameObject debug = Panel(root.transform, "Debug",

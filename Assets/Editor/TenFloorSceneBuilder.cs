@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -215,6 +216,27 @@ namespace Ascend.Prototype.EditorTools
                     report.AppendLine("  InstrumentPanelView._plaqueLabels 배선 3장");
                 }
             }
+
+            // ── 4b. 과부하 램프를 글자 띠 밖으로 ────────────────────────────
+            //
+            // 램프가 `추락 위험` 글자 한가운데를 관통했다. 위험 상태 캡처 8장에서
+            // "추락 위[램프]험"으로 쪼개졌고, 램프가 켜지면 `위`를 아예 덮었다.
+            //
+            // 평면 좌표만 보면 안 겹친다 — 가장 긴 문구의 라벨이 x −1.04~−0.19,
+            // 하우징이 −0.12~−0.01 로 0.07 m 떨어져 있다. 문제는 z 다. 램프가
+            // 라벨면(z=1.38)보다 0.06~0.11 m 앞에 있어 시점에서 시차로 얹힌다.
+            //
+            // 글자 띠(윗변 y=1.83) 위로 올린다. 값을 **절대 위치로** 준다 —
+            // 델타로 주면 빌더를 두 번 돌릴 때 누적된다. `Reproportion Elevator Car`가
+            // 멱등이 아니어서 실제로 그렇게 계기판 전체가 밀린 적이 있다.
+            if (panelRoot != null)
+            {
+                MoveLocalY(panelRoot.Find("OverloadLight"), 1.95f, report);
+                MoveLocalY(panelRoot.Find("OverloadHousing"), 1.95f, report);
+            }
+
+            // ── 4c. 월드 글자를 단면으로 ────────────────────────────────────
+            MakeWorldTextSingleSided(report);
 
             // ── 5. 배선 확인 ────────────────────────────────────────────────
             var bridge = Object.FindFirstObjectByType<RouletteInteractionBridge>(FindObjectsInactive.Include);
@@ -557,6 +579,70 @@ namespace Ascend.Prototype.EditorTools
             Vector3 p = target.localPosition;
             target.localPosition = new Vector3(Mathf.Sign(p.x == 0f ? 1f : p.x) * Mathf.Abs(x), p.y, p.z);
             report.AppendLine($"  {name} x {p.x:F2} → {target.localPosition.x:F2}");
+        }
+
+        /// <summary>
+        /// 월드 글자가 좌우로 뒤집혀 보인다는 지적을 두 번의 감사에서 받았다.
+        /// 처음에는 회전이 틀린 줄 알고 라벨의 euler 를 뒤졌지만 전부 (0,0,0)이었다.
+        ///
+        /// 원인은 회전이 아니라 **재질**이다. TMP 기본 재질은 `_CullMode = 0`(Off)이라
+        /// 글자의 뒷면까지 그린다. 뒷면은 정의상 거울상이므로, 라벨을 뒤에서 보는
+        /// 시점(문지방에서 안쪽을 내려다보는 화물칸 시점 등)에서는 반드시 뒤집혀 보인다.
+        /// 캡처 각도를 바꿔 가리는 건 증상만 숨기는 것이다 — 플레이어도 걸어가면 본다.
+        ///
+        /// `_CullMode = 2`(Back)로 두면 뒷면은 그리지 않는다. 뒤에서 보면 안 보일 뿐
+        /// 뒤집힌 글자는 나오지 않는다. 폰트 기본 재질을 직접 고치면 이 폰트를 쓰는
+        /// 모든 것에 번지므로 **변형 에셋을 만들어** 씬의 월드 라벨에만 물린다.
+        /// </summary>
+        private static void MakeWorldTextSingleSided(StringBuilder report)
+        {
+            const string dir = "Assets/Prototype_Elevator/Materials";
+            if (!AssetDatabase.IsValidFolder(dir))
+                AssetDatabase.CreateFolder("Assets/Prototype_Elevator", "Materials");
+
+            var made = new Dictionary<Material, Material>();
+            int applied = 0;
+
+            foreach (TMPro.TextMeshPro text in Object.FindObjectsByType<TMPro.TextMeshPro>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                Material shared = text.fontSharedMaterial;
+                if (shared == null || !shared.HasProperty("_CullMode")) continue;
+                if (Mathf.Approximately(shared.GetFloat("_CullMode"), 2f)) continue;
+
+                if (!made.TryGetValue(shared, out Material single))
+                {
+                    string path = $"{dir}/{shared.name} SingleSided.mat";
+                    single = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    if (single == null)
+                    {
+                        single = new Material(shared) { name = shared.name + " SingleSided" };
+                        AssetDatabase.CreateAsset(single, path);
+                        report.AppendLine($"  {System.IO.Path.GetFileName(path)} 신설");
+                    }
+                    single.CopyPropertiesFromMaterial(shared);
+                    single.SetFloat("_CullMode", 2f);   // Back — 뒷면(거울상)을 그리지 않는다
+                    EditorUtility.SetDirty(single);
+                    made[shared] = single;
+                }
+
+                text.fontSharedMaterial = single;
+                EditorUtility.SetDirty(text);
+                applied++;
+            }
+
+            AssetDatabase.SaveAssets();
+            report.AppendLine($"  월드 글자 단면 처리 {applied}개 (재질 {made.Count}종)");
+        }
+
+        /// <summary>로컬 y 만 절대값으로 바꾼다. 델타가 아니라 목표값이라 여러 번 돌려도 같다.</summary>
+        private static void MoveLocalY(Transform target, float y, StringBuilder report)
+        {
+            if (target == null) return;
+            Vector3 p = target.localPosition;
+            if (Mathf.Approximately(p.y, y)) return;
+            target.localPosition = new Vector3(p.x, y, p.z);
+            report.AppendLine($"  {target.name} y {p.y:F2} → {y:F2}");
         }
 
         private static void SetReference(SerializedObject serialized, string path, Object value)

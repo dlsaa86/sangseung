@@ -487,6 +487,9 @@ public static class HumanScaleLayout
         // 과부하 램프가 전력 게이지 바로 옆에 붙어 있어서 "진행 바 + 정지 버튼"으로 읽혔다.
         // 폐기한 타이밍 축의 잔재로 오해받는 배치다. 게이지에서 떼어 위로 올리고
         // 하우징에 앉혀 램프임을 형태로 알린다.
+        //
+        // 높이는 `TenFloorSceneBuilder`가 다시 잡는다 — 이 메뉴는 비례 재조정 **이전**의
+        // 좌표계로 쓰여 있어서, 재조정된 씬에 다시 돌리면 값이 어긋난다.
         Place("OverloadLight", new Vector3(-0.10f, 1.82f, 1.42f), new Vector3(0.09f, 0.09f, 0.09f));
         GameObject housing = EnsurePrimitive("OverloadHousing", PrimitiveType.Cube, Find("InstrumentPanel"));
         housing.transform.position = new Vector3(-0.10f, 1.82f, 1.46f);

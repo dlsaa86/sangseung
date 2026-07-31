@@ -39,6 +39,11 @@ namespace Ascend.Prototype.View
         [SerializeField] private float _maxRatio = 3f;
         [SerializeField] private Renderer _barFill;
 
+        /// <summary>측정용. 캡처가 "셔터 순간 게이지가 얼마나 차 있었는가"를 스스로 적는다.</summary>
+        public Transform BarPivot => _barPivot;
+        public float BarWidth => _barWidth;
+        public float MaxRatio => _maxRatio;
+
         [Header("계약 명판 — 위에서부터 선택지 순서")]
         [SerializeField] private Renderer[] _contractPlaques = new Renderer[3];
 
@@ -249,16 +254,26 @@ namespace Ascend.Prototype.View
 
             SetText(_floorLabel, run.IsFailed ? "층 실패" : "층 확정");
             var results = run.Results;
-            if (results.Count > 0)
-            {
-                FloorResult last = results[results.Count - 1];
-                SetText(_powerLabel, $"전력 {last.FinalPower:F0} / 요구 {last.RequiredPower:F0}   " +
-                                     $"{last.Band.DisplayName()}");
-                SetText(_statusLabel, last.ExtraSpinsTaken > 0
-                    ? $"과수확 {last.ExtraSpinsTaken}회 / 판돈 {last.TotalAnte:F0} / 순손익 {last.NetProfit:+0;−0;0}"
-                    : "과수확 없이 확정");
-            }
-            SetBar(0f, _belowRequired);
+            if (results.Count == 0) { SetBar(0f, _belowRequired); return; }
+
+            FloorResult last = results[results.Count - 1];
+            SetText(_powerLabel, $"전력 {last.FinalPower:F0} / 요구 {last.RequiredPower:F0}   " +
+                                 $"{last.Band.DisplayName()}");
+            SetText(_statusLabel, last.ExtraSpinsTaken > 0
+                ? $"과수확 {last.ExtraSpinsTaken}회 / 판돈 {last.TotalAnte:F0} / 순손익 {last.NetProfit:+0;−0;0}"
+                : "과수확 없이 확정");
+
+            // **게이지를 0 으로 밀고 있었다.** 글자는 "전력 314 / 요구 355"라고 말하는데
+            // 바로 아래 막대는 비어 있었다. 독립 평가자가 이걸 "88%가 0%처럼 보인다 —
+            // 가시성 문제"로 읽었지만, 캡처가 실측치를 적게 하자 진짜 원인이 드러났다.
+            // 막대는 안 보인 게 아니라 **실제로 0** 이었다. 화면 안의 두 표시가 서로를
+            // 부정하고 있었던 것이고, 그건 `VISUAL_SPEC` §6이 금지하는 정보 은폐다.
+            //
+            // 끝난 층도 자기 결과를 말해야 한다. 마지막 층의 실제 비율을 그대로 세운다.
+            float ratio = last.RequiredPower > 0f ? last.FinalPower / last.RequiredPower : 0f;
+            SetBar(ratio, ratio < 1f ? _belowRequired
+                        : last.ExtraSpinsTaken > 0 ? _overharvested
+                        : _atRequired);
         }
 
         /// <summary>

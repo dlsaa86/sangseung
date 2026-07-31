@@ -55,14 +55,22 @@ namespace Ascend.Prototype.Run.Tests
 
         // 좌표는 2026-07-31 비례 재조정 기준이다(내부 x[-1.20..1.20] · z[-1.50..1.50] · 높이 3.20).
         // 눈높이 1.62를 유지한다 — 캡처가 플레이어가 실제로 보는 높이여야 판정이 성립한다.
-        private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.65f, 1.62f,  1.35f), new Vector3(-0.70f, 1.35f, -0.90f));
+        // 입구 시점이 y=1.35 를 내려다봐서 화면 절반 이상이 무특징 검은 바닥·앞벽이
+        // 됐다("볼 곳이 없다"는 지적). 눈높이에 가깝게 들어 결과판·계기판·과수확이
+        // 한 프레임에 오게 한다 — §12가 요구한 "전체 내부"는 그것이다.
+        private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.72f, 1.62f,  1.38f), new Vector3(-0.75f, 1.58f, -0.55f));
         private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
         private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
         // 결과판은 x[-1.10..-0.76] · y[0.95..2.25] · z[-0.69..0.69]를 차지한다.
         // 처음엔 x=-0.30(판에서 0.54m)에 뒀더니 **카메라가 판 안에 들어가** 조각만
         // 잡혔다. 1.35m 물러나 가운데 줄 세 칸이 나란히 들어오게 한다 —
         // 한 화면에 구·정육면체·캡슐이 같은 크기로 놓여야 "3종 비교"가 된다.
-        private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3( 0.40f, 1.60f,  0.00f), new Vector3(-0.90f, 1.60f,  0.00f));
+        //
+        // 그런데 1.35m 는 `DeviceFront`(x=0.35)와 0.05m 차이라 **두 장이 사실상 같은
+        // 그림**이 됐다. 독립 평가자가 "04는 02와 중복이다. 세 심볼 비교는 별도
+        // 근접 샷이어야 한다"고 지적했다. 판 앞면이 x=-0.76 이므로 x=-0.05 면
+        // 0.71m — 판 안에 들어가지 않으면서 심볼이 화면을 채운다.
+        private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3(-0.05f, 1.60f,  0.00f), new Vector3(-0.90f, 1.60f,  0.00f));
         // 화물칸 시점은 **문지방 위**에서 내려다본다. 처음에는 (0.60, 1.62, 1.25)에 뒀는데
         // 최대 적재 상태에서 오른쪽 열 승객(x=0.85, z=0.35)이 카메라 코앞에 서서 화면의
         // 대부분을 검게 가렸다 — "동선이 살아 있는가"를 판정할 수 없는 그림이 나왔다.
@@ -138,7 +146,6 @@ namespace Ascend.Prototype.Run.Tests
             yield return WaitFrames(3);
             yield return Shot("01_entry", Entry, risk, "입구에서 본 전체 내부 — 요구 캡처 §12");
             yield return Shot("05_cargo_empty", CargoBay, risk, "빈 화물 공간 — 07 과 같은 좌표");
-            yield return Shot("06_risk_stable", Risk, risk, "Stable — 09·10·11 과 같은 좌표");
 
             // ── 2) 적재 ──
             // 2층까지 몰고 가서 실을 수 있는 만큼 싣는다. 최대 적재 캡처는 "동선이
@@ -164,14 +171,31 @@ namespace Ascend.Prototype.Run.Tests
                 "승객과 장치가 한 화면에 — 적재가 장치 접근을 막지 않는가");
 
             // ── 3) 위험 4단계 (같은 좌표) ──
-            // Stable 은 06 에서 이미 찍었다. 여기서는 실제로 점수를 올린다.
+            //
+            // **같은 좌표만으로는 대조가 안 된다.** 처음에는 Stable 을 1층·화물 없음에서
+            // 찍고 Warning·Critical 을 2층·화물 있음에서 찍었다. 독립 평가자가 바로
+            // 짚었다 — "좌측에 화물 상자가 있고 없고가 상태 차이보다 눈에 먼저 띈다.
+            // 지금 세트로는 '위험 단계가 공간을 바꾸는가'를 판정할 수 없다."
+            //
+            // 대조군은 **나머지를 고정해야** 대조군이다. Stable 도 여기서 찍는다 —
+            // 같은 층, 같은 적재, 같은 요구 전력. 달라지는 것은 위험 단계뿐이다.
             //   Warning  ← 과적 (OverloadScore 3.0 ≥ WarningEnter 3.0)
             //   Critical ← 과적 + 과수확 (3.0 + 3.2 + 잔류 ≥ CriticalEnter 7.0)
-            //   Collapse ← 층 실패 (점수와 무관하게 Collapse)
+            //   Collapse ← 층 실패 (점수와 무관하게 Collapse) — 이것만 별도 런이다
+            FloorSession riskFloor = run.Session.Current;
+            yield return WaitSeconds(2.5f);   // 09·10 과 같은 정착 시간을 준다
+            yield return Shot("06_risk_stable", Risk, risk,
+                $"Stable — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
+                $"적재 {run.Session.Loadout.Count}개 {run.Session.CarriedWeight:F0}kg / " +
+                $"요구 {(riskFloor != null ? riskFloor.RequiredPower : 0f):F0} / " +
+                $"실제 단계 {LevelName(risk)} — 09·10 과 층·적재·요구까지 같다");
+
             run.Session.AddWeight(140f);   // 허용 중량을 확실히 넘긴다
             yield return WaitSeconds(2.5f);   // 조명·험 블렌딩이 수렴할 시간(2.2/초)
             yield return Shot("09_risk_warning", Risk, risk,
-                $"Warning — 과적 {run.Session.CarriedWeight:F0}/{run.Session.WeightCapacity:F0} / 실제 단계 {LevelName(risk)}");
+                $"Warning — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
+                $"과적 {run.Session.CarriedWeight:F0}/{run.Session.WeightCapacity:F0} / " +
+                $"실제 단계 {LevelName(risk)} — 06 에서 무게만 +140kg");
 
             yield return ForceCritical(run, bridge, risk);
             yield return Shot("10_risk_critical", Risk, risk,
@@ -289,6 +313,28 @@ namespace Ascend.Prototype.Run.Tests
             if (view == null) return;
             view.DrivenExternally = true;
             view.ShowBoard(board);
+        }
+
+        /// <summary>
+        /// 한 캐스케이드 단계의 정화를 표식·강조로 세운다. 재생을 거치지 않고 판을
+        /// 직접 밀어 넣었을 때 `SpinPresenter`가 하던 일을 대신한다.
+        /// </summary>
+        private static int ShowPurifies(SpinBoardView board, CascadeStep step)
+        {
+            var markers = FindAnyObjectByType<PurifyMarkerView>();
+            if (step.Purifies == null) return 0;
+
+            markers?.Begin();
+            int count = 0;
+            foreach (PurifyEvent purify in step.Purifies)
+            {
+                if (board != null && purify.Cells != null)
+                    foreach (int cell in purify.Cells) board.SetHighlight(cell, 1f);
+                markers?.Add(in purify, 1f);
+                count++;
+            }
+            markers?.End();
+            return count;
         }
 
         /// <summary>열마다 한 종류. 통관–열 대응과 심볼 3종 구분을 한 장에 담는다.</summary>
@@ -430,12 +476,24 @@ namespace Ascend.Prototype.Run.Tests
                         // 그래서 **연쇄 중간 단계의 보드를 직접 밀어 넣는다.** 깊이의 절반쯤이
                         // 가장 판이 꽉 찬 시점이고, 그것이 "왜 연쇄가 이어졌는가"를 보여준다.
                         int step = Mathf.Clamp(depth / 2, 0, resolution.Steps.Length - 1);
-                        ShowBoard(FindAnyObjectByType<SpinBoardView>(),
-                                  resolution.Steps[step].BoardBefore);
+                        var boardView = FindAnyObjectByType<SpinBoardView>();
+                        ShowBoard(boardView, resolution.Steps[step].BoardBefore);
+
+                        // 판만 밀어 넣으면 "심볼이 놓여 있다"까지밖에 안 보인다. 독립
+                        // 평가자가 정확히 그걸 지적했다 — "연쇄를 시사하는 것이 하나도 없다.
+                        // 이 그림만 보면 02_device_front 와 구별되는 건 심볼 배치뿐이다."
+                        //
+                        // 정화 표식은 `SpinPresenter`가 재생 중에 세운다. 판을 직접
+                        // 밀어 넣으면 그 경로를 건너뛰므로 표식도 안 선다. 같은 단계의
+                        // 정화 사건을 표식 뷰에 직접 먹인다 — 어느 칸이 왜 터졌는지가
+                        // 선과 연결로 남는다(B-2.6). 강조는 맥동의 정점(1.0)으로 고정한다.
+                        int purifies = ShowPurifies(boardView, resolution.Steps[step]);
+
                         yield return WaitFrames(3);
                         yield return Shot("15_cascade_deep", DeviceFront, risk,
                             $"시드 {seed} / 8층 / 사선 결속기+연쇄 조속기+증식체 계약 / " +
-                            $"연쇄 {depth}단계 중 {step + 1}단계 진입 시점의 판");
+                            $"연쇄 {depth}단계 중 {step + 1}단계 진입 시점의 판 / " +
+                            $"이 단계의 정화 {purifies}건이 표식으로 서 있다");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -581,6 +639,31 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine($"{name,-26} 시점 {pose.Name,-12} pos {pose.Position:F2} look {pose.LookAt:F2}  " +
                                  $"위험 {(risk != null ? risk.Level.DisplayName() : "—")}");
             _manifest.AppendLine($"{"",-26} {note}");
+            _manifest.AppendLine($"{"",-26} {GaugeFill()}");
+        }
+
+        /// <summary>
+        /// 셔터가 열린 순간 게이지가 **실제로 얼마나 차 있었는지**를 적는다.
+        ///
+        /// 독립 평가자가 "16은 전력 88%인데 채움이 0%인 18과 구별되지 않는다"고 했다.
+        /// 그런데 그것이 가시성 문제인지(막대가 작고 대비가 낮다) 상태 문제인지
+        /// (셔터가 열렸을 때 판정이 이미 끝나 전력이 0이었다) 그림만으로는 못 가른다.
+        /// 판이 비어 나온 것도, 위험 단계가 안 물든 것도 전부 후자였다.
+        ///
+        /// 그러니 캡처가 스스로 증언하게 한다. 막대의 실제 폭이 여기 남으면 다음
+        /// 평가는 "안 보인다"와 "없다"를 구분할 수 있다.
+        /// </summary>
+        private static string GaugeFill()
+        {
+            var panel = FindAnyObjectByType<InstrumentPanelView>();
+            Transform pivot = panel != null ? panel.BarPivot : null;
+            if (panel == null || pivot == null) return "게이지 — 계기판 없음";
+
+            float width = panel.BarWidth;
+            float filled = pivot.localScale.x;
+            return $"게이지 실측 — 채움 {filled:F3} m / 전체 {width:F2} m " +
+                   $"({(width > 0f ? filled / width * 100f : 0f):F0}% 길이, " +
+                   $"최대 {panel.MaxRatio * 100f:F0}% 기준)";
         }
 
         /// <summary>

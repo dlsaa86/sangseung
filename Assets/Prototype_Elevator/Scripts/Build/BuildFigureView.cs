@@ -64,6 +64,10 @@ namespace Ascend.Prototype.Build
             new List<InteractableBuildCandidate>();
         private readonly List<TMP_Text> _labels = new List<TMP_Text>();
 
+        private static readonly int CullModeId = Shader.PropertyToID("_CullMode");
+        private static readonly Dictionary<Material, Material> _singleSided =
+            new Dictionary<Material, Material>();
+
         private Material _passengerMaterial;
         private Material _partMaterial;
         private Material _candidateMaterial;
@@ -242,10 +246,13 @@ namespace Ascend.Prototype.Build
                 // TMP 는 +Z 가 글자 정면이고, `LookRotation(label − head)`가 그 +Z 를
                 // 카메라에서 멀어지는 쪽으로 돌린다. 결과적으로 글자는 카메라를 향한다.
                 //
-                // 한 번 이걸 뒤집으려다 되돌렸다. 캡처에서 반전으로 보인 글자
-                // ("물성더변", "도수확")는 승객 라벨이 아니라 **씬에 원래 있던 라벨**을
-                // 이 시점에서 뒤에서 본 것이었다. 같은 캡처에서 승객 이름
-                // (정비공·계측 기사·짐꾼)은 정상으로 읽힌다. 오진이었다.
+                // 한 번 이걸 뒤집으려다 되돌렸고, "씬에 원래 있던 라벨을 뒤에서 본
+                // 것"이라고 적어 뒀다. 절반만 맞았다. 뒤에서 봐서 뒤집힌 건 맞지만
+                // **여기서 만드는 라벨도 그렇다** — 이 회전은 `_head`를 향하고,
+                // 고정 캡처는 전용 카메라로 찍기 때문에 둘이 어긋난다.
+                //
+                // 회전으로는 못 고친다. 카메라가 둘인데 라벨은 하나만 볼 수 있다.
+                // 재질을 단면으로 두는 것이 답이다(`AddLabel` 참조).
                 Vector3 toReader = label.transform.position - _head.position;
                 toReader.y = 0f;
                 if (toReader.sqrMagnitude > 0.0001f)
@@ -409,7 +416,33 @@ namespace Ascend.Prototype.Build
             var rect = holder.GetComponent<RectTransform>();
             if (rect != null) rect.sizeDelta = new Vector2(1.6f, 0.7f);
 
+            // 라벨은 `_head`(플레이어 머리)를 향해 돈다. 그래서 플레이어에게는 항상
+            // 바로 읽히지만, **다른 카메라로 보면 뒷면**이 잡힌다 — 고정 캡처가 전용
+            // 카메라를 쓰기 때문에 화물칸 시점에서 글자가 거울상으로 나왔다.
+            //
+            // TMP 기본 재질은 `_CullMode = 0`(Off)이라 뒷면까지 그린다. 뒷면은 정의상
+            // 거울상이다. 단면으로 두면 뒤에서는 안 보일 뿐, 뒤집힌 글자는 없다.
+            // 안 보이는 것과 거꾸로 보이는 것 중에는 안 보이는 쪽이 낫다.
+            Material single = SingleSided(text.fontSharedMaterial);
+            if (single != null) text.fontSharedMaterial = single;
+
             _labels.Add(text);
+        }
+
+        /// <summary>
+        /// 폰트 재질의 단면 변형. 폰트마다 한 번만 만들고 재사용한다 — 라벨마다
+        /// 새로 만들면 배치 하나에 재질 인스턴스가 여섯 개씩 쌓인다.
+        /// </summary>
+        private static Material SingleSided(Material source)
+        {
+            if (source == null || !source.HasProperty(CullModeId)) return null;
+            if (Mathf.Approximately(source.GetFloat(CullModeId), 2f)) return source;
+
+            if (_singleSided.TryGetValue(source, out Material cached)) return cached;
+            var made = new Material(source) { name = source.name + " SingleSided (runtime)" };
+            made.SetFloat(CullModeId, 2f);   // Back
+            _singleSided[source] = made;
+            return made;
         }
 
         private static string ShortEffect(BuildItem item)
