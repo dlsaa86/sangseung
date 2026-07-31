@@ -456,6 +456,20 @@ namespace Ascend.Prototype.EditorTools
             GameObject result = Panel(root.transform, "Result",
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 40f),
                 new Vector2(1000f, 420f));
+            // 배경판을 먼저 깐다. 없으면 뒤쪽 벽면 계기판의 글자가 그대로 비쳐
+            // 두 층이 겹친다 — 사고 화면에서 "원인" 줄이 벽면 문구에 뭉개졌다.
+            // 자식 순서가 그리기 순서이므로 글자보다 **먼저** 넣어야 한다.
+            var backdrop = new GameObject("ResultBackdrop", typeof(RectTransform));
+            backdrop.transform.SetParent(result.transform, false);
+            var backdropRect = backdrop.GetComponent<RectTransform>();
+            backdropRect.anchorMin = Vector2.zero;
+            backdropRect.anchorMax = Vector2.one;
+            backdropRect.offsetMin = new Vector2(-40f, -28f);
+            backdropRect.offsetMax = new Vector2(40f, 28f);
+            var backdropImage = backdrop.AddComponent<UnityEngine.UI.Image>();
+            backdropImage.color = new Color(0.05f, 0.05f, 0.06f, 0.88f);
+            backdropImage.raycastTarget = false;
+
             TextMeshProUGUI resultTitle = Label(result.transform, "ResultTitle", 62f,
                 TextAlignmentOptions.Top, new Color(1f, 0.92f, 0.72f));
             TextMeshProUGUI resultBody = Label(result.transform, "ResultBody", 28f,

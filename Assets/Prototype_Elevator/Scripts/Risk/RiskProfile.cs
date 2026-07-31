@@ -114,9 +114,23 @@ namespace Ascend.Prototype.Risk
                     return new[]
                     {
                         stable,
+                        // Warning 이 Stable 과 구분되지 않는다는 지적을 두 번의 독립
+                        // 감사에서 받았다. "글자를 가리면 차이가 지름 50px 램프 색
+                        // 하나뿐"이라고 했다.
+                        //
+                        // 원래 값은 (0.89, 0.77, 0.62) / 밝기 0.80 이었다. Stable 의
+                        // (0.85, 0.87, 0.92) 와 색상 거리가 좁은데 **밝기까지 낮아서**
+                        // 둘이 서로를 상쇄했다 — 조금 누렇고 조금 어두운 것은 그냥
+                        // "조금 어두운 같은 방"으로 보인다.
+                        //
+                        // 흔들림·깜빡임은 정지 화면에서 증거가 되지 못한다. 고정 캡처로
+                        // 판정하는 이상 정지 상태에서 작동하는 채널은 색이다. 채도를
+                        // 올려 Stable(차가운 회청) → Warning(호박) → Critical(적등) 이
+                        // 세 걸음으로 벌어지게 한다. Critical(0.94, 0.52, 0.34)과도
+                        // 색상이 겹치지 않는다.
                         new RiskProfile
                         {
-                            LightIntensity = 0.80f, LightColor = new Color(0.89f, 0.77f, 0.62f),
+                            LightIntensity = 0.84f, LightColor = new Color(0.96f, 0.72f, 0.38f),
                             FlickerRate = 2.2f, FlickerDepth = 0.16f,
                             WarningColor = new Color(0.98f, 0.64f, 0.20f), WarningPulseRate = 1.6f, WarningEmission = 1.5f,
                             SwayAmplitude = 0.008f, SwayRate = 2.2f, CameraShake = 0.0008f,

@@ -188,7 +188,9 @@ namespace Ascend.Prototype.Run.Tests
                 $"Stable — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
                 $"적재 {run.Session.Loadout.Count}개 {run.Session.CarriedWeight:F0}kg / " +
                 $"요구 {(riskFloor != null ? riskFloor.RequiredPower : 0f):F0} / " +
-                $"실제 단계 {LevelName(risk)} — 09·10 과 층·적재·요구까지 같다");
+                $"실제 단계 {LevelName(risk)} — 09·10 과 같은 층·같은 적재·같은 좌표. " +
+                "요구 전력은 다르다: 과적이 요구를 끌어올리는 것이 Warning 의 정의이므로 " +
+                "그것까지 고정하면 상태 자체를 만들 수 없다");
 
             run.Session.AddWeight(140f);   // 허용 중량을 확실히 넘긴다
             yield return WaitSeconds(2.5f);   // 조명·험 블렌딩이 수렴할 시간(2.2/초)
@@ -324,13 +326,21 @@ namespace Ascend.Prototype.Run.Tests
             var markers = FindAnyObjectByType<PurifyMarkerView>();
             if (step.Purifies == null) return 0;
 
+            // 강조를 1.0 으로 줬더니 9칸 중 8칸이 계조 없는 순백으로 날아가
+                // 심볼도 정화 원인도 사라졌다. 연출에서 1.0 은 사인파가 **스치는**
+                // 정점이라 눈이 잔상으로 형태를 유지하지만, 정지 화면에서는 그 값이
+                // 계속 걸려 있다. 움직이는 연출의 최댓값을 정지 샷에 그대로 쓸 수 없다.
+                //
+                // 막대(표식)가 "왜 터졌는가"를 말하므로 칸 강조는 "어디가"만 하면 된다.
+                const float cellHighlight = 0.42f;
+
             markers?.Begin();
             int count = 0;
             foreach (PurifyEvent purify in step.Purifies)
             {
                 if (board != null && purify.Cells != null)
-                    foreach (int cell in purify.Cells) board.SetHighlight(cell, 1f);
-                markers?.Add(in purify, 1f);
+                    foreach (int cell in purify.Cells) board.SetHighlight(cell, cellHighlight);
+                markers?.Add(in purify, 1f);   // 막대는 밝아야 한다 — 이게 주 신호다
                 count++;
             }
             markers?.End();

@@ -123,7 +123,9 @@ namespace Ascend.Prototype.Run
             var sb = new StringBuilder(512);
             sb.AppendLine($"{Floor}층 — {(Succeeded ? "상승" : "실패")}  ·  {Band.DisplayName()}");
             sb.AppendLine($"전력 {FinalPower:F0} / 요구 {RequiredPower:F0}  ({FinalPower / System.Math.Max(1f, RequiredPower):P0})");
-            sb.AppendLine($"계약 {Contract}   스핀 {SpinsUsed}/{SpinsAllowed}");
+            // `Contract`는 이미 "계약 없음"·"흡수체 계약"처럼 '계약'을 품고 있다.
+            // 앞에 또 붙여서 화면에 "계약 계약 없음"이 찍혔다.
+            sb.AppendLine($"{Contract}   스핀 {SpinsUsed}/{SpinsAllowed}");
 
             if (ExtraSpinsTaken > 0)
                 sb.AppendLine($"과수확 {ExtraSpinsTaken}회 — 판돈 {TotalAnte:F0} 지불, 순손익 {NetProfit:+0;−0;0}");

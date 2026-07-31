@@ -181,6 +181,10 @@ namespace Ascend.Prototype.Build
         ///
         /// 진폭은 판독성을 해치지 않는 선에서 멈춘다(§3 "과도한 화면 흔들림 금지").
         /// Critical에서도 최대 2cm다.
+        ///
+        /// 그런데 2cm 이동은 **정지 화면에서 증거가 되지 못한다.** 고정 캡처로
+        /// 판정하는 이상 위상이 어디서 잡힐지도 정해져 있지 않다. 그래서 자세
+        /// 기울기를 함께 준다 — 절반 이상이 상수라 어느 순간에 찍어도 남는다.
         /// </summary>
         private void ReactToRisk()
         {
@@ -195,12 +199,13 @@ namespace Ascend.Prototype.Build
 
             float amplitude;
             float speed;
+            float tilt;      // 도(°). 정지 화면에서 읽히는 유일한 채널이다.
             switch (_risk.Level)
             {
-                case Risk.RiskLevel.Warning:  amplitude = 0.006f; speed = 3.2f;  break;
-                case Risk.RiskLevel.Critical: amplitude = 0.017f; speed = 9.5f;  break;
-                case Risk.RiskLevel.Collapse: amplitude = 0.020f; speed = 14.0f; break;
-                default:                      amplitude = 0f;     speed = 0f;    break;
+                case Risk.RiskLevel.Warning:  amplitude = 0.006f; speed = 3.2f;  tilt = 3.5f;  break;
+                case Risk.RiskLevel.Critical: amplitude = 0.017f; speed = 9.5f;  tilt = 8.0f;  break;
+                case Risk.RiskLevel.Collapse: amplitude = 0.020f; speed = 14.0f; tilt = 11.0f; break;
+                default:                      amplitude = 0f;     speed = 0f;    tilt = 0f;    break;
             }
 
             float time = Time.time;
@@ -213,6 +218,7 @@ namespace Ascend.Prototype.Build
                 if (amplitude <= 0f || !_carIsPassenger[i])
                 {
                     figure.transform.position = basePosition;
+                    figure.transform.localRotation = Quaternion.identity;
                     continue;
                 }
 
@@ -222,6 +228,18 @@ namespace Ascend.Prototype.Build
                 float sway = Mathf.Sin(time * speed + phase) * amplitude;
                 float bob = Mathf.Sin(time * speed * 0.63f + phase) * amplitude * 0.5f;
                 figure.transform.position = basePosition + new Vector3(sway, bob, sway * 0.6f);
+
+                // **자세를 기울인다.** ±6mm 흔들림은 정지 화면에서 잡히지 않고,
+                // 셔터가 어느 위상에서 열릴지도 정해져 있지 않다. 독립 감사가
+                // "09 의 승객 상자는 10 과 동일 자세·동일 위치"라고 지적한 이유다.
+                //
+                // 그래서 기울기의 절반 이상을 **상수로** 둔다. 어느 순간에 찍어도
+                // 승객이 서로 반대로 기울어 있어 "불안한 사람들"로 읽힌다.
+                // 화면을 흔드는 것이 아니라 물체의 자세라 §3 의 흔들림 금지에 걸리지 않는다.
+                float lean = tilt * (0.58f + 0.42f * Mathf.Sin(time * speed * 0.8f + phase));
+                float direction = (i & 1) == 0 ? 1f : -1f;
+                figure.transform.localRotation =
+                    Quaternion.Euler(lean * 0.35f * direction, 0f, lean * direction);
             }
         }
 

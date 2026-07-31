@@ -58,6 +58,7 @@ namespace Ascend.Prototype.UI
         private int _cascadeKey = int.MinValue;
         private string _lastCause;
         private bool _resultShown;
+        private int _resultKey = int.MinValue;
 
         /// <summary>검증 하네스용 — 각 구역이 실제로 보이는가.</summary>
         public bool HintVisible => _hintGroup != null && _hintGroup.alpha > 0.5f;
@@ -97,6 +98,7 @@ namespace Ascend.Prototype.UI
             _cascadeKey = int.MinValue;
             _lastCause = null;
             _resultShown = false;
+            _resultKey = int.MinValue;
         }
 
         private void LateUpdate()
@@ -197,7 +199,17 @@ namespace Ascend.Prototype.UI
         private void UpdateResult(RunSession run, bool over)
         {
             Fade(_resultGroup, over ? 1f : 0f);
-            if (!over || _resultShown) return;
+            if (!over) return;
+
+            // **첫 프레임에 래치하면 안 된다.** 런이 끝난 그 프레임에는 기록기가 아직
+            // 마지막 층을 적지 않았을 수 있고, 실제로 그랬다 — "층 실패" 제목 아래에
+            // 직전 층의 "전력 535 / 요구 350 (153 %)"가 박혔다. 실패 화면이 성공한
+            // 층을 설명하고 있었던 것이다. Gate F 의 유일한 증거 화면인데.
+            //
+            // 기록 수를 키로 쓴다. 기록이 하나 더 붙으면 다시 짓는다.
+            int records = _recorder != null ? _recorder.Records.Count : 0;
+            if (records == _resultKey) return;
+            _resultKey = records;
             _resultShown = true;
 
             _text.Clear();
@@ -209,8 +221,10 @@ namespace Ascend.Prototype.UI
             if (record != null)
             {
                 _text.Append(record.Summary());
+                // `record.Contract`는 이미 "계약 없음"·"흡수체 계약"처럼 '계약'을
+                // 품고 있다. 앞에 또 붙여서 "계약 계약 없음"이 나왔다.
                 _text.Append("\n재현: 시드 ").Append(record.RunSeed)
-                     .Append(" · ").Append(record.Floor).Append("층 · 계약 ").Append(record.Contract);
+                     .Append(" · ").Append(record.Floor).Append("층 · ").Append(record.Contract);
             }
             else if (!string.IsNullOrEmpty(run.FailureReason))
             {
