@@ -7,6 +7,7 @@ docs/                              AI 개발 동결 명세
   MASTER_PRD.md                    최상위 제품 요구사항
   TECH_SPEC.md                     Unity 구조·상태·테스트 기준
   CURRENT_PHASE.md                 현재 세션 허용 범위
+  AGENT_MODEL_POLICY.md            Opus 구현·Sol 감사 역할 및 인수인계 규칙
   VISUAL_SPEC.md                   비주얼 방향과 평가 기준
   DECISION_LOG.md                  확정 결정과 변경 이력
   ASSUMPTION_LOG.md                임시 기본값과 교체 위치
@@ -33,13 +34,15 @@ Captures/                           캡처 산출물 (gitignore, 기기 종속)
 1. `docs/MASTER_PRD.md`
 2. `docs/TECH_SPEC.md`
 3. `docs/CURRENT_PHASE.md`
-4. `docs/VISUAL_SPEC.md`
-5. `docs/DECISION_LOG.md`
-6. `docs/ASSUMPTION_LOG.md`
-7. 관련 `Assets/Plans/` 티켓
+4. `docs/AGENT_MODEL_POLICY.md`
+5. `docs/VISUAL_SPEC.md`
+6. `docs/DECISION_LOG.md`
+7. `docs/ASSUMPTION_LOG.md`
+8. 관련 `Assets/Plans/` 티켓
 
 충돌 시 앞선 문서가 우선한다. `MASTER_PRD.md`는 제품 범위를 정의하고,
 `CURRENT_PHASE.md`는 이번 세션에서 구현할 수 있는 범위를 제한한다.
+`AGENT_MODEL_POLICY.md`는 제품 범위를 변경하지 않으며, 구현·감사 책임과 실행 순서를 정의한다.
 
 Notion은 편집 가능한 기획 원본이지만 실제 구현 중에는 `docs/`의 동결 스냅샷을 기준으로 한다.
 Notion의 내용이 다르다고 판단되면 임의로 구현 기준을 바꾸지 말고 `DECISION_LOG.md`에 변경 제안을 기록한다.
@@ -51,6 +54,20 @@ Notion의 내용이 다르다고 판단되면 임의로 구현 기준을 바꾸�
 3. 작업 순서와 검증 계획을 `docs/runtime/ImplementationPlan.md`에 기록한다.
 4. 불명확하지만 작업을 막지 않는 판단은 `docs/ASSUMPTION_LOG.md`에 기록한다.
 5. `CURRENT_PHASE.md`의 Gate를 순서대로 통과한다.
+
+---
+
+# 모델 역할 분담
+
+`docs/AGENT_MODEL_POLICY.md`를 모든 자율 개발 세션의 운영 계약으로 사용한다.
+
+- 역할이 따로 지정되지 않은 **Claude Opus 5**는 `Lead / Integration Owner`로서 게임 구현, Unity 통합, 대표 장면과 감각적 품질을 주 소유한다.
+- 역할이 따로 지정되지 않은 **OpenAI Sol**은 `Audit / Verification Owner`로서 기본적으로 읽기 전용 감사를 먼저 수행한다.
+- 표준 순서는 `Opus 구현 → 테스트·플레이·캡처·성능 증거 → Sol 감사 → Opus 수정 → Sol 재감사`다.
+- 구현 에이전트는 자신의 결과를 최종 승인하지 않는다.
+- Sol 감사에서 미해결 `BLOCKER` 또는 `HIGH`가 남아 있으면 완료를 선언하지 않는다.
+- Sol이 수정을 맡을 때는 감사 보고를 먼저 완료하고, 별도 수정 패스로 전환하며 명시적으로 할당된 경로만 수정한다.
+- 모델을 확인할 수 없으면 추측하지 말고 오케스트레이터가 지정한 역할을 따른다.
 
 ---
 
