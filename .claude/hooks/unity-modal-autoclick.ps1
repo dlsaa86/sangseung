@@ -35,6 +35,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Windows PowerShell 5.1 writes stdout in the console's OEM codepage (949 here), so the
+# Korean in these messages reaches a bash caller as invalid UTF-8 and grep rejects the
+# whole stream as binary. Pin it.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
 # Title regex -> button labels to try, best first. Only these are ever clicked.
 $KnownDialogs = @(
   @{
@@ -67,7 +72,12 @@ public class UM {
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint c);
-  [DllImport("user32.dll")] public static extern IntPtr PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll",SetLastError=true)] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   public static string Text(IntPtr h){var s=new StringBuilder(1024);GetWindowTextW(h,s,1024);return s.ToString();}
   public static string Cls(IntPtr h){var s=new StringBuilder(256);GetClassNameW(h,s,256);return s.ToString();}
 }
@@ -75,6 +85,7 @@ public class UM {
 
 $GW_OWNER = 4
 $BM_CLICK = 0x00F5
+$WM_COMMAND = 0x0111
 
 function Resolve-UnityPid {
   if ($TargetPid -gt 0) { return $TargetPid }
@@ -120,6 +131,15 @@ function Find-Modal([int]$procId) {
   return [IntPtr]::Zero
 }
 
+function Wait-Gone([IntPtr]$h, [int]$timeoutMs) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.ElapsedMilliseconds -lt $timeoutMs) {
+    if (-not [UM]::IsWindow($h) -or -not [UM]::IsWindowVisible($h)) { return $true }
+    Start-Sleep -Milliseconds 120
+  }
+  return $false
+}
+
 function Invoke-ByUIAutomation([IntPtr]$dlg, [string[]]$labels) {
   try {
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes -ErrorAction Stop
@@ -160,30 +180,42 @@ function Dismiss([IntPtr]$dlg) {
     return
   }
 
-  # Native child button first — Unity's C++ dialogs expose real Win32 buttons.
-  foreach ($label in $known.Buttons) {
+  # Find the button first; everything below aims at it.
+  $btn = [IntPtr]::Zero; $label = ''
+  foreach ($want in $known.Buttons) {
     foreach ($c in (Get-Children $dlg)) {
       # Strip the & accelerator marker ("&Reload") before comparing.
       $btnText = ([UM]::Text($c) -replace '&', '').Trim()
-      if ([UM]::Cls($c) -match '^Button$' -and $btnText -ieq $label) {
-        [void][UM]::PostMessageW($c, $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
-        Start-Sleep -Milliseconds 350
-        if (-not [UM]::IsWindow($dlg) -or -not [UM]::IsWindowVisible($dlg)) {
-          Write-Output "CLICKED  '$label' on '$title' (win32) — $($known.Why)"
-          return
-        }
-      }
+      if ([UM]::Cls($c) -match '^Button$' -and $btnText -ieq $want) { $btn = $c; $label = $want; break }
     }
+    if ($btn -ne [IntPtr]::Zero) { break }
+  }
+
+  # Wake the target's input queue. Measured: with the dialog activated BM_CLICK lands in
+  # ~260ms, but left in the background it can sit unprocessed for over a minute — an early
+  # version checked once at 350ms, called it FAILED, and the modal outlived the session.
+  $them = [UM]::GetWindowThreadProcessId($dlg, [IntPtr]::Zero)
+  $us   = [UM]::GetCurrentThreadId()
+  [void][UM]::AttachThreadInput($us, $them, $true)
+  [void][UM]::SetForegroundWindow($dlg)
+  [void][UM]::AttachThreadInput($us, $them, $false)
+
+  if ($btn -ne [IntPtr]::Zero) {
+    # Two native routes, each given real time before moving on: BM_CLICK at the button,
+    # then WM_COMMAND/BN_CLICKED at the dialog (what a #32770 ultimately acts on).
+    [void][UM]::PostMessageW($btn, $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
+    if (Wait-Gone $dlg 4000) { Write-Output "CLICKED  '$label' on '$title' (BM_CLICK) — $($known.Why)"; return }
+
+    $ctrlId = [UM]::GetDlgCtrlID($btn)
+    [void][UM]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]($ctrlId -band 0xFFFF), $btn)
+    if (Wait-Gone $dlg 4000) { Write-Output "CLICKED  '$label' on '$title' (WM_COMMAND) — $($known.Why)"; return }
   }
 
   # Self-drawn dialog: no child HWNDs, so go through the accessibility tree instead.
   $hit = Invoke-ByUIAutomation $dlg $known.Buttons
-  if ($hit) {
-    Start-Sleep -Milliseconds 350
-    if (-not [UM]::IsWindow($dlg) -or -not [UM]::IsWindowVisible($dlg)) {
-      Write-Output "CLICKED  '$hit' on '$title' (uiautomation) — $($known.Why)"
-      return
-    }
+  if ($hit -and (Wait-Gone $dlg 4000)) {
+    Write-Output "CLICKED  '$hit' on '$title' (uiautomation) — $($known.Why)"
+    return
   }
 
   # No blind Enter fallback on purpose: if we cannot confirm which button we are hitting,

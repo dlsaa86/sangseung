@@ -173,8 +173,27 @@ MCP의 콘솔 조회는 Clear-on-Play 이후 비어 보이므로, 플레이 모�
 되돌릴 일이 있으면 경로를 명시하거나, `Unity_RunCommand`로 에디터 안에서 고치고
 `SaveScene`한다. 에디터를 의도적으로 파킹해 뒀다면 `SKIP_UNITY_GUARD=1`을 붙인다.
 
-모달이 이미 떠 있다면 답은 **Reload**다. 디스크 쪽이 의도한 내용이고 에디터 메모리에
-남은 편집분은 버려야 할 것이다. 이걸 사용자에게 되묻지 않는다.
+그래도 뚫고 들어온 모달은 **자동으로 눌린다.** `unity-preflight.sh`가 Unity MCP 호출
+직전에 `unity-modal-autoclick.ps1`을 돌린다. 사용자에게 묻지 않는다.
+
+| 모달 제목 | 누르는 버튼 | 이유 |
+|---|---|---|
+| `The open scene(s) have been modified externally` | `Reload` | 디스크 쪽이 의도한 내용이다 |
+| `Scene(s) Have Been Modified` | `Save` | 하네스가 곧 같은 씬을 다시 연다. `Don't Save`는 편집분을 조용히 버린다 |
+
+**이 표에 없는 모달은 절대 누르지 않는다.** Unity는 "에셋을 삭제할까요?"에도 같은 모달
+기구를 쓴다. 모르는 제목이면 버튼 목록만 `UNKNOWN`으로 보고하고 손대지 않는다 —
+표를 늘리는 건 의도적인 결정이어야 한다. 클릭 기록은 `.claude/state/modal-autoclick.log`
+에 남는다(gitignore 대상).
+
+한계: 모달이 **호출 도중에** 뜨면 그 호출 하나는 120초 타임아웃까지 간다. 훅은 호출
+직전에만 돌기 때문이다. 그 다음 호출이 치우고 정상화된다. 캡처 런처럼 오래 도는
+구간에서 이 한 번도 아깝다면 감시 모드를 따로 띄운다.
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  -File .claude/hooks/unity-modal-autoclick.ps1 -WatchSeconds 600
+```
 
 ---
 

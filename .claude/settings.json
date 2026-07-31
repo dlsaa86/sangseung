@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/unity-preflight.sh\"",
-            "timeout": 10,
+            "timeout": 30,
             "statusMessage": "Unity 에디터 확인"
           }
         ]

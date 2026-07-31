@@ -59,4 +59,22 @@ if [ "$ALIVE" -ne 1 ]; then
   deny "Unity 프로세스(PID $PID)가 죽어 있다. EditorInstance.json 은 크래시 후에도 남으므로 파일 존재만으로는 생존을 알 수 없다. 에디터를 다시 실행한 뒤 재시도할 것${APP:+ ($APP)}: $ROOT"
 fi
 
+# --- Clear a modal that is already blocking the main thread ---------------------------
+# A live PID is not the same as a responsive editor. If a modal is up, Unity's main thread
+# is parked and this call would hang to its 120s timeout with nobody there to click. The
+# clicker only touches dialogs whose title it recognises (see the script) and reports the
+# rest without pressing anything — an unrecognised modal is still a decision for a person.
+# ~480ms, measured; MCP calls cost seconds anyway.
+CLICKER="$ROOT/.claude/hooks/unity-modal-autoclick.ps1"
+if [ -f "$CLICKER" ] && command -v powershell.exe >/dev/null 2>&1; then
+  OUT="$(CLAUDE_PROJECT_DIR="$ROOT" powershell.exe -NoProfile -ExecutionPolicy Bypass \
+          -File "$CLICKER" 2>/dev/null | tr -d '\r\000' | grep -a -vE '^NONE' || true)"
+  if [ -n "$OUT" ]; then
+    mkdir -p "$ROOT/.claude/state"
+    printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$OUT" >> "$ROOT/.claude/state/modal-autoclick.log"
+    # stderr, not stdout: stdout here is the deny channel and must stay JSON-or-empty.
+    printf '%s\n' "$OUT" >&2
+  fi
+fi
+
 exit 0
