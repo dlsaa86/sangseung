@@ -663,10 +663,16 @@ namespace Ascend.Prototype.EditorTools
 
             // 배경판 — 창백한 레버가 어두운 판 위에 서면 형태가 드러난다.
             // 레버는 월드 x≈-1.03 에서 안쪽(+X)을 향한다. 판은 그보다 바깥에 둔다.
+            //
+            // 높이는 **라벨까지 덮도록** 잡는다. 처음엔 0.66(윗변 y=1.55)이었는데
+            // 라벨 rect가 y 1.544~1.656 이라 글자가 판 밖 맨 벽으로 삐져나갔다 —
+            // "어두운 판 위의 밝은 글자"가 절반만 성립했다. 윗변을 1.70으로 올린다.
+            // 아랫변 0.89는 ConsoleSlab 윗면(0.875) 바로 위라 더 못 내린다.
+            // 위쪽은 조사로 확인했다: y 1.75까지 WallL(안쪽 면 x=-1.20) 외에 없다.
             GameObject plate = EnsureChild(console, "ExecutionPlate", PrimitiveType.Cube);
-            plate.transform.position = new Vector3(-1.16f, 1.22f, -0.86f);
+            plate.transform.position = new Vector3(-1.16f, 1.295f, -0.86f);
             plate.transform.localRotation = Quaternion.identity;
-            plate.transform.localScale = new Vector3(0.03f, 0.66f, 0.44f);
+            plate.transform.localScale = new Vector3(0.03f, 0.81f, 0.44f);
             Paint(plate, new Color(0.13f, 0.14f, 0.15f));
 
             // 경고띠 — 과수확 레버와 같은 어휘를 쓴다. 다만 색은 다르다:
@@ -722,16 +728,6 @@ namespace Ascend.Prototype.EditorTools
             made.transform.SetParent(parent, true);
             Object.DestroyImmediate(made.GetComponent<Collider>());
             return made;
-        }
-
-        private static void Paint(GameObject target, Color color)
-        {
-            var renderer = target.GetComponent<Renderer>();
-            if (renderer == null) return;
-            var block = new MaterialPropertyBlock();
-            renderer.GetPropertyBlock(block);
-            block.SetColor("_BaseColor", color);
-            renderer.SetPropertyBlock(block);
         }
 
         /// <summary>로컬 y 만 절대값으로 바꾼다. 델타가 아니라 목표값이라 여러 번 돌려도 같다.</summary>
