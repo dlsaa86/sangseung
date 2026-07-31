@@ -117,6 +117,105 @@ namespace Ascend.Prototype.EditorTools
             indicatorObject.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(indicatorView);
 
+            // ── 4b. 계약 미리보기 줄 ────────────────────────────────────────
+            //
+            // 계약 장치에는 색만 바뀌는 명판 세 장뿐이었고 수치가 어디에도 없었다.
+            // `visual-criteria` B-4.11은 "출현률↑·정화 보상↑·잔류 대가↑가 **함께**
+            // 제시되는가 — 대가가 작게 적혀 있으면 그건 선택이 아니라 함정"을 요구한다.
+            //
+            // **기존 라벨을 복제한다.** 방향과 크기를 직접 계산하면 또 틀린다 —
+            // 층수 표시등에서 회전을 두 번 잘못 짚었다. 이미 올바르게 보이는 형제를
+            // 그대로 베끼는 것이 추론보다 안전하다.
+            Transform panelRoot = car.Find("InstrumentPanel");
+            Transform sibling = panelRoot != null ? panelRoot.Find("PowerLabel") : null;
+            if (panelRoot == null || sibling == null)
+            {
+                report.AppendLine("  ⚠ InstrumentPanel/PowerLabel 없음 — 계약 줄 생략");
+            }
+            else
+            {
+                var source = sibling.GetComponent<TMPro.TextMeshPro>();
+
+                // 계기판 한 줄에 계약 조건을 몰아넣으려 했지만 실패했다. 판(PanelBack)은
+                // world y 1.28~1.83 뿐이고 그 안은 층·전력·상태·게이지가 이미 채운다.
+                // 위로 밀면 판 밖 벽으로 나가 문틀 모서리에 잘리고("음" 한 글자만 남았다),
+                // 아래로 밀면 게이지를 덮는다. 자리가 없는 곳에 글자를 넣을 수는 없다.
+                //
+                // 조건은 **선택자 위에** 붙인다 — 명판 세 장 옆에 나란히 두면 셋을
+                // 한눈에 비교할 수 있고, 이것이 B-4.11이 실제로 요구하는 그림이다.
+                Transform stale = panelRoot.Find("ContractLabel");
+                if (stale != null)
+                {
+                    Object.DestroyImmediate(stale.gameObject);
+                    report.AppendLine("  ContractLabel 제거 — 판에 자리가 없다. 명판으로 옮긴다");
+                }
+
+                var panelView = panelRoot.GetComponent<InstrumentPanelView>();
+                var plaqueLabels = new TMPro.TextMeshPro[3];
+                for (int i = 0; i < 3; i++)
+                {
+                    Transform plaque = panelRoot.Find($"ContractPlaque_{i}");
+                    if (plaque == null) continue;
+
+                    string name = $"ContractPlaqueLabel_{i}";
+                    Transform label = panelRoot.Find(name);
+                    if (label == null)
+                    {
+                        var created = new GameObject(name);
+                        created.transform.SetParent(panelRoot, false);
+                        created.AddComponent<TMPro.TextMeshPro>();
+                        label = created.transform;
+                        report.AppendLine($"  {name} 신설");
+                    }
+
+                    var tmp = label.GetComponent<TMPro.TextMeshPro>();
+                    if (tmp != null && source != null)
+                    {
+                        tmp.font = source.font;
+                        tmp.fontSize = source.fontSize * 0.50f;
+                        tmp.alignment = TMPro.TextAlignmentOptions.Left;
+                        tmp.color = new Color(0.90f, 0.88f, 0.80f);
+                        tmp.text = "계약";
+                        var r = tmp.GetComponent<RectTransform>();
+                        if (r != null) r.sizeDelta = new Vector2(17f, 2.6f);
+                    }
+
+                    // 명판은 오른쪽 벽(월드 x≈0.99)에 붙어 안쪽을 본다. 라벨을 조금
+                    // 안쪽으로 빼고 Y로 90° 돌려야 차 안에서 읽힌다. 회전한 뒤에는
+                    // 라벨의 X축이 월드 Z가 되므로 벽 압축(0.66) 보정을 하면 안 된다.
+                    //
+                    // 글자를 명판 **위에** 얹었더니 미리보기 명판(노랑)에서 밝은 글자가
+                    // 사라졌다 — 명판 색은 상태를 뜻하므로 배경으로 쓸 수 없다. 명판은
+                    // 색 표식으로 두고 글자는 그 옆 어두운 벽에 놓는다.
+                    // Y로 90° 돌면 라벨의 +X가 월드 -Z를 향하므로, 왼쪽 정렬 글자는
+                    // 사각형 왼쪽 끝(+Z 쪽)에서 시작해 -Z 방향으로 자란다.
+                    const float labelWidth = 17f * 0.07f;
+                    label.localPosition = new Vector3(
+                        1.44f,
+                        plaque.localPosition.y - 0.08f,
+                        -0.12f - labelWidth * 0.5f);
+                    label.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                    label.localScale = new Vector3(0.07f, 0.07f, 0.07f);
+                    plaqueLabels[i] = tmp;
+                }
+
+                if (panelView != null)
+                {
+                    var panelObject = new SerializedObject(panelView);
+                    SetReference(panelObject, "_contractLabel", null);
+                    SerializedProperty array = panelObject.FindProperty("_plaqueLabels");
+                    if (array != null)
+                    {
+                        array.arraySize = 3;
+                        for (int i = 0; i < 3; i++)
+                            array.GetArrayElementAtIndex(i).objectReferenceValue = plaqueLabels[i];
+                    }
+                    panelObject.ApplyModifiedPropertiesWithoutUndo();
+                    EditorUtility.SetDirty(panelView);
+                    report.AppendLine("  InstrumentPanelView._plaqueLabels 배선 3장");
+                }
+            }
+
             // ── 5. 배선 확인 ────────────────────────────────────────────────
             var bridge = Object.FindFirstObjectByType<RouletteInteractionBridge>(FindObjectsInactive.Include);
             report.AppendLine(bridge != null

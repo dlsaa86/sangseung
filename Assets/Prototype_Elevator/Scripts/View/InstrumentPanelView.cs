@@ -28,6 +28,9 @@ namespace Ascend.Prototype.View
         [SerializeField] private TextMeshPro _powerLabel;
         [SerializeField] private TextMeshPro _statusLabel;
 
+        [Tooltip("계약 미리보기 — 출현률·정화 보상·잔류 대가를 한 줄에. 비어 있으면 표시하지 않는다.")]
+        [SerializeField] private TextMeshPro _contractLabel;
+
         [Header("전력 게이지")]
         [SerializeField] private Transform _barPivot;
         [Tooltip("게이지 전체 폭(미터). 0%~이 폭이 MaxRatio에 대응한다.")]
@@ -38,6 +41,12 @@ namespace Ascend.Prototype.View
 
         [Header("계약 명판 — 위에서부터 선택지 순서")]
         [SerializeField] private Renderer[] _contractPlaques = new Renderer[3];
+
+        // 색만 바뀌는 명판 세 장으로는 "무엇을 고르는가"를 알 수 없다. 계기판 한 줄에
+        // 미리보기를 몰아넣어 봤지만 판(world y 1.28~1.83)에 빈 띠가 없어 글자가
+        // 판 밖 벽으로 밀려 잘렸다. 선택지는 **선택자 위에** 있어야 한다.
+        [Tooltip("명판별 조건 — 출현률·정화 보상·잔류 대가. 셋을 나란히 비교할 수 있어야 한다.")]
+        [SerializeField] private TextMeshPro[] _plaqueLabels = new TextMeshPro[3];
         [SerializeField] private Color _plaqueIdle = new Color(0.20f, 0.21f, 0.23f);
         [SerializeField] private Color _plaquePreview = new Color(0.95f, 0.80f, 0.35f);
         [SerializeField] private Color _plaqueChosen = new Color(0.45f, 0.90f, 0.70f);
@@ -63,6 +72,8 @@ namespace Ascend.Prototype.View
         private int _shownRequired = int.MinValue;
         private int _shownBand = int.MinValue;
         private int _statusKey = int.MinValue;
+        private int _contractKey = int.MinValue;
+        private readonly int[] _plaqueKeys = new int[3];
 
         private void Awake()
         {
@@ -81,6 +92,8 @@ namespace Ascend.Prototype.View
             _shownRequired = int.MinValue;
             _shownBand = int.MinValue;
             _statusKey = int.MinValue;
+            _contractKey = int.MinValue;
+            for (int i = 0; i < _plaqueKeys.Length; i++) _plaqueKeys[i] = int.MinValue;
         }
 
         private void LateUpdate()
@@ -149,8 +162,52 @@ namespace Ascend.Prototype.View
                 Apply(_statusLabel, _text);
             }
 
+            ApplyContractPreview(floor);
             ApplyBar(ratio, floor);
             ApplyPlaques(floor);
+        }
+
+        /// <summary>
+        /// 지금 넘겨보고 있는 계약의 **세 요소를 함께** 보여준다.
+        ///
+        /// `visual-criteria` B-4.11이 요구하는 것이 정확히 이것이다 —
+        /// "출현률↑·정화 보상↑·잔류 대가↑가 **함께** 제시되는가. 보상만 크게 보이고
+        /// 대가가 작게 적혀 있으면 실패다 — 그건 선택이 아니라 함정이다."
+        ///
+        /// 그런데 계약 장치에는 색만 바뀌는 명판 세 장뿐이었고 수치는 어디에도 없었다.
+        /// 독립 평가자가 "빈 프레임 안에 막대 세 개. 선택지·보상·대가 어느 것도 없다"고
+        /// 지적했다. 문구는 `ResistanceContract.Preview()`가 이미 만들고 있었다 —
+        /// 데이터가 소유하고 UI 는 자리만 내주면 되는 구조였는데 자리가 없었다.
+        /// </summary>
+        private void ApplyContractPreview(FloorSession floor)
+        {
+            if (_contractLabel == null) return;
+
+            var choices = floor.Plan.ContractChoices;
+            bool selecting = floor.Phase == FloorPhase.ContractSelection &&
+                             choices != null && choices.Length > 0;
+
+            // 미리보기 중이면 그것을, 확정 뒤에는 고른 것을 보여준다.
+            int preview = _bridge != null ? _bridge.PreviewIndex : 0;
+            int shown = selecting ? Mathf.Clamp(preview, 0, choices.Length - 1) : -1;
+
+            int key = selecting ? 1 + shown : (floor.SelectedContract.IsNone ? 0 : 2);
+            if (key == _contractKey) return;
+            _contractKey = key;
+
+            _text.Clear();
+            if (selecting)
+            {
+                _text.Append("계약 ").Append(shown + 1).Append('/').Append(choices.Length)
+                     .Append("   ").Append(choices[shown].Label).AppendLine();
+                _text.Append(choices[shown].Preview());
+            }
+            else
+            {
+                _text.Append("확정 — ").Append(floor.SelectedContract.Label).AppendLine();
+                _text.Append(floor.SelectedContract.Preview());
+            }
+            Apply(_contractLabel, _text);
         }
 
         /// <summary>결과를 <see cref="_text"/>에 남긴다. 문자열을 돌려주지 않는다 — 그게 할당이다.</summary>
@@ -264,7 +321,40 @@ namespace Ascend.Prototype.View
                 _block.SetColor(BaseColorId, color);
                 _block.SetColor(EmissionColorId, color * emission);
                 plaque.SetPropertyBlock(_block);
+
+                ApplyPlaqueLabel(i, exists, exists ? choices[i] : ResistanceContract.None);
             }
+        }
+
+        /// <summary>
+        /// 명판 한 장의 문구. 셋이 **같은 크기·같은 순서**로 나열되어야 비교가 된다 —
+        /// `visual-criteria` B-4.11이 "보상만 크게 보이고 대가가 작게 적혀 있으면
+        /// 함정이다"라고 못 박은 지점이다. 문구는 데이터가 만든다.
+        /// </summary>
+        private void ApplyPlaqueLabel(int index, bool exists, in ResistanceContract contract)
+        {
+            if (_plaqueLabels == null || index >= _plaqueLabels.Length) return;
+            TextMeshPro label = _plaqueLabels[index];
+            if (label == null) return;
+
+            if (!exists)
+            {
+                if (_plaqueKeys[index] == 0) return;
+                _plaqueKeys[index] = 0;
+                label.SetText(string.Empty);
+                return;
+            }
+
+            // 층이 바뀌어야 선택지가 바뀐다. 라벨명 해시를 키로 쓰면 매 프레임
+            // 문자열을 만들지 않고도 교체 시점을 잡을 수 있다.
+            int key = contract.Label != null ? contract.Label.GetHashCode() : 1;
+            if (_plaqueKeys[index] == key) return;
+            _plaqueKeys[index] = key;
+
+            _text.Clear();
+            _text.Append(contract.Label).AppendLine();
+            _text.Append(contract.Preview());
+            Apply(label, _text);
         }
 
         private static bool SameContract(in ResistanceContract a, in ResistanceContract b)

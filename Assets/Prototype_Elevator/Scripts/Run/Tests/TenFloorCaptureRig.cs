@@ -73,7 +73,11 @@ namespace Ascend.Prototype.Run.Tests
         // 처음엔 0.9m 앞에 세웠더니 하우징이 화면을 통째로 덮어 "잠겼는가 열렸는가"를
         // 판정할 수 없었다. 1.5m 물러나 레버와 주변 맥락이 함께 들어오게 한다.
         private static readonly Pose Overharvest = new Pose("Overharvest", new Vector3( 0.30f, 1.62f, -0.35f), new Vector3( 0.55f, 1.40f,  1.20f));
-        private static readonly Pose Contract    = new Pose("Contract",    new Vector3( 0.10f, 1.62f,  0.30f), new Vector3( 1.12f, 1.50f,  0.30f));
+        // 계약 선택자는 오른쪽 벽의 명판 세 장(월드 x≈0.99, y 1.21~1.80)이다.
+        // 처음에는 뒷벽 계기판을 함께 담으려 했지만 둘은 서로 90° 떨어진 벽에 있어
+        // 한 프레임에 둘 다 읽히게 넣을 수 없었다. 조건 문구를 명판 옆으로 옮긴 뒤로는
+        // 선택자 하나만 봐도 "무엇을·얼마에" 고르는지가 전부 들어온다.
+        private static readonly Pose Contract    = new Pose("Contract",    new Vector3(-0.60f, 1.58f, -0.15f), new Vector3( 0.97f, 1.50f, -0.05f));
 
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -242,9 +246,20 @@ namespace Ascend.Prototype.Run.Tests
             yield return DriveToFloor(run, bridge, 6);   // 계약이 처음 나오는 층
             yield return WaitFrames(3);
             FloorSession contractFloor = run.Session.Current;
+
+            // **탑승 단계에서 찍으면 계약 단계가 아니다.** 첫 시도가 그랬고, 계기판은
+            // 당연히 "확정 — 변화 없음"을 띄웠다. 캡처 이름이 `contract_select`인데
+            // 화면은 계약을 고르는 중이 아니었던 것이다. 문을 닫아 단계를 넘긴다.
+            if (contractFloor != null && contractFloor.Phase == FloorPhase.Boarding)
+            {
+                run.FinishBoarding();
+                yield return WaitFrames(3);
+            }
             yield return Shot("14_contract_select", Contract, risk,
                 contractFloor != null
-                    ? $"{contractFloor.Plan.Floor}층 계약 선택 — 선택지 {contractFloor.Plan.ContractChoices.Length}종"
+                    ? $"{contractFloor.Plan.Floor}층 {contractFloor.Phase} — 선택지 " +
+                      $"{contractFloor.Plan.ContractChoices.Length}종 / 미리보기 " +
+                      $"{(bridge != null ? bridge.PreviewIndex + 1 : 0)}"
                     : "계약 층 도달 실패");
 
             // ── 6) 깊은 연쇄 ──
@@ -461,6 +476,10 @@ namespace Ascend.Prototype.Run.Tests
                 yield return null;
             }
 
+            // 붕괴에서도 결과가 읽혀야 한다 — `VISUAL_SPEC` §6이 "단순한 암전이나
+            // 즉사 연출로 정보를 숨기지 않는다"고 요구한다. 그런데 사고 런은 판을
+            // 비운 상태로 끝나서 "무엇이 터졌는지 알 수 없다"는 지적을 받았다.
+            ShowBoard(FindAnyObjectByType<SpinBoardView>(), DrawSample(555555, 2, 4));
             yield return WaitSeconds(2.5f);
             yield return Shot("16_risk_collapse", Risk, risk,
                 $"Collapse — 실제 단계 {LevelName(risk)} / 실패 {run.Session.IsFailed} " +
@@ -499,6 +518,10 @@ namespace Ascend.Prototype.Run.Tests
                     break;
                 }
             }
+            // 직전 샷이 Collapse 라 위험 연출이 붉게 물들어 있다. 정착 시간을 안 주면
+            // "위험도 안정"인데 램프가 빨간 모순된 그림이 나온다 — 지적받은 그대로다.
+            ShowBoard(FindAnyObjectByType<SpinBoardView>(), DrawSample(4242, 10, 0));
+            yield return WaitSeconds(2.5f);
             yield return Shot("18_final_floor", Risk, risk,
                 last != null
                     ? $"시드 {finalSeed} / 10층 도달 — 요구 {last.RequiredPower:F0} / 완주 직전"
