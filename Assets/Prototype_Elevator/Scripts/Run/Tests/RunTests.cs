@@ -351,6 +351,45 @@ namespace Ascend.Prototype.Run.Tests
                 return "10층 커리큘럼 1층에 계약이 생김 — Hero Slice가 새어 들어감";
             if (source.For(10).ContractChoices.Length != 2)
                 return "10층 커리큘럼 10층 계약 구성이 바뀜";
+
+            // 여기서부터는 `DECISION_LOG` D-20260801-01 이 확정한 노션 03번 배치를 고정한다.
+            // 이전 배치(08 기술부록 §14 / 99번)는 2~7층이 한 칸씩 달랐고, 두 배치가 코드에서
+            // 조용히 뒤바뀌어도 "10층까지 진행된다"는 검사는 그대로 통과했다.
+            // 무엇을 **언제 처음** 가르치는가가 커리큘럼의 전부이므로 그것을 고정한다.
+
+            // 계약은 4층에 처음 나온다. 그 전 어느 층에도 없어야 한다.
+            for (int floor = 1; floor <= 3; floor++)
+                if (source.For(floor).ContractChoices.Length != 0)
+                    return $"계약이 {floor}층에 등장 — 정본은 4층 첫 등장(D-20260801-01)";
+            if (source.For(4).ContractChoices.Length != 2)
+                return "4층이 흡수체 계약 층이 아님 — 선택지가 2개(없음·흡수체)여야 한다";
+
+            // 증식체는 6층에 처음 나온다. 그 전에는 풀에 없어야 한다.
+            for (int floor = 1; floor <= 5; floor++)
+                foreach (SymbolKind kind in source.For(floor).SymbolPool)
+                    if (kind == SymbolKind.Proliferator)
+                        return $"증식체가 {floor}층 풀에 있음 — 정본은 6층 첫 등장";
+            bool sixHasProliferator = false;
+            foreach (SymbolKind kind in source.For(6).SymbolPool)
+                if (kind == SymbolKind.Proliferator) sixHasProliferator = true;
+            if (!sixHasProliferator) return "6층 풀에 증식체가 없음 — 정본은 6층 첫 등장";
+
+            // 계약 비교는 7층. 두 계약이 나란히 놓이는 첫 층이다.
+            if (source.For(7).ContractChoices.Length != 3)
+                return "7층이 계약 비교 층이 아님 — 선택지가 3개(없음·흡수체·증식체)여야 한다";
+
+            // 적재 층은 2·5·8. `RunSession.ClampAscent`(D-20260731-03)가 보호하는 집합이라
+            // 여기가 바뀌면 다층 상승이 무엇을 건너뛸 수 있는지가 함께 바뀐다.
+            for (int floor = 1; floor <= 10; floor++)
+            {
+                bool expected = floor == 2 || floor == 5 || floor == 8;
+                if (source.For(floor).OffersBuildReward != expected)
+                    return $"{floor}층 적재 여부가 {source.For(floor).OffersBuildReward} — 적재 층은 2·5·8";
+            }
+
+            // 과수확 강조는 9층.
+            if (!source.For(9).EmphasizePushYourLuck)
+                return "9층이 과수확 강조 층이 아님";
             return null;
         }
 

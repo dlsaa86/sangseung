@@ -58,6 +58,12 @@ public static class PrototypeSelfTest
         // "검증했다"는 기록이 거짓이 되므로 여기에 편입한다.
         FoldInSuite("자동 룰렛 판정", Ascend.Prototype.Spin.Tests.SpinEngineTests.RunAll());
         FoldInSuite("층 진행·계약·앤티", Ascend.Prototype.Run.Tests.RunTests.RunAll());
+        // 같은 이유로 위험·빌드도 편입한다. 여기 없던 동안 커밋 게이트가 지키던 것은
+        // 45건이었고 `BuildTests` 34건 · `RiskEvaluatorTests` 11건은 깨져도 커밋이 통과했다 —
+        // 10층 진행·적재·과적·다층 상승 클램프가 전부 그 34건 안에 있다.
+        // "자체 검증 통과"가 `Ascend/Run All EditMode Tests` 와 같은 것을 뜻해야 한다.
+        FoldInSuite("위험 상태", Ascend.Prototype.Risk.Tests.RiskEvaluatorTests.RunAll());
+        FoldInSuite("적재·빌드·10층 진행", Ascend.Prototype.Build.Tests.BuildTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

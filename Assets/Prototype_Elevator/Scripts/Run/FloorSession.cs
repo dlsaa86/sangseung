@@ -36,6 +36,7 @@ namespace Ascend.Prototype.Run
         private ResistanceContract _contract;
         private ResidualState _residual;
         private FloorResult _result;
+        private float _resolvedCapacity;
         private readonly float _anteRatio;
         private readonly float _anteEscalation;
         private float _totalAnte;
@@ -119,13 +120,32 @@ namespace Ascend.Prototype.Run
         public FloorPhase Phase { get; private set; }
         public float CarriedWeight => _carriedWeight;
 
-        /// <summary>기본 허용 중량 + 짐꾼 보너스. 이 값을 넘으면 과적이다.</summary>
-        public float Capacity => AllowedWeight + (_loadout != null ? _loadout.TotalCapacityBonus : 0f);
+        /// <summary>
+        /// 기본 허용 중량 + 짐꾼 보너스. 이 값을 넘으면 과적이다.
+        ///
+        /// **확정 뒤에는 확정 시점 값으로 얼어붙는다.** 계산 프로퍼티였을 때 무슨 일이
+        /// 있었나: `_carriedWeight`와 `_requiredPower`는 확정 시 얼리는데(`RunSession`의
+        /// `OnLoadoutChanged` 가드) 이 프로퍼티만 런이 소유한 살아 있는 `_loadout`을
+        /// 매번 다시 읽었다. `CompleteFloor`가 화물 포기와 하차를 실행한 **뒤에**
+        /// 사고 기록기가 한 프레임 늦게 기록하므로, 떠난 층의 레코드에 얼어붙은 무게와
+        /// 하차 이후의 허용 중량이 한 줄에 섞여 들어갔다.
+        /// </summary>
+        public float Capacity => _result != null
+            ? _resolvedCapacity
+            : AllowedWeight + (_loadout != null ? _loadout.TotalCapacityBonus : 0f);
 
         public bool IsOverloaded => _carriedWeight > Capacity;
 
         /// <summary>지금 이 층에 실려 있는 것. 층이 소유하지 않는다 — 런의 것을 빌려 본다.</summary>
         public BuildLoadout Loadout => _loadout;
+
+        /// <summary>
+        /// 확정 시점의 적재 목록 문자열. `Loadout`은 런의 것이라 하차·포기 뒤에 달라진다.
+        /// 기록은 **그 층에 실제로 실려 있던 것**을 적어야 한다.
+        /// null 이면 아직 확정 전이므로 호출자가 `Loadout`을 직접 읽는다.
+        /// </summary>
+        public string ResolvedLoadoutShort { get; private set; }
+        public string ResolvedLoadoutDetail { get; private set; }
 
         /// <summary>적재 단계에서 제시된 후보. 다른 단계에서는 비어 있다.</summary>
         public IReadOnlyList<BuildItem> BuildOffers => _offers;
@@ -307,6 +327,14 @@ namespace Ascend.Prototype.Run
         private FloorResult Resolve()
         {
             if (_result != null) return _result;
+
+            // 확정 순간의 적재 상태를 뜬다. `_result` 를 세우기 **전에** 떠야 한다 —
+            // `Capacity` 가 `_result != null` 로 분기하므로 순서를 뒤집으면
+            // 아직 채우지 않은 `_resolvedCapacity`(0)를 읽는다.
+            _resolvedCapacity = AllowedWeight + (_loadout != null ? _loadout.TotalCapacityBonus : 0f);
+            ResolvedLoadoutShort = _loadout != null ? _loadout.DescribeShort() : null;
+            ResolvedLoadoutDetail = _loadout != null ? _loadout.Describe() : null;
+
             AscendResult ascent = AscendResult.Calculate(Power, RequiredPower, _thresholds);
             _result = new FloorResult(ascent, _totalAnte, ExtraSpinsTaken,
                 _extraSpinNetPower, NetProfit);

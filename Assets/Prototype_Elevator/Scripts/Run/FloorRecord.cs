@@ -97,8 +97,12 @@ namespace Ascend.Prototype.Run
                 NetProfit = floor.NetProfit,
                 CarriedWeight = floor.CarriedWeight,
                 WeightCapacity = floor.Capacity,
-                Loadout = floor.Loadout != null ? floor.Loadout.DescribeShort() : "없음",
-                LoadoutDetail = floor.Loadout != null ? floor.Loadout.Describe() : "적재 없음",
+                // 확정 시점 사본을 우선한다. `floor.Loadout` 은 런이 소유한 살아 있는
+                // 목록이라, 이 기록이 만들어질 때는 이미 하차·화물 포기가 끝나 있다.
+                Loadout = floor.ResolvedLoadoutShort
+                          ?? (floor.Loadout != null ? floor.Loadout.DescribeShort() : "없음"),
+                LoadoutDetail = floor.ResolvedLoadoutDetail
+                                ?? (floor.Loadout != null ? floor.Loadout.Describe() : "적재 없음"),
                 Overloaded = floor.IsOverloaded,
                 Band = result != null ? result.Band : floor.CurrentBand,
                 Succeeded = result != null && result.Succeeded,

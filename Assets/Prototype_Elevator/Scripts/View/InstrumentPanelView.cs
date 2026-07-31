@@ -77,7 +77,15 @@ namespace Ascend.Prototype.View
         private int _shownRequired = int.MinValue;
         private int _shownBand = int.MinValue;
         private int _statusKey = int.MinValue;
-        private int _contractKey = int.MinValue;
+        // 계약 라벨 캐시. 정수 하나로 접지 않는다 — 바로 위 전력 라벨이 같은 실수로
+        // 층이 바뀌어도 갱신되지 않았고, 여기서도 같은 일이 벌어지고 있었다.
+        // `key = selecting ? 1 + shown : (IsNone ? 0 : 2)` 는 **미리보기 2번째(1+1=2)**와
+        // **확정(2)**를 같은 값으로 접는다. 계약 선택지가 2개 이상인 4·6·7·8·9층에서
+        // 두 번째 항목을 보다가 확정하면 본문이 "계약 2/2"로 남고, 명판은 별도 캐시라
+        // 정상 전환되어 **화면이 스스로와 모순된다.**
+        private bool _contractSelecting;
+        private int _contractShown = int.MinValue;
+        private string _contractSelectedLabel;
         private readonly int[] _plaqueKeys = new int[3];
 
         private void Awake()
@@ -97,7 +105,9 @@ namespace Ascend.Prototype.View
             _shownRequired = int.MinValue;
             _shownBand = int.MinValue;
             _statusKey = int.MinValue;
-            _contractKey = int.MinValue;
+            _contractSelecting = false;
+            _contractShown = int.MinValue;
+            _contractSelectedLabel = null;
             for (int i = 0; i < _plaqueKeys.Length; i++) _plaqueKeys[i] = int.MinValue;
         }
 
@@ -196,9 +206,14 @@ namespace Ascend.Prototype.View
             int preview = _bridge != null ? _bridge.PreviewIndex : 0;
             int shown = selecting ? Mathf.Clamp(preview, 0, choices.Length - 1) : -1;
 
-            int key = selecting ? 1 + shown : (floor.SelectedContract.IsNone ? 0 : 2);
-            if (key == _contractKey) return;
-            _contractKey = key;
+            // 확정 뒤에는 **어느 계약을 골랐는지**까지 키에 넣는다. 상태(선택중/확정)만
+            // 보면 다른 계약으로 확정된 다음 층에서 이전 층의 문구가 남는다.
+            string selectedLabel = selecting ? null : floor.SelectedContract.Label;
+            if (selecting == _contractSelecting && shown == _contractShown &&
+                selectedLabel == _contractSelectedLabel) return;
+            _contractSelecting = selecting;
+            _contractShown = shown;
+            _contractSelectedLabel = selectedLabel;
 
             _text.Clear();
             if (selecting)

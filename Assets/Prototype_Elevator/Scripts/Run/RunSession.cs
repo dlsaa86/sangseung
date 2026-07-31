@@ -346,9 +346,20 @@ namespace Ascend.Prototype.Run
         /// 5개 시드 중 2개가 최종 층인 10층을 치르지 않고 런을 끝냈다. 가르치는 층과
         /// 종합 시험을 건너뛴 완주는 "10층까지 진행했다"의 증거가 되지 못한다.
         ///
-        /// 두 가지만 막는다. 그 외의 건너뛰기는 보상으로 남긴다.
+        /// 세 가지를 막는다. 그 외의 건너뛰기는 보상으로 남긴다.
         ///   1) 최종 층 — 종합 시험은 반드시 치른다.
         ///   2) 빌드 보상 층 — 승객·부품을 얻는 유일한 지점이라 건너뛰면 빌드가 성립하지 않는다.
+        ///   3) `MustBePlayed` 층 — 그 층에서만 소개되는 규칙이 있다.
+        ///
+        /// 3)이 뒤늦게 붙은 이유는 1)·2)만으로 부족하다는 것이 **측정으로** 드러났기 때문이다.
+        /// 커리큘럼 재배치 직후 시드 200개 실측에서 4층(계약 첫 등장) 방문률이 34%,
+        /// 3층 62% · 7층 54% · 9층 57% 였다(`Logs/curriculum_coverage.txt`).
+        /// 완주율은 67%로 멀쩡했다 — "10층까지 갔다"가 "가르칠 것을 가르쳤다"를
+        /// 전혀 보장하지 않는다는 뜻이다. 이번 목표는 "1층부터 10층까지 **연속** 플레이"다.
+        ///
+        /// 보상은 사라지지 않는다. 아래 호출자가 추가 층에 쓰지 않은 잉여를 전부 돈으로
+        /// 지급하므로, 잘린 상승은 그만큼 소지금이 된다. 층 대신 돈으로 갚는 것이지
+        /// 높은 전력이 무의미해지는 것이 아니다.
         /// </summary>
         private int ClampAscent(int from, int floorsAscended)
         {
@@ -361,7 +372,8 @@ namespace Ascend.Prototype.Run
             int target = Math.Min(from + floorsAscended, _floors.LastFloor);
             for (int floor = from + 1; floor < target; floor++)
             {
-                if (_floors.For(floor).OffersBuildReward)
+                FloorPlan plan = _floors.For(floor);
+                if (plan.OffersBuildReward || plan.MustBePlayed)
                 {
                     target = floor;
                     break;

@@ -50,6 +50,7 @@ namespace Ascend.Prototype.Build.Tests
             Run("도달 층이 건물 높이를 넘지 않는다", TestHighestFloorClamped, ref passed, ref failed, report);
             Run("다층 상승이 최종 층을 건너뛰지 않는다", TestFinalFloorNeverSkipped, ref passed, ref failed, report);
             Run("다층 상승이 적재 층을 건너뛰지 않는다", TestBuildFloorNeverSkipped, ref passed, ref failed, report);
+            Run("10층 런의 방문 층이 연속이다", TestVisitedFloorsAreConsecutive, ref passed, ref failed, report);
             Run("추가 층 전력이 돈으로 중복 지급되지 않는다", TestNoDoubleSpendOfSurplus, ref passed, ref failed, report);
             Run("소지금이 지급 기록 합계와 일치한다", TestMoneyMatchesCreditedLedger, ref passed, ref failed, report);
             Run("화물 포기 구간은 런을 끝내지 않고 대가를 물린다", TestJettisonBandCostsInsteadOfEnding, ref passed, ref failed, report);
@@ -59,6 +60,7 @@ namespace Ascend.Prototype.Build.Tests
             Run("10층 연속 런에 진행 불가 상태가 없다", TestTenFloorRunNeverStalls, ref passed, ref failed, report);
             Run("동일 시드·동일 선택이 동일 결과", TestTenFloorDeterminism, ref passed, ref failed, report);
             Run("서로 다른 두 빌드가 결과를 바꾼다", TestTwoBuildsDiverge, ref passed, ref failed, report);
+            Run("계약을 실제로 건 런도 10층을 완주한다", TestContractedRunCompletes, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Build Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -98,6 +100,23 @@ namespace Ascend.Prototype.Build.Tests
         /// <summary>런 하나를 끝까지 굴린다. 층 방문 순서와 최종 결과를 돌려준다.</summary>
         private static (RunSession run, System.Collections.Generic.List<int> visited) Drive(
             int seed, Func<FloorSession, int, bool> boardingPolicy)
+            => Drive(seed, boardingPolicy, null);
+
+        /// <summary>
+        /// 계약 정책까지 지정해 굴린다.
+        ///
+        /// 인자 없는 형태는 언제나 0번을 골랐고, 커리큘럼의 계약 층은 0번이 전부
+        /// `ResistanceContract.None` 이다. 그래서 **헤드리스 런 중 살아 있는 계약이
+        /// 걸린 런이 하나도 없었다** — 10층만 예외지만 거기까지 가는 런은 소수다.
+        /// 계약이 출현률·정화 보상·잔류 대가를 곱으로 바꾸므로, 계약 없는 표본만으로
+        /// 낸 완주율·결정론·연속성은 게임의 절반만 검증한 것이다.
+        /// </summary>
+        /// <param name="contractPolicy">
+        /// 층과 선택지 개수를 받아 인덱스를 돌려준다. null 이면 0번(대개 "계약 없음").
+        /// </param>
+        private static (RunSession run, System.Collections.Generic.List<int> visited) Drive(
+            int seed, Func<FloorSession, int, bool> boardingPolicy,
+            Func<FloorSession, int, int> contractPolicy)
         {
             RunSession run = NewTenFloorRun(seed);
             var visited = new System.Collections.Generic.List<int>();
@@ -125,7 +144,13 @@ namespace Ascend.Prototype.Build.Tests
                 }
 
                 if (f.Phase == FloorPhase.ContractSelection)
-                    if (!run.SelectContract(0)) break;
+                {
+                    int count = f.Plan.ContractChoices != null ? f.Plan.ContractChoices.Length : 0;
+                    int pick = contractPolicy != null && count > 0
+                        ? Math.Max(0, Math.Min(count - 1, contractPolicy(f, count)))
+                        : 0;
+                    if (!run.SelectContract(pick)) break;
+                }
 
                 int spins = 0;
                 while (f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0)
@@ -367,9 +392,12 @@ namespace Ascend.Prototype.Build.Tests
 
         private static string TestEmptyLoadoutLeavesRulesAlone()
         {
-            FloorPlan plan = PrototypeCurriculum.For(4);
+            // 계약도 적재도 없는 층이어야 한다 — 둘 중 하나라도 있으면 생성 직후 단계가
+            // ContractSelection/Boarding 이라 `Rules` 가 아직 null 이다.
+            // 4층은 D-20260801-01 재배치로 계약 층이 됐다. 3층이 지금의 순수 층이다.
+            FloorPlan plan = PrototypeCurriculum.For(3);
             SpinRuleSet expected = PrototypeCurriculum.BuildRules(in plan);
-            SpinRuleSet actual = FloorWith(4).Rules;
+            SpinRuleSet actual = FloorWith(3).Rules;
 
             if (Math.Abs(actual.NormalSoulValue - expected.NormalSoulValue) > 0.001f) return "정상 영혼 값이 달라짐";
             if (actual.GuaranteedNormalSouls != expected.GuaranteedNormalSouls) return "보장 개수가 달라짐";
@@ -573,9 +601,16 @@ namespace Ascend.Prototype.Build.Tests
             FloorSession floor = run.Current;
             if (floor == null) return "1층이 없다";
 
-            // 5층 하차 승객을 태워 두면 5층 도착 시 하차가 발생한다.
-            BuildItem leaver = BuildCatalog.ById("PSG_SURVEYOR");   // 5층 하차
-            if (leaver == null) return "PSG_SURVEYOR 를 찾지 못함";
+            // 하차 승객을 태워 두면 그 층 도착 시 하차가 발생한다.
+            // **짐꾼(PSG_PORTER)을 쓴다.** 측량사(PSG_SURVEYOR)는 허용 중량 보너스가 0 이라
+            // 하차해도 `Capacity` 가 움직이지 않는다 — 무게만 보는 검사는 통과하면서
+            // 허용 중량·과적·적재 목록이 하차 뒤 값으로 오염되는 것을 못 잡았다.
+            BuildItem leaver = BuildCatalog.ById("PSG_PORTER");
+            if (leaver == null) return "PSG_PORTER 를 찾지 못함";
+            if (leaver.CapacityBonus <= 0f)
+                return $"PSG_PORTER 의 허용 중량 보너스가 {leaver.CapacityBonus} — 이 테스트가 무의미해졌다";
+            if (leaver.DestinationFloor <= 0)
+                return "PSG_PORTER 에 목적지 층이 없다 — 하차가 일어나지 않는다";
             run.Loadout.Add(leaver);
 
             int guard = 0;
@@ -590,6 +625,9 @@ namespace Ascend.Prototype.Build.Tests
 
                 float weightAtDecision = current.CarriedWeight;
                 float requiredAtDecision = current.RequiredPower;
+                float capacityAtDecision = current.Capacity;
+                bool overloadedAtDecision = current.IsOverloaded;
+                string loadoutAtDecision = current.Loadout != null ? current.Loadout.DescribeShort() : "없음";
 
                 if (current.CanBank) run.Bank();
                 else if (current.SpinsRemaining == 0) run.ForceResolve();
@@ -600,6 +638,18 @@ namespace Ascend.Prototype.Build.Tests
                     return $"{current.Plan.Floor}층 확정 후 무게가 {weightAtDecision} → {current.CarriedWeight} 로 변했다";
                 if (Math.Abs(current.RequiredPower - requiredAtDecision) > 0.01f)
                     return $"{current.Plan.Floor}층 확정 후 요구 전력이 {requiredAtDecision} → {current.RequiredPower} 로 변했다";
+
+                // 무게만이 아니다. 허용 중량·과적·적재 목록도 그 층의 사실이어야 한다.
+                // 이 셋은 계산 프로퍼티라 런의 살아 있는 적재를 매번 다시 읽었고,
+                // 하차·화물 포기가 끝난 뒤 기록되는 사고 기록기에 그대로 새어 들어갔다.
+                if (Math.Abs(current.Capacity - capacityAtDecision) > 0.01f)
+                    return $"{current.Plan.Floor}층 확정 후 허용 중량이 {capacityAtDecision} → {current.Capacity} 로 변했다";
+                if (current.IsOverloaded != overloadedAtDecision)
+                    return $"{current.Plan.Floor}층 확정 후 과적 여부가 {overloadedAtDecision} → {current.IsOverloaded} 로 변했다";
+                string loadoutAfter = current.ResolvedLoadoutShort
+                                      ?? (current.Loadout != null ? current.Loadout.DescribeShort() : "없음");
+                if (loadoutAfter != loadoutAtDecision)
+                    return $"{current.Plan.Floor}층 확정 후 적재 목록이 [{loadoutAtDecision}] → [{loadoutAfter}] 로 변했다";
             }
             return null;
         }
@@ -612,6 +662,120 @@ namespace Ascend.Prototype.Build.Tests
         /// 단언이 하나도 없었으므로 Gate B는 PlayMode 로그 한 줄 외에 근거가 없었다.
         /// 독립 QA 감사가 이 사각지대를 지목했다.
         /// </summary>
+        /// <summary>
+        /// **계약을 실제로 건 런**이 10층을 완주하는가, 그리고 고른 계약이 규칙에 닿는가.
+        ///
+        /// 이 검사가 없던 동안 헤드리스 표본 전체가 `SelectContract(0)` = "계약 없음"이었다.
+        /// 계약은 출현률(`AppearanceMultiplier`)·정화 보상·패턴 보너스·잔류 대가를 전부
+        /// 곱으로 바꾸므로, 계약 없는 런만으로 낸 완주율과 연속성은 게임의 절반이다.
+        /// 계약을 걸면 산출량과 잔류 위험이 함께 오르는데 그 조합이 진행 불가를 만들지
+        /// 않는다는 근거가 어디에도 없었다.
+        ///
+        /// 정책은 **마지막 선택지**다 — 커리큘럼상 항상 "계약 없음"이 아닌 것이 온다.
+        /// </summary>
+        private static string TestContractedRunCompletes()
+        {
+            const int required = 2;
+            int completed = 0;
+            bool sawLiveContract = false;
+            var notes = new StringBuilder();
+
+            foreach (int seed in new[] { 4242, 7, 271828, 20260801, 112358, 999, 1337, 90210 })
+            {
+                RunSession run = NewTenFloorRun(seed);
+                var visited = new System.Collections.Generic.List<int>();
+                int guard = 0;
+
+                while (!run.IsComplete && !run.IsFailed && guard++ < 200)
+                {
+                    FloorSession f = run.Current;
+                    if (f == null) break;
+                    if (visited.Count == 0 || visited[visited.Count - 1] != f.Plan.Floor)
+                        visited.Add(f.Plan.Floor);
+
+                    if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
+
+                    if (f.Phase == FloorPhase.ContractSelection)
+                    {
+                        int count = f.Plan.ContractChoices.Length;
+                        if (!run.SelectContract(count - 1)) break;
+
+                        // 고른 것이 살아 있는 계약이면, 그 계약의 출현 배수가 규칙에 닿아야 한다.
+                        if (!f.SelectedContract.IsNone)
+                        {
+                            sawLiveContract = true;
+                            SymbolKind target = f.SelectedContract.Target;
+                            SpinRuleSet withContract = f.Rules;
+                            FloorPlan plan = f.Plan;
+                            SpinRuleSet without = PrototypeCurriculum.BuildRules(in plan);
+                            float before = without.WeightOf(target);
+                            float after = withContract.WeightOf(target);
+                            if (before > 0f && after <= before + 0.0001f)
+                                return $"{f.Plan.Floor}층에서 {f.SelectedContract.Label} 을 골랐는데 " +
+                                       $"{target} 가중치가 {before} → {after} 로 오르지 않았다";
+                        }
+                    }
+
+                    int spins = 0;
+                    while (f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0)
+                    {
+                        run.Spin();
+                        if (++spins > 30) break;
+                    }
+
+                    if (f.CanBank) run.Bank();
+                    else if (f.SpinsRemaining == 0) run.ForceResolve();
+                    else break;
+                }
+
+                for (int i = 1; i < visited.Count; i++)
+                    if (visited[i] != visited[i - 1] + 1)
+                        return $"계약 런 시드{seed} 가 {visited[i - 1]}→{visited[i]} 로 층을 건너뛰었다";
+
+                if (run.IsComplete && !run.IsFailed && visited.Contains(10)) completed++;
+                else notes.Append(seed).Append("→").Append(run.HighestFloorReached).Append("층 ");
+            }
+
+            if (!sawLiveContract)
+                return "계약 층에서 살아 있는 계약을 한 번도 고르지 못했다 — 선택지 구성이 바뀌었다";
+            if (completed < required)
+                return $"계약을 건 완주가 {completed}회 — 최소 {required}회 필요. 미완주 [{notes.ToString().Trim()}]";
+            return null;
+        }
+
+        /// <summary>
+        /// 방문 층에 구멍이 없는가. "10층까지 진행했다"와 "1층부터 10층까지 **연속**
+        /// 진행했다"는 다른 주장이고, 지금까지의 검사는 앞쪽만 봤다.
+        ///
+        /// 이 검사가 없던 동안 실제로 무슨 일이 있었나: 커리큘럼을 노션 03번 배치로
+        /// 옮긴 직후(D-20260801-01) 시드 200개 실측에서 완주율은 67%로 멀쩡했는데
+        /// **계약을 처음 가르치는 4층의 방문률이 34%** 였다. 다층 상승이 교습 층을
+        /// 삼켰고, 그 플레이어는 계약을 7층에서 세 개가 한꺼번에 놓인 채 처음 만났다.
+        /// 완주율만 보는 검사는 이걸 영원히 통과시킨다.
+        ///
+        /// 정책 세 가지로 돈다. 적재 무게가 요구 전력을 바꾸므로 잉여도 달라지고,
+        /// 무적재에서만 성립하는 클램프는 여기서 걸린다.
+        /// </summary>
+        private static string TestVisitedFloorsAreConsecutive()
+        {
+            var failures = new StringBuilder();
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828, 555555, 8675309, 20260731 })
+            {
+                foreach (int perFloor in new[] { 0, 1, 2 })
+                {
+                    int slots = perFloor;
+                    var driven = Drive(seed, (f, slot) => slot < slots);
+                    var visited = driven.visited;
+                    if (visited.Count == 0) { failures.Append($"시드{seed}/{perFloor}개 방문기록없음 "); continue; }
+                    if (visited[0] != 1) failures.Append($"시드{seed}/{perFloor}개 시작{visited[0]}층 ");
+                    for (int i = 1; i < visited.Count; i++)
+                        if (visited[i] != visited[i - 1] + 1)
+                            failures.Append($"시드{seed}/{perFloor}개 {visited[i - 1]}→{visited[i]} ");
+                }
+            }
+            return failures.Length == 0 ? null : $"건너뛴 층 [{failures.ToString().Trim()}]";
+        }
+
         private static string TestSeedsCompleteTenFloors()
         {
             const int required = 3;
