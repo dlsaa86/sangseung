@@ -57,7 +57,24 @@ namespace Ascend.Prototype.Run
             CreateCurrentFloor();
         }
 
-        private void OnLoadoutChanged() => _current?.RefreshLoad(_baseWeight);
+        /// <summary>
+        /// 적재 변경을 현재 층에 반영한다. **이미 확정된 층은 건드리지 않는다.**
+        ///
+        /// 하차는 층이 끝난 **뒤** `CompleteFloor` 안에서 일어나고, 그 시점의 `_current`는
+        /// 아직 방금 확정된 그 층이다. 가드가 없으면 하차가 그 층의 `_carriedWeight`와
+        /// `_requiredPower`를 사후에 바꾸고, `AccidentRecorder`는 한 프레임 뒤에 기록하므로
+        /// **사고 기록기가 그 층에 실제로 적용되지 않았던 숫자를 적는다.**
+        /// 같은 기록 안의 `result.RequiredPower`와도 어긋난다.
+        ///
+        /// 무게 전파를 고치면서 정확히 같은 부류의 결함을 방향만 뒤집어 만들었고,
+        /// 독립 감사가 잡았다. 캐시를 갱신하는 코드는 "언제 갱신하지 말아야 하는가"를
+        /// 함께 정해야 한다.
+        /// </summary>
+        private void OnLoadoutChanged()
+        {
+            if (_current == null || _current.Result != null) return;
+            _current.RefreshLoad(_baseWeight);
+        }
 
         /// <summary>
         /// 한 층의 상승 정산. **클램프 뒤** 실제로 오른 층수와 실제로 지급한 돈을 담는다.

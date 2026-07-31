@@ -51,6 +51,8 @@ namespace Ascend.Prototype.Build.Tests
             Run("다층 상승이 최종 층을 건너뛰지 않는다", TestFinalFloorNeverSkipped, ref passed, ref failed, report);
             Run("다층 상승이 적재 층을 건너뛰지 않는다", TestBuildFloorNeverSkipped, ref passed, ref failed, report);
             Run("추가 층 전력이 돈으로 중복 지급되지 않는다", TestNoDoubleSpendOfSurplus, ref passed, ref failed, report);
+            Run("소지금이 지급 기록 합계와 일치한다", TestMoneyMatchesCreditedLedger, ref passed, ref failed, report);
+            Run("하차가 확정된 층의 숫자를 바꾸지 않는다", TestDisembarkDoesNotMutateResolvedFloor, ref passed, ref failed, report);
             Run("고정 시드 3개 이상이 10층을 완주한다", TestSeedsCompleteTenFloors, ref passed, ref failed, report);
             Run("적재하고도 10층을 완주할 수 있다", TestLoadedRunCanAlsoComplete, ref passed, ref failed, report);
             Run("10층 연속 런에 진행 불가 상태가 없다", TestTenFloorRunNeverStalls, ref passed, ref failed, report);
@@ -487,6 +489,75 @@ namespace Ascend.Prototype.Build.Tests
             // 이 테스트가 다시 빈 테스트가 되는 것을 막는 자기 검사다.
             if (multiFloorAscents == 0)
                 return "40개 시드에서 다층 상승이 한 번도 발생하지 않았다 — 이 테스트는 아무것도 검증하지 못했다";
+            return null;
+        }
+
+        /// <summary>
+        /// 장부(`RunSession.Money`)와 증인(`FloorAscent.MoneyCredited`)이 일치하는가.
+        ///
+        /// `TestNoDoubleSpendOfSurplus`는 증인만 검사한다. 정산이 `Money`에는 잉여 전액을
+        /// 더하면서 기록에는 올바른 값을 남기는 회귀 — 즉 장부와 증인이 갈라지는 경우 —
+        /// 는 그 테스트를 그대로 통과한다. 독립 감사가 지적한 구멍이다.
+        ///
+        /// 무적재 런이라 하차 요금이 없으므로 `Money`는 정확히 지급액의 합이어야 한다.
+        /// </summary>
+        private static string TestMoneyMatchesCreditedLedger()
+        {
+            foreach (int seed in new[] { 1337, 4242, 90210, 7, 31415, 271828 })
+            {
+                var driven = Drive(seed, null);
+                float ledger = 0f;
+                foreach (RunSession.FloorAscent ascent in driven.run.Ascents)
+                    ledger += ascent.MoneyCredited;
+
+                if (Math.Abs(driven.run.Money - ledger) > 0.01f)
+                    return $"시드 {seed}: 소지금 {driven.run.Money:F2} 이 지급 기록 합계 {ledger:F2} 와 다르다 " +
+                           $"(무적재 런이므로 하차 요금이 없다)";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 하차가 **이미 확정된 층**의 무게·요구 전력을 사후에 바꾸지 않는가.
+        ///
+        /// `CompleteFloor`는 `DisembarkAt`을 `CreateCurrentFloor` 앞에서 부른다.
+        /// 그 시점의 `_current`는 아직 방금 확정된 층이므로, 적재 변경 알림에 가드가
+        /// 없으면 끝난 층의 숫자가 뒤늦게 움직이고 사고 기록기가 그 값을 적는다.
+        /// </summary>
+        private static string TestDisembarkDoesNotMutateResolvedFloor()
+        {
+            RunSession run = NewTenFloorRun(1337);
+            FloorSession floor = run.Current;
+            if (floor == null) return "1층이 없다";
+
+            // 5층 하차 승객을 태워 두면 5층 도착 시 하차가 발생한다.
+            BuildItem leaver = BuildCatalog.ById("PSG_SURVEYOR");   // 5층 하차
+            if (leaver == null) return "PSG_SURVEYOR 를 찾지 못함";
+            run.Loadout.Add(leaver);
+
+            int guard = 0;
+            while (!run.IsComplete && !run.IsFailed && guard++ < 60)
+            {
+                FloorSession current = run.Current;
+                if (current == null) break;
+
+                if (current.Phase == FloorPhase.Boarding) run.FinishBoarding();
+                if (current.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
+                while (current.Phase == FloorPhase.Spinning && current.SpinsRemaining > 0) run.Spin();
+
+                float weightAtDecision = current.CarriedWeight;
+                float requiredAtDecision = current.RequiredPower;
+
+                if (current.CanBank) run.Bank();
+                else if (current.SpinsRemaining == 0) run.ForceResolve();
+                else break;
+
+                // 확정 뒤 (하차가 일어났을 수도 있는 시점) 그 층의 값이 그대로여야 한다.
+                if (Math.Abs(current.CarriedWeight - weightAtDecision) > 0.01f)
+                    return $"{current.Plan.Floor}층 확정 후 무게가 {weightAtDecision} → {current.CarriedWeight} 로 변했다";
+                if (Math.Abs(current.RequiredPower - requiredAtDecision) > 0.01f)
+                    return $"{current.Plan.Floor}층 확정 후 요구 전력이 {requiredAtDecision} → {current.RequiredPower} 로 변했다";
+            }
             return null;
         }
 

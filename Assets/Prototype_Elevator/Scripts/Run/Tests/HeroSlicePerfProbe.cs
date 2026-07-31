@@ -103,6 +103,10 @@ namespace Ascend.Prototype.Run.Tests
                 FindAnyObjectByType<InstrumentPanelView>(),
                 FindAnyObjectByType<PurifyMarkerView>(),
                 FindAnyObjectByType<SpinBoardView>(),
+                // 승객·부품 배치 뷰. 이 목록에 없으면 "게임 코드 기여분 = 전부켬 −
+                // 전부끔"이 이 컴포넌트를 **구조적으로 상쇄한다** — 무엇을 고쳐도
+                // 수치가 움직이지 않는다. 독립 감사가 그 맹점을 지적했다.
+                FindAnyObjectByType<Ascend.Prototype.Build.BuildFigureView>(),
                 FindAnyObjectByType<CrosshairInteractor>(),
                 bridge,
                 presenter,
@@ -570,6 +574,7 @@ namespace Ascend.Prototype.Run.Tests
             Disable<InstrumentPanelView>();
             Disable<PurifyMarkerView>();
             Disable<SpinBoardView>();
+            Disable<Ascend.Prototype.Build.BuildFigureView>();
             Disable<SpinPresenter>();
             Disable<RouletteInteractionBridge>();
             Disable<AccidentRecorder>();

@@ -57,7 +57,11 @@ namespace Ascend.Prototype.View
         // 표시값이 실제로 바뀔 때만 짓고, TMP 에는 StringBuilder 오버로드로 넘긴다
         // (string 오버로드는 내부에서 또 한 번 복사한다).
         private int _floorKey = int.MinValue;
-        private int _powerKey = int.MinValue;
+        // 전력 라벨이 실제로 그리는 세 값. 정수 하나로 접지 않는다 — 접는 순간
+        // 무엇이 키에서 빠졌는지 보이지 않게 된다.
+        private int _shownPower = int.MinValue;
+        private int _shownRequired = int.MinValue;
+        private int _shownBand = int.MinValue;
         private int _statusKey = int.MinValue;
 
         private void Awake()
@@ -73,7 +77,9 @@ namespace Ascend.Prototype.View
         private void InvalidateCache()
         {
             _floorKey = int.MinValue;
-            _powerKey = int.MinValue;
+            _shownPower = int.MinValue;
+            _shownRequired = int.MinValue;
+            _shownBand = int.MinValue;
             _statusKey = int.MinValue;
         }
 
@@ -105,10 +111,23 @@ namespace Ascend.Prototype.View
             }
 
             // 전력은 정수 단위로만 표시하므로 반올림 값이 같으면 다시 만들 이유가 없다.
-            int powerKey = Mathf.RoundToInt(floor.Power) * 8 + (int)floor.CurrentBand;
-            if (powerKey != _powerKey)
+            //
+            // **표시하는 값 전부를 비교한다.** 예전에는 `RoundToInt(Power) * 8 + Band`
+            // 하나로 눌러 담았는데, 문자열에는 `RequiredPower`도 들어가는데 키가 그것을
+            // 보지 않았다. 층이 바뀌어 전력이 0으로 돌아가고 밴드가 같으면 키가 동일해져
+            // 라벨이 갱신되지 않는다 — 실제로 10층 캡처에 **1층의 요구 전력 350**이
+            // 그대로 남아 있었고 독립 감사가 잡았다.
+            //
+            // 정수 하나로 압축하는 대신 값을 따로 들고 비교한다. 비트를 접는 순간
+            // "무엇이 키에 빠졌는가"가 눈에 안 보이게 되고, 그게 이 결함의 원인이었다.
+            int power = Mathf.RoundToInt(floor.Power);
+            int required = Mathf.RoundToInt(floor.RequiredPower);
+            int band = (int)floor.CurrentBand;
+            if (power != _shownPower || required != _shownRequired || band != _shownBand)
             {
-                _powerKey = powerKey;
+                _shownPower = power;
+                _shownRequired = required;
+                _shownBand = band;
                 _text.Clear();
                 _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
                      .Append(" / 요구 ").AppendFormat("{0:F0}", floor.RequiredPower)

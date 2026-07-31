@@ -165,6 +165,10 @@ namespace Ascend.Prototype.Run.Tests
                     _report.AppendLine($"  --- {number}층 (요구 {floor.RequiredPower:F0}, " +
                                        $"적재 {run.Session.CarriedWeight:F0}/{run.Session.WeightCapacity:F0}) ---");
                 }
+                // 루프 머리에서만 재면 **적재 전** 값만 남는다. 실제로 로그가
+                // "최고 무게 33"을 적었지만 그 런은 77kg에 도달했고, 같은 로그의
+                // "요구 519 = 365 + 77×2"가 그 증거였다. 보고서가 거짓을 적었다.
+                // 적재 직후와 층 종료 직전에도 표본을 뜬다.
                 peakWeight = Mathf.Max(peakWeight, run.Session.CarriedWeight);
 
                 // ── 적재 단계 ──
@@ -188,7 +192,17 @@ namespace Ascend.Prototype.Run.Tests
                         candidates = FindObjectsByType<InteractableBuildCandidate>(
                             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
                         if (candidates.Length == 0) break;
-                        candidates[0].Interact(gameObject);
+
+                        // **후보 번호가 가장 작은 것을 고른다.** `FindObjectsByType`는
+                        // `SortMode.None`이라 순서를 보장하지 않는다. 배열 0번을 그냥 집으면
+                        // 같은 시드·같은 정책인데도 실행마다 다른 것이 실려, 런 결과가
+                        // 갈린다. 실제로 공격 정책이 한 번은 5층 사고, 한 번은 10층 도달로
+                        // 나왔다 — 게임의 결정론이 아니라 **하네스의 결정론** 문제다.
+                        InteractableBuildCandidate pick = candidates[0];
+                        for (int i = 1; i < candidates.Length; i++)
+                            if (candidates[i].Index < pick.Index) pick = candidates[i];
+
+                        pick.Interact(gameObject);
                         taken++;
                         yield return null;
                         yield return null;
@@ -206,6 +220,7 @@ namespace Ascend.Prototype.Run.Tests
 
                     door.Interact(gameObject);
                     yield return null;
+                    peakWeight = Mathf.Max(peakWeight, run.Session.CarriedWeight);
                     Check($"{number}층 문을 닫으면 적재가 끝난다",
                           floor.Phase != FloorPhase.Boarding, floor.Phase.ToString());
                 }
@@ -301,6 +316,7 @@ namespace Ascend.Prototype.Run.Tests
                     // 층이 끝나기 직전 한 번만 누적한다. 과수확 분기에서 더하면
                     // 같은 층을 두 번 세게 된다(그 분기는 `continue`로 되돌아온다).
                     totalExtraSpins += floor.ExtraSpinsTaken;
+                    peakWeight = Mathf.Max(peakWeight, floor.CarriedWeight);
 
                     Check($"{number}층 탱크로 층을 끝낼 수 있다", tank.CanInteract,
                           $"CanBank={floor.CanBank} 남은스핀={floor.SpinsRemaining}");
