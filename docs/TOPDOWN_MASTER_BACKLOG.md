@@ -233,7 +233,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 기본 스냅샷 값 대조
 - 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: 클래스만 있고 `.asset` 이 없다. **성능 산출물이 아직 이 프로파일을 인용하지 않는다** — PRD §13.1 이 미지정 상태에서 성능 완료 선언을 금지하므로 Pass 4 의 선행 조건이다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RenderBudgetProbe`, 품질 설정 진입점
 
 ### UP-PLAT-05 — 압축·임포트 Preset과 VisualQualityProfile
 - 분류: Required · 출처: PRD §13.3, §13.4, §17.4
@@ -243,7 +243,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 프리셋 값 대조
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-PLAT-03
-- 남은 문제: `.asset` 이 없고 **텍스처·오디오 임포트 Preset 은 아직 하나도 없다**. 빌드 리포트의 상위 용량 기록도 미착수
+- 남은 문제: `VisualQualityProfile` 은 `Perf/RenderBudgetProbe.cs` 에 필드가 있으나 **씬이 물리지 않아** `Logs/render_budget.txt` 마지막 줄이 스스로 적는다 — 「예산이 주입되지 않았다. 값만 기록했고 판정은 하지 않았다」. 텍스처·오디오 임포트 Preset 은 여전히 0건이고 빌드 리포트의 상위 용량 기록도 미착수
 
 ### UP-PLAT-06 — 결정론적 캡처 하네스
 - 분류: Required · 출처: PRD §15.1 「동일한 해상도·FOV·카메라 위치·시간대·품질 프리셋」
@@ -673,7 +673,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run Self Tests`, `Logs/tenfloor_playmode.txt`
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-POWER-01
-- 남은 문제: `PowerBand.Damaged`(90~99%)의 **소비처가 0곳** → UP-APV-10
+- 남은 문제: 8구간이 `PowerThresholds` 에 있고 `PowerBand.Damaged` → `AscendResult.DeviceDamaged` → `FloorResult.DeviceDamaged` 까지 흐른 뒤 **거기서 끝난다.** `DeviceDamaged` 를 읽는 코드가 0곳이라 장치 손상 구간이 게임 안에서 아무 일도 하지 않는다(`UP-APV-10` 승인 대기)
 
 ### UP-POWER-03 — 전력 확정 (브레이크)
 - 분류: Required · 출처: PRD §4.1, §5(14), N08 §12.2
@@ -723,7 +723,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 정적 구간 범위 조임 등
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-POWER-05
-- 남은 문제: 클래스만 있다. `.asset` 을 만들고 **`FloorSession`·`OverchargeOption` 의 흩어진 수치가 실제로 이 프로파일을 읽게** 해야 데이터화가 성립한다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `OverharvestApproachBridge`, 과수확 연출
 
 ### UP-POWER-08 — 초과 전력이 다층 상승·보상으로 이어진다
 - 분류: Required · 출처: PRD §4.1, N03 「부분 실패」, N08 §11.3
@@ -1019,7 +1019,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RISK-01
-- 남은 문제: ScriptableObject 껍데기는 생겼다. `.asset` 을 만들고 `RiskStateView` 가 코드 프리셋 대신 이것을 읽게 해야 §14.2 「프리셋 비교 가능」이 성립한다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RiskStateView` — 지금은 `RiskProfile.Preset(RiskIntensity)` 라는 **코드 상수 표**를 읽는다
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
@@ -1029,7 +1029,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 셰이크 0 배율이 실제 0을 낸다
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RISK-07
-- 남은 문제: `.asset` 이 없고 `RiskStateView`·`CollapseSequence` 가 아직 이 값을 읽지 않는다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RiskStateView`(셰이크·섬광), `AudioDirector`(사이렌)
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
@@ -1130,10 +1130,10 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/View/PaperTapePrinterView.cs`, 씬 `AccidentPrinter` @ (0.55, 2.05, −1.43) 정면 벽
 - 접근: 층이 끝나면 화면에 뜬다
-- 검증: `WaveBRuntimeProbe` 의 인쇄 줄 수 + `EyeLevelCapture` 09번 각도
+- 검증: `WaveBRuntimeProbe` 의 인쇄 줄 수
 - 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-REC-02
-- 남은 문제: 장치가 씬에 서 있고 **2줄을 실제로 찍었다.** 위치는 문으로 들어와 정면이며 다른 장치와 겹치지 않는다. **결함: 글자가 테이프 폭 0.28m 를 1.16m 로 넘쳐 흐른다**(`EnsureParts` 의 TMP 폰트 크기·rect 설정). 읽을 수 없으므로 Pass 3 에서 고친다
+- 남은 문제: 장치가 씬에 서 있고 **2줄을 실제로 찍었다.** **증거 정정**: 직전 판본이 검증 수단으로 적은 `EyeLevelCapture` 09번 각도는 **존재하지 않는다** — `Captures/eyelevel/` 에는 00~08 만 있다. 결함은 그대로다: `PaperTapePrinterView.cs` 가 테이프 폭 `0.28f` 에 `fontSize = 0.9f` 를 써서 글자가 1.16m 로 넘쳐 흐른다. 읽을 수 없다
 
 ### UP-REC-05 — 기록과 사고 후 상태가 한 장에 함께 보인다
 - 분류: Required · 출처: PRD §10.3 마지막
@@ -1205,7 +1205,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 캡처 실행 → `Captures/TenFloor/manifest.txt`
 - 증거: `Captures/TenFloor/manifest.txt`
 - 의존: UP-PLAT-06
-- 남은 문제: 18장이 생성되나 PRD §15.1의 9종 요구와 1:1 대조표가 없다
+- 남은 문제: PRD §15.1 9종과의 1:1 대조표는 **이미 있다** — `docs/runtime/NOTION_GAP_MATRIX.md` §6 (7종 충족 / 2종 조건부). 남은 것은 조건부 2종이고, 그중 하나는 캡처가 `ScreenSpaceOverlay` HUD 를 담지 않는 문제다(`DEAD_IMPLEMENTATION_AUDIT.md` §3)
 
 ### UP-VIS-07 — 시각 루브릭 통과 (판독성·스타일 평균 4.0 이상)
 - 분류: Required · 출처: PRD §15.2 통과 조건
@@ -1297,7 +1297,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-AUD-01
-- 남은 문제: 클래스만 있고 `.asset` 인스턴스가 없다. 오디오 임포트 Preset 도 아직 없다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `AudioDirector` — 지금은 자기 `[SerializeField] _masterVolume` 등을 직접 갖는다
 
 ## 2.14 TECH — 엔지니어링 목표
 
@@ -1323,13 +1323,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-03 — 필수 참조 누락 시 개발 빌드에서 즉시 오류
 - 분류: Required · 출처: PRD §13.5, N08 §3.3
-- 상태: CONNECTED · 패스: P2
+- 상태: SKELETON · 패스: P2 P4
 - 구현: `Scripts/Player/PlayerSetupValidator.cs`
 - 접근: 해당 없음
 - 검증: `Logs/tenfloor_playmode.txt` 「씬 배선」 검사
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-TECH-01
-- 남은 문제: 없음
+- 남은 문제: **죽은 구현이다.** `Scripts/Player/PlayerSetupValidator.cs` 는 `#if UNITY_EDITOR` 안의 `static` 클래스에 `MenuItem` 하나이고 **호출자가 0곳**이며 빌드에 들어가지 않는다. 증거로 걸려 있던 `tenfloor_playmode.txt` 「씬 배선」 줄은 `TenFloorAutoPilot` **자신이** 찍는 것이지 이 코드의 산물이 아니다. PRD §13.5 「개발 빌드에서 원인과 경로를 출력」을 만족하는 **런타임 경로가 없다**. 직전 판본은 이 항목의 남은 문제를 「없음」이라고 적고 있었다 — 미충족보다 나쁜 것은 아무도 다시 안 볼 형태로 적히는 것이다
 
 ### UP-TECH-04 — 1080p 목표 90 FPS / 하드 플로어 60 FPS
 - 분류: Required · 출처: PRD §13.1, §17.4
@@ -1369,7 +1369,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: PlayMode 런 중 자동 수집 → `Logs/render_budget.txt`
 - 증거: `Logs/render_budget.txt`
 - 의존: UP-TECH-04
-- 남은 문제: **처음으로 값이 나왔다** — 표본 88,310개. 드로우콜 중앙 218/95% 232/최악 900, SetPass 63/73/280, 삼각형 17,910/23,620/34,656, 프레임타임 8.45ms(118 FPS)/8.72/147.28. **판정은 아직 없다** — `VisualQualityProfile` 의 예산이 주입되지 않아 프로브가 스스로 「값만 기록했다」고 적는다. 최악값이 중앙값의 4배인 지점이 어디인지도 미확인
+- 남은 문제: 예산이 주입되지 않아 **판정이 없다** — 프로브가 값만 기록한다. 최신 `Logs/render_budget.txt` 는 드로우콜 최악 464 / SetPass 162 / 프레임타임 최악 153.81ms 다(이전 판본의 900·280·147.28 은 낡은 수치였다). 게다가 해상도가 **816×714** 로 `TECH_SPEC.md` §13 의 기준 1920×1080 이 아니다 — 화소 수 기준 약 28%. 이 값으로는 예산 판정을 해도 의미가 없다
 
 ### UP-TECH-08 — 10층 연속 플레이에서 메모리 누적 없음
 - 분류: Required · 출처: PRD §17.4
@@ -1389,7 +1389,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건 (기본 스냅샷 값 대조)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: §14.3 권장 13종 중 **8종의 클래스가 생겼다**(직전 0종). 남은 것은 `.asset` 인스턴스 생성과 **소비 지점을 프로파일로 돌리는 일** — 클래스만 있고 코드가 여전히 하드코딩 값을 읽으면 데이터화가 아니다
+- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. §14.1 12항목의 데이터 **분리**는 됐고 **주입**이 안 됐다
 
 ## 2.15 TEST — 테스트·텔레메트리·증거
 
@@ -1451,7 +1451,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/tenfloor_playmode.txt` 씬 배선 검사
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-RUN-05
-- 남은 문제: 릴리스 빌드에서 비활성화되는지 확인되지 않았다
+- 남은 문제: `Scripts/UI/DebugPanelView.cs` 에 `#if UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild` 가 **하나도 없다.** 릴리스 빌드에서 F1 이 그대로 열린다 — N08 §17 「개발 빌드에서만 기본 활성화」 미충족
 
 ### UP-TEST-07 — 밸런스 프로브 (시드 대량 시뮬레이션)
 - 분류: Required · 출처: PRD §15.3 「측정 가능한 차이 없이 무작정 반복하지 않는다」, §16.3
@@ -1523,7 +1523,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 이름 일치
 - 증거: 없음
 - 의존: UP-RISK-01
-- 남은 문제: 어느 쪽을 고칠지는 되돌릴 수 있는 결정이므로 기본값(코드를 PRD에 맞춤)으로 진행한다
+- 남은 문제: 어느 쪽을 고칠지는 되돌릴 수 있는 결정이므로 기본값(코드를 PRD에 맞춤)으로 진행한다. **범위는 정확히 `RiskLevel.Warning` → `RiskLevel.Strain` 한 멤버와 그 참조 11곳뿐이다.** 나머지 `Warning*` 는 전부 다른 것을 가리키므로 **손대지 않는다** — ① `RiskProfile.WarningColor`·`WarningPulseRate`·`WarningEmission` 은 위험 **단계**가 아니라 경고 **등**이고 `DangerFeedbackProfile.asset` 에 그 이름으로 직렬화돼 있어 바꾸면 값이 끊긴다 ② `AudioCueChannel.Warning`·`AudioChannel.Warning` 은 오디오 채널이다(6곳) ③ 씬의 `WarningStripe` 는 오브젝트 이름이다. **일괄 치환(`sed`) 금지** — 열거 멤버는 int 로 직렬화되므로 이름만 바꾸는 것은 안전하지만, 필드 이름을 함께 바꾸면 에셋이 조용히 손상된다
 
 ---
 
@@ -1616,15 +1616,21 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 | 상태 | Required 중 개수 |
 |---|---|
-| `VERIFIED` | **66** |
-| `CONNECTED` | 25 |
+| `VERIFIED` | **67** |
+| `CONNECTED` | 32 |
 | `VISIBLE` | 0 |
-| `SKELETON` | 31 |
+| `SKELETON` | 23 |
 | `NOT_STARTED` | **7** |
 | `BLOCKED_EXTERNAL` | 0 |
 
-**Required 129건 중 66건(51%)이 코드·씬·테스트 증거를 모두 갖췄다.**
+**Required 129건 중 67건(52%)이 코드·씬·테스트 증거를 모두 갖췄다.**
 직전 판본의 "VERIFIED 0"은 판정 기준이 달랐기 때문이지 구현이 없어서가 아니었다 (§0.4).
+
+> **이 표는 손으로 적는 것이 아니다.** 2026-08-01 독립 감사가 항목 헤더를 직접 세어
+> 여기 적힌 66/25/31 이 실제(67/33/22)와 다르다는 것을 찾았다. 통계표가 틀리면
+> "얼마나 남았는가"를 묻는 모든 판단이 함께 틀린다.
+> **갱신 방법**: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1 -Stats`
+> 의 출력을 그대로 옮긴다. 기억으로 더하고 빼지 않는다.
 
 > **2026-08-01 Pass 1 Wave A.** `NOT_STARTED` 가 23 → 7 로 내려갔다. 옮겨간 16건은
 > 대부분 `SKELETON` 이다 — **코드와 테스트는 생겼지만 씬에 붙지 않아 게임 안에서는

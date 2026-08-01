@@ -26,6 +26,14 @@ namespace Ascend.Prototype.Build.Tests
             Run("이미 실은 것은 다시 제시되지 않는다", TestOffersExcludeCarried, ref passed, ref failed, report);
             Run("같은 시드·같은 층은 같은 후보", TestOfferDeterminism, ref passed, ref failed, report);
 
+            // ── 적재 정책 (씬 하네스와 같은 규칙) ──
+            Run("적재 정책이 승객 정원을 먼저 채운다", TestLoadPolicyFillsPassengersFirst, ref passed, ref failed, report);
+            Run("승객 우선이 카탈로그 전체에서 성립한다", TestLoadPolicyPassengerPriorityHoldsForWholeCatalog, ref passed, ref failed, report);
+            Run("적재 정책이 허용 중량을 늘리는 것을 피한다", TestLoadPolicyAvoidsCapacityBonus, ref passed, ref failed, report);
+            Run("적재 정책이 자리가 없으면 -1을 준다", TestLoadPolicyStopsWhenFull, ref passed, ref failed, report);
+            Run("적재 정책이 칸을 끝까지 채운다", TestLoadPolicyFillsAllSlots, ref passed, ref failed, report);
+            Run("적재 정책으로 과적이 도달 가능하다", TestLoadPolicyReachesOverCapacity, ref passed, ref failed, report);
+
             // ── 무게와 과적 ──
             Run("실은 무게가 요구 전력을 올린다", TestLoadRaisesRequirement, ref passed, ref failed, report);
             Run("짐꾼이 허용 중량을 올린다", TestPorterRaisesCapacity, ref passed, ref failed, report);
@@ -219,6 +227,228 @@ namespace Ascend.Prototype.Build.Tests
             if (added != BuildLoadout.MaxSlots)
                 return $"{added}개가 실림 (상한 {BuildLoadout.MaxSlots})";
             if (!loadout.IsFull) return "상한에 닿았는데 IsFull 이 거짓";
+            return null;
+        }
+
+        // ── 적재 정책 ──────────────────────────────────────────────────────
+        //
+        // 씬 하네스(`TenFloorAutoPilot`)와 **같은** `BuildLoadPolicy` 를 검사한다.
+        // 규칙을 두 벌 두면 여기서 고른 시드가 씬에서 다른 결과를 낸다.
+
+        /// <summary>
+        /// 정책이 자리를 다 쓸 때까지 굴린다. **씬 하네스가 하는 것과 같은 선택을 해야 한다** —
+        /// 그러지 않으면 여기서 고른 시드가 씬에서 다른 런이 된다.
+        ///
+        /// 계약을 `Min(1, count - 1)` 로 고르는 이유: `TenFloorAutoPilot` 은 선택지가 둘 이상인
+        /// 계약 층에서 패널을 정확히 한 번 눌러 **1번 선택지**를 확정한다. 여기서 0번을 고르면
+        /// 4층(`{None, AbsorberContract}`)부터 두 경로가 갈리고, 그 뒤의 모든 스핀 결과가 달라진다.
+        ///
+        /// 실측으로는 8개 시드 전부에서 0번과 1번의 **적재 지표가 동일했다**(칸·승객·무게·과적·도달층).
+        /// 그래도 맞춰 두는 이유는 그 무차별이 **밸런스가 바뀌면 사라질 성질**이기 때문이다.
+        /// 지금 우연히 같다는 것과 앞으로도 같다는 것은 다르다.
+        /// </summary>
+        private static (RunSession run, int peakSlots, int peakPassengers, float peakWeight,
+                        float capAtPeak, bool overCapacity, float overWeight, float overCapacityAt)
+            DriveWithLoadPolicy(int seed)
+        {
+            RunSession run = NewTenFloorRun(seed);
+            int peakSlots = 0, peakPassengers = 0, guard = 0;
+            float peakWeight = 0f, capAtPeak = 0f, overWeight = 0f, overCapacityAt = 0f;
+            bool over = false;
+
+            while (!run.IsComplete && !run.IsFailed && guard++ < 200)
+            {
+                FloorSession f = run.Current;
+                if (f == null) break;
+
+                if (f.Phase == FloorPhase.Boarding)
+                {
+                    int pick;
+                    int takeGuard = 0;
+                    // 바깥 루프에는 guard 가 있는데 여기에는 없었다. `TakeOffer` 성공이 반드시
+                    // `_offers` 를 줄인다는 성질이 깨지면 에디터 메인 스레드가 잡힌다.
+                    while ((pick = BuildLoadPolicy.PickIndex(f.BuildOffers, f.Loadout)) >= 0
+                           && takeGuard++ <= BuildLoadout.MaxSlots)
+                        if (!run.TakeBuildOffer(pick)) break;
+                    if (!run.FinishBoarding()) break;
+                }
+
+                if (f.Loadout != null)
+                {
+                    if (f.Loadout.Count > peakSlots) peakSlots = f.Loadout.Count;
+                    int p = BuildLoadPolicy.CountPassengers(f.Loadout);
+                    if (p > peakPassengers) peakPassengers = p;
+                }
+                if (run.CarriedWeight > peakWeight)
+                {
+                    peakWeight = run.CarriedWeight;
+                    capAtPeak = run.WeightCapacity;
+                }
+                // 과적이었던 **그 순간**의 쌍을 따로 남긴다. 최고 무게였던 순간과 과적이었던
+                // 순간은 다를 수 있다 — 짐꾼이 실린 동안 120/130(과적 아님)을 찍고 하차 뒤
+                // 105/100(과적)이 되면, 한 쌍만 들고 다니는 보고서는 「과적했다 — 최고 120/130」
+                // 이라는 스스로를 반증하는 문장을 낸다.
+                if (run.CarriedWeight > run.WeightCapacity)
+                {
+                    over = true;
+                    if (run.CarriedWeight - run.WeightCapacity > overWeight - overCapacityAt)
+                    {
+                        overWeight = run.CarriedWeight;
+                        overCapacityAt = run.WeightCapacity;
+                    }
+                }
+
+                if (f.Phase == FloorPhase.ContractSelection)
+                {
+                    int count = f.Plan.ContractChoices != null ? f.Plan.ContractChoices.Length : 0;
+                    if (!run.SelectContract(count > 1 ? 1 : 0)) break;
+                }
+
+                int spins = 0;
+                while (f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0)
+                {
+                    run.Spin();
+                    if (++spins > 30) break;
+                }
+
+                if (f.CanBank) run.Bank();
+                else if (f.SpinsRemaining == 0) run.ForceResolve();
+                else break;
+            }
+            return (run, peakSlots, peakPassengers, peakWeight, capAtPeak, over, overWeight, overCapacityAt);
+        }
+
+        /// <summary>실패 메시지가 원인을 잘못 지목하지 않도록 런의 종말을 함께 적는다.</summary>
+        private static string DescribeEnd(RunSession run)
+            => run == null ? "런 없음"
+             : $"완주={run.IsComplete} 사고={run.IsFailed} 도달 {run.HighestFloorReached}층" +
+               (string.IsNullOrEmpty(run.FailureReason) ? "" : $" 「{run.FailureReason}」");
+
+        private static string TestLoadPolicyFillsPassengersFirst()
+        {
+            // 짐꾼(12kg)보다 사선 결속기(26kg)가 훨씬 무겁지만, 승객 정원을 채우기 전에는
+            // 승객이 앞서야 한다. 이 순서가 뒤집히면 승객 반응이 다시 관측 불가가 된다.
+            BuildItem heavyPart = BuildCatalog.ById("PRT_DIAGONAL_BINDER");
+            BuildItem lightPassenger = BuildCatalog.ById("PSG_SURVEYOR_LINE");
+
+            var offers = new[] { heavyPart, lightPassenger };
+            int pick = BuildLoadPolicy.PickIndex(offers, new BuildLoadout());
+            if (pick != 1)
+                return $"빈 칸에서 {pick}번({offers[pick].Label})을 골랐다 — 승객이 먼저여야 한다";
+
+            // 정원을 채우면 무게가 이긴다.
+            var full = new BuildLoadout();
+            full.Add(BuildCatalog.ById("PSG_SURVEYOR"));
+            full.Add(BuildCatalog.ById("PSG_MOURNER"));
+            full.Add(BuildCatalog.ById("PSG_TECHNICIAN"));
+            pick = BuildLoadPolicy.PickIndex(offers, full);
+            if (pick != 0)
+                return $"승객 3명을 채운 뒤에도 {pick}번을 골랐다 — 무거운 부품이 앞서야 한다";
+            return null;
+        }
+
+        private static string TestLoadPolicyAvoidsCapacityBonus()
+        {
+            // 짐꾼은 12kg 으로 측량사(6kg)보다 무겁지만 허용 중량을 30 올린다.
+            // 무게만 보면 정책이 스스로 과적이라는 목표를 지운다.
+            BuildItem porter = BuildCatalog.ById("PSG_PORTER");
+            BuildItem surveyor = BuildCatalog.ById("PSG_SURVEYOR_LINE");
+            if (porter.CapacityBonus <= 0f) return "짐꾼의 CapacityBonus 가 0 — 이 검사의 전제가 깨졌다";
+
+            // 승객 정원을 채운 상태에서 비교한다. 정원 이전에는 둘 다 +100 이라 무게차만 남는다.
+            var held = new BuildLoadout();
+            held.Add(BuildCatalog.ById("PSG_SURVEYOR"));
+            held.Add(BuildCatalog.ById("PSG_MOURNER"));
+            held.Add(BuildCatalog.ById("PSG_TECHNICIAN"));
+
+            float porterScore = BuildLoadPolicy.Score(porter, BuildLoadPolicy.CountPassengers(held));
+            float surveyorScore = BuildLoadPolicy.Score(surveyor, BuildLoadPolicy.CountPassengers(held));
+            if (porterScore >= surveyorScore)
+                return $"짐꾼 {porterScore:F1} ≥ 측량사 {surveyorScore:F1} — 허용 중량 증가가 벌점이 아니다";
+            return null;
+        }
+
+        private static string TestLoadPolicyStopsWhenFull()
+        {
+            var loadout = new BuildLoadout();
+            foreach (BuildItem item in BuildCatalog.All)
+            {
+                if (loadout.IsFull) break;
+                loadout.Add(item);
+            }
+            if (!loadout.IsFull) return "카탈로그로 칸을 채우지 못했다 — 이 검사의 전제가 깨졌다";
+
+            var offers = new[] { BuildCatalog.ById("PRT_SOUL_TRAP") };
+            int pick = BuildLoadPolicy.PickIndex(offers, loadout);
+            if (pick != -1) return $"칸이 찼는데 {pick}번을 골랐다";
+
+            if (BuildLoadPolicy.PickIndex(Array.Empty<BuildItem>(), new BuildLoadout()) != -1)
+                return "후보가 없는데 -1 이 아니다";
+            return null;
+        }
+
+        private static string TestLoadPolicyFillsAllSlots()
+        {
+            // 정책의 존재 이유가 이것이다. 번호 순으로 두 개씩 집던 옛 방식은
+            // 아홉 런 전부에서 최고 51kg / 허용 100kg 에 그쳤다.
+            int[] seeds = { 4242, 271828, 555, 12321, 777 };
+            foreach (int seed in seeds)
+            {
+                var r = DriveWithLoadPolicy(seed);
+                if (r.peakSlots < BuildLoadout.MaxSlots)
+                    return $"시드 {seed} 가 {r.peakSlots}/{BuildLoadout.MaxSlots}칸에 그쳤다 " +
+                           $"({DescribeEnd(r.run)}) — 런이 일찍 죽은 것과 정책이 안 채운 것은 다르다";
+            }
+            return null;
+        }
+
+        private static string TestLoadPolicyReachesOverCapacity()
+        {
+            // 과적 경로가 **도달 가능**한지 묻는다. 도달 불가면 `UP-BUILD-11` 의
+            // 과적 경고는 영영 검증되지 않는다 — 구현이 없어서가 아니라 상태에
+            // 닿지 못해서다. 1337 은 씬 시드이기도 하다.
+            var over = DriveWithLoadPolicy(1337);
+            if (!over.overCapacity)
+                return $"시드 1337 이 최고 {over.peakWeight:F0}kg / 허용 {over.capAtPeak:F0}kg — " +
+                       $"과적에 닿지 못했다 ({DescribeEnd(over.run)})";
+
+            var full = DriveWithLoadPolicy(12321);
+            if (full.peakPassengers < BuildLoadPolicy.PassengerFloor)
+                return $"시드 12321 의 최대 동시 승객이 {full.peakPassengers}명 — " +
+                       $"{BuildLoadPolicy.PassengerFloor}명 이상이어야 동시 반응 제한을 관측한다 " +
+                       $"({DescribeEnd(full.run)})";
+            return null;
+        }
+
+        /// <summary>
+        /// 「정원 전에는 승객이 무조건 앞선다」를 **카탈로그 전체로** 확인한다.
+        ///
+        /// 고정된 두 개만 비교하면 이 불변식이 조용히 깨진다. 실제 필요 조건은
+        /// `100 - 20 > max(부품 무게) - min(승객 무게 - 허용중량보너스)` 이고,
+        /// 오늘 값은 `80 > 26 - (12 - 30) = 44` 로 여유가 36 이다.
+        /// 승객 하나에 `CapacityBonus` 가 66 이상 붙거나 부품 하나가 63kg 을 넘으면 깨진다.
+        /// 그때 정책은 승객을 안 태우고, 승객 반응은 다시 「관측 불가」가 된다.
+        /// </summary>
+        private static string TestLoadPolicyPassengerPriorityHoldsForWholeCatalog()
+        {
+            float worstPassenger = float.MaxValue;
+            float bestPart = float.MinValue;
+            string worstPassengerId = "(없음)", bestPartId = "(없음)";
+
+            foreach (BuildItem item in BuildCatalog.All)
+            {
+                float score = BuildLoadPolicy.Score(item, 0);   // 정원 미만 상태
+                if (item.Kind == BuildItemKind.Passenger)
+                {
+                    if (score < worstPassenger) { worstPassenger = score; worstPassengerId = item.Label; }
+                }
+                else if (score > bestPart) { bestPart = score; bestPartId = item.Label; }
+            }
+
+            if (worstPassenger <= bestPart)
+                return $"정원 미만인데 부품 「{bestPartId}」({bestPart:F1}) 가 " +
+                       $"승객 「{worstPassengerId}」({worstPassenger:F1}) 를 이긴다 — " +
+                       "정책이 승객을 안 태우면 승객 반응이 다시 관측 불가가 된다";
             return null;
         }
 

@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 using Ascend.Prototype.Build;
+using Ascend.Prototype.Npc;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.View;
 
@@ -30,8 +31,32 @@ namespace Ascend.Prototype.Run.Tests
         public const string ReportPath = "Logs/tenfloor_playmode.txt";
         private const string PrefKey = "Ascend.TenFloorAutoPilot.Armed";
 
-        /// <summary>런 전체 시간 상한. 넘으면 어딘가 멈춘 것이므로 실패로 본다.</summary>
-        private const float RunDeadlineSeconds = 900f;
+        /// <summary>
+        /// **런 하나**의 시간 상한. 넘으면 그 런이 어딘가에서 멈춘 것이다.
+        ///
+        /// 전에는 하네스 **전체**에 900초를 걸었다. 그러면 상한이 "멈췄는가"가 아니라
+        /// "런이 몇 개인가"를 재게 된다 — 실제로 적재 정책 두 런을 더하자 총 903초가 되어
+        /// 마지막 재현 런이 6층에서 잘렸고, 그 잘린 런을 첫 런과 비교한 재현성 단정
+        /// 두 개가 함께 실패했다. **게임이 아니라 예산이 낸 실패였고, 진단하기 어려운
+        /// 모양이었다** — 로그에는 "방문 층이 다르다"만 남는다.
+        ///
+        /// 런당으로 바꾸면 상한이 런 수와 무관해지고, 덤으로 멈춤 감지가 900초에서
+        /// 200초로 빨라진다. 실측은 런당 약 86초다.
+        /// </summary>
+        private const float PerRunDeadlineSeconds = 200f;
+
+        /// <summary>
+        /// 이 하네스가 도는 런 수. **아래 `DriveRun` 호출 수와 같아야 한다.**
+        /// 총 예산을 여기서 유도하므로, 런을 추가하고 이 수를 안 고치면 총 예산이
+        /// 런당 상한보다 먼저 걸려 **마지막 런(재현 검증)이 잘린다** — 이미 한 번 그렇게 됐다.
+        /// </summary>
+        private const int ExpectedRuns = 11;
+
+        /// <summary>
+        /// 하네스 전체의 뒷문. 런당 상한이 어떤 이유로든 안 걸릴 때만 쓴다.
+        /// 상수로 두지 않고 런 수에서 유도한다 — 상수였을 때 런을 둘 더하자마자 깨졌다.
+        /// </summary>
+        private const float TotalDeadlineSeconds = PerRunDeadlineSeconds * ExpectedRuns + 300f;
 
         private readonly StringBuilder _report = new StringBuilder();
         private readonly List<int> _visited = new List<int>();
@@ -170,28 +195,54 @@ namespace Ascend.Prototype.Run.Tests
             const int seedD = 271828;
 
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedA, 0, false, $"보수·시드{seedA}(무적재·과수확 없음 — 씬 시드)");
+                seedA, 0, false, $"보수·시드{seedA}(무적재·과수확 없음 — 씬 시드)", BoardStyle.ByIndex);
             string firstVisits = string.Join(",", _visited);
             float firstMoney = run.Session.Money;
 
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedB, 0, false, $"보수·시드{seedB}(무적재·과수확 없음)");
+                seedB, 0, false, $"보수·시드{seedB}(무적재·과수확 없음)", BoardStyle.ByIndex);
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedB, 2, true, $"공격·시드{seedB}(층당 2개 적재·과수확 1회)");
+                seedB, 2, true, $"공격·시드{seedB}(층당 2개 적재·과수확 1회)", BoardStyle.ByIndex);
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedC, 0, false, $"보수·시드{seedC}(무적재·과수확 없음)");
+                seedC, 0, false, $"보수·시드{seedC}(무적재·과수확 없음)", BoardStyle.ByIndex);
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedC, 2, true, $"공격·시드{seedC}(층당 2개 적재·과수확 1회)");
+                seedC, 2, true, $"공격·시드{seedC}(층당 2개 적재·과수확 1회)", BoardStyle.ByIndex);
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedD, 0, false, $"보수·시드{seedD}(무적재·과수확 없음)");
+                seedD, 0, false, $"보수·시드{seedD}(무적재·과수확 없음)", BoardStyle.ByIndex);
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedD, 2, true, $"공격·시드{seedD}(층당 2개 적재·과수확 1회)");
+                seedD, 2, true, $"공격·시드{seedD}(층당 2개 적재·과수확 1회)", BoardStyle.ByIndex);
+
+            // ── 적재 정책 ──
+            //
+            // 앞의 일곱 런은 칸을 거의 비운 채로 돈다. 보수는 정의상 0kg 이고, 공격도
+            // 후보 번호가 작은 것부터 두 개씩만 집어 최고 51kg(허용 100kg)이었다.
+            // 그래서 「최대 적재 상태의 동선」·「과적」·「승객 반응」이 전부 **관측 불가**였다.
+            // 반응 0건은 고장이 아니라 칸이 비어 있었다는 뜻이다.
+            //
+            // 두 시드를 쓰는 이유는 한 런으로는 셋을 동시에 못 보기 때문이다.
+            // 헤드리스로 12개 시드를 정책에 태워 먼저 골랐다(같은 `BuildLoadPolicy` 를 쓴다).
+            //
+            //   1337  — 108kg / 허용 100kg. **과적**이 나고 5층에서 사고로 끝난다.
+            //           적재의 대가를 보여주는 유일한 시드였다.
+            //   12321 — 6칸·승객 4명으로 10층을 완주한다. 최대 적재로 열 층을 도는 그림은
+            //           완주하는 시드에서만 나온다.
+            //
+            // 여기서 과수확은 쓰지 않는다. 적재의 효과와 과수확의 판돈이 겹치면
+            // 사고 원인이 둘 중 무엇인지 말할 수 없다.
+            const int seedLoadOver = 1337;
+            const int seedLoadFull = 12321;
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                seedLoadOver, BuildLoadout.MaxSlots, false,
+                $"적재·시드{seedLoadOver}(칸을 채운다 — 과적 예상)", BoardStyle.MaxLoad);
+            yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
+                seedLoadFull, BuildLoadout.MaxSlots, false,
+                $"적재·시드{seedLoadFull}(칸을 채운다 — 완주 예상)", BoardStyle.MaxLoad);
 
             // 재현성은 "같은 시드가 같은 결과를 낸다"이지 "결과가 그럴듯하다"가 아니다.
             // 중간에 다른 시드 세 런을 끼워 넣은 뒤 처음 것을 다시 돌린다 — 엔진이
             // 런 사이에 상태를 흘리면 여기서 갈라진다.
             yield return DriveRun(run, bridge, lever, panel, tank, overharvest, door, figures,
-                seedA, 0, false, $"재현·시드{seedA}(첫 런과 같아야 한다)");
+                seedA, 0, false, $"재현·시드{seedA}(첫 런과 같아야 한다)", BoardStyle.ByIndex);
             string replayVisits = string.Join(",", _visited);
             Check($"시드 {seedA} 재현 — 방문 층이 같다", replayVisits == firstVisits,
                   $"처음 [{firstVisits}] vs 재실행 [{replayVisits}]");
@@ -214,6 +265,59 @@ namespace Ascend.Prototype.Run.Tests
                   _completedSeedSet.Count >= 3,
                   $"완주 시드 [{_completedSeeds}]");
 
+            // ── 적재가 실제로 일어났는가 ──
+            //
+            // 이 네 줄이 여섯 항목의 증거다. 없는 동안 그 여섯은 「구현했다」와
+            // 「관측했다」를 구분할 방법이 없었다.
+            _report.AppendLine();
+            _report.AppendLine($"  ══════ 적재 관측 (전 런 누적) ══════");
+            _report.AppendLine($"  최대 {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸 · " +
+                               $"승객 최대 {_peakPassengersHeld}명 · " +
+                               $"최고 {_peakWeightSeen:F0}kg / 허용 {_capacityAtPeak:F0}kg" +
+                               (_sawOverCapacity
+                                   ? $" · 과적 최대 {_overWeight:F0}/{_overCapacityAt:F0}kg"
+                                   : " · 과적 없음"));
+            _report.AppendLine($"  승객반응 시작 {_reactionsStarted} · 억제 {_reactionsSuppressed} · " +
+                               $"최대동시 {_peakConcurrentReactions}(상한 {_maxConcurrentSeen})");
+
+            Check($"칸을 끝까지 채운 적이 있다 — {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸",
+                  _peakLoadSlots >= BuildLoadout.MaxSlots,
+                  $"최대 {_peakLoadSlots}칸 — 최대 적재 상태를 한 번도 안 만들었으면 " +
+                  "「최대 적재에서도 동선이 유지된다」는 검증되지 않은 것이다");
+
+            // **상한보다 많이 태운 적이 있는가**를 묻는다. `BuildLoadPolicy.PassengerFloor` 와
+            // 비교하면 정책이 지키는 값과 검사가 요구하는 값이 같은 상수가 되어, 그 상수를
+            // 낮추면 둘이 함께 내려가고 아무 검사도 실패하지 않는다. 실제 불변식은
+            // 「§9.4 상한을 관측하려면 승객이 상한보다 많아야 한다」이다.
+            Check($"승객이 동시 반응 상한보다 많이 탄 적이 있다 — {_peakPassengersHeld}명 / 상한 {_maxConcurrentSeen}",
+                  _maxConcurrentSeen > 0 && _peakPassengersHeld > _maxConcurrentSeen,
+                  $"최대 {_peakPassengersHeld}명 · 상한 {_maxConcurrentSeen} — " +
+                  "승객이 상한 이하면 §9.4 는 관측 불가이지 충족이 아니다");
+
+            Check($"허용 중량을 넘긴 적이 있다 — {_overWeight:F0}/{_overCapacityAt:F0}kg",
+                  _sawOverCapacity,
+                  $"최고 {_peakWeightSeen:F0}kg 이 허용 {_capacityAtPeak:F0}kg 을 넘지 못했다 — " +
+                  "과적 경고 경로가 도달 불가");
+
+            Check($"승객 반응이 실제로 시작됐다 — 승객 최대 {_peakPassengersHeld}명에 {_reactionsStarted}건",
+                  _reactionsStarted > 0,
+                  _peakPassengersHeld > 0
+                      ? $"승객이 최대 {_peakPassengersHeld}명 탔는데 반응 0건 — 배선 문제다"
+                      : "승객이 한 명도 안 탔다 — 반응 0건은 배선이 아니라 관측 불가다");
+
+            // **이것이 §9.4 의 유일한 단정이다.** 없으면 `Notify` 의 동시 수 가드가 사라져
+            // 승객 전원이 한 사건에 반응해도 `_reactionsStarted > 0` 이 **더 확실히** 통과한다 —
+            // 회귀가 유일한 단정을 강화하는 상태가 된다.
+            //
+            // 억제 수를 근거로 쓰지 않는 이유: `SuppressedCount` 는 「아무도 못 했다」에서만
+            // 오르고, 그 대부분은 동시 수 상한이 아니라 **쿨다운**(4~10초)이다.
+            Check($"동시 반응이 상한을 넘지 않았다 — 최대동시 {_peakConcurrentReactions} / 상한 {_maxConcurrentSeen}",
+                  _sawReactionView && _maxConcurrentSeen > 0 &&
+                  _peakPassengersHeld > _maxConcurrentSeen &&
+                  _peakConcurrentReactions <= _maxConcurrentSeen,
+                  $"뷰={_sawReactionView} 상한={_maxConcurrentSeen} 승객최대={_peakPassengersHeld} " +
+                  $"최대동시={_peakConcurrentReactions} — 상한 초과이거나 관측 조건이 안 섰다");
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
             _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
             Finish();
@@ -225,14 +329,54 @@ namespace Ascend.Prototype.Run.Tests
         private readonly System.Collections.Generic.HashSet<int> _completedSeedSet =
             new System.Collections.Generic.HashSet<int>();
 
+        // ── 적재 관측 (모든 런에 걸쳐 누적) ──
+        // 런 하나로는 셋을 동시에 못 본다. 과적은 사고로 끝나는 시드에서 나오고,
+        // 승객 4명이 열 층을 함께 가는 그림은 완주하는 시드에서만 나온다.
+        private int _peakLoadSlots;
+        private int _peakPassengersHeld;
+        private float _peakWeightSeen;
+        private float _capacityAtPeak;
+        private bool _sawOverCapacity;
+        private float _overWeight;
+        private float _overCapacityAt;
+        private int _reactionsStarted;
+        private int _reactionsSuppressed;
+        private int _peakConcurrentReactions;
+        private int _maxConcurrentSeen;
+        private bool _sawReactionView;
+        private bool _budgetExhausted;
+
+        /// <summary>
+        /// 적재 방식. <c>boardCount</c> 하나로는 「몇 개」만 말할 수 있고 「무엇을」은 말할 수 없다.
+        /// </summary>
+        private enum BoardStyle
+        {
+            /// <summary>후보 번호 순. 기존 아홉 런의 동작을 그대로 보존한다.</summary>
+            ByIndex = 0,
+
+            /// <summary>칸이 찰 때까지 <see cref="BuildLoadPolicy"/>가 고른 것을 집는다.</summary>
+            MaxLoad = 1,
+        }
+
         private IEnumerator DriveRun(RunSessionBehaviour run, RouletteInteractionBridge bridge,
             InteractableLever lever, InteractableContractPanel panel, InteractablePowerTank tank,
             InteractableOverharvestLever overharvest, InteractableDoorControl door,
-            BuildFigureView figures, int seed, int boardCount, bool useOverharvest, string policy)
+            BuildFigureView figures, int seed, int boardCount, bool useOverharvest, string policy,
+            BoardStyle style)
         {
+            // 예산이 이미 바닥났으면 남은 런은 돌지 않는다. 돌아봐야 각자 즉시 같은 검사에
+            // 걸려 FAIL 만 늘리고, 그 더미 속에서 진짜 원인이 안 보인다.
+            if (_budgetExhausted)
+            {
+                _report.AppendLine();
+                _report.AppendLine($"  ══════ {policy} — 예산 초과로 건너뜀 ══════");
+                yield break;
+            }
+
             _report.AppendLine();
             _report.AppendLine($"  ══════ {policy} ══════");
             _runsDriven++;
+            float runStartedAt = Time.realtimeSinceStartup;
             run.ResetRun(RunMode.TenFloor, seed);
             _visited.Clear();
             for (int i = 0; i < 3; i++) yield return null;
@@ -248,13 +392,31 @@ namespace Ascend.Prototype.Run.Tests
 
             while (!run.Session.IsComplete && !run.Session.IsFailed && guard++ < 400)
             {
-                if (Time.realtimeSinceStartup - _startedAt > RunDeadlineSeconds)
+                float now = Time.realtimeSinceStartup;
+                FloorSession floor = run.Session.Current;
+
+                if (now - runStartedAt > PerRunDeadlineSeconds)
                 {
-                    Fail("런 시간 상한", $"{RunDeadlineSeconds}초를 넘겼다 — 어딘가에서 멈췄다");
+                    // 「어딘가에서 멈췄다」가 어디인지 로그에 남겨야 진단이 된다.
+                    Fail($"[{policy}] 런 시간 상한",
+                         $"이 런 하나가 {PerRunDeadlineSeconds:F0}초를 넘겼다 — " +
+                         $"{(floor != null ? floor.Plan.Floor.ToString() : "?")}층 " +
+                         $"단계={(floor != null ? floor.Phase.ToString() : "?")} " +
+                         $"연출잠금={bridge.IsLocked} 방문=[{string.Join(",", _visited)}]");
+                    break;
+                }
+                if (now - _startedAt > TotalDeadlineSeconds)
+                {
+                    // 여기서 `break` 만 하면 남은 런이 계속 돌면서 같은 검사에 즉시 걸려
+                    // FAIL 이 연쇄로 쌓인다. 한 번의 예산 초과가 열 줄의 실패로 번지면
+                    // 원인이 묻힌다. 그래서 하네스를 끝낸다.
+                    Fail("하네스 전체 시간 상한",
+                         $"{TotalDeadlineSeconds:F0}초({ExpectedRuns}런 × {PerRunDeadlineSeconds:F0}초 + 여유)를 " +
+                         $"넘겼다 — {_runsDriven}번째 런에서. 런을 추가했으면 ExpectedRuns 도 고칠 것");
+                    _budgetExhausted = true;
                     break;
                 }
 
-                FloorSession floor = run.Session.Current;
                 if (floor == null) break;
 
                 int number = floor.Plan.Floor;
@@ -271,6 +433,7 @@ namespace Ascend.Prototype.Run.Tests
                 // "요구 519 = 365 + 77×2"가 그 증거였다. 보고서가 거짓을 적었다.
                 // 적재 직후와 층 종료 직전에도 표본을 뜬다.
                 peakWeight = Mathf.Max(peakWeight, run.Session.CarriedWeight);
+                SampleLoad(run.Session);
 
                 // ── 적재 단계 ──
                 if (floor.Phase == FloorPhase.Boarding)
@@ -287,8 +450,12 @@ namespace Ascend.Prototype.Run.Tests
                     Check($"{number}층 승강장에 후보가 서 있다", candidates.Length > 0,
                           "후보 오브젝트가 하나도 없다 — 메뉴로만 존재한다는 뜻");
 
+                    // `MaxLoad` 는 `boardCount` 를 보지 않는다. 두 축이 함께 상한을 걸면
+                    // `DriveRun(..., 0, ..., BoardStyle.MaxLoad)` 가 컴파일되고 정책이 한 번도
+                    // 불리지 않은 채 적재 관측 넷이 0으로 실패한다 — 실패 메시지는 정책을 가리킨다.
                     int taken = 0;
-                    while (taken < boardCount)
+                    while (!run.Session.Loadout.IsFull &&
+                           (style == BoardStyle.MaxLoad || taken < boardCount))
                     {
                         candidates = FindObjectsByType<InteractableBuildCandidate>(
                             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -302,6 +469,36 @@ namespace Ascend.Prototype.Run.Tests
                         InteractableBuildCandidate pick = candidates[0];
                         for (int i = 1; i < candidates.Length; i++)
                             if (candidates[i].Index < pick.Index) pick = candidates[i];
+
+                        // 적재 정책은 **무엇을** 집을지까지 정한다. 번호 순으로 집으면
+                        // 아홉 런 전부에서 칸이 거의 비었고(최고 51kg / 허용 100kg),
+                        // 승객이 없으니 승객 반응은 「시작 0건」으로 찍혔다 —
+                        // 고장이 아니라 관측 불가였다. 규칙은 `BuildLoadPolicy` 한 곳에
+                        // 있고 헤드리스 시드 탐색이 같은 것을 쓴다.
+                        if (style == BoardStyle.MaxLoad)
+                        {
+                            int want = BuildLoadPolicy.PickIndex(floor.BuildOffers, run.Session.Loadout);
+                            if (want < 0) break;
+
+                            InteractableBuildCandidate byPolicy = null;
+                            for (int i = 0; i < candidates.Length; i++)
+                                if (candidates[i].Index == want) { byPolicy = candidates[i]; break; }
+
+                            // **번호가 아니라 물건을 확인한다.** `want` 는 줄어드는
+                            // `floor.BuildOffers` 의 인덱스이고 `candidate.Index` 는 뷰가 마지막에
+                            // 재빌드한 시점의 인덱스다. 오늘은 취득마다 두 프레임을 줘서 일치하지만,
+                            // 그 정합성은 **프레임 관습에 걸려 있다** — 뷰가 그 프레임에 재빌드하지
+                            // 못하면 번호는 맞는데 다른 물건을 집는다. 번호만 보는 검사는 그대로 통과한다.
+                            string wantedId = floor.BuildOffers[want].Id;
+                            bool matches = byPolicy != null &&
+                                           byPolicy.name == "Candidate_" + wantedId;
+                            Check($"{number}층 정책이 고른 {floor.BuildOffers[want].Label} 을 집는다",
+                                  matches,
+                                  $"{want}번을 원했는데 {(byPolicy == null ? "그 번호가 없다" : byPolicy.name)} · " +
+                                  $"후보 {candidates.Length}개 · 제시 {floor.BuildOffers.Count}개");
+                            if (!matches) break;
+                            pick = byPolicy;
+                        }
 
                         pick.Interact(gameObject);
                         taken++;
@@ -322,6 +519,7 @@ namespace Ascend.Prototype.Run.Tests
                     door.Interact(gameObject);
                     yield return null;
                     peakWeight = Mathf.Max(peakWeight, run.Session.CarriedWeight);
+                    SampleLoad(run.Session);
                     Check($"{number}층 문을 닫으면 적재가 끝난다",
                           floor.Phase != FloorPhase.Boarding, floor.Phase.ToString());
                 }
@@ -434,9 +632,12 @@ namespace Ascend.Prototype.Run.Tests
 
             // ── 런 결과 ──
             RunSession session = run.Session;
+            SampleLoad(session);
+            CollectReactions();
             _report.AppendLine($"  방문 층: [{string.Join(",", _visited)}]");
             _report.AppendLine($"  최고 무게 {peakWeight:F0} / 소지금 {session.Money:F0} / " +
-                               $"적재 [{session.Loadout.DescribeShort()}]");
+                               $"적재 [{session.Loadout.DescribeShort()}] / " +
+                               $"소요 {Time.realtimeSinceStartup - runStartedAt:F1}초");
 
             Check($"[{policy}] 런이 완주 또는 사고로 끝났다", session.IsComplete || session.IsFailed,
                   $"complete={session.IsComplete} failed={session.IsFailed} guard={guard}");
@@ -569,6 +770,73 @@ namespace Ascend.Prototype.Run.Tests
         {
             _failed++;
             _report.AppendLine($"  FAIL  {name} — {detail}");
+        }
+
+        /// <summary>
+        /// 적재 최고치를 거둔다. 층 머리에서만 재면 **적재 전** 값만 남는다 —
+        /// 무게 쪽에서 이미 한 번 당했고(보고서가 "최고 무게 33"을 적었지만 실제로는 77kg),
+        /// 칸 수·승객 수도 같은 함정을 갖는다. 승객은 목적지에서 내리므로 층이 끝난 뒤에
+        /// 세면 언제나 더 적다.
+        /// </summary>
+        private void SampleLoad(RunSession session)
+        {
+            if (session == null || session.Loadout == null) return;
+
+            if (session.Loadout.Count > _peakLoadSlots) _peakLoadSlots = session.Loadout.Count;
+
+            int passengers = BuildLoadPolicy.CountPassengers(session.Loadout);
+            if (passengers > _peakPassengersHeld) _peakPassengersHeld = passengers;
+
+            if (session.CarriedWeight > _peakWeightSeen)
+            {
+                _peakWeightSeen = session.CarriedWeight;
+                _capacityAtPeak = session.WeightCapacity;
+            }
+
+            // 과적이었던 **그 순간**의 쌍을 따로 남긴다. 최고 무게였던 순간과 과적이었던
+            // 순간은 다를 수 있다 — 짐꾼(허용 +30)이 실린 동안 120/130(과적 아님)을 찍고
+            // 하차 뒤 105/100(과적)이 되면, 한 쌍만 들고 다니는 보고서는
+            // 「허용 중량을 넘긴 적이 있다 — 최고 120/130kg」이라는 **스스로를 반증하는**
+            // 문장을 낸다. 이 저장소가 이미 당한 "전력 314/요구 355인데 게이지 0"과 같은 모양이다.
+            if (session.CarriedWeight > session.WeightCapacity)
+            {
+                _sawOverCapacity = true;
+                if (session.CarriedWeight - session.WeightCapacity > _overWeight - _overCapacityAt)
+                {
+                    _overWeight = session.CarriedWeight;
+                    _overCapacityAt = session.WeightCapacity;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 승객 반응 누적치를 런이 끝나기 전에 거둔다. 다음 런의 `ResetRun` 이
+        /// 뷰의 누적을 0 으로 되돌리므로 여기서 안 거두면 영영 못 본다.
+        /// </summary>
+        private void CollectReactions()
+        {
+            // `FindAnyObjectByType` 는 기본이 `FindObjectsInactive.Exclude` 다. 뷰가 비활성
+            // 오브젝트로 옮겨가면 null 이 오는데, 조용히 `return` 하면 리포트에 아무 줄도 남지
+            // 않고 최종 단정만 「반응 0건 — 배선 문제다」로 실패한다. 그 문구는 **다른 상황**을
+            // 가리킨다. 이 저장소의 원형 실패(비활성 오브젝트 위의 죽은 파이프라인)가 정확히 이 모양이다.
+            PassengerReactionView view = FindAnyObjectByType<PassengerReactionView>();
+            if (view == null)
+            {
+                Fail("승객 반응 뷰가 씬에 있다",
+                     "FindAnyObjectByType 가 null — 비활성 오브젝트 위인지 확인할 것");
+                return;
+            }
+            _sawReactionView = true;
+
+            _reactionsStarted += view.TotalStartedCount;
+            _reactionsSuppressed += view.TotalSuppressedCount;
+            if (view.PeakActiveCount > _peakConcurrentReactions)
+                _peakConcurrentReactions = view.PeakActiveCount;
+            if (view.MaxConcurrent > _maxConcurrentSeen) _maxConcurrentSeen = view.MaxConcurrent;
+
+            _report.AppendLine($"  승객반응 시작 {view.TotalStartedCount} / 억제 {view.TotalSuppressedCount}" +
+                               $" / 최대동시 {view.PeakActiveCount}(상한 {view.MaxConcurrent})" +
+                               $" / 승객 {view.PassengerCount}명");
         }
 
         private void Finish()
