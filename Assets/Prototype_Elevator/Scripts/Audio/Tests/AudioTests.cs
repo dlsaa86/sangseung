@@ -35,8 +35,14 @@ namespace Ascend.Prototype.Audio.Tests
             Run("승객 반응 사건이 목소리를 만든다", TestVoiceFromReactionEvents, ref passed, ref failed, report);
             Run("반응이 아닌 사건은 조용하다", TestNonReactionEventsAreVoiceless, ref passed, ref failed, report);
             Run("같은 사건은 같은 목소리를 낸다", TestVoiceIsDeterministic, ref passed, ref failed, report);
+            Run("§9.3 의 다섯 표현이 전부 쓰인다", TestFiveVoiceExpressions, ref passed, ref failed, report);
+            Run("변형 하나가 종류와 목소리를 함께 싣는다", TestVoiceVariantEncoding, ref passed, ref failed, report);
+            Run("반응 데이터의 큐 ID 가 전부 소리에 닿는다", TestVoiceCueIdsResolve, ref passed, ref failed, report);
             Run("사이렌은 §8.3 의 네 순간에만 울린다", TestSirenOnlyOnFourMoments, ref passed, ref failed, report);
             Run("사이렌 넷이 서로 다르게 들린다", TestSirenVariantsDiffer, ref passed, ref failed, report);
+            Run("지속 위험 레이어가 단계마다 두꺼워진다", TestDangerBedRises, ref passed, ref failed, report);
+            Run("안정 단계에는 응력음이 없다", TestDangerBedQuietWhenStable, ref passed, ref failed, report);
+            Run("지속 레이어가 정적과 데이터를 따른다", TestDangerBedFollowsInputs, ref passed, ref failed, report);
             Run("정적 — 시작 전 1, 정적 0, 끝난 뒤 1", TestSilenceBoundaries, ref passed, ref failed, report);
             Run("정적 — 감쇠는 단조 감소, 재개는 단조 증가", TestSilenceMonotonic, ref passed, ref failed, report);
             Run("정적 길이가 0.3~0.7 로 조여진다", TestSilenceClamped, ref passed, ref failed, report);
@@ -368,17 +374,170 @@ namespace Ascend.Prototype.Audio.Tests
 
                 // Prewarm 이 굽는 범위를 넘으면 첫 발성이 굽는 프레임이 되고,
                 // 하필 그 순간이 붕괴라 성능 캡처에 스파이크로 남는다.
-                if (req.Variant < 0 || req.Variant >= AudioCueTable.VoicePassengerCount)
-                    return $"{VoiceEvents[i]} 변형 {req.Variant} — Prewarm 범위 밖";
+                // 변형은 이제 **종류와 목소리를 함께** 싣는다(`PassengerVoices.Encode`) —
+                // 그래서 "4 미만인가"가 아니라 "구워 둔 집합 안인가"를 묻는다.
+                if (!PassengerVoices.IsPrewarmed(req.Variant))
+                    return $"{VoiceEvents[i]} 변형 {req.Variant}" +
+                           $"(종류 {PassengerVoices.KindOf(req.Variant)}, " +
+                           $"목소리 {PassengerVoices.SlotOf(req.Variant)}) — Prewarm 범위 밖";
 
-                variants[i] = req.Variant;
+                variants[i] = PassengerVoices.SlotOf(req.Variant);
             }
 
             // 한 층 안에서 언제나 같은 사람만 말하면 승객이 넷이라는 사실이 소리에 없다.
+            // **목소리 슬롯**으로 센다 — 변형 번호로 세면 종류만 달라도 통과해 버려서
+            // "다른 사람이 말했다"를 증명하지 못한다.
             bool varied = false;
             for (int i = 1; i < variants.Length; i++)
                 if (variants[i] != variants[0]) { varied = true; break; }
             if (!varied) return "모든 반응이 같은 승객에게 갔다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// `MASTER_PRD.md` §9.3 은 비언어 음성으로 웃음·한숨·호흡·기도·비난 다섯을 센다.
+        /// 다섯 종류를 **정의만** 해 두고 반응 배분에서 셋만 쓰면, 남은 둘은 합성기에만
+        /// 있고 게임에서는 영원히 들리지 않는다 — 이 저장소가 `PassengerVoice` 자체에서
+        /// 이미 겪은 형태의 실패다(「합성기도 있고 큐 종류도 있고 재생 통로도 있었지만
+        /// 부르는 코드가 없었다」).
+        /// </summary>
+        private static string TestFiveVoiceExpressions()
+        {
+            int mask = 0;
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
+                mask |= 1 << (int)PassengerVoices.FromReaction(reaction);
+
+            for (int k = 0; k < PassengerVoices.KindCount; k++)
+                if ((mask & (1 << k)) == 0)
+                    return $"음성 종류 {(PassengerVoiceKind)k} 를 아무 반응도 쓰지 않는다";
+
+            // 열거가 늘었는데 KindCount 가 그대로면 새 종류가 **조용히** 마지막 종류로
+            // 접힌다(`Encode` 가 범위를 조인다). 컴파일도 되고 소리도 나므로 아무도
+            // 눈치채지 못한다 — 이 저장소가 채널 열거에서 이미 겪은 실패의 모양이다.
+            int declared = Enum.GetValues(typeof(PassengerVoiceKind)).Length;
+            if (declared != PassengerVoices.KindCount)
+                return $"PassengerVoiceKind 멤버 {declared} 개인데 KindCount 는 {PassengerVoices.KindCount} 다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// 변형 번호 하나에 두 축이 접혀 있다 — 종류(어떤 소리인가)와 슬롯(누가 냈는가).
+        /// 인코딩이 어긋나면 **컴파일도 되고 소리도 나는데 종류만 틀린다.**
+        /// 이 저장소가 채널 열거 두 벌에서 이미 겪은 실패와 같은 모양이다
+        /// (`AudioDirector.ToMixChannel` 주석).
+        /// </summary>
+        private static string TestVoiceVariantEncoding()
+        {
+            var used = new bool[PassengerVoices.MaxVariant + 1];
+
+            for (int k = 0; k < PassengerVoices.KindCount; k++)
+                for (int s = 0; s < PassengerVoices.SlotCount; s++)
+                {
+                    var kind = (PassengerVoiceKind)k;
+                    int variant = PassengerVoices.Encode(kind, s);
+
+                    if (variant < 0 || variant > PassengerVoices.MaxVariant)
+                        return $"{kind}/{s} → 변형 {variant} 이 상한 {PassengerVoices.MaxVariant} 밖이다";
+                    if (used[variant]) return $"{kind}/{s} 의 변형 {variant} 이 다른 조합과 겹친다";
+                    used[variant] = true;
+
+                    if (PassengerVoices.KindOf(variant) != kind)
+                        return $"변형 {variant} 의 종류가 {PassengerVoices.KindOf(variant)} 로 풀린다 (기대 {kind})";
+                    if (PassengerVoices.SlotOf(variant) != s)
+                        return $"변형 {variant} 의 슬롯이 {PassengerVoices.SlotOf(variant)} 로 풀린다 (기대 {s})";
+                }
+
+            // 범위 밖 입력이 예외를 내거나 캐시를 늘리면 안 된다.
+            if (PassengerVoices.Encode((PassengerVoiceKind)99, 99) > PassengerVoices.MaxVariant)
+                return "범위 밖 인코딩이 조여지지 않았다";
+            if (PassengerVoices.KindOf(-7) != PassengerVoiceKind.Breath)
+                return "음수 변형이 기본 종류로 조여지지 않았다";
+
+            // **종류는 피치를 건드리지 않아야 한다.** 종류가 피치를 바꾸면
+            // "누가 냈는가"가 "무슨 소리인가"에 덮여서 승객 구분이 사라진다.
+            for (int s = 0; s < PassengerVoices.SlotCount; s++)
+            {
+                float basePitch = AudioCueTable.PassengerVoice(s, PassengerVoiceKind.Breath, 0.6f).Pitch;
+                for (int k = 1; k < PassengerVoices.KindCount; k++)
+                {
+                    AudioCueRequest req = AudioCueTable.PassengerVoice(s, (PassengerVoiceKind)k, 0.6f);
+                    if (Math.Abs(req.Pitch - basePitch) > 0.0001f)
+                        return $"슬롯 {s}: 종류 {(PassengerVoiceKind)k} 가 피치를 {req.Pitch:0.###} 로 바꿨다 " +
+                               $"(기대 {basePitch:0.###})";
+                    if (PassengerVoices.SlotOf(req.Variant) != s)
+                        return $"슬롯 {s} 가 종류 {(PassengerVoiceKind)k} 에서 사라졌다";
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// `PassengerReactionSet` 의 큐 ID 가 전부 음성 종류로 풀리는가.
+        ///
+        /// **이것이 UP-NPC-04 의 「큐 ID 만 있고 재생 배선이 없다」를 막는 검사다.**
+        /// 반응 데이터에 새 큐 ID 를 적어 넣고 오디오 쪽에 그 ID 를 모르면, 승객은
+        /// 몸으로는 반응하는데 소리는 기본값(호흡)으로 떨어진다 — 화면만 봐서는
+        /// "그 반응은 원래 조용한가"와 구분되지 않는다.
+        /// </summary>
+        /// <summary>
+        /// 대조 반응(`PassengerReactionSet.DefaultContrastFor`)의 큐 ID.
+        ///
+        /// **문자열로 베껴 둔 것은 의도적이다.** 그 API 는 지금 다른 소유 영역
+        /// (`Scripts/Npc`)에서 만들어지는 중이라, 여기서 타입을 이름으로 붙들면
+        /// 그쪽이 이름을 한 번 바꿀 때 **오디오가 아니라 전체 어셈블리**가 컴파일되지
+        /// 않는다(asmdef 이 없다). 그 API 가 굳으면 이 배열을 지우고
+        /// `DefaultContrastFor` 를 순회하는 것이 맞다.
+        ///
+        /// 대조 반응의 소리가 주 반응과 같으면 §9.3 의 「같은 사건에 상반된 반응」이
+        /// 자세에만 남고 귀로는 사라진다 — 그래서 여기가 비어 있으면 안 된다.
+        /// </summary>
+        private static readonly string[] ContrastCueIds =
+        {
+            "npc_murmur_doubt", "npc_tsk", "npc_gasp", "npc_breath_hold",
+            "npc_murmur_rise", "npc_awe", "npc_whimper", "npc_murmur_urge",
+            "npc_cheer_wild", "npc_scream_long", "npc_flinch_short",
+        };
+
+        private static string TestVoiceCueIdsResolve()
+        {
+            foreach (string cue in ContrastCueIds)
+            {
+                PassengerVoiceKind contrastKind;
+                if (!PassengerVoices.TryFromCueId(cue, out contrastKind))
+                    return $"대조 반응의 큐 ID \"{cue}\" 를 오디오가 모른다";
+            }
+
+            // 같은 사건의 주 반응과 대조 반응이 같은 소리면 대비가 소리에서 사라진다.
+            // 가장 크게 갈려야 하는 한 쌍(5연쇄: 환호 ↔ 공포)으로 확인한다.
+            PassengerVoiceKind cheer, brace;
+            PassengerVoices.TryFromCueId("npc_awe", out cheer);
+            PassengerVoices.TryFromCueId("npc_gasp", out brace);
+            if (cheer == brace)
+                return $"5연쇄의 환호와 공포가 같은 소리({cheer})로 간다";
+
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
+            {
+                Npc.PassengerReaction data = Npc.PassengerReactionSet.DefaultFor(reaction);
+                if (string.IsNullOrEmpty(data.VoiceCue)) continue;
+
+                PassengerVoiceKind kind;
+                if (!PassengerVoices.TryFromCueId(data.VoiceCue, out kind))
+                    return $"{Npc.PassengerReactionEvents.DisplayName(reaction)} 의 큐 ID " +
+                           $"\"{data.VoiceCue}\" 를 오디오가 모른다";
+            }
+
+            // 모르는 ID 는 조용히 기본값으로 떨어지지 않고 false 여야 한다 —
+            // 그래야 오타와 의도적인 호흡 선택이 구분된다.
+            PassengerVoiceKind unknown;
+            if (PassengerVoices.TryFromCueId("npc_저것은_없는_큐", out unknown))
+                return "없는 큐 ID 가 참을 돌려준다";
+            if (PassengerVoices.TryFromCueId(null, out unknown))
+                return "null 큐 ID 가 참을 돌려준다";
+            if (unknown != PassengerVoiceKind.Breath)
+                return $"실패 경로의 기본 종류가 {unknown} 다 (기대 Breath)";
 
             return null;
         }
@@ -563,6 +722,148 @@ namespace Ascend.Prototype.Audio.Tests
             AudioCueTable.TryMapSiren(in collapse, out high);
             if (high.Volume <= low.Volume)
                 return $"Collapse 사이렌 {high.Volume:0.###} ≤ Strain {low.Volume:0.###}";
+
+            return null;
+        }
+
+        // ── 지속 위험 레이어 (UP-RISK-05) ────────────────────────────────────
+        //
+        // 사이렌 검사(위)와 **짝을 이룬다.** 사이렌이 네 순간에만 울린다는 것만 지키면
+        // 위험 단계가 오른 뒤 아무 사건도 없는 구간이 통째로 조용해진다. §8.3 은
+        // 사이렌을 금지한 자리를 저주파와 금속 응력음으로 채우라고 지정했고,
+        // 아래 셋이 그것이 실제로 채워졌는지 눈금으로 묻는다.
+
+        /// <summary>단계별 험 볼륨을 흉내 낸 표본. 표준 프리셋의 `RiskProfile.HumVolume` 이다.</summary>
+        private static readonly float[] SampleHumVolume = { 0.10f, 0.20f, 0.34f, 0.42f };
+
+        private static string TestDangerBedRises()
+        {
+            // 험 볼륨을 **고정**해서 부른다. 프로파일 값이 이미 오르는 값이라
+            // 그대로 넣으면 "가중치가 오른다"인지 "험이 올라서다"인지 갈리지 않는다.
+            const float hum = 0.30f;
+
+            float previousSub = -1f;
+            float previousStress = -1f;
+            float previousPitch = -1f;
+
+            for (int level = 0; level < DangerBed.LevelCount; level++)
+            {
+                DangerBedTargets t = DangerBed.Evaluate(
+                    (Risk.RiskLevel)level, hum, 1f, 1f, 1f, 1f);
+
+                if (t.StressVariant != level)
+                    return $"단계 {level} 의 응력 파형이 {t.StressVariant} 로 간다";
+
+                if (t.SubVolume <= previousSub)
+                    return $"단계 {level} 저역 {t.SubVolume:0.####} ≤ 단계 {level - 1} {previousSub:0.####}";
+                if (t.StressPitch <= previousPitch)
+                    return $"단계 {level} 응력 피치 {t.StressPitch:0.###} ≤ 단계 {level - 1} {previousPitch:0.###}";
+
+                // 안정(0)의 응력은 0 이므로 "커진다"는 1단계부터 잰다.
+                if (level > 0 && t.StressVolume <= previousStress)
+                    return $"단계 {level} 응력 {t.StressVolume:0.####} ≤ 단계 {level - 1} {previousStress:0.####}";
+
+                previousSub = t.SubVolume;
+                previousStress = t.StressVolume;
+                previousPitch = t.StressPitch;
+            }
+
+            // 실제 프로파일 값으로도 같은 방향이어야 한다 — 험 자체가 Collapse 에서
+            // 조금 꺾여도(표준 프리셋 0.42) 지속층은 더 두꺼워져야 한다.
+            float last = -1f;
+            for (int level = 0; level < DangerBed.LevelCount; level++)
+            {
+                DangerBedTargets t = DangerBed.Evaluate(
+                    (Risk.RiskLevel)level, SampleHumVolume[level], 1f, 1f, 1f, 1f);
+                if (t.SubVolume <= last)
+                    return $"프로파일 값에서 단계 {level} 저역이 늘지 않았다 ({t.SubVolume:0.####})";
+                last = t.SubVolume;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 안정 단계에서 삐걱이면 그건 안정이 아니다. 응력음이 늘 깔려 있으면
+        /// Strain 으로 올라간 것을 귀로 알 수 없고, 그러면 이 레이어는 위험 표현이 아니라
+        /// 배경음이 된다 — `VISUAL_BIBLE.md` 금지 16번(「지속 재생되는 사이렌」)이
+        /// 다른 이름으로 재현되는 것과 같은 실패다.
+        ///
+        /// 반대로 **저역은 안정에서도 0 이 아니어야 한다.** 0 이면 위험이 오를 때
+        /// 「소리가 생겼다」로 들려서 그 순간이 사건처럼 읽히고, 지속층이라는 성질이 사라진다.
+        /// </summary>
+        private static string TestDangerBedQuietWhenStable()
+        {
+            DangerBedTargets stable = DangerBed.Evaluate(
+                Risk.RiskLevel.Stable, 0.10f, 1f, 1f, 1f, 1f);
+
+            if (stable.StressVolume != 0f)
+                return $"안정 단계 응력음 {stable.StressVolume:0.####} — 0 이어야 한다";
+            if (stable.SubVolume <= 0f)
+                return "안정 단계 저역이 0 이다 — 지속층이 위험과 함께 생겨나면 안 된다";
+
+            // 배율을 아무리 올려도 안정의 응력은 0 이다. 가중치가 아니라 **구조**여야 한다.
+            DangerBedTargets loud = DangerBed.Evaluate(
+                Risk.RiskLevel.Stable, 1f, 1f, 2f, 2f, 1f);
+            if (loud.StressVolume != 0f)
+                return $"배율을 올리자 안정 단계에 응력음이 생겼다 ({loud.StressVolume:0.####})";
+
+            return null;
+        }
+
+        private static string TestDangerBedFollowsInputs()
+        {
+            for (int level = 0; level < DangerBed.LevelCount; level++)
+            {
+                var risk = (Risk.RiskLevel)level;
+
+                // 과수확 정적(§7.3) — 게인 0 이면 지속층도 사라진다. 남아 있으면
+                // 「방이 조용해졌다」가 아니라 「사건음만 꺼졌다」가 된다.
+                DangerBedTargets silent = DangerBed.Evaluate(risk, 0.5f, 1f, 1f, 1f, 0f);
+                if (silent.SubVolume != 0f || silent.StressVolume != 0f)
+                    return $"단계 {level}: 정적 게인 0 인데 {silent}";
+
+                // 프로파일이 험을 끄면 지속층도 없다 — 값의 출처가 하나라는 증거다.
+                DangerBedTargets noHum = DangerBed.Evaluate(risk, 0f, 1f, 1f, 1f, 1f);
+                if (noHum.SubVolume != 0f || noHum.StressVolume != 0f)
+                    return $"단계 {level}: 험 0 인데 지속층이 남았다 ({noHum})";
+
+                // 배율 0 이면 그 층만 사라진다. 둘이 한 스위치로 묶여 있으면
+                // 저주파를 끈 사람에게서 위험의 청각 채널이 통째로 없어진다.
+                DangerBedTargets noSub = DangerBed.Evaluate(risk, 0.5f, 1f, 0f, 1f, 1f);
+                if (noSub.SubVolume != 0f) return $"단계 {level}: 저역 배율 0 인데 {noSub.SubVolume:0.####}";
+                if (level > 0 && noSub.StressVolume <= 0f)
+                    return $"단계 {level}: 저역을 껐더니 응력음까지 사라졌다";
+
+                // 극단값에서도 범위를 지킨다. 범위 밖 볼륨은 재생기에서 조용히 잘려
+                // "왜 안 들리지"로 끝난다.
+                float[] hums = { -5f, 0f, 0.3f, 50f };
+                float[] pitches = { -1f, 0f, 1f, 99f };
+                foreach (float hum in hums)
+                    foreach (float pitch in pitches)
+                    {
+                        DangerBedTargets t = DangerBed.Evaluate(risk, hum, pitch, 3f, 3f, 1f);
+                        if (float.IsNaN(t.SubVolume) || float.IsNaN(t.StressVolume)) return $"단계 {level}: NaN";
+                        if (t.SubVolume < 0f || t.SubVolume > 1f) return $"단계 {level}: 저역 {t.SubVolume}";
+                        if (t.StressVolume < 0f || t.StressVolume > 1f) return $"단계 {level}: 응력 {t.StressVolume}";
+                        if (t.SubPitch < DangerBed.MinPitch || t.SubPitch > DangerBed.MaxPitch)
+                            return $"단계 {level}: 저역 피치 {t.SubPitch}";
+                        if (t.StressPitch < DangerBed.MinPitch || t.StressPitch > DangerBed.MaxPitch)
+                            return $"단계 {level}: 응력 피치 {t.StressPitch}";
+                    }
+            }
+
+            // 저역 피치는 위험 프로파일의 험 피치를 따라간다 — 같은 기계이기 때문이다.
+            DangerBedTargets low = DangerBed.Evaluate(Risk.RiskLevel.Collapse, 0.4f, 0.78f, 1f, 1f, 1f);
+            if (Math.Abs(low.SubPitch - 0.78f) > 0.0001f)
+                return $"저역 피치가 험 피치를 따라가지 않는다 ({low.SubPitch:0.###})";
+
+            // 응력음 피치는 따라가지 **않는다.** 표준 프리셋의 험 피치는 Collapse 에서
+            // 0.78 로 떨어지는데, 그 형태를 그대로 쓰면 응력음이 붕괴 직전에 가장
+            // 느슨해진다. 금속은 부러지기 직전에 가장 조여 있다.
+            if (low.StressPitch <= DangerBed.StressPitchAt(Risk.RiskLevel.Critical))
+                return $"Collapse 응력 피치 {low.StressPitch:0.###} ≤ Critical " +
+                       $"{DangerBed.StressPitchAt(Risk.RiskLevel.Critical):0.###}";
 
             return null;
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Ascend.Prototype.Build;
+using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.Events;
 using Ascend.Prototype.Spin;
 
@@ -19,8 +20,9 @@ namespace Ascend.Prototype.Run
         private ResidualState _residual;
         private FloorSession _current;
         private float _baseWeight;
-        private readonly float _anteRatio;
-        private readonly float _anteEscalation;
+
+        /// <summary>층마다 그대로 넘어가는 과수확 수치 9종 (`UP-POWER-07`).</summary>
+        private readonly OverharvestSnapshot _overharvest;
 
         public RunSession(int seed = 1337, float startingWeight = 0f, float startingMoney = 0f)
             : this(seed, startingWeight, startingMoney,
@@ -40,6 +42,26 @@ namespace Ascend.Prototype.Run
         /// </summary>
         public RunSession(int seed, float startingWeight, float startingMoney,
             float anteRatio, float anteEscalation, IFloorPlanSource floors)
+            : this(seed, startingWeight, startingMoney,
+                new OverharvestSnapshot(
+                    Math.Max(0f, anteRatio), Math.Max(0f, anteEscalation),
+                    OverharvestProfile.DefaultUnlockThreshold,
+                    OverharvestProfile.DefaultApproachMachineDuckScale,
+                    OverharvestProfile.DefaultMinSilenceSeconds,
+                    OverharvestProfile.DefaultMaxSilenceSeconds,
+                    OverharvestProfile.DefaultPassengerGazeDelaySeconds,
+                    OverharvestProfile.DefaultResumeFadeSeconds,
+                    OverharvestProfile.DefaultMaxExtraSpins),
+                floors)
+        {
+        }
+
+        /// <summary>
+        /// 과수확 수치 전체를 받는 경로. `RunSessionBehaviour` 가 `OverharvestProfile.asset`
+        /// 에서 스냅샷을 떠 넘긴다. 에셋이 없으면 코드 기본값이라 동작이 같다.
+        /// </summary>
+        public RunSession(int seed, float startingWeight, float startingMoney,
+            OverharvestSnapshot overharvest, IFloorPlanSource floors)
         {
             _floors = floors ?? new TenFloorSource();
             _engine = new SpinEngine(seed);
@@ -47,8 +69,7 @@ namespace Ascend.Prototype.Run
             Seed = seed;
             _baseWeight = Math.Max(0f, startingWeight);
             Money = startingMoney;
-            _anteRatio = Math.Max(0f, anteRatio);
-            _anteEscalation = Math.Max(0f, anteEscalation);
+            _overharvest = overharvest;
 
             // 적재가 어느 경로로 바뀌든 현재 층이 즉시 안다. 호출부마다 갱신을 기억하게
             // 하면 하나만 빠져도 무게와 요구 전력이 조용히 어긋난다 — 실제로 그렇게 됐다.
@@ -240,7 +261,7 @@ namespace Ascend.Prototype.Run
             // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
             // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                _baseWeight, _residual, _anteRatio, _anteEscalation, _loadout)
+                _baseWeight, _residual, _overharvest, _loadout)
             {
                 Events = Events,
             };

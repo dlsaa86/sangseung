@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.Spin;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -28,6 +29,13 @@ namespace Ascend.Prototype.Run.Tests
             Run("PendingAnte와 실제 차감액 일치", TestPendingAnteMatchesCharge, ref passed, ref failed, report);
             Run("무게 증가가 RequiredPower 증가", TestWeightRaisesRequirement, ref passed, ref failed, report);
             Run("동일 시드·선택 결정론", TestDeterminism, ref passed, ref failed, report);
+
+            // ── UP-POWER-07: 프로파일 값이 **게임을 실제로 바꾸는가** ──
+            // 「읽는다」가 아니라 「바꾸면 결과가 달라진다」를 묻는다. 값을 망가뜨렸을 때
+            // 실패하지 않는 검사는 그 값이 죽어 있다는 사실을 통과로 기록한다.
+            Run("과수확 상한이 추가 스핀을 실제로 막는다", TestProfileExtraSpinCap, ref passed, ref failed, report);
+            Run("해금 임계가 CanBank와 독립으로 작동", TestProfileUnlockThreshold, ref passed, ref failed, report);
+            Run("판돈 비율이 프로파일에서 온다", TestProfileAnteRatio, ref passed, ref failed, report);
 
             // ── Hero Slice (CURRENT_PHASE.md) ──
             Run("Hero Slice 1층에 계약 3종·저항 2종", TestHeroSliceShape, ref passed, ref failed, report);
@@ -420,6 +428,93 @@ namespace Ascend.Prototype.Run.Tests
             };
             return new FloorSession(plan, new SpinEngine(seed),
                 PowerThresholds.Default, 0f);
+        }
+
+        // ── UP-POWER-07 ────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 기본 스냅샷에서 한 값만 바꾼다. 셋을 각각 따로 흔들어야 어느 값이
+        /// 무엇을 움직이는지 갈린다 — 한꺼번에 바꾸면 하나만 살아 있어도 통과한다.
+        /// </summary>
+        private static OverharvestSnapshot Tweaked(float unlockThreshold, int maxExtraSpins,
+            float anteRatio, float anteEscalation)
+        {
+            OverharvestSnapshot d = OverharvestProfile.DefaultSnapshot;
+            return new OverharvestSnapshot(anteRatio, anteEscalation, unlockThreshold,
+                d.ApproachMachineDuckScale, d.MinSilenceSeconds, d.MaxSilenceSeconds,
+                d.PassengerGazeDelaySeconds, d.ResumeFadeSeconds, maxExtraSpins);
+        }
+
+        private static FloorSession NewTweakedSession(int seed, float required, int spins,
+            OverharvestSnapshot overharvest)
+        {
+            var plan = new FloorPlan
+            {
+                Floor = 1,
+                RequiredPower = required,
+                Spins = spins,
+                SymbolPool = new[] { SymbolKind.NormalSoul },
+                ContractChoices = Array.Empty<ResistanceContract>(),
+            };
+            return new FloorSession(plan, new SpinEngine(seed), PowerThresholds.Default,
+                0f, ResidualState.Empty, overharvest, null);
+        }
+
+        /// <summary>상한 1회. 두 번째 당김은 스핀이 남아 있어도 거부돼야 한다.</summary>
+        private static string TestProfileExtraSpinCap()
+        {
+            FloorSession session = NewTweakedSession(12, 70f, 5,
+                Tweaked(OverharvestProfile.DefaultUnlockThreshold, 1,
+                    OverharvestProfile.DefaultAnteRatio, OverharvestProfile.DefaultAnteEscalation));
+            session.Spin();
+            if (!session.CanBank) return "첫 스핀이 요구 전력에 못 미쳐 검사 조건이 성립하지 않음";
+            if (!session.PushYourLuck()) return "상한 1인데 첫 추가 스핀이 거부됨";
+            session.Spin();
+
+            // 조건이 성립하는지 먼저 확인한다 — 스핀이 이미 소진됐다면 상한이 아니라
+            // 스핀 부족으로 막힌 것이고, 그러면 이 검사는 공허하게 통과한다.
+            if (session.SpinsRemaining <= 0) return "남은 스핀이 0이라 상한을 검사할 수 없음";
+            if (!session.CanBank) return "두 번째 시점에 CanBank가 거짓이라 상한을 검사할 수 없음";
+            if (session.PushYourLuck()) return "상한 1을 넘어 두 번째 추가 스핀이 허용됨";
+            if (session.PendingAnte != 0f) return $"상한 도달인데 PendingAnte가 {session.PendingAnte}";
+            return null;
+        }
+
+        /// <summary>
+        /// 해금 임계 300%. 100%를 넘어 <c>CanBank</c>는 참인데 과수확은 잠겨 있어야 한다 —
+        /// 둘이 한 조건이면 이 검사가 실패한다.
+        /// </summary>
+        private static string TestProfileUnlockThreshold()
+        {
+            FloorSession session = NewTweakedSession(12, 70f, 5,
+                Tweaked(3.0f, OverharvestProfile.DefaultMaxExtraSpins,
+                    OverharvestProfile.DefaultAnteRatio, OverharvestProfile.DefaultAnteEscalation));
+            session.Spin();
+            if (!session.CanBank) return "첫 스핀이 요구 전력에 못 미쳐 검사 조건이 성립하지 않음";
+            if (session.Power / session.RequiredPower >= 3.0f)
+                return $"달성률 {session.Power / session.RequiredPower:F2}가 이미 임계 3.0 이상이라 검사 불가";
+            if (session.IsOverharvestUnlocked) return "임계 300%인데 해금됨";
+            if (session.PushYourLuck()) return "잠긴 상태에서 추가 스핀이 허용됨";
+            return null;
+        }
+
+        /// <summary>판돈 비율 0.5. PendingAnte가 그 비율을 그대로 따라야 한다.</summary>
+        private static string TestProfileAnteRatio()
+        {
+            FloorSession session = NewTweakedSession(12, 70f, 5,
+                Tweaked(OverharvestProfile.DefaultUnlockThreshold,
+                    OverharvestProfile.DefaultMaxExtraSpins, 0.5f, 0f));
+            session.Spin();
+            if (!session.CanBank) return "첫 스핀이 요구 전력에 못 미쳐 검사 조건이 성립하지 않음";
+            float expected = session.Power * 0.5f;
+            if (Math.Abs(session.PendingAnte - expected) > 0.001f)
+                return $"PendingAnte {session.PendingAnte} ≠ 전력×0.5 {expected}";
+
+            // 기본값(0.12)과 실제로 다른지도 본다. 우연히 같은 수가 나오면
+            // "프로파일에서 왔다"의 증거가 되지 못한다.
+            if (Math.Abs(session.AnteRatio - OverharvestProfile.DefaultAnteRatio) < 0.0001f)
+                return "판돈 비율이 코드 기본값과 같다 — 프로파일 값이 반영되지 않음";
+            return null;
         }
 
         private static FloorSession NewNormalOnlySession(int seed, float required, int spins)

@@ -47,6 +47,16 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("런 요약이 정확히 9줄이다", TestSummaryNineLines, ref passed, ref failed, report);
             Run("빈 값에서도 9줄이 유지된다", TestSummaryKeepsLinesWhenEmpty, ref passed, ref failed, report);
             Run("요약 항목 수 상수와 열거형이 일치한다", TestSummaryFieldCount, ref passed, ref failed, report);
+            Run("텍스처 카테고리가 경로로 갈린다", TestTextureCategoryByPath, ref passed, ref failed, report);
+            Run("텍스처 규칙이 카테고리마다 다르다", TestTextureRulesDiffer, ref passed, ref failed, report);
+            Run("오디오 갈래가 경로로 갈린다", TestAudioClassByPath, ref passed, ref failed, report);
+            Run("오디오 세 갈래의 적재·압축이 서로 다르다", TestAudioRulesDiffer, ref passed, ref failed, report);
+            Run("무압축 원본이 어느 갈래의 기본값도 아니다", TestNoUncompressedAudio, ref passed, ref failed, report);
+            Run("임포트 규칙 폴백이 「코드 프리셋」으로 찍힌다", TestImportRuleFallbackIsNamed, ref passed, ref failed, report);
+            Run("관할 루트 밖은 규칙을 받지 않는다", TestManagedRootGuard, ref passed, ref failed, report);
+            Run("파티클 상한이 AmbientParticleDirector 와 같다", TestParticleCapsMatchDirector, ref passed, ref failed, report);
+            Run("정지 구간이 0이 아니다", TestPresentationHoldsAreNonZero, ref passed, ref failed, report);
+            Run("연쇄 압축이 하한 아래로 내려가지 않는다", TestPresentationTempoFloor, ref passed, ref failed, report);
             Run("Reset 직후 스냅샷이 기본 스냅샷과 같다", TestResetMatchesDefaults, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
@@ -609,6 +619,260 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             return null;
         }
 
+        // ── UP-PLAT-05 / UP-AUD-05 임포트 규칙 ────────────────────────────────
+
+        private const string Root = AssetImportPaths.ManagedRoot;
+
+        private static string TestTextureCategoryByPath()
+        {
+            // 판정 순서가 규칙의 일부다 — 노멀맵이 먼저다.
+            var cases = new[]
+            {
+                (Root + "Art/UI/panel_bg.png",            TextureAssetCategory.Ui),
+                (Root + "Art/Hud/needle.png",             TextureAssetCategory.Ui),
+                (Root + "Art/World/wall_plate.png",       TextureAssetCategory.World),
+                (Root + "Art/World/wall_plate_n.png",     TextureAssetCategory.NormalMap),
+                (Root + "Art/Vfx/spark_n.png",            TextureAssetCategory.NormalMap),
+                (Root + "Art/Vfx/spark.png",              TextureAssetCategory.Vfx),
+                (Root + "Art/Particles/dust.png",         TextureAssetCategory.Vfx),
+                (Root + "Art/anything_else.png",          TextureAssetCategory.World),
+            };
+
+            foreach (var pair in cases)
+            {
+                TextureAssetCategory actual = AssetImportPaths.ClassifyTexture(pair.Item1);
+                if (actual != pair.Item2)
+                    return $"{pair.Item1} → {actual}, 기대 {pair.Item2}";
+            }
+
+            // 역슬래시 경로에서도 같은 답이 나와야 한다. Windows 도구가 그 형태를 넘긴다.
+            if (AssetImportPaths.ClassifyTexture(Root.Replace('/', '\\') + "Art\\UI\\x.png")
+                != TextureAssetCategory.Ui)
+                return "역슬래시 경로에서 카테고리가 갈리지 않는다";
+            return null;
+        }
+
+        private static string TestTextureRulesDiffer()
+        {
+            TextureImportRuleSet set = TextureImportRuleSet.CodePreset;
+
+            TextureImportRule ui = set.For(TextureAssetCategory.Ui);
+            TextureImportRule world = set.For(TextureAssetCategory.World);
+            TextureImportRule normal = set.For(TextureAssetCategory.NormalMap);
+            TextureImportRule vfx = set.For(TextureAssetCategory.Vfx);
+
+            // 노멀맵을 sRGB 로 읽으면 조명이 조용히 어긋난다. 이 한 줄이 이 규칙의 핵심이다.
+            if (normal.SRgb) return "노멀맵 규칙이 sRGB 를 켜 두고 있다";
+
+            // UI 는 화면에 1:1 이라 밉맵이 메모리 낭비다.
+            if (ui.GenerateMipmaps) return "UI 규칙이 밉맵을 켜 두고 있다";
+            if (!ui.AlphaIsTransparency) return "UI 규칙이 알파 투명을 꺼 두고 있다";
+
+            // VFX 는 오버드로우가 먼저 아프므로 월드보다 작아야 한다.
+            if (vfx.MaxSize >= world.MaxSize)
+                return $"VFX 상한 {vfx.MaxSize} 이 월드 {world.MaxSize} 보다 작지 않다";
+
+            // 크기는 2의 거듭제곱이어야 임포터가 그대로 받는다.
+            foreach (TextureImportRule rule in TextureImportRuleSet.Presets())
+            {
+                if (rule.MaxSize < 32 || (rule.MaxSize & (rule.MaxSize - 1)) != 0)
+                    return $"{rule.Category} 최대 크기 {rule.MaxSize} 가 2의 거듭제곱이 아니다";
+            }
+
+            // 카테고리 수와 프리셋 수가 어긋나면 조회가 조용히 폴백한다.
+            if (TextureImportRuleSet.Presets().Length != TextureImportRuleSet.CategoryCount)
+                return $"프리셋 {TextureImportRuleSet.Presets().Length} 개, 카테고리 상수 {TextureImportRuleSet.CategoryCount}";
+            return null;
+        }
+
+        private static string TestAudioClassByPath()
+        {
+            var cases = new[]
+            {
+                (Root + "Audio/Voice/psg_gasp.wav",   AudioAssetClass.Voice),
+                (Root + "Audio/Sfx/vo_intro.wav",     AudioAssetClass.Voice),
+                (Root + "Audio/Loops/machine.wav",    AudioAssetClass.Loop),
+                (Root + "Audio/Sfx/hum_loop.wav",     AudioAssetClass.Loop),
+                (Root + "Audio/Ambience/room.wav",    AudioAssetClass.Loop),
+                (Root + "Audio/Sfx/purify.wav",       AudioAssetClass.ShortEffect),
+                (Root + "Audio/lever.wav",            AudioAssetClass.ShortEffect),
+            };
+
+            foreach (var pair in cases)
+            {
+                AudioAssetClass actual = AssetImportPaths.ClassifyAudio(pair.Item1);
+                if (actual != pair.Item2)
+                    return $"{pair.Item1} → {actual}, 기대 {pair.Item2}";
+            }
+            return null;
+        }
+
+        private static string TestAudioRulesDiffer()
+        {
+            // `UP-AUD-05` 의 미충족 절반이 「압축 구분 0건」이었다. 갈래 이름만 셋이고
+            // 값이 같으면 여기가 빨간불이 돼야 한다 — 그러라고 있는 검사다.
+            AudioImportRuleSet set = AudioImportRuleSet.CodePreset;
+
+            AudioImportRule sfx = set.For(AudioAssetClass.ShortEffect);
+            AudioImportRule loop = set.For(AudioAssetClass.Loop);
+            AudioImportRule voice = set.For(AudioAssetClass.Voice);
+
+            if (sfx.LoadType == loop.LoadType || loop.LoadType == voice.LoadType || sfx.LoadType == voice.LoadType)
+                return $"적재 방식이 겹친다: {sfx.LoadType}/{loop.LoadType}/{voice.LoadType}";
+
+            if (sfx.Compression == loop.Compression && loop.Compression == voice.Compression)
+                return $"압축 포맷이 세 갈래 모두 {sfx.Compression} 이다";
+
+            // 지연이 0이어야 하는 것은 사건음뿐이다.
+            if (sfx.LoadType != AudioImportLoadType.DecompressOnLoad)
+                return $"짧은 효과음이 {sfx.LoadType} 이다 — 첫 재생에 지연이 붙는다";
+            if (voice.LoadType != AudioImportLoadType.Streaming)
+                return $"음성이 {voice.LoadType} 이다 — 긴 클립을 통째로 올린다";
+
+            if (AudioImportRuleSet.Presets().Length != AudioImportRuleSet.ClassCount)
+                return $"프리셋 {AudioImportRuleSet.Presets().Length} 개, 갈래 상수 {AudioImportRuleSet.ClassCount}";
+            return null;
+        }
+
+        private static string TestNoUncompressedAudio()
+        {
+            // PRD §13.4 「무압축 원본을 런타임에 직접 사용하지 않는다」.
+            foreach (AudioImportRule rule in AudioImportRuleSet.Presets())
+            {
+                if (rule.Compression == AudioImportCompression.Pcm)
+                    return $"{rule.Class} 기본값이 무압축(PCM)이다";
+                if (rule.Quality < 0f || rule.Quality > 1f)
+                    return $"{rule.Class} 품질 {rule.Quality} 가 0~1 밖이다";
+            }
+            return null;
+        }
+
+        private static string TestImportRuleFallbackIsNamed()
+        {
+            // 폴백이 실제 데이터와 리포트에서 같아 보이면 「데이터화했다」가 공허하게 통과한다.
+            TextureImportRuleSet textures =
+                VisualQualityProfile.ImportRulesOrDefault(null, nameof(TestImportRuleFallbackIsNamed));
+            if (!textures.IsCodePreset || textures.SourceName != TextureImportRuleSet.CodePresetName)
+                return $"텍스처 폴백 출처가 '{textures.SourceName}' 다";
+
+            AudioImportRuleSet audio =
+                AudioMixProfile.ImportRulesOrDefault(null, nameof(TestImportRuleFallbackIsNamed));
+            if (!audio.IsCodePreset || audio.SourceName != AudioImportRuleSet.CodePresetName)
+                return $"오디오 폴백 출처가 '{audio.SourceName}' 다";
+
+            // 값이 비어 있는 에셋도 폴백이지 0 이 아니다 — 0 이면 임포터가 크기 0을 받는다.
+            var quality = ScriptableObject.CreateInstance<VisualQualityProfile>();
+            var mix = ScriptableObject.CreateInstance<AudioMixProfile>();
+            try
+            {
+                // 이름을 명시한다. 이름이 비면 출처가 「코드 프리셋」으로 표기되도록 만들어
+                // 두었기 때문에, 이름 없는 인스턴스로는 두 경로를 구분할 수 없다.
+                quality.name = "테스트 품질";
+                mix.name = "테스트 믹스";
+                quality.Reset();
+                mix.Reset();
+
+                // Reset 으로 값이 채워졌으면 「코드 프리셋」이 아니라 에셋 이름이 출처다.
+                if (quality.ImportRules().IsCodePreset)
+                    return "Reset 된 VisualQualityProfile 이 여전히 코드 프리셋으로 찍힌다";
+                if (mix.ImportRules().IsCodePreset)
+                    return "Reset 된 AudioMixProfile 이 여전히 코드 프리셋으로 찍힌다";
+
+                if (quality.ImportRules().For(TextureAssetCategory.NormalMap).SRgb)
+                    return "에셋 경로에서도 노멀맵 sRGB 가 켜져 있다";
+                if (mix.ImportRules().For(AudioAssetClass.Voice).LoadType != AudioImportLoadType.Streaming)
+                    return "에셋 경로에서 음성이 스트리밍이 아니다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(quality);
+                UnityEngine.Object.DestroyImmediate(mix);
+            }
+        }
+
+        private static string TestManagedRootGuard()
+        {
+            if (!AssetImportPaths.IsManaged(Root + "Art/UI/x.png"))
+                return "관할 안 경로를 관할 밖으로 판정한다";
+            if (AssetImportPaths.IsManaged("Assets/TextMesh Pro/Fonts/x.png"))
+                return "TextMesh Pro 에셋을 관할로 판정한다 — 남의 에셋 설정을 덮어쓴다";
+            if (AssetImportPaths.IsManaged("Packages/com.unity.render-pipelines.universal/x.png"))
+                return "패키지 에셋을 관할로 판정한다";
+            if (AssetImportPaths.IsManaged(null) || AssetImportPaths.IsManaged(string.Empty))
+                return "빈 경로를 관할로 판정한다";
+            return null;
+        }
+
+        // ── UP-TECH-09 ⑩⑪⑫ ───────────────────────────────────────────────────
+
+        private static string TestParticleCapsMatchDirector()
+        {
+            // 프로파일은 아직 **사본**이다. 원본인 `AmbientParticleDirector` 만 고치고
+            // 사본을 두면 다음 세션이 서로 다른 두 숫자를 보게 된다. 그것을 막는 유일한 장치.
+            PresentationSnapshot snapshot = PresentationProfile.DefaultSnapshot;
+            var levels = new[] { RiskLevel.Stable, RiskLevel.Strain, RiskLevel.Critical, RiskLevel.Collapse };
+
+            foreach (RiskLevel level in levels)
+            {
+                int fromProfile = snapshot.MaxParticlesFor(level);
+                int fromCode = Ascend.Prototype.Effects.AmbientParticleDirector.MaxParticlesFor(level);
+                if (fromProfile != fromCode)
+                    return $"{level} 상한 프로파일 {fromProfile} vs 코드 {fromCode} — 한쪽만 고쳤다";
+            }
+
+            // 단계가 올라갈수록 밀도가 줄면 위험이 가벼워 보인다.
+            for (int i = 1; i < levels.Length; i++)
+                if (snapshot.MaxParticlesFor(levels[i]) < snapshot.MaxParticlesFor(levels[i - 1]))
+                    return $"{levels[i]} 상한이 {levels[i - 1]} 보다 작다";
+
+            // 범위 밖 단계로 배열 밖을 읽지 않는다.
+            if (snapshot.MaxParticlesFor((RiskLevel)99) != snapshot.MaxParticlesFor(RiskLevel.Collapse))
+                return "범위 밖 단계가 마지막 단계로 조여지지 않는다";
+            return null;
+        }
+
+        private static string TestPresentationHoldsAreNonZero()
+        {
+            // `SpinPresenter` 주석이 못박은 것: "이걸 0으로 두면 '무엇이 사라졌는지'가 사라진다".
+            PresentationSnapshot snapshot = PresentationProfile.DefaultSnapshot;
+
+            if (snapshot.ReadPause <= 0f) return "판을 읽을 정지가 0이다";
+            if (snapshot.EmptyHold <= 0f) return "빈칸 정지가 0이다";
+            if (snapshot.RefillHold <= 0f) return "재충전 정지가 0이다";
+            if (snapshot.ColumnRevealInterval <= 0f) return "열 공개 간격이 0이다";
+            if (snapshot.UnlockFlashSeconds <= 0f || snapshot.UnlockSettleSeconds <= 0f)
+                return "잠금 해제 연출 길이가 0이다";
+
+            // 값이 `SpinPresenter` 의 인스펙터 기본값과 같아야 배선해도 동작이 안 바뀐다.
+            if (!Near(snapshot.ColumnRevealInterval, 0.32f)) return $"열 공개 간격 {snapshot.ColumnRevealInterval}, 기대 0.32";
+            if (!Near(snapshot.ReadPause, 0.45f)) return $"읽기 정지 {snapshot.ReadPause}, 기대 0.45";
+            if (!Near(snapshot.EmptyHold, 0.30f)) return $"빈칸 정지 {snapshot.EmptyHold}, 기대 0.30";
+            if (!Near(snapshot.RefillHold, 0.40f)) return $"재충전 정지 {snapshot.RefillHold}, 기대 0.40";
+
+            // ⑫ 재질. 오염은 0 이 현재 화면이고, 거칠기는 매끄러움의 여집합이어야 한다.
+            if (!Near(snapshot.GrimeAmount, 0f)) return $"오염 기본값 {snapshot.GrimeAmount} — 현재 화면은 0이다";
+            if (!Near(snapshot.SurfaceRoughness, 1f - snapshot.SurfaceSmoothness))
+                return "거칠기가 매끄러움의 여집합이 아니다";
+            return null;
+        }
+
+        private static string TestPresentationTempoFloor()
+        {
+            PresentationSnapshot snapshot = PresentationProfile.DefaultSnapshot;
+
+            if (!Near(snapshot.TempoScaleAtDepth(1), 1f)) return "1연쇄에서 이미 압축이 걸린다";
+            if (snapshot.TempoScaleAtDepth(2) >= 1f) return "2연쇄부터 압축이 걸리지 않는다";
+
+            // 20연쇄가 순식간에 지나가면 원인이 읽히지 않는다(TECH_SPEC §9).
+            float deep = snapshot.TempoScaleAtDepth(20);
+            if (deep < snapshot.MinTempoScale - 0.0001f)
+                return $"20연쇄 배율 {deep} 가 하한 {snapshot.MinTempoScale} 아래다";
+            if (snapshot.TempoScaleAtDepth(200) < snapshot.MinTempoScale - 0.0001f)
+                return "깊이가 커지면 하한이 무너진다";
+            return null;
+        }
+
         // ── 공통 규칙 ─────────────────────────────────────────────────────────
 
         private static string TestResetMatchesDefaults()
@@ -619,6 +883,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             var audio = ScriptableObject.CreateInstance<AudioMixProfile>();
             var access = ScriptableObject.CreateInstance<AccessibilityProfile>();
             var summary = ScriptableObject.CreateInstance<RunSummaryTemplate>();
+            var presentation = ScriptableObject.CreateInstance<PresentationProfile>();
             try
             {
                 hardware.Reset();
@@ -627,6 +892,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
                 audio.Reset();
                 access.Reset();
                 summary.Reset();
+                presentation.Reset();
 
                 TargetHardwareSnapshot h = hardware.Snapshot();
                 if (!Near(h.TargetFps, TargetHardwareProfile.DefaultSnapshot.TargetFps)
@@ -659,6 +925,29 @@ namespace Ascend.Prototype.Data.Profiles.Tests
                     return "프로파일과 스냅샷의 ClampedSilenceSeconds 가 다르다";
                 if (!Near(access.ScaleShake(0.01f), AccessibilityProfile.DefaultSnapshot.ScaleShake(0.01f)))
                     return "프로파일과 스냅샷의 ScaleShake 가 다르다";
+
+                PresentationSnapshot p = presentation.Snapshot();
+                PresentationSnapshot pd = PresentationProfile.DefaultSnapshot;
+                if (p.MaxParticlesFor(RiskLevel.Collapse) != pd.MaxParticlesFor(RiskLevel.Collapse)
+                    || !Near(p.ReadPause, pd.ReadPause) || !Near(p.ChainSpeedup, pd.ChainSpeedup)
+                    || !Near(p.SurfaceSmoothness, pd.SurfaceSmoothness) || !Near(p.GrimeAmount, pd.GrimeAmount))
+                    return "PresentationProfile.Reset 이 기본 스냅샷과 다르다";
+
+                // 임포트 규칙도 Reset 으로 채워져야 한다 — 안 채워지면 에셋을 만들어도
+                // 계속 코드 프리셋으로 폴백하고, 그러면 「데이터화」가 이름뿐이다.
+                // 값 대조로는 못 잡는다(폴백 값과 프리셋 값이 같다). 출처로 잡는다.
+                quality.name = "품질";
+                audio.name = "믹스";
+                if (quality.ImportRules().IsCodePreset)
+                    return "VisualQualityProfile.Reset 이 텍스처 규칙 배열을 채우지 않는다";
+                if (audio.ImportRules().IsCodePreset)
+                    return "AudioMixProfile.Reset 이 오디오 규칙 배열을 채우지 않는다";
+                if (quality.ImportRules().For(TextureAssetCategory.Ui).MaxSize
+                    != TextureImportRuleSet.Preset(TextureAssetCategory.Ui).MaxSize)
+                    return "Reset 이 채운 텍스처 규칙이 코드 프리셋과 다르다";
+                if (audio.ImportRules().For(AudioAssetClass.Loop).LoadType
+                    != AudioImportRuleSet.Preset(AudioAssetClass.Loop).LoadType)
+                    return "Reset 이 채운 오디오 규칙이 코드 프리셋과 다르다";
                 return null;
             }
             finally
@@ -669,6 +958,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
                 UnityEngine.Object.DestroyImmediate(audio);
                 UnityEngine.Object.DestroyImmediate(access);
                 UnityEngine.Object.DestroyImmediate(summary);
+                UnityEngine.Object.DestroyImmediate(presentation);
             }
         }
     }

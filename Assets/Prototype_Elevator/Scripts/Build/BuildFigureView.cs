@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -74,6 +75,15 @@ namespace Ascend.Prototype.Build
         /// <summary>축소 하한. 코앞이어도 이보다 작아지지 않는다 — 읽을 수는 있어야 한다.</summary>
         private const float LabelMinScale = 0.35f;
 
+        /// <summary>승객 실루엣의 높이. 이름표와 대사 라벨이 이 값을 기준으로 얹힌다.</summary>
+        private const float PassengerHeight = 1.56f;
+
+        /// <summary>
+        /// 대사 라벨이 이름표 위로 올라가는 높이. 이름표는 <c>height + 0.24</c>에 있으므로
+        /// 둘이 겹치지 않는 최소 간격이자, 캐빈 천장(≈2.4m)을 뚫지 않는 상한이다.
+        /// </summary>
+        private const float SpeechLabelRise = 0.52f;
+
         private static readonly int CullModeId = Shader.PropertyToID("_CullMode");
         private static readonly Dictionary<Material, Material> _singleSided =
             new Dictionary<Material, Material>();
@@ -109,12 +119,32 @@ namespace Ascend.Prototype.Build
             public Npc.ReactionPose Pose;
             public Npc.ReactionGaze Gaze;
             public float Intensity;
+            public string Line;
             public bool Active;
         }
 
         /// <summary>`_carFigures` 안에서 승객인 것의 인덱스. 부품은 반응하지 않는다.</summary>
         private readonly List<int> _passengerSlots = new List<int>();
         private readonly List<SlotReaction> _slotReactions = new List<SlotReaction>();
+
+        /// <summary>
+        /// 승객 머리 위의 대사 라벨. `_passengerSlots`와 같은 번호를 쓴다.
+        ///
+        /// **왜 월드 라벨인가**: §9.3의 「짧은 대사」는 누가 말했는지가 정보의 절반이다.
+        /// 화면 하단 자막으로 내면 여섯 중 누구인지가 사라지고, 그러면 상반된 반응
+        /// (같은 사건에 두 사람이 반대로 말한다)이 한 사람의 혼잣말로 읽힌다.
+        /// 최종 형태는 아니다 — 말풍선 대신 텍스트만 띄우는 플레이스홀더다.
+        /// </summary>
+        private readonly List<TMP_Text> _speechLabels = new List<TMP_Text>();
+
+        /// <summary>지금 각 라벨에 실제로 실려 있는 문자열. 매 프레임 같은 값을 다시 쓰지 않기 위한 것이다.</summary>
+        private readonly List<string> _speechShown = new List<string>();
+
+        [Tooltip("자막 허용 여부. 비면 전부 허용으로 본다 — 대사가 소리 없이 사라지지 않는다.")]
+        [SerializeField] private Data.Profiles.AccessibilityProfile _accessibility;
+
+        private Data.Profiles.AccessibilitySnapshot _accessibilitySnapshot =
+            Data.Profiles.AccessibilityProfile.DefaultSnapshot;
 
         /// <summary>
         /// 지금 칸에 타고 있는 승객 수. 반응 중재기가 이 값으로 자리를 배분한다.
@@ -128,6 +158,15 @@ namespace Ascend.Prototype.Build
         /// 범위를 벗어나면 조용히 무시한다(적재가 줄어드는 프레임에 실제로 일어난다).
         /// </summary>
         public void SetReaction(int passenger, Npc.ReactionPose pose, Npc.ReactionGaze gaze, float intensity)
+            => SetReaction(passenger, pose, gaze, intensity, null);
+
+        /// <summary>
+        /// 대사까지 함께 거는 형태. §9.3의 표현 채널 중 정지 화면에 남는 셋
+        /// (자세·시선·짧은 대사)이 여기서 한 번에 들어온다 — 셋이 따로 들어오면
+        /// 한 프레임 동안 자세와 대사가 다른 반응을 가리키는 순간이 생긴다.
+        /// </summary>
+        public void SetReaction(int passenger, Npc.ReactionPose pose, Npc.ReactionGaze gaze,
+                                float intensity, string line)
         {
             if (passenger < 0 || passenger >= _slotReactions.Count) return;
             _slotReactions[passenger] = new SlotReaction
@@ -135,6 +174,7 @@ namespace Ascend.Prototype.Build
                 Pose = pose,
                 Gaze = gaze,
                 Intensity = Mathf.Clamp01(intensity),
+                Line = line,
                 Active = true,
             };
         }
@@ -161,6 +201,12 @@ namespace Ascend.Prototype.Build
 
         private void Awake()
         {
+            // 접근성 값은 런 중에 바뀌지 않는다(옵션 메뉴가 아직 없다). 매 프레임
+            // ScriptableObject 를 타고 들어가는 대신 한 번만 사본을 뜬다 —
+            // `AudioDirector.Awake` 가 같은 이유로 같은 일을 한다.
+            _accessibilitySnapshot =
+                Data.Profiles.AccessibilityProfile.SnapshotOrDefault(_accessibility);
+
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             if (_doorControl == null) _doorControl = FindAnyObjectByType<InteractableDoorControl>();
             if (_doorControl != null) _doorControl.onDepart.AddListener(OnDepart);
@@ -265,18 +311,23 @@ namespace Ascend.Prototype.Build
         private void ReactToRisk()
         {
             if (_carFigures.Count == 0) return;
-            if (_risk == null)
+            if (_risk == null && !_searchedRisk)
             {
-                if (_searchedRisk) return;
+                // 한 번만 찾는다. 못 찾았을 때 매 프레임 다시 찾으면 전역 탐색이 영구히 돈다.
                 _searchedRisk = true;
                 _risk = FindAnyObjectByType<Risk.RiskStateView>();
-                if (_risk == null) return;
             }
+
+            // **위험 뷰가 없어도 여기서 빠져나가지 않는다.** 예전에는 `return` 했는데,
+            // 그러면 아래 `ApplyReactions()` 가 통째로 실행되지 않아 §9.3의 표현 채널이
+            // 「위험 시스템이 씬에 있을 때만」 동작했다. 위험과 반응은 서로 다른 요구다.
+            // 위험 뷰가 없으면 Stable 로 읽어 흔들림을 0으로 두고 반응만 태운다.
+            Risk.RiskLevel level = _risk != null ? _risk.Level : Risk.RiskLevel.Stable;
 
             float amplitude;
             float speed;
             float tilt;      // 도(°). 정지 화면에서 읽히는 유일한 채널이다.
-            switch (_risk.Level)
+            switch (level)
             {
                 case Risk.RiskLevel.Strain:  amplitude = 0.006f; speed = 3.2f;  tilt = 3.5f;  break;
                 case Risk.RiskLevel.Critical: amplitude = 0.017f; speed = 9.5f;  tilt = 8.0f;  break;
@@ -335,6 +386,11 @@ namespace Ascend.Prototype.Build
             for (int p = 0; p < _passengerSlots.Count && p < _slotReactions.Count; p++)
             {
                 SlotReaction reaction = _slotReactions[p];
+
+                // 대사는 자세보다 먼저 처리한다 — 아래 `continue` 들이 대사 라벨을
+                // 끄지 못하고 지나가면 반응이 끝난 승객의 말이 화면에 영원히 남는다.
+                UpdateSpeech(p, reaction.Active ? reaction.Line : null);
+
                 int index = _passengerSlots[p];
                 if (index < 0 || index >= _carFigures.Count) continue;
                 GameObject figure = _carFigures[index];
@@ -375,6 +431,40 @@ namespace Ascend.Prototype.Build
                 Quaternion look = Quaternion.Inverse(transform.rotation) * GazeRotation(reaction.Gaze, t.position);
                 t.localRotation = look * t.localRotation * Quaternion.Euler(pitch, 0f, 0f);
             }
+        }
+
+        /// <summary>
+        /// 대사 라벨 하나를 갱신한다. `null`이면 라벨을 끈다.
+        ///
+        /// 같은 문자열을 매 프레임 다시 넣지 않는 이유는 TMP 가 텍스트 설정에서
+        /// 메시를 다시 짓기 때문이다 — 승객 여섯이면 초당 360회다.
+        /// `MASTER_PRD.md` §13.2의 "워밍업 후 매 프레임 0 B"가 대사 때문에 깨지면 안 된다.
+        /// </summary>
+        private void UpdateSpeech(int passenger, string line)
+        {
+            if (passenger < 0 || passenger >= _speechLabels.Count) return;
+            if (passenger >= _speechShown.Count) return;
+
+            TMP_Text label = _speechLabels[passenger];
+            if (label == null) return;
+
+            // 접근성이 자막을 끄면 대사도 화면에 남기지 않는다. 판정은
+            // `AccessibilitySnapshot.Caption` 하나에 맡긴다 — `if (ShowSubtitles)` 를
+            // 각자 쓰기 시작하면 빠뜨릴 자리가 늘어난다(그 파일의 주석).
+            string caption = _accessibilitySnapshot.Caption(line);
+            string shown = string.IsNullOrEmpty(caption) ? null : caption;
+
+            if (string.Equals(_speechShown[passenger], shown, StringComparison.Ordinal)) return;
+            _speechShown[passenger] = shown;
+
+            if (shown == null)
+            {
+                if (label.gameObject.activeSelf) label.gameObject.SetActive(false);
+                return;
+            }
+
+            label.text = shown;
+            if (!label.gameObject.activeSelf) label.gameObject.SetActive(true);
         }
 
         /// <summary>
@@ -485,6 +575,8 @@ namespace Ascend.Prototype.Build
                         // 말할 때 그것이 궤짝을 가리키면 안 된다.
                         _passengerSlots.Add(_carFigures.Count - 1);
                         _slotReactions.Add(default(SlotReaction));
+                        _speechLabels.Add(AddSpeechLabel(figure.transform));
+                        _speechShown.Add(null);
                     }
                 }
             }
@@ -511,6 +603,11 @@ namespace Ascend.Prototype.Build
             _carIsPassenger.Clear();
             _passengerSlots.Clear();
             _slotReactions.Clear();
+            // 라벨 자체는 승객 오브젝트의 자식이라 `DestroyAll` 이 함께 지운다.
+            // 여기서 비우지 않으면 파괴된 TMP 를 가리키는 참조가 남아 다음 프레임에
+            // 「이미 파괴된 오브젝트」 예외가 난다.
+            _speechLabels.Clear();
+            _speechShown.Clear();
             DestroyAll(_carFigures);
             DestroyAll(_lobbyFigures);
         }
@@ -554,7 +651,7 @@ namespace Ascend.Prototype.Build
                 AddBox(root.transform, "Legs",  new Vector3(0f, 0.21f, 0f), new Vector3(0.30f, 0.42f, 0.22f), material);
                 AddBox(root.transform, "Torso", new Vector3(0f, 0.86f, 0f), new Vector3(0.38f, 0.88f, 0.26f), material);
                 AddBox(root.transform, "Head",  new Vector3(0f, 1.43f, 0f), new Vector3(0.22f, 0.26f, 0.22f), material);
-                height = 1.56f;
+                height = PassengerHeight;
             }
             else
             {
@@ -633,6 +730,42 @@ namespace Ascend.Prototype.Build
             if (single != null) text.fontSharedMaterial = single;
 
             _labels.Add(text);
+        }
+
+        /// <summary>
+        /// 승객 하나의 대사 라벨을 만든다. 처음에는 꺼 둔다 — 빈 문자열로 켜 두면
+        /// TMP 가 매 프레임 빈 메시를 그리고, 무엇보다 "대사가 없다"와 "대사 시스템이
+        /// 없다"가 화면에서 같아 보인다.
+        ///
+        /// `_labels`에도 넣는다. 그래야 <see cref="FaceReader"/>가 이름표와 같은 규칙으로
+        /// 플레이어를 향해 돌리고 가까울 때 줄여 준다 — 대사만 따로 처리하면 이름표는
+        /// 작아지는데 대사는 화면을 덮는 상태가 된다(그 함수의 주석이 적은 실패다).
+        /// </summary>
+        private TMP_Text AddSpeechLabel(Transform parent)
+        {
+            var holder = new GameObject("Speech");
+            holder.transform.SetParent(parent, false);
+            holder.transform.localPosition =
+                new Vector3(0f, PassengerHeight + 0.24f + SpeechLabelRise, 0f);
+
+            var text = holder.AddComponent<TextMeshPro>();
+            text.text = string.Empty;
+            text.fontSize = 1.25f;
+            text.alignment = TextAlignmentOptions.Center;
+            // 이름표(회녹색)보다 따뜻하게 둔다. 색을 빼도 크기가 달라 구분되지만,
+            // 같은 색이면 "누구인가"와 "무슨 말인가"가 한 덩어리로 읽힌다.
+            text.color = new Color(0.90f, 0.84f, 0.58f);
+
+            var rect = holder.GetComponent<RectTransform>();
+            if (rect != null) rect.sizeDelta = new Vector2(2.2f, 0.6f);
+
+            // 이름표와 같은 이유로 단면 재질을 쓴다 — 고정 캡처 카메라에서 거울상이 나온다.
+            Material single = SingleSided(text.fontSharedMaterial);
+            if (single != null) text.fontSharedMaterial = single;
+
+            holder.SetActive(false);
+            _labels.Add(text);
+            return text;
         }
 
         /// <summary>

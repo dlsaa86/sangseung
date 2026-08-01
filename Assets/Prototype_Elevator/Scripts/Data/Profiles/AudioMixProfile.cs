@@ -66,6 +66,12 @@ namespace Ascend.Prototype.Data.Profiles
 
         [SerializeField] private float[] _humPitchScale = { 1f, 1f, 1f, 1f };
 
+        [Header("오디오 임포트 규칙 (PRD §13.4 · UP-AUD-05)")]
+        [Tooltip("짧은 효과음 / 루프 / 음성 세 갈래의 적재 방식과 압축 포맷. 비어 있으면 " +
+                 "코드 프리셋으로 폴백하고 그 사실이 「코드 프리셋」으로 찍힌다. " +
+                 "디스크의 기존 .asset 은 이 배열이 없으므로 처음에는 반드시 비어 있다.")]
+        [SerializeField] private AudioImportRule[] _audioImportRules = System.Array.Empty<AudioImportRule>();
+
         public const float DefaultMasterVolume = 1.00f;
         public const float DefaultMachineVolume = 0.55f;
         public const float DefaultEventVolume = 0.80f;
@@ -94,6 +100,29 @@ namespace Ascend.Prototype.Data.Profiles
 
             _humVolumeScale = new[] { 1f, 1f, 1f, 1f };
             _humPitchScale = new[] { 1f, 1f, 1f, 1f };
+
+            _audioImportRules = AudioImportRuleSet.Presets();
+        }
+
+        /// <summary>
+        /// 오디오 임포트 규칙. 믹스 값과 같은 에셋에 두는 이유는 **둘 다 「소리를 어떻게
+        /// 다룰 것인가」의 결정**이고, 갈래 이름(사건음·루프·음성)이 채널 이름과 나란히
+        /// 읽혀야 어느 소리가 어느 규칙을 받는지 한 화면에서 보이기 때문이다.
+        /// </summary>
+        public AudioImportRuleSet ImportRules()
+        {
+            if (_audioImportRules == null || _audioImportRules.Length == 0)
+                return AudioImportRuleSet.CodePreset;
+            return new AudioImportRuleSet(name, _audioImportRules);
+        }
+
+        /// <summary>임포터가 부르는 진입점. 없으면 경고 후 코드 프리셋.</summary>
+        public static AudioImportRuleSet ImportRulesOrDefault(AudioMixProfile profile, string caller)
+        {
+            if (profile != null) return profile.ImportRules();
+            Debug.LogWarning($"[상승] AudioMixProfile 이 없다 ({caller}). " +
+                             "오디오 임포트 규칙을 코드 프리셋으로 적용한다.");
+            return AudioImportRuleSet.CodePreset;
         }
 
         public AudioMixSnapshot Snapshot()

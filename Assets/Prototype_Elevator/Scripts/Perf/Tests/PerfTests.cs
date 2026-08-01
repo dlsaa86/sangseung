@@ -47,8 +47,20 @@ namespace Ascend.Prototype.Perf.Tests
             Run("표본 2~3개에는 단조 규칙을 적용하지 않는다", TestTrendMonotonicNeedsEnoughSamples, ref passed, ref failed, report);
             Run("첫 층 대비 마지막 층 증가분을 낸다", TestTrendFirstToLast, ref passed, ref failed, report);
 
+            Run("하이라이트 주기를 반복해도 새로 만들지 않는다", TestHighlightCycleReuses, ref passed, ref failed, report);
+            Run("풀에서 나온 블록은 반드시 비어 있다", TestPooledBlockComesOutCleared, ref passed, ref failed, report);
+            Run("해제가 두 번 돌면 이중 반환으로 잡힌다", TestHighlightDoubleClearIsCaught, ref passed, ref failed, report);
+            Run("회수를 빠뜨리면 활성 수가 그것을 드러낸다", TestHighlightLeakIsVisible, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Perf (풀링·메모리 추세) Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
+
+            // (배선 진단 스위트는 여기 임시로 붙어 있었다. 통합자가 두 등록처
+            //  — `Assets/Editor/AscendTestMenu.AllSuites()` 와
+            //  `PrototypeSelfTest.RunAllToString()` — 에 별도 줄로 넣었으므로 뗐다.
+            //  붙어 있는 동안은 합계가 정확했지만 라벨이 「풀링·메모리 추세」로 찍혀
+            //  배선 11건이 그 아래 섞여 보였다.)
+
             return (passed, failed, report.ToString());
         }
 
@@ -298,6 +310,119 @@ namespace Ascend.Prototype.Perf.Tests
                 return "팩토리가 null 을 줬는데 Get 이 조용히 통과했다";
             }
             catch (InvalidOperationException) { return null; }
+        }
+
+        // ── 하이라이트 블록 풀 (UP-TECH-06 의 유일한 소비처) ────────────────────
+        //
+        // `CrosshairInteractor.ApplyHighlight` 가 쓰는 계약을 그대로 재현한다.
+        // 실제 `MaterialPropertyBlock` 을 쓰지 않는 이유는 이 스위트가 씬도 렌더러도
+        // 없이 돌기 때문이고, 여기서 지키려는 것은 블록의 그래픽 동작이 아니라
+        // **소유권 계약**이다 — 「꺼낸 것은 비어 있다 · 되돌린 것은 정확히 한 번만
+        // 돌아간다」. 그 둘이 깨지는 순간의 증상은 각각 「앞 대상의 색이 남는다」와
+        // 「두 대상이 같은 블록을 쓴다」이고, 둘 다 화면에서 원인을 못 찾는 종류다.
+
+        private sealed class FakeBlock
+        {
+            /// <summary>풀에 들어가 있는 동안은 반드시 참이어야 한다.</summary>
+            public bool Cleared = true;
+        }
+
+        /// <summary><c>CrosshairInteractor</c> 와 같은 형태로 만든다 — 예열 8 · 상한 32 · 반환 시 비움.</summary>
+        private static ObjectPool<FakeBlock> HighlightPool()
+        {
+            return new ObjectPool<FakeBlock>(
+                delegate { return new FakeBlock(); },
+                null,
+                delegate (FakeBlock block) { block.Cleared = true; },
+                8, 32);
+        }
+
+        /// <summary>한 대상에 하이라이트를 걸었다 푸는 한 주기.</summary>
+        private static bool HighlightCycle(ObjectPool<FakeBlock> pool, int rendererCount, FakeBlock[] scratch)
+        {
+            for (int i = 0; i < rendererCount; i++)
+            {
+                FakeBlock block = pool.Get();
+                block.Cleared = false;      // GetPropertyBlock 이 값을 채운 상태
+                scratch[i] = block;
+            }
+
+            for (int i = 0; i < rendererCount; i++)
+                if (!pool.Release(scratch[i])) return false;
+
+            return true;
+        }
+
+        private static string TestHighlightCycleReuses()
+        {
+            ObjectPool<FakeBlock> pool = HighlightPool();
+            var scratch = new FakeBlock[5];
+
+            if (!HighlightCycle(pool, 5, scratch)) return "첫 주기의 반환이 false 를 돌려줬다";
+            int createdAfterFirst = pool.CreatedCount;
+
+            // 조준 대상이 계속 바뀌는 것이 이 경로의 정상 상태다. 주기를 돌 때마다
+            // 새로 만들면 풀을 넣기 전과 할당이 같다.
+            for (int cycle = 0; cycle < 20; cycle++)
+                if (!HighlightCycle(pool, 5, scratch)) return $"{cycle}번째 주기의 반환이 false 를 돌려줬다";
+
+            if (pool.CreatedCount != createdAfterFirst)
+                return $"생성 {pool.CreatedCount} — 20주기 동안 {pool.CreatedCount - createdAfterFirst}개를 더 만들었다";
+            if (pool.CountActive != 0) return $"주기가 끝났는데 활성 {pool.CountActive}";
+            if (pool.DoubleReleaseCount != 0) return $"이중 반환 {pool.DoubleReleaseCount}";
+            if (pool.ReusedCount < 100) return $"재사용 {pool.ReusedCount} — 풀이 일하지 않았다";
+            return null;
+        }
+
+        private static string TestPooledBlockComesOutCleared()
+        {
+            ObjectPool<FakeBlock> pool = HighlightPool();
+            var scratch = new FakeBlock[3];
+
+            HighlightCycle(pool, 3, scratch);
+            for (int i = 0; i < 3; i++)
+                if (!scratch[i].Cleared) return $"반환된 블록 {i} 가 비워지지 않았다";
+
+            // 예열분이 먼저 나올 수도 있으므로 여러 번 꺼내 전부 확인한다.
+            for (int i = 0; i < 12; i++)
+            {
+                FakeBlock block = pool.Get();
+                if (!block.Cleared)
+                    return "값이 남은 블록이 나왔다 — 앞 대상의 색이 다음 대상에 실린다";
+                block.Cleared = false;
+            }
+            return null;
+        }
+
+        private static string TestHighlightDoubleClearIsCaught()
+        {
+            ObjectPool<FakeBlock> pool = HighlightPool();
+            var scratch = new FakeBlock[2];
+            HighlightCycle(pool, 2, scratch);
+
+            // 목록을 비우지 않고 해제를 한 번 더 돌린 상황. 조용히 통과하면
+            // 같은 블록이 두 대상에게 나가고, 그 증상은 화면에서 추적할 수 없다.
+            if (pool.Release(scratch[0])) return "이중 반환이 true 를 돌려줬다";
+            if (pool.DoubleReleaseCount != 1) return $"이중 반환 카운트 {pool.DoubleReleaseCount}, 기대 1";
+            return null;
+        }
+
+        private static string TestHighlightLeakIsVisible()
+        {
+            ObjectPool<FakeBlock> pool = HighlightPool();
+
+            // 회수를 빠뜨린 경우. 통계가 그것을 드러내지 않으면 「풀을 넣었다」가
+            // 참인 채로 할당은 계속 늘어난다.
+            for (int i = 0; i < 40; i++) pool.Get();
+
+            if (pool.CountActive != 40) return $"활성 {pool.CountActive}, 기대 40";
+            if (pool.CreatedCount < 40 - 8) return $"생성 {pool.CreatedCount} — 새는데도 늘지 않았다";
+
+            int recovered = pool.ReleaseAll();
+            if (recovered != 40) return $"회수 {recovered}, 기대 40";
+            if (pool.CountActive != 0) return $"회수 후 활성 {pool.CountActive}";
+            if (pool.DiscardedCount != 40 - 32) return $"버림 {pool.DiscardedCount}, 기대 8 (상한 32)";
+            return null;
         }
 
         // ── 메모리 추세 ─────────────────────────────────────────────────────────

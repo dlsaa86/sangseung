@@ -98,6 +98,21 @@ namespace Ascend.Prototype.Audio
                  "원샷이 겹쳐 사실상 지속 사이렌이 되고, 그게 §8.3 이 금지하는 그 상태다.")]
         [SerializeField, Min(0f)] private float _sirenCooldownSeconds = 1.2f;
 
+        [Header("지속 위험 레이어 (UP-RISK-05 · Notion PRD §8.3)")]
+        [Tooltip("사이렌이 사건에만 울리는 대신, 그 사이 시간을 채우는 저역 베드와 금속 응력음. " +
+                 "끄면 위험 단계의 지속 표현은 RiskStateView 의 험 하나로 돌아간다.")]
+        [SerializeField] private bool _dangerBedEnabled = true;
+
+        [Tooltip("저역 베드 배율. 험보다 아래 음역이라 험과 겹치지 않는다. 0 이면 저역층만 사라진다.")]
+        [SerializeField, Range(0f, 2f)] private float _subBedScale = 0.9f;
+
+        [Tooltip("금속 응력음 배율. 안정 단계에서는 이 값과 무관하게 0 이다(DangerBed).")]
+        [SerializeField, Range(0f, 2f)] private float _stressBedScale = 0.7f;
+
+        [Tooltip("단계가 바뀔 때 지속 레이어를 갈아 끼우는 시간(초). 도는 파형을 도중에 " +
+                 "바꾸면 딱 소리가 나므로 한 번 내렸다 올린다.")]
+        [SerializeField, Min(0.02f)] private float _bedSwapSeconds = 0.18f;
+
         [Header("판정 사건 줄 세우기")]
         [Tooltip("소리가 화면보다 이만큼 넘게 뒤처지면 버린다. 밀린 소리는 정보가 아니라 소음이다.")]
         [SerializeField, Min(0.2f)] private float _maxLeadSeconds = 1.5f;
@@ -129,6 +144,16 @@ namespace Ascend.Prototype.Audio
 
         // ── 사이렌 ───────────────────────────────────────────────────────────
         private float _sirenReadyAt;
+
+        // ── 지속 위험 레이어 ─────────────────────────────────────────────────
+        // 험이 아니다. 험(고른 50/100/150Hz 톤)의 소유자는 `RiskStateView` 이고 그대로 둔다.
+        // 여기 둘은 그 아래(저역)와 그 위(응력 삐걱임)이며 음역이 겹치지 않는다
+        // (`SustainedBedFactory` 클래스 주석).
+        private AudioSource _subBed;
+        private AudioSource _stressBed;
+        private DangerBedTargets _bed;
+        private int _bedLevel = -1;
+        private float _bedFade;
 
         // ── 험 목표값 ────────────────────────────────────────────────────────
         // 험 자체는 `RiskStateView` 가 소유한다(같은 험이 두 겹으로 깔리면 안 된다).
@@ -188,11 +213,58 @@ namespace Ascend.Prototype.Audio
         /// <summary>지금 단계에 적용 중인 험 피치 배율(`AudioMixProfile._humPitchScale`).</summary>
         public float HumPitchScale => _humPitchScale;
 
+        // ── 지속 위험 레이어 관측값 (UP-RISK-05) ─────────────────────────────
+        //
+        // **스피커에 실제로 나간 값을 노출한다.** 목표값(`DangerBedTargets`)이 아니라
+        // `AudioSource.volume` 을 그대로 읽는 이유는 `RiskStateView.EffectiveHumVolume` 과
+        // 같다 — 목표값만 노출하면 「계산은 됐지만 소스에 닿지 않았다」를 반증할 수단이 없다.
+        // 확인법: `_dangerBedEnabled` 를 끄면 둘 다 0 이 되고, 접근성 프로파일의
+        // `_lowFrequencyScale` 을 0 으로 내리면 저역만 0 이 된다.
+
+        /// <summary>지금 나가고 있는 저역 베드 볼륨. 접근성 저주파 배율과 정적 게인이 이미 곱해져 있다.</summary>
+        public float SubBedVolume => _subBed != null ? _subBed.volume : 0f;
+
+        /// <summary>지금 나가고 있는 금속 응력음 볼륨. 안정 단계에서는 0 이어야 한다.</summary>
+        public float StressBedVolume => _stressBed != null ? _stressBed.volume : 0f;
+
+        /// <summary>응력음 재생 피치. 단계가 오를수록 커진다(조여진다).</summary>
+        public float StressBedPitch => _stressBed != null ? _stressBed.pitch : 0f;
+
+        /// <summary>지금 깔려 있는 지속 레이어의 단계. −1 이면 아직 한 번도 세우지 않았다.</summary>
+        public int DangerBedLevel => _bedLevel;
+
+        /// <summary>지속 레이어가 켜져 있는가. 씬에서 끄면 험 하나로 돌아간다.</summary>
+        public bool DangerBedEnabled => _dangerBedEnabled;
+
         /// <summary>지금까지 울린 사이렌 수. §8.3 이 금지하는 「지속 재생」은 이 수가 폭주하는 것으로 나타난다.</summary>
         public int SirenCueCount { get; private set; }
 
         /// <summary>사건 버스에서 만들어 낸 승객 음성 수. 승객 반응 시스템이 붙으면 여기가 멈춘다.</summary>
         public int EventVoiceCount { get; private set; }
+
+        /// <summary>
+        /// 승객 반응 시스템이 직접 요청해 나간 음성 수. <see cref="EventVoiceCount"/>가 멈추고
+        /// 이쪽이 늘기 시작하면 배선이 실제로 넘어간 것이다 — 둘 다 0 이면 승객 채널이 비었다.
+        /// </summary>
+        public int ExternalVoiceCount { get; private set; }
+
+        /// <summary>
+        /// 지금까지 요청된 음성 종류의 비트 집합. 비트 n 은 <c>(PassengerVoiceKind)n</c>.
+        /// `MASTER_PRD.md` §9.3 의 다섯 표현이 **각각** 났는지는 총합으로 셀 수 없다 —
+        /// 「음성 40건」은 호흡만 40번 난 것과 구분되지 않는다.
+        /// </summary>
+        public int VoiceKindsMask { get; private set; }
+
+        /// <summary>실제로 난 음성 종류 수. 다섯이 목표다.</summary>
+        public int VoiceKindCount
+        {
+            get
+            {
+                int n = 0;
+                for (int mask = VoiceKindsMask; mask != 0; mask &= mask - 1) n++;
+                return n;
+            }
+        }
 
         /// <summary>승객 반응 시스템이 <see cref="PlayPassengerVoice"/>로 소리를 요청하고 있는가.</summary>
         public bool HasExternalVoiceDriver => _externalVoiceDriver;
@@ -294,8 +366,13 @@ namespace Ascend.Prototype.Audio
             BuildSources();
 
             // 첫 사용 순간에 굽지 않는다. 하필 그 순간이 레버를 당긴 프레임이라
-            // 성능 캡처에 스파이크로 찍힌다.
-            if (_prewarmClips) ProceduralClipFactory.Prewarm();
+            // 성능 캡처에 스파이크로 찍힌다. 지속 레이어는 더하다 — 그 순간이 곧
+            // 위험 단계가 오른 프레임이다.
+            if (_prewarmClips)
+            {
+                ProceduralClipFactory.Prewarm();
+                if (_dangerBedEnabled) SustainedBedFactory.Prewarm();
+            }
 
             if (_run == null) return;
 
@@ -318,6 +395,11 @@ namespace Ascend.Prototype.Audio
             // 정적 도중에 꺼지면 AudioListener 가 0인 채로 남는다. 그 상태는 게임 전체가
             // 무음이 된 것처럼 보이고, 원인이 이 컴포넌트라는 단서가 아무 데도 없다.
             RestoreListener();
+
+            // 지속 레이어는 **자식 오브젝트의** AudioSource 라 이 컴포넌트를 꺼도 계속 돈다.
+            // 「오디오를 껐는데 웅웅거리는 소리가 남는다」는 원인을 찾기 가장 어려운 종류의
+            // 버그다 — 끄는 스위치가 소리의 주인이 아닌 것처럼 보이기 때문이다.
+            StopDangerBed();
         }
 
         private void OnRunStarted(RunSession session)
@@ -372,6 +454,11 @@ namespace Ascend.Prototype.Audio
             _riskRising = false;
             _humValid = false;
 
+            // 지속 레이어도 처음으로 돌아간다. −1 로 두면 다음 프레임이 곧바로 안정 단계
+            // 클립을 세운다(페이드 0 에서 시작하므로 갈아 끼우는 지연이 없다).
+            _bedLevel = -1;
+            _bedFade = 0f;
+
             RestoreListener();
         }
 
@@ -387,6 +474,7 @@ namespace Ascend.Prototype.Audio
             ApplyChannelVolumes(gain);
             ApplyListenerDuck(now, gain);
             RefreshHumTargets(gain);
+            UpdateDangerBed(Time.unscaledDeltaTime);
             DrainQueue(now, gain);
         }
 
@@ -410,12 +498,113 @@ namespace Ascend.Prototype.Audio
             // 형태는 위험 프로파일이, 크기는 믹스가 정한다(`AudioMixProfile` 클래스 주석).
             // 정적 게인을 여기서 곱해 두는 이유: 험을 우회로(AudioListener)로 줄이면
             // 플레이어의 발소리까지 같이 사라져 정적이 고장으로 읽힌다.
-            _humVolume = _mix.HumVolumeFor(_riskLevel, in profile) * gain;
+            float humRaw = _mix.HumVolumeFor(_riskLevel, in profile);
+            _humVolume = humRaw * gain;
             _humPitch = _mix.HumPitchFor(_riskLevel, in profile);
+
+            // 지속 위험 레이어도 같은 두 출처에서 나온다(UP-RISK-05).
+            // **게인이 곱해지지 않은** 험 볼륨을 넘긴다 — `DangerBed` 가 게인을 따로 받는다.
+            // 이미 곱한 값을 넘기면 정적 구간에 지속층만 제곱으로 사라져,
+            // §7.3 이 요구한 정적이 「오디오가 죽었다」로 읽힌다.
+            _bed = DangerBed.Evaluate(_riskLevel, humRaw, _humPitch,
+                                      _subBedScale, _stressBedScale, gain);
 
             _humValid = true;
             _humLevel = _riskLevel;
             _humGain = gain;
+        }
+
+        /// <summary>
+        /// 지속 위험 레이어를 세우고 유지한다(UP-RISK-05 · Notion PRD §8.3).
+        ///
+        /// **사이렌과 정반대의 물건이다.** 사이렌은 네 순간에만 한 발씩 나가고
+        /// (<c>AudioCueTable.TryMapSiren</c>), 이 둘은 늘 깔린 채 두께만 변한다.
+        /// 그 분업이 §8.3 의 「사이렌은 지속 재생하지 않는다」를 성립시킨다 —
+        /// 사이렌을 끄고 남는 것이 침묵이면 결국 사이렌을 다시 켜게 된다.
+        ///
+        /// 문자열·람다·할당을 만들지 않는다. `MASTER_PRD.md` §13.2 의 "워밍업 후 매 프레임 0 B".
+        /// </summary>
+        private void UpdateDangerBed(float dt)
+        {
+            if (_subBed == null || _stressBed == null) return;
+
+            if (!_dangerBedEnabled)
+            {
+                _subBed.volume = 0f;
+                _stressBed.volume = 0f;
+                return;
+            }
+
+            int want = (int)_riskLevel;
+            if (want < 0) want = 0;
+            if (want >= DangerBed.LevelCount) want = DangerBed.LevelCount - 1;
+
+            if (dt <= 0f) dt = 0f;
+            float step = _bedSwapSeconds > 0.0001f ? dt / _bedSwapSeconds : 1f;
+
+            if (want != _bedLevel)
+            {
+                // 도는 파형을 도중에 갈아 끼우면 그 순간이 딱 소리로 들리고, 그 딱 소리는
+                // 단계 전이의 일회성 응력음(`AudioCueKind.MetalStress`)과 겹쳐
+                // **무엇이 신호였는지** 알 수 없게 된다. 그래서 한 번 내렸다 올린다.
+                _bedFade -= step;
+                if (_bedFade <= 0f)
+                {
+                    _bedFade = 0f;
+                    SwapBedClips(want);
+                }
+            }
+            else if (_bedFade < 1f)
+            {
+                _bedFade += step;
+                if (_bedFade > 1f) _bedFade = 1f;
+            }
+
+            // 저역만 접근성 배율을 통과한다. `AccessibilityProfile._lowFrequencyScale` 의
+            // 툴팁이 "낮은 험은 스피커·헤드폰에 따라 두통을 만든다"고 적는데, 이 베드가
+            // 30~50Hz 대라 그 문장이 가리키는 것이 정확히 여기다. 응력음(150~2600Hz)은
+            // 저주파가 아니므로 통과시키지 않는다 — 통과시키면 저주파를 끈 사람에게서
+            // 위험 단계의 청각 채널이 통째로 사라진다.
+            _subBed.volume = _accessibility.ScaleLowFrequency(_bed.SubVolume) * _bedFade;
+            _subBed.pitch = _bed.SubPitch;
+
+            _stressBed.volume = _bed.StressVolume * _bedFade;
+            _stressBed.pitch = _bed.StressPitch;
+        }
+
+        private void SwapBedClips(int level)
+        {
+            _bedLevel = level;
+
+            AudioClip sub = SustainedBedFactory.Sub(level);
+            AudioClip stress = SustainedBedFactory.Stress(level);
+
+            // 이 시점의 볼륨은 0 이다(호출 직전에 페이드가 0 에 닿았다). 그래서
+            // Stop→Play 가 들리지 않는다.
+            if (sub != null)
+            {
+                _subBed.Stop();
+                _subBed.clip = sub;
+                _subBed.Play();
+            }
+
+            if (stress != null)
+            {
+                _stressBed.Stop();
+                _stressBed.clip = stress;
+                _stressBed.Play();
+            }
+        }
+
+        private void StopDangerBed()
+        {
+            if (_subBed != null) { _subBed.volume = 0f; _subBed.Stop(); }
+            if (_stressBed != null) { _stressBed.volume = 0f; _stressBed.Stop(); }
+
+            // 다시 켜졌을 때 처음부터 세우게 한다. 그대로 두면 클립은 멈춰 있는데
+            // 단계는 같아서 `UpdateDangerBed` 가 아무것도 하지 않는다 — 영구 무음이다.
+            _bedLevel = -1;
+            _bedFade = 0f;
         }
 
         private void ApplyChannelVolumes(float gain)
@@ -574,17 +763,64 @@ namespace Ascend.Prototype.Audio
         }
 
         /// <summary>
-        /// 승객 반응 시스템(UP-NPC-*)이 부르는 통로. 사건 표를 거치지 않는 이유는
-        /// "어느 승객이 왜 소리를 내는가"를 이 컴포넌트가 알지 못하기 때문이다.
+        /// **승객 반응 시스템(UP-NPC-*)이 부르는 주 통로다.** 사건 표를 거치지 않는 이유는
+        /// "어느 승객이 왜 소리를 내는가"를 이 컴포넌트가 알지 못하기 때문이다 —
+        /// 그것은 중재기(`PassengerReactionDirector`)만 안다.
         ///
         /// 한 번이라도 불리면 사건 버스 폴백(<see cref="TryPlayEventVoice"/>)이 꺼진다.
         /// 둘 다 살아 있으면 같은 반응에 목소리가 두 번 나는데, 그건 승객이 늘어난 것처럼
         /// 들려서 동시 반응 상한(UP-NPC-05)이 지켜지고 있는지 귀로 확인할 수 없게 된다.
+        /// **소리가 나지 않는 반응(강도 0)이어도 소유권은 넘어온다** — 그러지 않으면
+        /// 과수확 접근(§7.3 정적)에서만 폴백이 되살아나 그 침묵에 숨소리가 하나 낀다.
+        ///
+        /// <paramref name="voiceCue"/>가 우선한다. `PassengerReactionSet` 의 큐 ID 를
+        /// 편집자가 바꿨을 때 소리도 바뀌어야 §9.4 의 「데이터로 이벤트별 교체 가능」이
+        /// 소리 채널에서도 성립한다. 비었거나 모르는 ID 면 반응 사건으로 정한다.
+        /// </summary>
+        /// <param name="passengerIndex">누가 냈는가. 재생 피치를 가른다(0~7 로 조인다).</param>
+        /// <param name="reaction">무슨 반응인가. 큐 ID 가 없을 때 음성 종류를 정한다.</param>
+        /// <param name="voiceCue">`PassengerReaction.VoiceCue`. 비어도 된다.</param>
+        /// <param name="intensity">반응 강도 0~1. 0 이하면 소리를 내지 않는다.</param>
+        /// <returns>실제로 소리를 냈는가. false 는 고장이 아니라 「이 반응은 조용하다」다.</returns>
+        public bool PlayPassengerVoice(int passengerIndex, Npc.PassengerReactionEvent reaction,
+                                       string voiceCue, float intensity)
+        {
+            _externalVoiceDriver = true;
+            if (intensity <= 0f) return false;
+
+            PassengerVoiceKind voice;
+            if (!PassengerVoices.TryFromCueId(voiceCue, out voice))
+                voice = PassengerVoices.FromReaction(reaction);
+
+            PlayVoice(passengerIndex, voice, intensity);
+            return true;
+        }
+
+        /// <summary>
+        /// 종류를 이미 정한 쪽이 부르는 통로. 반응 사건과 무관한 소리(대기 중 숨소리 등)를
+        /// 낼 때 쓴다.
+        /// </summary>
+        public bool PlayPassengerVoice(int passengerIndex, PassengerVoiceKind voice, float intensity)
+        {
+            _externalVoiceDriver = true;
+            if (intensity <= 0f) return false;
+
+            PlayVoice(passengerIndex, voice, intensity);
+            return true;
+        }
+
+        /// <summary>
+        /// 종류를 모를 때. 기본은 호흡이다 — 옛 호출이 내던 소리와 같다.
         /// </summary>
         public void PlayPassengerVoice(int passengerIndex, float intensity)
         {
-            _externalVoiceDriver = true;
-            AudioCueRequest req = AudioCueTable.PassengerVoice(passengerIndex, intensity);
+            PlayPassengerVoice(passengerIndex, PassengerVoiceKind.Breath, intensity);
+        }
+
+        private void PlayVoice(int passengerIndex, PassengerVoiceKind voice, float intensity)
+        {
+            AudioCueRequest req = AudioCueTable.PassengerVoice(passengerIndex, voice, intensity);
+            ExternalVoiceCount++;
             Submit(in req);
         }
 
@@ -670,6 +906,11 @@ namespace Ascend.Prototype.Audio
             // 종류가 32 미만이라 int 하나로 충분하다.
             int bit = (int)req.Kind;
             if (bit > 0 && bit < 32) PlayedKindsMask |= 1 << bit;
+
+            // 승객 음성은 한 큐 종류 안에 다섯 표현이 들어 있다(`MASTER_PRD.md` §9.3).
+            // `PlayedKindsMask` 로는 그 다섯이 각각 났는지 셀 수 없다 — 비트가 하나뿐이다.
+            if (req.Kind == AudioCueKind.PassengerVoice)
+                VoiceKindsMask |= 1 << (int)PassengerVoices.KindOf(req.Variant);
 
             if (_logCues) Debug.Log("[상승] 오디오 큐 " + req + " ch=" + channel);
         }
@@ -812,6 +1053,26 @@ namespace Ascend.Prototype.Audio
                 source.volume = 0f;
                 _sources[i] = source;
             }
+
+            // 지속 레이어는 큐 채널과 **섞지 않는다.** 큐 채널은 `PlayOneShot` 을 받고
+            // 매 프레임 볼륨이 덮어써지는 자리라, 루프 클립을 같은 소스에 얹으면
+            // 캐스케이드 한 번에 지속층의 볼륨과 피치가 통째로 바뀐다.
+            _subBed = BuildLoopSource("AudioBed_Sub");
+            _stressBed = BuildLoopSource("AudioBed_Stress");
+        }
+
+        private AudioSource BuildLoopSource(string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+
+            var source = go.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.loop = true;
+            source.spatialBlend = 0f;
+            source.dopplerLevel = 0f;
+            source.volume = 0f;
+            return source;
         }
 
         private void WarnBake(AudioCueKind kind)
@@ -869,7 +1130,31 @@ namespace Ascend.Prototype.Audio
 //     끈다 — 험·응력음·충격음은 남는다. `AccessibilitySource` 가 어느 쪽인지 알려 준다.
 //
 //  6. 승객 음성(UP-AUD-04)은 지금 **사건 버스 폴백**으로 난다. 승객 반응 중재기가
-//     누구를 고를지 이 컴포넌트는 모르기 때문이다. `PassengerReactionView.OnReacted`
-//     에서 `AudioDirector.PlayPassengerVoice(승객 인덱스, 강도)` 를 부르면 폴백이
-//     자동으로 물러나고(`HasExternalVoiceDriver`) 목소리와 몸짓이 같은 승객에게 붙는다.
-//     그 파일도 이 작업의 소유 범위 밖이다.
+//     누구를 고를지 이 컴포넌트는 모르기 때문이다. 그 파일들은 이 작업의 소유 범위 밖이라
+//     손대지 않았고, 대신 **부를 수 있는 진입점**을 여기 만들어 두었다.
+//
+//     `Scripts/Npc/PassengerReactionView.OnReacted` 에서 한 줄이면 된다:
+//
+//         _audio.PlayPassengerVoice(passengers[i], reactionEvent,
+//                                   reaction.VoiceCue, reaction.Intensity);
+//
+//     시그니처:
+//         bool PlayPassengerVoice(int passengerIndex,
+//                                 Ascend.Prototype.Npc.PassengerReactionEvent reaction,
+//                                 string voiceCue, float intensity)
+//         bool PlayPassengerVoice(int passengerIndex, PassengerVoiceKind voice, float intensity)
+//         void PlayPassengerVoice(int passengerIndex, float intensity)   // 호흡 고정
+//
+//     첫 호출에 폴백이 물러나고(`HasExternalVoiceDriver`) 목소리와 몸짓이 같은 승객에게
+//     붙는다. 반환값 false 는 고장이 아니라 「이 반응은 조용하다」다 —
+//     과수확 접근이 그 경우이며 §7.3 이 그 순간을 정적으로 규정한다.
+//     쿨다운을 여기서 걸지 않는 이유: 누가 언제 반응하는지는 중재기의 규칙이고
+//     (UP-NPC-05), 두 곳에서 조이면 상한이 실제로 몇인지 아무도 모르게 된다.
+//
+//     `AudioDirector.VoiceKindCount` 가 다섯 표현이 실제로 났는지 센다. 5 가 목표다.
+//
+//  7. 지속 위험 레이어(UP-RISK-05)는 **씬에서 할 일이 없다.** AudioSource 두 개를
+//     `AudioBed_Sub` / `AudioBed_Stress` 로 Awake 에서 자식 생성한다.
+//     확인은 `SubBedVolume` / `StressBedVolume` / `DangerBedLevel` 로 한다 —
+//     안정 단계에서 `StressBedVolume` 이 0 이 아니면 배분이 틀린 것이다.
+//     `RiskStateView` 의 험과 겹쳐 들리면 `_dangerBedEnabled` 를 끄고 비교한다.

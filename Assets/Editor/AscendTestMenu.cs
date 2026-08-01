@@ -37,6 +37,8 @@ namespace Ascend.Prototype.EditorTools
             Npc.Tests.PassengerReactionTests.RunAll(),
             Audio.Tests.AudioTests.RunAll(),
             Perf.Tests.PerfTests.RunAll(),
+            Diagnostics.Tests.WiringDiagnosticsTests.RunAll(),
+            UI.Tests.RunSummaryBuilderTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]

@@ -37,6 +37,15 @@ namespace Ascend.Prototype.Npc.Tests
             Run("라우터가 버스 사건을 중재기로 잇는다", TestRouterBridgesBus, ref passed, ref failed, report);
             Run("라우터를 두 번 붙여도 한 번만 센다", TestRouterDoesNotDoubleSubscribe, ref passed, ref failed, report);
 
+            // UP-NPC-04 — 표현 채널 넷. **총합이 아니라 종류를 센다.**
+            Run("표현 채널 넷이 각각 값을 낸다", TestFourChannelsProduceValues, ref passed, ref failed, report);
+            Run("짧은 대사가 한 문장 이하다", TestLinesAreShort, ref passed, ref failed, report);
+            Run("같은 사건에 승객마다 상반된 반응이 나온다", TestContrastSplitsPassengers, ref passed, ref failed, report);
+            Run("대조 반응이 중재 규칙을 바꾸지 않는다", TestContrastKeepsArbitration, ref passed, ref failed, report);
+            Run("대조 조회기가 없으면 전원이 같은 반응이다", TestNoContrastMeansUniform, ref passed, ref failed, report);
+            Run("Reset 이 대조 반응 11종도 채운다", TestSetResetFillsContrasts, ref passed, ref failed, report);
+            Run("대사 없는 옛 항목이 코드 기본값으로 폴백한다", TestLegacyEntryFallsBackForLine, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Passenger Reaction Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -386,6 +395,286 @@ namespace Ascend.Prototype.Npc.Tests
 
                 if (set.For(PassengerReactionEvent.None).IsActive)
                     return "None 이 살아 있는 반응을 냈다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(set);
+            }
+        }
+
+        // ── 표현 채널 넷 (UP-NPC-04 · MASTER_PRD §9.3) ───────────────────────
+        //
+        // **종류를 센다.** 「반응 110건」은 한 자세가 110번 나와도 나오는 숫자이고,
+        // §9.3이 묻는 것은 시선·자세·짧은 대사·비언어 음성 넷이 각각 값을 내는가다.
+        // `PassengerReactionDirector.FiredKindsMask`가 사건 종류에 대해 같은 일을 한다.
+
+        private static int CountBits(int mask)
+        {
+            int n = 0;
+            for (int m = mask; m != 0; m &= m - 1) n++;
+            return n;
+        }
+
+        private static string TestFourChannelsProduceValues()
+        {
+            IReadOnlyList<PassengerReactionEvent> all = PassengerReactionEvents.All;
+
+            int poseMask = 0;
+            int gazeMask = 0;
+            var lines = new HashSet<string>();
+            var cues = new HashSet<string>();
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                PassengerReaction primary = PassengerReactionSet.DefaultFor(all[i]);
+                PassengerReactionContrast contrast = PassengerReactionSet.DefaultContrastFor(all[i]);
+                if (!contrast.IsDefined)
+                    return $"{all[i].DisplayName()} 에 상반된 반응이 정의돼 있지 않다";
+
+                PassengerReaction other = contrast.ApplyTo(in primary);
+
+                if (!primary.HasLine) return $"{all[i].DisplayName()} 대표 반응에 대사가 없다";
+                if (!other.HasLine) return $"{all[i].DisplayName()} 대조 반응에 대사가 없다";
+                if (!primary.HasVoice) return $"{all[i].DisplayName()} 대표 반응에 음성 큐가 없다";
+                if (!other.HasVoice) return $"{all[i].DisplayName()} 대조 반응에 음성 큐가 없다";
+
+                poseMask |= 1 << (int)primary.Pose;
+                poseMask |= 1 << (int)other.Pose;
+                gazeMask |= 1 << (int)primary.Gaze;
+                gazeMask |= 1 << (int)other.Gaze;
+                lines.Add(primary.Line);
+                lines.Add(other.Line);
+                cues.Add(primary.VoiceCue);
+                cues.Add(other.VoiceCue);
+            }
+
+            // 자세 7종이 전부 쓰여야 한다. 하나라도 안 쓰이면 그 값은 죽은 열거 항목이고,
+            // `ReactionPose` 주석이 경계한 "값이 하나인 것과 같은 열거형"에 한 걸음 가까워진다.
+            int poseKinds = CountBits(poseMask);
+            if (poseKinds < 7) return $"자세가 {poseKinds}종만 쓰인다 — 7종 전부가 나와야 한다";
+
+            // 시선은 `None`(옮기지 않음)을 뺀 5종이 실제 대상이다.
+            int gazeKinds = CountBits(gazeMask);
+            if (gazeKinds < 5) return $"시선 대상이 {gazeKinds}종만 쓰인다 — 5종이 나와야 한다";
+            if ((gazeMask & (1 << (int)ReactionGaze.Player)) == 0)
+                return "플레이어를 보는 반응이 하나도 없다 — \"당신이 결정한다\"가 실릴 자리가 없다";
+
+            // 22개(대표 11 + 대조 11) 중 대부분이 서로 달라야 한다. 같은 문장이
+            // 열한 번 나오면 대사 채널은 켜져 있지만 정보를 싣지 않는다.
+            if (lines.Count < 18) return $"대사가 {lines.Count}종 — 22개 반응이 거의 다 달라야 한다";
+            if (cues.Count < 14) return $"음성 큐가 {cues.Count}종 — 반응마다 소리가 갈려야 한다";
+            return null;
+        }
+
+        /// <summary>
+        /// `MASTER_PRD.md` §9.4가 긴 대화 트리를 **제외한다**. 대사가 길어지면 그건
+        /// 반응이 아니라 대화이고, 승객 머리 위 월드 라벨은 그것을 담을 수 없다.
+        /// </summary>
+        private static string TestLinesAreShort()
+        {
+            IReadOnlyList<PassengerReactionEvent> all = PassengerReactionEvents.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                PassengerReaction primary = PassengerReactionSet.DefaultFor(all[i]);
+                PassengerReaction other =
+                    PassengerReactionSet.DefaultContrastFor(all[i]).ApplyTo(in primary);
+
+                string failure = CheckLine(all[i], primary.Line, "대표")
+                              ?? CheckLine(all[i], other.Line, "대조");
+                if (failure != null) return failure;
+            }
+            return null;
+        }
+
+        private static string CheckLine(PassengerReactionEvent reactionEvent, string line, string role)
+        {
+            if (string.IsNullOrEmpty(line)) return $"{reactionEvent.DisplayName()} {role} 대사가 비었다";
+            if (line.Length > 24)
+                return $"{reactionEvent.DisplayName()} {role} 대사가 {line.Length}자 — 한 문장 이하여야 한다";
+            if (line.IndexOf('\n') >= 0)
+                return $"{reactionEvent.DisplayName()} {role} 대사에 줄바꿈이 있다 — 두 문장이라는 뜻이다";
+            return null;
+        }
+
+        private static Func<PassengerReactionEvent, PassengerReactionContrast> FixedContrast()
+        {
+            return reactionEvent => new PassengerReactionContrast(
+                ReactionPose.Cheer, ReactionGaze.Door, "test_cue_contrast", "대조 대사", 0.8f);
+        }
+
+        private static string TestContrastSplitsPassengers()
+        {
+            var director = new PassengerReactionDirector(
+                2, 2, PassengerReactionSet.DefaultFor, PassengerReactionSet.DefaultContrastFor);
+
+            if (director.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 2)
+                return "선행 조건 실패: 두 명이 반응하지 않았다";
+
+            PassengerReaction a = director.CurrentOf(0);
+            PassengerReaction b = director.CurrentOf(1);
+
+            if (a.Pose == b.Pose) return $"두 승객이 같은 자세({a.Pose})다 — 상반된 반응이 없다";
+            if (a.Gaze == b.Gaze) return $"두 승객이 같은 곳({a.Gaze})을 본다";
+            if (string.Equals(a.Line, b.Line)) return $"두 승객이 같은 말(\"{a.Line}\")을 한다";
+            if (string.Equals(a.VoiceCue, b.VoiceCue)) return $"두 승객이 같은 소리({a.VoiceCue})를 낸다";
+
+            // **타이밍은 같아야 한다.** 다르면 중재기의 세 축이 사람마다 갈린다.
+            if (a.Priority != b.Priority) return $"우선순위가 {a.Priority} vs {b.Priority}";
+            if (Math.Abs(a.Duration - b.Duration) > 0.0001f)
+                return $"지속이 {a.Duration} vs {b.Duration}";
+            if (Math.Abs(a.Cooldown - b.Cooldown) > 0.0001f)
+                return $"쿨다운이 {a.Cooldown} vs {b.Cooldown}";
+
+            if (director.ContrastCount != 1) return $"대조 반응 {director.ContrastCount}회, 기대 1회";
+            if (director.PoseKindCount < 2) return $"관측된 자세가 {director.PoseKindCount}종";
+            if (director.GazeKindCount < 2) return $"관측된 시선이 {director.GazeKindCount}종";
+            if (director.LineCount != 2) return $"대사가 실린 반응 {director.LineCount}건, 기대 2건";
+            if (director.VoiceCueCount != 2) return $"음성 큐가 실린 반응 {director.VoiceCueCount}건";
+
+            // 결정론 — 같은 순서로 다시 돌리면 같은 사람이 같은 쪽을 받아야 한다.
+            var again = new PassengerReactionDirector(
+                2, 2, PassengerReactionSet.DefaultFor, PassengerReactionSet.DefaultContrastFor);
+            again.Notify(PassengerReactionEvent.FiveChain, 0f);
+            if (again.CurrentOf(0).Pose != a.Pose || again.CurrentOf(1).Pose != b.Pose)
+                return "같은 입력에서 대조 배정이 달라졌다 — 고정 캡처가 흔들린다";
+            return null;
+        }
+
+        /// <summary>
+        /// UP-NPC-05는 이미 VERIFIED다. 대조 반응이 그 세 축(최대 수·쿨다운·우선순위)을
+        /// 건드리지 않는다는 것을 **같은 시나리오로** 다시 확인한다 — 규칙 코드가 아니라
+        /// 규칙의 입력이 바뀐 변경이므로, 통과하던 검사가 그대로 통과해야 한다.
+        /// </summary>
+        private static string TestContrastKeepsArbitration()
+        {
+            // 최대 수
+            var byMax = new PassengerReactionDirector(5, 2, Fixed(2f, 4f), FixedContrast());
+            int reacted = byMax.Notify(PassengerReactionEvent.FiveChain, 0f).Count;
+            if (reacted != 2) return $"승객 5명 / 한도 2인데 {reacted}명이 반응했다";
+            byMax.Notify(PassengerReactionEvent.Threshold170, 0f);
+            if (byMax.ActiveCount > 2) return $"두 번째 사건 뒤 ActiveCount {byMax.ActiveCount}";
+
+            // 쿨다운
+            var byCooldown = new PassengerReactionDirector(2, 2, Fixed(1f, 5f), FixedContrast());
+            if (byCooldown.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 2)
+                return "선행 조건 실패: 두 명이 반응하지 않았다";
+            byCooldown.Tick(1.5f);
+            if (byCooldown.ActiveCount != 0) return $"만료 후 ActiveCount {byCooldown.ActiveCount}";
+            if (byCooldown.Notify(PassengerReactionEvent.FiveChain, 2f).Count != 0)
+                return "쿨다운 안인데 다시 반응했다 — 대조가 타이밍을 물려받지 않았다";
+            if (byCooldown.Notify(PassengerReactionEvent.FiveChain, 6f).Count != 2)
+                return "쿨다운이 끝났는데도 반응하지 않았다";
+
+            // 우선순위
+            var byPriority = new PassengerReactionDirector(2, 2, Fixed(10f, 10f), FixedContrast());
+            if (byPriority.Notify(PassengerReactionEvent.BasicPurify, 0f).Count != 2)
+                return "선행 조건 실패: 낮은 우선순위 반응이 시작되지 않았다";
+            if (byPriority.Notify(PassengerReactionEvent.CollapseImminent, 1f).Count != 2)
+                return "높은 우선순위가 덮지 못했다 — 대조가 우선순위를 갈아치웠다";
+            if (byPriority.Notify(PassengerReactionEvent.BasicPurify, 2f).Count != 0)
+                return "낮은 우선순위가 높은 반응을 덮었다";
+            if (byPriority.Notify(PassengerReactionEvent.CollapseImminent, 3f).Count != 0)
+                return "같은 우선순위가 진행 중인 반응을 덮었다";
+            return null;
+        }
+
+        private static string TestNoContrastMeansUniform()
+        {
+            // 대조 조회기 없음 — 기존 생성자와 같은 경로다.
+            var director = new PassengerReactionDirector(2, 2, PassengerReactionSet.DefaultFor);
+            if (director.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 2)
+                return "선행 조건 실패";
+            if (director.CurrentOf(0).Pose != director.CurrentOf(1).Pose)
+                return "대조가 없는데 자세가 갈렸다";
+            if (director.ContrastCount != 0) return $"대조 반응 {director.ContrastCount}회";
+
+            // 정의되지 않은 대조도 같다 — 옛 `.asset` 이 그 상태로 읽힌다.
+            var undefined = new PassengerReactionDirector(2, 2, PassengerReactionSet.DefaultFor,
+                _ => default(PassengerReactionContrast));
+            if (undefined.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 2)
+                return "선행 조건 실패(빈 대조)";
+            if (undefined.CurrentOf(0).Pose != undefined.CurrentOf(1).Pose)
+                return "빈 대조가 자세를 바꿨다";
+            // 적용되지 않은 대조는 세지 않는다. 세면 `ContrastCount` 로는
+            // "상반된 반응이 실제로 나왔는가"를 물을 수 없다.
+            if (undefined.ContrastCount != 0)
+                return $"적용되지 않은 대조가 {undefined.ContrastCount}회로 세졌다";
+            return null;
+        }
+
+        private static string TestSetResetFillsContrasts()
+        {
+            var set = ScriptableObject.CreateInstance<PassengerReactionSet>();
+            try
+            {
+                set.Reset();
+                IReadOnlyList<PassengerReactionEvent> all = PassengerReactionEvents.All;
+                for (int i = 0; i < all.Count; i++)
+                {
+                    if (!set.HasContrastEntry(all[i]))
+                        return $"{all[i].DisplayName()} 의 대조 반응이 에셋에 없다";
+
+                    PassengerReaction primary = set.For(all[i]);
+                    PassengerReaction other = set.ContrastFor(all[i]).ApplyTo(in primary);
+                    if (other.Pose == primary.Pose && other.Gaze == primary.Gaze)
+                        return $"{all[i].DisplayName()} 의 대조가 대표와 같은 자세·시선이다";
+                    if (!other.HasLine) return $"{all[i].DisplayName()} 의 대조에 대사가 없다";
+                }
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(set);
+            }
+        }
+
+        /// <summary>
+        /// `PassengerReactionSet.asset`은 `Line`·`Contrast`가 생기기 전에 직렬화됐다.
+        /// 그 상태의 항목이 대사를 잃지 않는다는 것을 확인한다 — 잃으면 §9.3의 채널
+        /// 하나가 데이터가 있는데도 화면에서 통째로 사라진다.
+        /// </summary>
+        private static string TestLegacyEntryFallsBackForLine()
+        {
+            var set = ScriptableObject.CreateInstance<PassengerReactionSet>();
+            try
+            {
+                set.Reset();
+
+                // `Entries`는 내부 배열을 그대로 돌려준다. 옛 직렬화 상태(대사 없음 ·
+                // 대조 없음)를 만들 다른 통로가 없어서 여기로 들어간다. 이 캐스트가
+                // 언젠가 사본을 돌려주게 바뀌면 아래 "우선순위가 보인다" 검사가 먼저 깨져
+                // **검사 자체가 무력화된 것을 알려 준다.**
+                var entries = set.Entries as PassengerReactionSet.Entry[];
+                if (entries == null) return "Entries 가 내부 배열이 아니다 — 이 검사가 성립하지 않는다";
+
+                int index = -1;
+                for (int i = 0; i < entries.Length; i++)
+                    if (entries[i].Event == PassengerReactionEvent.FiveChain) { index = i; break; }
+                if (index < 0) return "5연쇄 항목이 없다";
+
+                entries[index].Reaction.Line = null;
+                entries[index].Reaction.Priority = 41;          // 변경이 실제로 닿았는지 보는 표식
+                entries[index].Contrast = default(PassengerReactionContrast);
+
+                PassengerReaction got = set.For(PassengerReactionEvent.FiveChain);
+                if (got.Priority != 41)
+                    return "에셋 수정이 조회에 반영되지 않았다 — 이 검사가 무력화됐다";
+
+                string expected = PassengerReactionSet.DefaultFor(PassengerReactionEvent.FiveChain).Line;
+                if (!string.Equals(got.Line, expected))
+                    return $"빈 대사가 폴백되지 않았다: \"{got.Line}\", 기대 \"{expected}\"";
+
+                PassengerReactionContrast contrast = set.ContrastFor(PassengerReactionEvent.FiveChain);
+                if (!contrast.IsDefined) return "빈 대조가 코드 기본값으로 폴백되지 않았다";
+                if (contrast.Pose !=
+                    PassengerReactionSet.DefaultContrastFor(PassengerReactionEvent.FiveChain).Pose)
+                    return "대조 폴백이 코드 기본값과 다르다";
+
+                // 음성 큐에는 폴백이 없다 — "비면 소리 없음"이 이미 출하된 계약이다.
+                entries[index].Reaction.VoiceCue = null;
+                if (set.For(PassengerReactionEvent.FiveChain).HasVoice)
+                    return "빈 음성 큐가 폴백됐다 — 데이터로 소리를 끌 수 없게 된다";
                 return null;
             }
             finally

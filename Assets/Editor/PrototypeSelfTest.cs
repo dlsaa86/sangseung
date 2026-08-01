@@ -36,22 +36,31 @@ public static class PrototypeSelfTest
         var passengers = PlaytestSimRunner.LoadAll<PassengerDefinition>("PassengerDefinition");
         passengers.Sort((a, b) => string.CompareOrdinal(a.id, b.id));
 
-        if (config == null || balls == null || combo == null)
+        // ── UP-TEST-11 웨이브 0 ───────────────────────────────────────────────
+        // 위 셋은 **옛 스택**(구슬 조합·타이밍)의 에셋이고 웨이브 8이 지운다.
+        // 여기서 `return` 하면 아래 신 스택 스위트 10종이 통째로 실행되지 않은 채
+        // fail=1 로 끝나고, `commit-gate.sh` 와 `verify-topdown.ps1` 이 **모든 커밋을 막는다.**
+        // 레거시 삭제 순서에서 「자체 검사 편집이 반드시 먼저」인 이유가 정확히 이것이다.
+        //
+        // 부재는 실패가 아니라 **대상 없음**이다. 다만 조용히 넘기지 않는다 —
+        // 합계만 보면 사라진 9건이 눈에 띄지 않고, 그러면 커버리지 손실이 통과로 읽힌다.
+        var legacyAssetsPresent = config != null && balls != null && combo != null;
+        if (legacyAssetsPresent)
         {
-            _fail++;
-            _log.AppendLine("  FAIL  자동 검증 중단 — 필수 에셋 누락 (PrototypeConfig/BallDatabase/CombinationConfig)");
-            return _log.ToString();
+            Test1_BallProbabilitySum(balls);
+            Test2_GradeDistribution(balls);
+            Test3_RequiredPower(config);
+            Test4_OverchargeMath(config);
+            Test5_EffectOrder(effectSettings);
+            Test6_RepeatGuard(effectSettings);
+            Test7_StateReset(config);
+            Test8_SeedReproducibility(config, balls, combo, effectSettings, passengers);
+            Test9_TimingIsNotATax(config, effectSettings);
         }
-
-        Test1_BallProbabilitySum(balls);
-        Test2_GradeDistribution(balls);
-        Test3_RequiredPower(config);
-        Test4_OverchargeMath(config);
-        Test5_EffectOrder(effectSettings);
-        Test6_RepeatGuard(effectSettings);
-        Test7_StateReset(config);
-        Test8_SeedReproducibility(config, balls, combo, effectSettings, passengers);
-        Test9_TimingIsNotATax(config, effectSettings);
+        else
+        {
+            _log.AppendLine("  SKIP  옛 스택 검사 9건 — PrototypeConfig/BallDatabase/CombinationConfig 부재 (UP-TEST-11 진행 중)");
+        }
 
         // 노션 재설계 이후의 코어. 위 1~9번은 폐기 예정인 옛 구조(구슬 조합·타이밍)를 지키고
         // 있어서, 새 룰렛·층 진행이 깨져도 전부 통과한다. 커밋 게이트가 그 상태를 승인하면
@@ -74,6 +83,12 @@ public static class PrototypeSelfTest
         FoldInSuite("승객 반응", Ascend.Prototype.Npc.Tests.PassengerReactionTests.RunAll());
         FoldInSuite("사운드 매핑·정적 구간", Ascend.Prototype.Audio.Tests.AudioTests.RunAll());
         FoldInSuite("풀링·메모리 추세", Ascend.Prototype.Perf.Tests.PerfTests.RunAll());
+
+        // 2026-08-02 배치. 등록하지 않으면 **돌지 않으므로 없는 것과 같다** —
+        // 바로 위 세 줄이 전부 같은 이유로 뒤늦게 편입됐고, 그 사이 커밋 게이트는
+        // 그 스위트들에 대해 아무 말도 하지 않고 있었다.
+        FoldInSuite("배선 진단", Ascend.Prototype.Diagnostics.Tests.WiringDiagnosticsTests.RunAll());
+        FoldInSuite("런 요약 9종", Ascend.Prototype.UI.Tests.RunSummaryBuilderTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

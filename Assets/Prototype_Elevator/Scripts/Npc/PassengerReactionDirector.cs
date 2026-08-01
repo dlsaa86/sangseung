@@ -33,6 +33,7 @@ namespace Ascend.Prototype.Npc
 
         private readonly Slot[] _slots;
         private readonly Func<PassengerReactionEvent, PassengerReaction> _lookup;
+        private readonly Func<PassengerReactionEvent, PassengerReactionContrast> _contrastLookup;
         private readonly List<int> _selected = new List<int>(4);
         private readonly int _maxConcurrent;
 
@@ -50,6 +51,17 @@ namespace Ascend.Prototype.Npc
         /// </param>
         public PassengerReactionDirector(int passengerCount, int maxConcurrent,
                                          Func<PassengerReactionEvent, PassengerReaction> lookup)
+            : this(passengerCount, maxConcurrent, lookup, null)
+        {
+        }
+
+        /// <param name="contrastLookup">
+        /// 사건 → 상반된 반응(§9.3). 보통 <see cref="PassengerReactionSet.ContrastFor"/>를 넘긴다.
+        /// null이면 전원이 같은 반응을 한다 — 그것도 유효한 상태이므로 경고하지 않는다.
+        /// </param>
+        public PassengerReactionDirector(int passengerCount, int maxConcurrent,
+                                         Func<PassengerReactionEvent, PassengerReaction> lookup,
+                                         Func<PassengerReactionEvent, PassengerReactionContrast> contrastLookup)
         {
             int count = passengerCount > 0 ? passengerCount : 0;
             _slots = new Slot[count];
@@ -57,6 +69,7 @@ namespace Ascend.Prototype.Npc
             // 반응 전체를 끄고 다른 채널만 보고 싶을 때 쓴다.
             _maxConcurrent = maxConcurrent > 0 ? maxConcurrent : 0;
             _lookup = lookup;
+            _contrastLookup = contrastLookup;
         }
 
         public int PassengerCount => _slots.Length;
@@ -98,6 +111,37 @@ namespace Ascend.Prototype.Npc
             }
         }
 
+        // ── 표현 채널 관측 (UP-NPC-04) ────────────────────────────────────────
+        //
+        // 총합이 아니라 **종류**를 센다. §9.3은 채널 넷을 요구하는데 「반응 110건」은
+        // 한 자세가 110번 나와도 나오는 숫자다. `FiredKindsMask`가 사건 종류에 대해
+        // 같은 일을 하는 것과 같은 이유이며, 같은 방식(비트 집합)을 쓴다.
+
+        /// <summary>실제로 몸에 걸린 자세의 비트 집합. 비트 n 은 <c>(ReactionPose)n</c>.</summary>
+        public int PoseKindsMask { get; private set; }
+
+        /// <summary>실제로 걸린 시선 대상의 비트 집합. 비트 n 은 <c>(ReactionGaze)n</c>.</summary>
+        public int GazeKindsMask { get; private set; }
+
+        /// <summary>대사가 실린 반응 수. 0이면 §9.3의 「짧은 대사」 채널이 비어 있다.</summary>
+        public int LineCount { get; private set; }
+
+        /// <summary>음성 큐가 실린 반응 수. 0이면 「비언어 음성」 채널이 비어 있다.</summary>
+        public int VoiceCueCount { get; private set; }
+
+        /// <summary>대표 반응 대신 <b>상반된</b> 반응이 걸린 횟수(§9.3 마지막 줄).</summary>
+        public int ContrastCount { get; private set; }
+
+        public int PoseKindCount => CountBits(PoseKindsMask);
+        public int GazeKindCount => CountBits(GazeKindsMask);
+
+        private static int CountBits(int mask)
+        {
+            int n = 0;
+            for (int m = mask; m != 0; m &= m - 1) n++;
+            return n;
+        }
+
         public bool IsReacting(int passenger) =>
             passenger >= 0 && passenger < _slots.Length && _slots[passenger].Active;
 
@@ -135,6 +179,11 @@ namespace Ascend.Prototype.Npc
             StartedCount = 0;
             SuppressedCount = 0;
             FiredKindsMask = 0;
+            PoseKindsMask = 0;
+            GazeKindsMask = 0;
+            LineCount = 0;
+            VoiceCueCount = 0;
+            ContrastCount = 0;
         }
 
         /// <summary>
@@ -162,6 +211,12 @@ namespace Ascend.Prototype.Npc
             PassengerReaction reaction = Resolve(reactionEvent);
             if (!reaction.IsActive) return _selected;                 // 지속 0 = 데이터로 꺼 둔 반응
 
+            // 상반된 반응(§9.3)은 **표현만** 바꾼다. 지속·우선순위·쿨다운은
+            // `ApplyTo` 가 대표 반응에서 그대로 물려주므로 아래 중재 규칙에는
+            // 대조가 있든 없든 같은 값이 들어간다 — UP-NPC-05 의 세 축이 그대로 남는다.
+            PassengerReaction contrast;
+            bool hasContrast = TryResolveContrast(reactionEvent, in reaction, out contrast);
+
             int start = _cursor;
 
             // 1차 — 비어 있고 쿨다운도 끝난 승객. 동시 한도를 넘지 않는 선까지만 채운다.
@@ -172,7 +227,7 @@ namespace Ascend.Prototype.Npc
                 int index = (start + i) % _slots.Length;
                 if (_slots[index].Active) continue;
                 if (now < _slots[index].CooldownUntil) continue;
-                Begin(index, reactionEvent, reaction, now);
+                Begin(index, reactionEvent, in reaction, in contrast, hasContrast, now);
                 active++;
             }
 
@@ -184,7 +239,7 @@ namespace Ascend.Prototype.Npc
                 if (!_slots[index].Active) continue;
                 if (_selected.Contains(index)) continue;              // 방금 시작한 것을 덮지 않는다
                 if (_slots[index].Reaction.Priority >= reaction.Priority) continue;
-                Begin(index, reactionEvent, reaction, now);
+                Begin(index, reactionEvent, in reaction, in contrast, hasContrast, now);
             }
 
             if (_selected.Count == 0) SuppressedCount++;
@@ -192,15 +247,24 @@ namespace Ascend.Prototype.Npc
         }
 
         private void Begin(int index, PassengerReactionEvent reactionEvent,
-                           PassengerReaction reaction, float now)
+                           in PassengerReaction primary, in PassengerReaction contrast,
+                           bool hasContrast, float now)
         {
+            // 이 사건에서 **몇 번째로 뽑혔는가**로 대표/대조를 가른다. 무작위가 아니다 —
+            // `_cursor` 라운드 로빈과 같은 이유로, 같은 시드의 고정 캡처가 매번 같아야 한다.
+            bool useContrast = hasContrast && (_selected.Count & 1) == 1;
+            PassengerReaction reaction = useContrast ? contrast : primary;
+            if (useContrast) ContrastCount++;
+
             _slots[index].Active = true;
             _slots[index].Event = reactionEvent;
             _slots[index].Reaction = reaction;
-            _slots[index].EndsAt = now + reaction.Duration;
+            // 타이밍은 **대표 반응** 것을 쓴다. 대조가 다른 시각에 끝나면 같은 사건의
+            // 반응이 사람마다 다른 길이가 되어, 그 차이가 연출인지 버그인지 갈리지 않는다.
+            _slots[index].EndsAt = now + primary.Duration;
             // 쿨다운은 시작 시점부터 잰다. 종료 시점부터 재면 지속이 긴 반응일수록
             // 실질 침묵 시간이 길어져, 데이터에서 지속만 늘렸는데 반응 빈도가 같이 줄어든다.
-            _slots[index].CooldownUntil = now + Math.Max(reaction.Duration, reaction.Cooldown);
+            _slots[index].CooldownUntil = now + Math.Max(primary.Duration, primary.Cooldown);
             _selected.Add(index);
             _cursor = (index + 1) % _slots.Length;
             StartedCount++;
@@ -210,6 +274,14 @@ namespace Ascend.Prototype.Npc
             // 종류는 1~11 이라 int 하나로 충분하다.
             int bit = (int)reactionEvent;
             if (bit > 0 && bit < 32) FiredKindsMask |= 1 << bit;
+
+            // 표현 채널 넷도 같은 방식으로 센다(UP-NPC-04).
+            int pose = (int)reaction.Pose;
+            if (pose >= 0 && pose < 32) PoseKindsMask |= 1 << pose;
+            int gaze = (int)reaction.Gaze;
+            if (gaze >= 0 && gaze < 32) GazeKindsMask |= 1 << gaze;
+            if (reaction.HasLine) LineCount++;
+            if (reaction.HasVoice) VoiceCueCount++;
         }
 
         private PassengerReaction Resolve(PassengerReactionEvent reactionEvent)
@@ -226,6 +298,31 @@ namespace Ascend.Prototype.Npc
                     "PassengerReactionSet 이 연결되지 않았다. 코드 기본값으로 진행한다.");
             }
             return PassengerReactionSet.DefaultFor(reactionEvent);
+        }
+
+        /// <summary>
+        /// 상반된 반응을 대표 반응 위에 얹은 결과. 조회기가 없거나 대조가 정의돼 있지
+        /// 않으면 대표 반응 그대로다 — 그 경우 전원이 같은 반응을 한다.
+        ///
+        /// 조회기가 없다고 경고하지 않는 이유: `_lookup` 이 없는 것은 배선 사고지만
+        /// 대조가 없는 것은 **정당한 설정**이다. 둘을 같은 경고로 묶으면 진짜 배선
+        /// 누락이 정상 상태의 잡음에 묻힌다.
+        /// </summary>
+        private bool TryResolveContrast(PassengerReactionEvent reactionEvent,
+                                        in PassengerReaction primary,
+                                        out PassengerReaction resolved)
+        {
+            resolved = primary;
+            if (_contrastLookup == null) return false;
+
+            PassengerReactionContrast contrast = _contrastLookup(reactionEvent);
+            // **정의되지 않은 대조는 "대조 없음"이다.** 여기서 true 를 돌려주면
+            // `ContrastCount` 가 실제로는 대표 반응만 나갔는데도 오르고, 그 값으로
+            // "상반된 반응이 나오는가"를 물을 수 없게 된다.
+            if (!contrast.IsDefined) return false;
+
+            resolved = contrast.ApplyTo(in primary);
+            return true;
         }
     }
 }

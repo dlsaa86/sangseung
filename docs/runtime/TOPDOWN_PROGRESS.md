@@ -9,25 +9,188 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 패스 | **Pass 1 → Pass 2 (적재 정책 + 프로파일 주입)** |
+| 현재 패스 | **Pass 1 COMPLETE → Pass 2 IN_PROGRESS** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `329c855` — 연출 중 이동·회전 단정 |
+| 마지막 정상 커밋 | `d8569e1` — 콘솔 오류 재현 안 됨 |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` |
-| 갱신 시각 | 2026-08-01 (Wave D 프로파일 주입 반영) |
+| 갱신 시각 | **2026-08-02** (게이트 패스별 전환 + 6레인 병렬 배치) |
 
 ## Required 상태 분포
 
-`verify-topdown.ps1 -Stats` 출력과 일치해야 한다.
+`verify-topdown.ps1 -Stats` 출력과 일치해야 한다. **손으로 적는 표가 아니다.**
 
 | 상태 | 개수 | 세션 시작 |
 |---|---|---|
-| `VERIFIED` | **72** | 64 |
-| `CONNECTED` | **36** | 26 |
-| `VISIBLE` | 0 | 0 |
-| `SKELETON` | **15** | 16 |
-| `NOT_STARTED` | **6** | 23 |
+| `VERIFIED` | **74** | 73 |
+| `CONNECTED` | **44** | 37 |
+| `VISIBLE` | **2** | 0 |
+| `SKELETON` | **9** | 15 |
+| `NOT_STARTED` | **0** | 4 |
 | **Required 합계** | **129** | 129 |
+
+---
+
+## 🔴 게이트 구조가 바뀌었다 — 패스별 완료 수준 (2026-08-02 사용자 지시)
+
+**직전 판본은 패스와 무관하게 항상 「Required 전부 VERIFIED + 전체 테스트 + 빌드 + 캡처 +
+독립 평가」를 요구했다.** 그 결과 범위를 빠르게 펼치는 단계인 Pass 1 이 사실상 **최종 QA처럼
+작동했고**, 플레이스홀더 하나를 넣을 때마다 최종 증거를 요구받아 Coverage 속도가 죽었다.
+
+| 패스 | 완료 기준 | 검증기가 이 패스에서 막는 것 |
+|---|---|---|
+| Pass 1 | 모든 Required ≥ `SKELETON`·`VISIBLE` | 상태 바뿐 |
+| Pass 2 | 모든 Required ≥ `CONNECTED` | + 끊긴 증거 경로 |
+| Pass 3 | `PASS3_GATED` 28항목 `VERIFIED` + 시각 `ACCEPT` | + 캡처 세트·독립 평가·콘솔 오류 |
+| Pass 4 | 모든 Required `VERIFIED` | + 전체 테스트·빌드·10층 증거·미커밋 0 |
+
+**효과가 즉시 나왔다** — 같은 저장소 상태에서 Pass 1 이 막는 항목이 **56건 + 시각 REJECT +
+빌드/캡처 전부 → 3건**이 됐다.
+
+**요구를 없앤 것이 아니다.** 검증기는 지금 막지 않는 것을 「지금은 막지 않는다 (나중 패스가
+요구한다)」 절에 **항상 함께 출력한다.** 게이트 완화가 곧 「사라진 요구사항」이 되는 것이
+이 구조에서 가장 위험한 실패라서다.
+
+**항상 막는 것은 셋뿐이다** — 컴파일 통과, 분류 모순 없음, 진행 문서·브랜치.
+
+### 검증기 자체의 결함 둘을 고쳤다
+
+1. **BOM.** `.ps1` 을 BOM 없이 저장했더니 Windows PowerShell 5.1 이 ANSI 로 읽어 한글
+   문자열 리터럴이 깨졌고, 그 깨진 바이트가 따옴표를 삼켜 **파일 전체가 파스 오류**가 됐다.
+   에러는 순수 ASCII 인 정규식 줄을 가리켜 원인이 안 보였다.
+2. **판정 정규식이 헤딩을 못 읽었다.** `VISUAL_VERDICT.md` 의 4·5·6차가
+   `## VERDICT: REJECT` 헤딩 형태인데 정규식이 평문만 찾아 **통째로 건너뛰고 있었다.**
+   지금은 우연히 결과가 같았지만 **ACCEPT 가 헤딩으로 적히면 통과해야 할 것이 통과하지 못한다** —
+   게이트가 조용히 틀리는 쪽이다. 독립 감사가 잡았다.
+
+---
+
+## Pass 1 완료 — 마지막 3건은 둘이 분류 오류, 하나가 실제 작업이었다
+
+| 항목 | 무엇이었나 |
+|---|---|
+| `UP-DOC-01` | **차단이 아니었다.** 아래 참조 |
+| `UP-VIS-07`·`UP-VIS-09` | **분류 오류.** 루브릭 문서·평가 스킬·판정 기록·축소 세트 23장이 전부 디스크에 있는데 `NOT_STARTED`(=구현이 실제로 없다)로 적혀 있었다. 없는 것은 구현이 아니라 **합격**이다. 둘을 한 상태로 적으면 Pass 1(존재)이 Pass 3(품질)의 실패로 막힌다. ⚠ **독립 감사는 이 정정에 반대했다** — 「이 항목의 산출물은 ACCEPT 판정 하나뿐」. 양쪽 논거를 백로그에 나란히 남겼고, 어느 쪽이든 `PASS3_GATED` 라 **Pass 3 을 계속 막으므로 요구는 약해지지 않는다** |
+| `UP-TEST-11` | **실제 작업.** 웨이브 0 완료 + A묶음 1/3 삭제 |
+
+### `UP-TEST-11` 웨이브 0 — 계획과 다르게 했고 그 편이 옳다
+
+`PrototypeSelfTest.cs` 의 조기 반환은 레거시 `.asset` 셋이 없으면 `fail=1` 로 끝내
+**신 스택 스위트 10종을 통째로 건너뛰고 모든 커밋을 막는** 구조였다. 삭제 순서에서
+「자체 검사 편집이 반드시 먼저」인 이유가 이것이다.
+
+계획은 「`Test1~9` 호출과 본문 제거」였으나 **그러면 아직 빌드에 남아 있는 옛 스택의
+커버리지가 웨이브 7 전까지 비어 버린다.** 대신 `if (legacyAssetsPresent)` 분기로 바꿨다 —
+에셋이 있는 **지금은 9건이 그대로 돌아 관측 가능한 변화가 0**이고, 사라진 뒤에는 실패가
+아니라 `SKIP` 한 줄이 보고서에 **남는다**(합계만 보면 사라진 9건이 안 보인다).
+삭제는 그것들이 지키는 코드가 사라지는 웨이브 7 과 **같은 커밋**에서 한다.
+
+`Scripts/Effects/IEffect.cs` 는 삭제 직전에 구현체 0개·GUID 씬/에셋 0건을 재확인하고 지웠다.
+A묶음 나머지 둘은 다른 작업자가 그 디렉터리를 소유 중이라 **손대지 않았다** — 병렬 소유 규칙이 우선한다.
+
+---
+
+## `UP-DOC-01` — 「사용자만 풀 수 있다」가 사실이 아니었다
+
+진행 문서의 차단 표는 이 항목을 **유일한 권한 차단**(「Notion 쓰기가 권한 계층에서 거부됐다」)으로
+적고 있었다. **이번엔 거부되지 않았다.** 차단은 항구적이지 않았고, 그 기록을 그대로 믿었다면
+이 항목은 계속 사용자 대기로 남았을 것이다.
+
+바꾼 것은 정확히 두 줄이다 — Notion §6.1 「위치와 무관하게 기본 정화한다」 →
+「3개 이상이고 **서로 인접**하면 정화한다 (직선 3연속 또는 연결 덩어리 4개 이상)」, §4.1 도 같이.
+**문구를 새로 쓰지 않고 저장소 동결 스냅샷(`MASTER_PRD.md:78`·`:128-129`)을 그대로 옮겼다** —
+두 문서가 「비슷한 말」이 아니라 **같은 문장**이어야 다음 대조가 성립한다.
+
+§3 가설 2번과 §16.1 테스트 항목명의 「3개 기본 정화」는 **고의로 뒀다**(규칙 진술이 아니다).
+일괄 치환하지 않은 이유는 `UP-DOC-02`(`Warning`→`Strain`)에서 이미 배웠다 —
+**같은 낱말이 서로 다른 것을 가리키는 자리를 함께 바꾸면 조용히 끊긴다.**
+
+**검증은 API 성공 응답이 아니라 재조회로 했다.** 그리고 **독립 확인자가 별도로**
+읽기 전용 `notion-fetch` 로 원본을 직접 열어 확인해 `VERIFIED` 로 승격했다(규칙 6).
+전문은 `NotionSyncReport.md` §9.
+
+---
+
+## 독립 감사 26 에이전트 — 백로그가 **실물이 아닌 파일**을 가리키고 있었다
+
+19항목을 클러스터별로 감사하고 **판정마다 적대적 반박자**를 붙였다(반박 기본 입장:
+「이 판정은 너무 후하다」). 반박이 성공한 것이 3건이고, 그중 둘은 **상태를 낮췄다.**
+
+| 항목 | 백로그 | 실제 | 무엇이 낡았나 |
+|---|---|---|---|
+| `UP-TECH-03` | SKELETON | **CONNECTED** | 구현이 `Player/PlayerSetupValidator.cs`(지금도 죽은 코드)가 아니라 `Diagnostics/SceneWiringValidator.cs:84-90` 의 `RuntimeInitializeOnLoadMethod` 다. **「죽은 구현」이 로그로 배제됐다** — `Logs/Editor.log` 에 「[배선] 필수 참조 이상 없음」이 **22회**, 그 문장은 자동 실행 분기에서만 나온다 |
+| `UP-POWER-07` | SKELETON | **VISIBLE** | 「런타임 소비처 0곳·씬 참조 없음」이 거짓 — 씬 `:9524` 배선 + `AudioDirector:258` 소비 |
+| `UP-POWER-06` | SKELETON | **VISIBLE** | 「씬에서 서로 이어지지 않았다」가 거짓 — 3컴포넌트가 전부 같은 오브젝트에 붙어 있다 |
+| `UP-AUD-04` | SKELETON | **CONNECTED** | 실제 재생까지 감 — 마스크는 `PlayOneShot` **뒤에만** 선다 |
+| `UP-RISK-05` | SKELETON | **CONNECTED** | 「씬 배선 전이라 안 들린다」가 거짓 |
+| `UP-SPACE-09` | SKELETON | **CONNECTED** | 감사자가 요구 채널 셋 중 **「점등」을 통째로 빠뜨렸다** — `RiskStateView` 전역 앰비언트가 방향 무관 채널로 실동작 |
+| `UP-REC-05` | SKELETON | **CONNECTED** | 「17번만 해상도가 다르다」가 거짓 — **PNG 헤더 바이트를 직접 읽어** 23장 전부 1920×1080 확인 |
+
+**전문은 저장소에 남겼다** — `docs/runtime/BACKLOG_TRUTH_AUDIT.md`(정정표·작업 순서),
+`docs/runtime/COVERAGE_GAP_AUDIT.md`(**백로그에 아예 없는 요구 15건** + 제안 ID + 분류 오류).
+임시 산출물로 두면 다음 세션이 같은 감사를 처음부터 다시 돌린다.
+
+**감사가 백로그에 없던 결함 10건을 새로 찾았다** → 백로그 §5.1 신설.
+가장 나쁜 것: `AudioMixProfile` **18필드 중 13이 죽어 있고**(험 배율은 계산까지 되는데
+`RiskStateView:403` 이 **절대값으로 덮어쓴다**), `VisualQualityProfile` 의 그림자 거리가
+URP 에셋과 **어긋나 성능 리포트가 거짓 조건을 인용한다.**
+
+**감사 자신의 인용 오류도 잡혔다** — 반박자들이 줄 번호 3건을 정정했다.
+
+---
+
+## 6레인 병렬 배치 — 겹치지 않는 디렉터리 소유
+
+씬·프리팹·머티리얼·`.asset` 은 **아무도 건드리지 않았다**(직렬화 손상 방지).
+레인 셋은 **Unity 를 띄우지 않고** 프로젝트 자신의 `Assembly-CSharp.rsp` + Unity 의 Roslyn 으로
+오프라인 컴파일까지 스스로 확인했다.
+
+| 레인 | 소유 | 들어온 것 |
+|---|---|---|
+| 진단·풀링 | `Diagnostics/`·`Perf/`·`Player/` | `[RequiredReference]` **5 → 17필드**, 배선 진단 헤드리스 11건, `CrosshairInteractor` 하이라이트 풀링(`UP-TECH-06` 소비처 0 → 1) |
+| 데이터·임포트 | `Data/`·`Editor/AscendImportRules.cs` | `AssetPostprocessor` 로 텍스처·오디오 임포트 규칙(`.preset` 을 만들지 않은 이유: 직렬화 에셋이라 금지), `PresentationProfile` 신설 |
+| 오디오 | `Audio/` | 비언어 음성 5종 + 지속 위험 레이어(`DangerBed`), 채널 열거 두 벌의 **한 칸 밀림**을 캐스트 대신 명시 매핑으로 |
+| 승객 표현 | `Npc/`·`Build/` | **짧은 대사** 채널 신설(데이터 교체 가능), 상반된 반응, 승객 머리 위 라벨 |
+| UI·기록 | `UI/`·`Run/RunSummaryBuilder.cs` | 화면 공간 **보조 표시**(비율 하나 + 위험 낱말 + 점등 4칸), 런 요약 **9종 산출기** |
+| 요구 감사 | (읽기 전용) | 아래 |
+
+### 통합자가 고친 것 — **등록 안 하면 안 도는** 스위트 둘
+
+레인들이 만든 `WiringDiagnosticsTests`·`RunSummaryBuilderTests` 가 러너에 등록돼 있지
+않았다(등록처가 그들의 소유 경로 밖이었다). 둘 다 `AscendTestMenu.AllSuites()` 와
+`PrototypeSelfTest` 에 넣었다 — **등록되지 않은 테스트는 통과가 아니라 미검증이다.**
+
+### 컴파일 검증을 Unity 없이 먼저 했다
+
+Unity 에 포커스를 주면 도메인 리로드가 돈다. 그래서 **레인들이 쓴 방식을 통합에도 적용**해
+프로젝트 자신의 `.rsp` 옵션 + 파일시스템 소스 목록으로 두 어셈블리를 스크래치에 컴파일했다.
+**둘 다 error 0** — 진단 레인이 스스로 신고한 API 위험 6건이 전부 해소됐음이 이때 확인됐다
+(`GetComponentsInChildren<T>(bool, List<T>)` 오버로드 존재, `loadType` 속성명 등).
+
+### 이 배치의 테스트 결과
+
+| 산출물 | 값 | 직전 |
+|---|---|---|
+| `.claude/state/last-selftest.txt` | **285 PASS / 0 FAIL** | 232 |
+| `Logs/editmode_tests.txt` | **266 PASS / 0 FAIL** | 213 |
+| 컴파일 오류 (런타임·에디터) | **0** | 0 |
+
+새 스위트 둘이 **실제로 돈다** — 「배선 진단」 11건, 「런 요약 9종」 12건이 합계에 나타난다.
+
+**자체 검증이 낸 경고는 전부 「씬 배선 대기」다** — `VisualQualityProfile`·`AudioMixProfile`·
+`RunSummaryTemplate` 이 없다는 폴백 경고이고, 그것이 다음 작업(W1 씬 배선)의 목록이다.
+**경고가 뜬다는 사실 자체가 「이 에셋이 읽히고 있다」의 반증 가능한 증거다** — 배선하면 사라진다.
+
+### Pass 2 바 진행
+
+| 시점 | CONNECTED 미달 |
+|---|---|
+| 세션 시작 | 16건 |
+| 감사 정정 후 | 11건 |
+| 레인 배치 후 | **9건** |
+
+남은 9건: `UP-PLAT-05`·`UP-POWER-06`·`UP-POWER-07`·`UP-VIS-01`·`UP-VIS-04`·
+`UP-TECH-04`·`UP-TECH-05`·`UP-TECH-09`·`UP-TEST-11`.
 
 `UP-TECH-03` 이 `CONNECTED` → `SKELETON` 으로 **내려갔다.** 감사가 죽은 구현임을 확인했다 —
 상태가 올라가기만 하는 백로그는 진행 기록이 아니라 홍보물이다.
@@ -619,12 +782,91 @@ Wave A가 만든 컴포넌트를 씬에 붙이고 `.asset` 7종을 만든다. �
 2026-08-01 ·  6cf489c · Pass 3 · 먼지 크기 0.020→0.045 · 배출 하한 6→14 (「죽은 픽셀로 읽힌다」 지적). 색거리 Strain 10.7 / Critical 13.3 / Collapse 13.4 — **Critical↔Collapse 가 포화**라 그 쌍은 구분 안 될 수 있다. 판정 대기
 2026-08-01 ·  6062381 · Pass 2 · 에이전트 3인 병렬 — 텔레메트리 8열(§16.2 5항목) · 오디오 PassengerVoice+사이렌 · 접근성 소비처 · EditMode 194 → **213 PASS** · 자체검증 213 → **232 PASS** · PlayMode 1883 PASS / 0 FAIL 유지
 2026-08-01 ·  (이번) · Pass 3 · UP-FIX-10 게이지가 위험 단계를 읽는다 · UP-FIX-17 두부 글자(⚠ 부재 확인) · UP-FIX-11 실패 층 위험도 · **내 단정의 누적 부작용 발견** — 268회 밀기만 하고 안 되돌려 플레이어가 벽까지 밀려 7건 실패, 원위치 복원 추가. **재검증 미완**
+2026-08-02 ·  (이번) · Pass 1 COMPLETE → Pass 2 · **게이트를 패스별 완료 수준으로 전환**(사용자 지시) — Pass 1 이 막는 항목 56건+α → 3건 · 검증기 결함 2건 수정(BOM · 판정 정규식이 헤딩을 못 읽음) · UP-DOC-01 Notion 원본 개정 + 독립 확인 → VERIFIED · **독립 감사 26에이전트**로 백로그 낡은 기록 7건 정정, 새 결함 10건 발견(§5.1 신설) · **6레인 병렬 배치**(씬 무수정) · 자체 검증 232 → **285 PASS / 0 FAIL**, EditMode 213 → **266 PASS / 0 FAIL**, 컴파일 오류 0 · Pass 2 바 16 → **9건**
 ```
 
 
 ---
 
-## 다음 세션 시작점 (2026-08-01 22:00 기준)
+## 🎯 다음 세션 시작점 (2026-08-02 · Pass 2 · 최신)
+
+> 아래 「2026-08-01 22:00 기준」 절은 **옛 기록**이다. 이 절이 우선한다.
+
+### W1 — 씬·에셋 배선 **한 번** (씬 오너 단독 · 캡처 불필요 · 최대 이득)
+
+이번 배치가 만든 새 `SerializeField` 가 전부 씬에서 null 이다. **이 한 번의 패스가
+6항목을 동시에 움직인다.** 에디터가 열려 있으므로 `.unity` 를 텍스트로 고치지 말고
+`Unity_RunCommand` → `SaveScene` 으로 한다(워크트리 가드가 텍스트 편집을 막는다).
+
+| 배선 | 여는 항목 |
+|---|---|
+| `RunSessionBehaviour._overharvestProfile` ← `OverharvestProfile.asset` | `UP-POWER-07` VISIBLE→CONNECTED |
+| `GameHudView._summaryTemplate` ← `RunSummaryTemplate.asset` (**씬 참조 0건인 유일한 프로파일**) | `UP-REC-02`, `UP-TECH-09` |
+| `GameHudView._risk` ← `RiskStateView` | `UP-SPACE-09` |
+| `PassengerReactionView._audio` ← `AudioDirector` (같은 오브젝트) | `UP-NPC-04` ④, `UP-AUD-04` |
+| `AudioDirector._dangerProfile`·`_accessibilityProfile` — **씬 YAML 에 키 자체가 없다** → 런타임 null | `UP-RISK-05`·`UP-RISK-08`·`UP-AUD-05` |
+| `PresentationProfile.asset` 신규 생성 + `AmbientParticleDirector` 배선 | `UP-TECH-09` ⑩⑪⑫ |
+
+자체 검증이 내는 폴백 경고 목록이 곧 이 표다 — **배선하면 경고가 사라진다.**
+
+### W2 — 남은 신규 파일에 소비처 붙이기 (코드만)
+
+`AudioCueTable.PassengerVoice(int, PassengerVoiceKind, float)` → `AudioDirector.PlayPassengerVoice`
+→ `PassengerReactionView` 가 `reaction.VoiceCue` 를 읽어 호출. 지금 `PlayPassengerVoice(int, float)` 는
+승객 번호로 **피치만** 가르므로 `npc_scream_short`(붕괴)와 `npc_relief_short`(정화)가 **같은 소리**로 나간다.
+`DangerBed` → `RiskStateView` ↔ `AudioDirector._humVolumeScale` 사이를 잇는다.
+
+### W3 — 공허한 단정 교체 (코드만 · 게이트 신뢰도)
+
+이번에 둘을 고쳤다(`AudioKindFloor` 14→16, 필수 참조 `>0`→`≥15`). 남은 것:
+`TenFloorAutoPilot:1021` 파티클 예산 `>0`(switch `default: 24` 라 항상 참) ·
+`AudioDirector:671` `PlayedKindsMask` 가 variant 를 버려 「응력음 1회」와 「네 단계 각각」이 구분 안 됨 ·
+`AudioDirector:421` `DuckedVolumeFor` 미사용(덕 5필드 죽음).
+
+### W5 — 개발 빌드 경로 (`UP-TECH-03`·`04`·`05` 공통 전제)
+
+`Assets/Editor/WindowsBuildTask.cs:85` 의 `BuildOptions.None` → `Development` 경로 추가.
+없으면 ① `DEVELOPMENT_BUILD` 미정의로 `SceneWiringValidator` 런타임 경로가 **빌드에 없고**
+② 플레이어에 GC 카운터가 없다. 현 `.exe` 는 모든 프로브 소스보다 낡았다.
+
+### W6 — 레거시 웨이브 1~2 (이제 전제 충족)
+
+`[RequiredReference]` 가 Player 3파일에 들어갔으므로 `PlayerSetupValidator.cs` 삭제 가능.
+**`Perf/ComponentPool.cs` 는 삭제 대상에서 뺀다** — `UP-TECH-06` 이 소비처를 만드는 중이다.
+웨이브 3·6·7·8 은 `PD-13` 승인 전제.
+
+### 이번 세션에 끝낼 수 없는 것
+
+- **`UP-VIS-01`·`04`·`07`·`09`** — `B-5 #15`(3×3 판 + 전력 계기 동시 판독)가 **4라운드 연속 실패**다.
+  다섯 번째 카메라 조정은 금지(`CLAUDE.md` 규칙 2). 필요한 것은 **배치 결정 `PD-17`**.
+  셰이더 재채택도 2회 되돌림 이력 + 6차 「순손실」 판정. 게다가 `MAT_*` 6종이
+  `_AmbientFloor: 0.18` 을 직렬화로 덮어써 **「0.35 로 올렸다」가 채택 대상에 적용돼 있지 않다.**
+- **`UP-TECH-04`** — `render_budget.txt`(p95 52.43ms)와 `loaded_critical_perf.txt`(p95 8.4ms)가
+  **6배 어긋난다.** 같은 창에서 재측정 전에는 어느 쪽도 근거가 아니다. + `PD-16` 비준 필요.
+- **`UP-TECH-05`** — `LoadedCriticalPerfProbe` 가 **0 B 프레임을 세지 않아** 「매 프레임 0 B」를
+  영원히 판정하지 못한다. 측정 설계부터 고쳐야 한다.
+
+### 사용자 결정이 필요한 것 (작업을 멈추지는 않는다)
+
+`PD-13`(레거시 삭제 방식) · `PD-15`(렌더 예산 값) · `PD-16`(기준 하드웨어 비준) ·
+`PD-17`(계기·판 배치) · `PD-18`(`PowerBand.Damaged`) ·
+`AUTONOMOUS_PROTOTYPE_GOAL.md` 의 `Warning` 5곳(**완료 기준 문서라 구현자가 말없이 고치지 않았다**).
+
+### 감사가 지목한 **구조적** 문제 — 다음에 반드시 볼 것
+
+1. **백로그의 `출처: PRD §…` 가 동결 `MASTER_PRD.md` 를 가리키지 않는다.** 두 번호 체계가
+   섞여 있고(`§14.1`·`§17.4`·`§9.3`·`§13.3` 등은 동결본에 **없는 절**), 그래서
+   **어느 감사자도 기계적으로 대조할 수 없다.** 백로그 §0.2 의 분류 규칙이 자기 근거를 못 찾는다.
+2. **`P2-Gate A~H` 가 검증 체계 밖에 있다.** `AUTONOMOUS_PROTOTYPE_GOAL.md` §13 이
+   이번 실행의 완료 판정 기준인데 그 문자열이 백로그·진행 문서·검증기 **전부 0건**이다.
+   검증기가 세는 것은 4패스뿐이라 **Gate A~H 는 아무도 기계적으로 확인하지 않는다.**
+3. **누락 요구 15건** — 적재량 인게임 판독, 과수확 선택 전 4정보, 저항체 총개수 표시,
+   승객·부품 발동 시각화, 연출 RNG 분리, `SpinResult` 불변, 배타 조건, 10연쇄 판독성 등.
+   제안 ID까지 나와 있다(감사 산출물 표 2).
+
+---
+
+## 다음 세션 시작점 (2026-08-01 22:00 기준 — **옛 기록**)
 
 ### 지금 바로 할 수 있는 것 — 캡처 불필요, 사이클 짧음
 

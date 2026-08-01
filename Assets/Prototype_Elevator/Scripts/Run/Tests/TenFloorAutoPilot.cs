@@ -371,7 +371,11 @@ namespace Ascend.Prototype.Run.Tests
             // 잃지 않기 위한 회귀 방지선이며, 요구 수치를 만족한다는 뜻이 아니다.
             // 관측 수가 올라가면 하한도 함께 올린다 — 내려가면 그것이 회귀다.
             const int ReactionKindFloor = 8;    // 전체 11종 중
-            const int AudioKindFloor = 14;      // 전체 16종 중
+            // 14 → 16. 병렬 에이전트가 넣은 승객 목소리와 사이렌이 실제 런에서 울린 뒤에도
+            // 하한이 14 로 남아 있었다 — 그 상태에서는 `PassengerVoice` 가 통째로 사라져도
+            // 초록불이다. 하한은 요구 수치가 아니라 **되찾은 땅의 경계선**이므로
+            // 관측이 오르면 함께 올린다.
+            const int AudioKindFloor = 16;      // 전체 16종 중 (실측 16)
 
             int reactionKinds = BitCount(_reactionKindsMask);
             int audioKinds = BitCount(_audioKindsMask);
@@ -1039,9 +1043,13 @@ namespace Ascend.Prototype.Run.Tests
                   "RuntimeInitializeOnLoadMethod 가 실행되지 않았다");
 
             Diagnostics.WiringValidationResult auto = Diagnostics.SceneWiringValidator.Validate(false);
+            // `> 0` 은 한 필드만 남아도 통과한다. 표시 범위가 줄어드는 것 자체가 회귀이고
+            // 그때 「결함 0건」은 검사가 아니라 **검사할 것이 없다**는 뜻이 된다.
+            // 하한은 현재 실측(17필드)에서 여유를 둔 값이다 — 요구 수치가 아니라 방지선.
+            const int RequiredFieldFloor = 15;
             Check($"필수로 표시된 참조가 존재한다 — {auto.RequiredFieldsChecked}필드 / {auto.BehavioursScanned}컴포넌트",
-                  auto.RequiredFieldsChecked > 0,
-                  "표시된 필드가 0개다 — 결함 0건이 공허하게 참이 된다");
+                  auto.RequiredFieldsChecked >= RequiredFieldFloor,
+                  $"표시된 필드가 {auto.RequiredFieldsChecked}개로 하한 {RequiredFieldFloor} 미만이다 — 결함 0건이 공허하게 참이 된다");
 
             string firstDefect = auto.Defects.Count > 0 ? auto.Defects[0].Describe() : string.Empty;
             Check($"씬에 빈 필수 참조가 없다 — 결함 {auto.Defects.Count}건",

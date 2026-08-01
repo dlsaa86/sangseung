@@ -52,7 +52,7 @@ namespace Ascend.Prototype.Audio
             // 런타임에 만든 클립이 파괴되는데 정적 캐시는 그 사실을 모른다.
             if (Cache.TryGetValue(key, out cached) && cached != null) return cached;
 
-            float seconds = LengthOf(kind);
+            float seconds = LengthOf(kind, v);
             if (seconds > MaxSeconds) seconds = MaxSeconds;
             int count = (int)(SampleRate * seconds);
             if (count < 64) count = 64;
@@ -86,7 +86,15 @@ namespace Ascend.Prototype.Audio
             Bake(AudioCueKind.OverharvestUnlock, 0);
             Bake(AudioCueKind.OverharvestPull, 0);
             Bake(AudioCueKind.CollapseImpact, 0);
-            for (int p = 0; p < 4; p++) Bake(AudioCueKind.PassengerVoice, p);
+
+            // 승객 음성은 **종류 × 목소리** 두 축이다. 한 축만 굽던 시절에는
+            // 「승객 음성 하나」밖에 없었고, 그건 `MASTER_PRD.md` §9.3 의 다섯 표현을
+            // 채운 것이 아니라 같은 소리를 다섯 번 쓴 것이었다.
+            for (int k = 0; k < PassengerVoices.KindCount; k++)
+                for (int s = 0; s < PassengerVoices.PrewarmSlotCount; s++)
+                    Bake(AudioCueKind.PassengerVoice,
+                         PassengerVoices.Encode((PassengerVoiceKind)k, s));
+
             for (int r = 0; r < 4; r++) Bake(AudioCueKind.MetalStress, r);
             for (int s = 0; s < 4; s++) Bake(AudioCueKind.Siren, s);
         }
@@ -123,12 +131,32 @@ namespace Ascend.Prototype.Audio
                 case AudioCueKind.OverharvestUnlock: return 0.60f;
                 case AudioCueKind.OverharvestPull:   return 0.80f;
                 case AudioCueKind.CollapseImpact:    return 0.95f;
-                case AudioCueKind.PassengerVoice:    return 0.35f;
+                // 승객 음성은 종류마다 길이가 다르다. 이 값은 종류를 모를 때의 것이며
+                // 기본 종류(호흡)의 길이와 같다 — 실제로는 아래 변형 인자 판을 쓴다.
+                case AudioCueKind.PassengerVoice:    return 0.42f;
                 case AudioCueKind.MetalStress:       return 0.60f;
                 // 사이렌은 이 하네스가 만드는 가장 긴 소리다. 그래도 1초를 넘기지 않는다 —
                 // 넘길 자리가 없는 것이 「지속 재생하지 않는다」(PRD §8.3)의 구조적 보장이다.
                 case AudioCueKind.Siren:             return 0.90f;
                 default:                             return 0.25f;
+            }
+        }
+
+        /// <summary>
+        /// 변형까지 아는 길이. 승객 음성만 종류별로 갈린다 —
+        /// 웃음은 끊어지며 뛰고 기도는 길게 이어진다. 길이가 같으면 그 차이가 사라진다.
+        /// </summary>
+        public static float LengthOf(AudioCueKind kind, int variant)
+        {
+            if (kind != AudioCueKind.PassengerVoice) return LengthOf(kind);
+
+            switch (PassengerVoices.KindOf(variant))
+            {
+                case PassengerVoiceKind.Sigh:   return 0.55f;   // 흘러내리는 데 시간이 든다
+                case PassengerVoiceKind.Laugh:  return 0.50f;   // 맥동 서너 번이 들어갈 길이
+                case PassengerVoiceKind.Prayer: return 0.66f;   // 다섯 중 가장 길다 — 멈추지 않는 것이 정보다
+                case PassengerVoiceKind.Blame:  return 0.28f;   // 가장 짧다. 던지고 끝난다
+                default:                        return 0.42f;   // 호흡
             }
         }
 
@@ -139,7 +167,9 @@ namespace Ascend.Prototype.Audio
             {
                 case AudioCueKind.ColumnReveal:     return Clamp(variant, 0, 2);
                 case AudioCueKind.ThresholdCrossed: return Clamp(variant, 0, 2);
-                case AudioCueKind.PassengerVoice:   return Clamp(variant, 0, 7);
+                // 승객 음성의 변형은 종류와 목소리를 함께 싣는다(`PassengerVoices.Encode`).
+                // 상한 39 는 캐시 키의 하위 8비트 안이라 다른 큐의 키를 침범하지 않는다.
+                case AudioCueKind.PassengerVoice:   return Clamp(variant, 0, PassengerVoices.MaxVariant);
                 case AudioCueKind.MetalStress:      return Clamp(variant, 0, 3);
                 case AudioCueKind.Siren:            return Clamp(variant, 0, 3);
                 default:                            return 0;
@@ -236,7 +266,7 @@ namespace Ascend.Prototype.Audio
                     break;
 
                 case AudioCueKind.PassengerVoice:
-                    AddVowel(buf, count, 142f, variant);
+                    AddVoice(buf, count, variant, ref rng);
                     break;
 
                 case AudioCueKind.MetalStress:
@@ -340,36 +370,124 @@ namespace Ascend.Prototype.Audio
         }
 
         /// <summary>
-        /// 비언어 음성. 포먼트 두 개짜리 짧은 모음이다(UP-AUD-04).
-        /// 말을 만들지 않는 이유는 `MASTER_PRD.md` §4.2가 완성형 대화를 명시적으로 제외하기
-        /// 때문이다 — 반쯤 만든 대사는 없는 것보다 나쁘다.
+        /// 비언어 음성 하나(UP-AUD-04). 말을 만들지 않는 이유는 `MASTER_PRD.md` §4.2가
+        /// 완성형 대화를 명시적으로 제외하기 때문이다 — 반쯤 만든 대사는 없는 것보다 나쁘다.
+        ///
+        /// **두 축을 나눈다.** 변형 번호에는 종류와 목소리 슬롯이 함께 들어 있다
+        /// (<see cref="PassengerVoices"/>).
+        ///   종류(웃음·한숨·호흡·기도·비난) → 포락선·활강·맥동·잡음량. **파형 자체가 다르다.**
+        ///   슬롯(누가 냈는가)             → 성대 기본 주파수와 포먼트 이동.
+        ///
+        /// 슬롯을 재생 피치로만 갈랐던 이전 판은 "같은 사람이 테이프 속도만 바뀐 것"으로
+        /// 들렸다. 포먼트가 피치를 따라 통째로 움직이면 사람이 커진 것처럼 들리는데,
+        /// 실제 사람은 성대와 성도가 따로 움직인다. 그래서 여기서 포먼트를 **따로** 옮기고,
+        /// 재생 피치(<c>AudioCueTable.PassengerVoice</c>)는 그 위에 얹는다.
         /// </summary>
-        private static void AddVowel(float[] buf, int count, float f0, int variant)
+        private static void AddVoice(float[] buf, int count, int variant, ref Lcg rng)
         {
-            // 변형마다 모음 색을 바꾼다. 개인차는 재생 피치가 만든다(AudioCueTable.PassengerVoice).
-            float f1 = 520f + 45f * (variant % 4);
-            float f2 = 980f + 190f * (variant % 4) + (variant >= 4 ? 140f : 0f);
+            PassengerVoiceKind kind = PassengerVoices.KindOf(variant);
+            int slot = PassengerVoices.SlotOf(variant);
 
+            // 슬롯 0~7 을 낮은 목소리 → 높은 목소리로 늘어놓는다. 포먼트는 성대보다
+            // 덜 움직인다 — 같은 비율로 움직이면 그냥 피치 변화와 구분되지 않는다.
+            float f0 = 108f + 12f * slot;
+            float shift = 1f + 0.05f * (slot - 4);
+
+            switch (kind)
+            {
+                case PassengerVoiceKind.Sigh:
+                    // 음정이 아래로 흘러내린다. 안도든 체념이든 방향은 같다.
+                    RenderVoice(buf, count, f0, 0.80f, 560f * shift, 1050f * shift,
+                                0.45f, 0.12f, 0.62f, 0f, 0f, ref rng);
+                    break;
+
+                case PassengerVoiceKind.Laugh:
+                    // 다섯 중 유일하게 맥동한다. 초당 7.5회는 사람이 웃는 속도다 —
+                    // 이보다 빠르면 떨림, 느리면 헐떡임으로 들린다.
+                    RenderVoice(buf, count, f0 * 1.08f, 1.06f, 700f * shift, 1320f * shift,
+                                0.20f, 0.05f, 0.34f, 7.5f, 0.85f, ref rng);
+                    break;
+
+                case PassengerVoiceKind.Prayer:
+                    // 낮고 고르게 웅얼거린다. 거의 변하지 않는 것이 정보다.
+                    // 느린 떨림(4.2Hz, 얕게)만 얹어 기계가 아니라 사람임을 남긴다.
+                    RenderVoice(buf, count, f0 * 0.86f, 0.97f, 350f * shift, 900f * shift,
+                                0.15f, 0.22f, 0.46f, 4.2f, 0.25f, ref rng);
+                    break;
+
+                case PassengerVoiceKind.Blame:
+                    // 날카롭게 시작해 짧게 끊는다. 다섯 중 유일하게 공격적인 포락선이며,
+                    // 포먼트가 가장 높아 다른 넷과 음색이 정면으로 갈린다.
+                    RenderVoice(buf, count, f0 * 1.14f, 0.90f, 820f * shift, 1750f * shift,
+                                0.28f, 0.03f, 0.20f, 0f, 0f, ref rng);
+                    break;
+
+                default:
+                    // 호흡. 성대가 거의 울리지 않고 잡음이 주인공이다 —
+                    // 「참는 숨」이 음정을 가지면 그건 신음이지 호흡이 아니다.
+                    RenderVoice(buf, count, f0 * 0.90f, 0.98f, 480f * shift, 1350f * shift,
+                                0.90f, 0.30f, 0.55f, 0f, 0f, ref rng);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 성대 톱니 + 포먼트 두 개 + 숨 잡음을 지정한 포락선으로 낸다.
+        /// 다섯 종류가 전부 이 하나를 파라미터만 바꿔 부른다 — 종류마다 합성기를 따로 쓰면
+        /// 「어디가 달라서 다르게 들리는가」가 코드에서 사라진다.
+        /// </summary>
+        /// <param name="glide">끝에서의 기본 주파수 배수. 1 이면 평평, 낮으면 흘러내린다.</param>
+        /// <param name="breathAmp">숨 잡음 비율. 1 에 가까울수록 음정이 사라진다.</param>
+        /// <param name="attack">열리는 데 쓰는 길이 비율.</param>
+        /// <param name="release">닫히는 데 쓰는 길이 비율.</param>
+        /// <param name="pulseRate">진폭 맥동 속도(Hz). 0 이면 맥동하지 않는다.</param>
+        /// <param name="pulseDepth">맥동 깊이(0~1).</param>
+        private static void RenderVoice(float[] buf, int count, float f0, float glide,
+                                        float f1, float f2, float breathAmp,
+                                        float attack, float release,
+                                        float pulseRate, float pulseDepth, ref Lcg rng)
+        {
             var band1 = new Svf(f1, 7f);
             var band2 = new Svf(f2, 9f);
+            var breath = new Svf(f2 * 1.35f, 1.6f);
+
             float seconds = count / (float)SampleRate;
+            if (seconds <= 0.0001f) return;
+
+            // 0 이 들어오면 포락선이 0/0 이 되어 버퍼 전체가 NaN 이 된다. NaN 클립은
+            // 소리가 안 나는 것이 아니라 **스피커에서 딱 소리**로 나오고, 원인이
+            // 어느 큐인지 로그에 아무 단서도 남지 않는다.
+            if (attack < 0.01f) attack = 0.01f;
+            if (release < 0.01f) release = 0.01f;
+
+            float inv = 1f / count;
             float phase = 0f;
+            float toneAmp = 1f - breathAmp * 0.75f;
 
             for (int i = 0; i < count; i++)
             {
                 float t = i / (float)SampleRate;
+                float k = i * inv;
 
                 // 성대 진동을 톱니로 근사한다. 사인은 배음이 없어 포먼트가 걸릴 게 없다.
-                phase += f0 / SampleRate;
+                float hz = f0 * (1f + (glide - 1f) * k);
+                phase += hz / SampleRate;
                 if (phase >= 1f) phase -= 1f;
                 float glottal = phase * 2f - 1f;
 
-                // 사람의 짧은 발성 포락선 — 빠르게 열리고 천천히 닫힌다.
-                float open = Mathf.Clamp01(t / (seconds * 0.14f));
-                float close = Mathf.Clamp01((seconds - t) / (seconds * 0.45f));
-                float env = open * close;
+                float env = Mathf.Clamp01(t / (seconds * attack))
+                          * Mathf.Clamp01((seconds - t) / (seconds * release));
 
-                buf[i] += (band1.Band(glottal) * 1f + band2.Band(glottal) * 0.55f) * env;
+                if (pulseRate > 0f && pulseDepth > 0f)
+                {
+                    float pulse = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * pulseRate * t);
+                    env *= (1f - pulseDepth) + pulseDepth * pulse;
+                }
+
+                float voiced = band1.Band(glottal) * 1f + band2.Band(glottal) * 0.55f;
+                float noised = breath.Band(rng.Bipolar());
+
+                buf[i] += (voiced * toneAmp + noised * breathAmp) * env;
             }
         }
 

@@ -179,7 +179,9 @@ namespace Ascend.Prototype.Audio
         /// **어떤 사건이 승객 반응인가를 여기서 다시 정하지 않는다.** 그 정의는
         /// <see cref="Npc.PassengerReactionEvents.TryMap"/> 하나뿐이고(PRD §9.2 의 11종),
         /// 목록을 여기 복사하면 승객이 몸으로는 반응하는데 소리는 안 나거나 그 반대인
-        /// 상태가 조용히 생긴다. 이 함수가 정하는 것은 **얼마나 크게**뿐이다.
+        /// 상태가 조용히 생긴다. 이 함수가 정하는 것은 **얼마나 크게**뿐이고,
+        /// 「어떤 소리인가」도 여기서 새로 정하지 않는다 —
+        /// <see cref="PassengerVoices.FromReaction"/> 하나가 그 배분을 갖는다.
         ///
         /// 이것은 폴백 경로다. 승객 반응 시스템이 <c>AudioDirector.PlayPassengerVoice</c> 를
         /// 부르기 시작하면 그쪽이 이긴다(누가 반응 중인지는 중재기만 안다).
@@ -202,16 +204,24 @@ namespace Ascend.Prototype.Audio
                 return false;
             }
 
-            req = PassengerVoice(PassengerVoiceIndex(in e), intensity);
+            // 종류는 반응 사건이 정한다(웃음·한숨·호흡·기도·비난, `MASTER_PRD.md` §9.3).
+            // 여기서 종류를 다시 판정하지 않는 이유는 `Npc.PassengerReactionEvents.TryMap` 을
+            // 다시 쓰지 않는 이유와 같다 — 정의가 두 벌이 되면 한쪽만 고쳐진다.
+            req = PassengerVoice(PassengerVoiceIndex(in e),
+                                 PassengerVoices.FromReaction(reaction), intensity);
             return true;
         }
 
         /// <summary>
         /// 목소리가 나는 승객 수. <c>ProceduralClipFactory.Prewarm</c> 이 굽는 수와 같아야
         /// 한다 — 넘어가면 첫 발성이 굽는 프레임이 되어 성능 캡처에 스파이크로 찍힌다.
-        /// (표 자체는 <see cref="PassengerVoice"/>에서 0~7 을 받는다. 여기서 고르는 범위만 좁다.)
+        /// (표 자체는 <see cref="PassengerVoice(int, float)"/>에서 0~7 을 받는다.
+        /// 여기서 고르는 범위만 좁다.)
+        ///
+        /// 값은 <see cref="PassengerVoices.PrewarmSlotCount"/> 하나에서 온다. 두 곳에 4 를
+        /// 적으면 한쪽만 늘렸을 때 아무 경고 없이 굽는 프레임이 생긴다.
         /// </summary>
-        public const int VoicePassengerCount = 4;
+        public const int VoicePassengerCount = PassengerVoices.PrewarmSlotCount;
 
         /// <summary>
         /// 이 사건에 목소리를 낼 승객. **난수를 쓰지 않는다** — 같은 시드의 런이 같은
@@ -319,19 +329,39 @@ namespace Ascend.Prototype.Audio
         }
 
         /// <summary>
-        /// 승객 음성은 사건 표를 거치지 않는다. 어느 승객이 왜 소리를 내는지는
-        /// 승객 반응 시스템(UP-NPC-*)이 알고 이 표는 모르기 때문이다.
-        /// 승객 인덱스로 피치만 갈라 준다 — 넷이 같은 목소리면 승객이 아니라 스피커다.
+        /// 승객 음성 한 건. 승객 음성은 사건 표를 거치지 않는다 — 어느 승객이 왜 소리를
+        /// 내는지는 승객 반응 시스템(UP-NPC-*)이 알고 이 표는 모르기 때문이다.
+        ///
+        /// **두 축이 함께 실린다.**
+        ///   <paramref name="voice"/>       → 어떤 소리인가(웃음·한숨·호흡·기도·비난).
+        ///                                    변형 번호에 접혀 들어가 **다른 파형**을 굽게 한다.
+        ///   <paramref name="passengerIndex"/> → 누가 냈는가. 재생 피치를 가른다.
+        ///
+        /// 종류를 볼륨이나 피치로만 가르지 않는 이유: 그러면 「크고 높은 한숨」과
+        /// 「작고 낮은 웃음」이 같은 소리가 된다. 다섯을 구분 가능하게 만들라는 요구
+        /// (`MASTER_PRD.md` §9.3)는 파형이 달라야 성립한다.
         /// </summary>
-        public static AudioCueRequest PassengerVoice(int passengerIndex, float intensity)
+        public static AudioCueRequest PassengerVoice(int passengerIndex, PassengerVoiceKind voice,
+                                                     float intensity)
         {
-            int variant = Clamp(passengerIndex, 0, 7);
+            int slot = Clamp(passengerIndex, 0, PassengerVoices.SlotCount - 1);
+
             // 승객마다 장3도씩 어긋나게 흩어 놓는다. 반음으로 흩으면 같은 사람이
             // 목이 쉰 것처럼 들리고, 옥타브로 흩으면 종족이 달라진다.
-            float pitch = Clamp(1f + 0.09f * (variant - 3), MinPitch, MaxPitch);
+            float pitch = Clamp(1f + 0.09f * (slot - 3), MinPitch, MaxPitch);
+
             return new AudioCueRequest(AudioCueKind.PassengerVoice,
-                Scale(intensity, 0f, 1f, 0.4f, 0.95f), pitch, variant);
+                Scale(intensity, 0f, 1f, 0.4f, 0.95f), pitch,
+                PassengerVoices.Encode(voice, slot));
         }
+
+        /// <summary>
+        /// 종류를 모를 때. 기본은 호흡이다 — 아무 일도 없을 때 사람이 내는 소리이고,
+        /// <see cref="PassengerVoiceKind.Breath"/>가 0 이라 변형 번호가 승객 인덱스와
+        /// 그대로 같아진다(옛 호출과 같은 소리가 난다).
+        /// </summary>
+        public static AudioCueRequest PassengerVoice(int passengerIndex, float intensity)
+            => PassengerVoice(passengerIndex, PassengerVoiceKind.Breath, intensity);
 
         /// <summary>정화한 칸이 많을수록 크다. 3칸이 하한, 9칸(전판)이 상한이다.</summary>
         private static float PurifyVolume(int cells) => Scale(cells, 3, 9, 0.6f, 1f);

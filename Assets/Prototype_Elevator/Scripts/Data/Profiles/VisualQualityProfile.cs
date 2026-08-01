@@ -50,6 +50,12 @@ namespace Ascend.Prototype.Data.Profiles
         [Tooltip("URP 렌더 스케일. 1 미만이면 내부 해상도를 낮춰 그린다 — 결과판 심볼 판독성이 먼저 상한다(PRD §13.4).")]
         [Range(0.5f, 2f)] [SerializeField] private float _renderScale = 1.0f;
 
+        [Header("텍스처 임포트 규칙 (PRD §13.4 · UP-PLAT-05)")]
+        [Tooltip("에셋 카테고리별 임포트 값. 비어 있으면 코드 프리셋으로 폴백하고, 그 사실이 " +
+                 "리포트에 「코드 프리셋」으로 찍힌다. 디스크의 기존 .asset 은 이 배열이 없으므로 " +
+                 "처음에는 반드시 비어 있다 — 굳히려면 인스펙터에서 Reset 을 한 번 누른다.")]
+        [SerializeField] private TextureImportRule[] _textureImportRules = System.Array.Empty<TextureImportRule>();
+
         public VisualQualityTier Tier => _tier;
         public int MaxRealtimeLights => _maxRealtimeLights;
         public float ShadowDistance => _shadowDistance;
@@ -66,6 +72,32 @@ namespace Ascend.Prototype.Data.Profiles
         public void Reset()
         {
             ApplyTier(VisualQualityTier.High);
+            _textureImportRules = TextureImportRuleSet.Presets();
+        }
+
+        /// <summary>
+        /// 텍스처 임포트 규칙. 배열이 비어 있으면 코드 프리셋을 돌려주되 **출처 이름을
+        /// 「코드 프리셋」으로 남긴다** — 폴백과 실제 데이터가 리포트에서 같아 보이면
+        /// 「데이터화했다」가 검증 없이 통과한다(이 저장소가 이미 겪은 실패다).
+        /// </summary>
+        public TextureImportRuleSet ImportRules()
+        {
+            if (_textureImportRules == null || _textureImportRules.Length == 0)
+                return TextureImportRuleSet.CodePreset;
+            return new TextureImportRuleSet(name, _textureImportRules);
+        }
+
+        /// <summary>
+        /// 임포터가 부르는 진입점. 프로파일이 아예 없으면 경고를 남기고 코드 프리셋으로 간다.
+        /// 임포트를 막지 않는 이유: 규칙이 없다고 에셋이 들어오지 못하면 원인 파악이
+        /// 「왜 임포트가 안 되지」로 시작해 규칙까지 도달하지 못한다.
+        /// </summary>
+        public static TextureImportRuleSet ImportRulesOrDefault(VisualQualityProfile profile, string caller)
+        {
+            if (profile != null) return profile.ImportRules();
+            Debug.LogWarning($"[상승] VisualQualityProfile 이 없다 ({caller}). " +
+                             "텍스처 임포트 규칙을 코드 프리셋으로 적용한다.");
+            return TextureImportRuleSet.CodePreset;
         }
 
         public void ApplyTier(VisualQualityTier tier)

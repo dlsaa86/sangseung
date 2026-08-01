@@ -83,6 +83,9 @@ namespace Ascend.Prototype.Npc
         [Tooltip("비언어 음성 큐 ID. 실제 클립은 오디오 쪽이 이 ID로 찾는다. 비면 소리 없음.")]
         public string VoiceCue;
 
+        [Tooltip("짧은 대사 한 줄. §9.4가 긴 대화 트리를 제외하므로 1문장 이하다.")]
+        public string Line;
+
         [Tooltip("반응이 유지되는 초. 0 이하는 '이 이벤트에는 반응하지 않는다'는 뜻이다.")]
         public float Duration;
 
@@ -95,12 +98,23 @@ namespace Ascend.Prototype.Npc
         [Tooltip("같은 승객이 다시 반응하기까지의 초. 반응 시작 시점부터 잰다.")]
         public float Cooldown;
 
+        /// <summary>
+        /// 대사 없는 반응. **기존 호출부를 깨지 않으려고 남긴다** — 이 프로젝트에는
+        /// asmdef이 없어서 생성자 하나를 바꾸면 전체 컴파일이 막힌다.
+        /// </summary>
         public PassengerReaction(ReactionPose pose, ReactionGaze gaze, string voiceCue,
+                                 float duration, float intensity, int priority, float cooldown)
+            : this(pose, gaze, voiceCue, null, duration, intensity, priority, cooldown)
+        {
+        }
+
+        public PassengerReaction(ReactionPose pose, ReactionGaze gaze, string voiceCue, string line,
                                  float duration, float intensity, int priority, float cooldown)
         {
             Pose = pose;
             Gaze = gaze;
             VoiceCue = voiceCue;
+            Line = line;
             Duration = duration;
             Intensity = intensity;
             Priority = priority;
@@ -114,8 +128,85 @@ namespace Ascend.Prototype.Npc
         /// </summary>
         public bool IsActive => Duration > 0f;
 
+        /// <summary>화면에 띄울 대사가 있는가.</summary>
+        public bool HasLine => !string.IsNullOrEmpty(Line);
+
+        /// <summary>소리를 낼 큐가 있는가. 비어 있으면 데이터가 이 반응의 음성을 끈 것이다.</summary>
+        public bool HasVoice => !string.IsNullOrEmpty(VoiceCue);
+
         public override string ToString() =>
             $"{Pose}/{Gaze} {Duration:0.##}s i={Intensity:0.##} p={Priority} cd={Cooldown:0.##}" +
-            (string.IsNullOrEmpty(VoiceCue) ? string.Empty : $" \"{VoiceCue}\"");
+            (string.IsNullOrEmpty(VoiceCue) ? string.Empty : $" \"{VoiceCue}\"") +
+            (string.IsNullOrEmpty(Line) ? string.Empty : $" 「{Line}」");
+    }
+
+    /// <summary>
+    /// 같은 사건에 대한 **다른 쪽 반응**. `MASTER_PRD.md` §9.3 마지막 줄이 요구하는
+    /// "승객마다 상반된 반응"의 데이터 형태다.
+    ///
+    /// 왜 <see cref="PassengerReaction"/> 을 통째로 하나 더 두지 않는가:
+    /// 지속·우선순위·쿨다운은 **중재 규칙의 입력**이다(UP-NPC-05, 이미 VERIFIED).
+    /// 대조 반응이 그 셋을 따로 들면 같은 사건인데 사람마다 반응이 다른 시각에 끝나고,
+    /// 우선순위가 갈려 누구는 덮이고 누구는 안 덮인다 — 중재기의 계약이 조용히 깨진다.
+    /// 그래서 여기에는 **표현 채널 넷만** 있고 타이밍은 대표 반응에서 그대로 물려받는다.
+    ///
+    /// 정의되지 않은 대조(<see cref="IsDefined"/> == false)는 "전원이 같은 반응"이라는
+    /// 뜻이다. 대조를 끄고 싶으면 자세·시선을 대표 반응과 같게 두면 된다.
+    /// </summary>
+    [Serializable]
+    public struct PassengerReactionContrast
+    {
+        [Tooltip("대조 자세. 대표 반응과 실루엣이 갈려야 의미가 있다.")]
+        public ReactionPose Pose;
+
+        [Tooltip("대조 시선. 같은 사건을 다른 곳에서 찾는다.")]
+        public ReactionGaze Gaze;
+
+        [Tooltip("대조 음성 큐 ID. 비면 대표 반응의 큐를 그대로 쓴다.")]
+        public string VoiceCue;
+
+        [Tooltip("대조 대사 한 줄. 비면 대표 반응의 대사를 그대로 쓴다.")]
+        public string Line;
+
+        [Tooltip("대조 강도 0~1. 0이면 대표 반응의 강도를 물려받는다.")]
+        [Range(0f, 1f)] public float Intensity;
+
+        public PassengerReactionContrast(ReactionPose pose, ReactionGaze gaze,
+                                         string voiceCue, string line, float intensity)
+        {
+            Pose = pose;
+            Gaze = gaze;
+            VoiceCue = voiceCue;
+            Line = line;
+            Intensity = intensity;
+        }
+
+        /// <summary>
+        /// 이 대조가 실제로 무언가를 바꾸는가.
+        ///
+        /// 자세·시선이 기본값이고 문자열도 비어 있으면 편집자가 아직 채우지 않은 것이다 —
+        /// 기존 `.asset`은 이 필드가 생기기 전에 직렬화됐으므로 전부 이 상태로 읽힌다.
+        /// </summary>
+        public bool IsDefined =>
+            Pose != ReactionPose.Idle || Gaze != ReactionGaze.None ||
+            !string.IsNullOrEmpty(VoiceCue) || !string.IsNullOrEmpty(Line);
+
+        /// <summary>
+        /// 대표 반응 위에 대조를 얹는다. **타이밍 셋은 건드리지 않는다** —
+        /// 그래야 중재기가 어느 쪽을 골랐든 같은 규칙으로 돈다.
+        /// </summary>
+        public PassengerReaction ApplyTo(in PassengerReaction primary)
+        {
+            if (!IsDefined) return primary;
+            return new PassengerReaction(
+                Pose,
+                Gaze,
+                string.IsNullOrEmpty(VoiceCue) ? primary.VoiceCue : VoiceCue,
+                string.IsNullOrEmpty(Line) ? primary.Line : Line,
+                primary.Duration,
+                Intensity > 0f ? Intensity : primary.Intensity,
+                primary.Priority,
+                primary.Cooldown);
+        }
     }
 }

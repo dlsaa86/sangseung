@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Ascend.Prototype.Build;
@@ -26,6 +27,10 @@ namespace Ascend.Prototype.Npc
         [Tooltip("이벤트별 반응 데이터. 비면 코드 기본값으로 폴백한다 — 소리 없이 죽지 않는다.")]
         [SerializeField] private PassengerReactionSet _reactions;
 
+        [Tooltip("비언어 음성을 실제로 내는 쪽. 비면 Awake 에서 씬에서 찾는다. " +
+                 "없으면 자세·시선·대사만 나가고 음성 채널이 사건 버스 폴백에 남는다.")]
+        [SerializeField] private Audio.AudioDirector _audio;
+
         [Tooltip("한 사건에 동시에 반응할 수 있는 최대 승객 수 (§9.4).")]
         [SerializeField, Min(1)] private int _maxConcurrent = 2;
 
@@ -37,6 +42,15 @@ namespace Ascend.Prototype.Npc
         private int _startedBeforeRebuild;
         private int _suppressedBeforeRebuild;
         private int _firedKindsBeforeRebuild;
+
+        // 표현 채널 넷의 누적(UP-NPC-04). 중재기가 아니라 **뷰**가 들고 있는 이유는
+        // `Rebuild` 가 중재기를 통째로 새로 만들기 때문이다 — 승객 한 명이 내리는 순간
+        // 「어떤 자세가 나왔나」가 0으로 돌아가면 층 끝에서 세는 하네스가 아무것도 못 본다.
+        private int _poseKindsMask;
+        private int _gazeKindsMask;
+        private int _lineCount;
+        private int _voiceCueCount;
+        private int _contrastCount;
 
         /// <summary>지금 반응 중인 승객 수. 검증 하네스가 §9.4 상한을 확인할 때 읽는다.</summary>
         public int ActiveReactionCount => _director != null ? _director.ActiveCount : 0;
@@ -97,10 +111,67 @@ namespace Ascend.Prototype.Npc
             }
         }
 
+        // ── 표현 채널 넷 (UP-NPC-04 · MASTER_PRD §9.3) ────────────────────────
+        //
+        // 하네스가 「반응 110건」이 아니라 **종류**를 셀 수 있어야 한다.
+        // 한 자세가 110번 나온 것과 일곱 자세가 골고루 나온 것은 같은 총합을 낸다.
+
+        /// <summary>런 중 실제로 걸린 자세의 비트 집합. 비트 n 은 <c>(ReactionPose)n</c>.</summary>
+        public int PoseKindsMask => _poseKindsMask;
+
+        /// <summary>런 중 실제로 걸린 시선 대상의 비트 집합. 비트 n 은 <c>(ReactionGaze)n</c>.</summary>
+        public int GazeKindsMask => _gazeKindsMask;
+
+        public int PoseKindCount => CountBits(_poseKindsMask);
+        public int GazeKindCount => CountBits(_gazeKindsMask);
+
+        /// <summary>화면에 내보낸 짧은 대사 수. 0이면 §9.3의 대사 채널이 죽어 있다.</summary>
+        public int SpokenLineCount => _lineCount;
+
+        /// <summary>
+        /// <see cref="Audio.AudioDirector.PlayPassengerVoice"/>를 실제로 부른 횟수.
+        /// 0인데 반응은 나갔다면 오디오가 배선되지 않았거나 데이터의 음성 큐가 비어 있는 것이다.
+        /// </summary>
+        public int VoiceCueCount => _voiceCueCount;
+
+        /// <summary>
+        /// 대표 반응 대신 상반된 반응이 걸린 횟수(§9.3 마지막 줄).
+        /// 다른 누적 카운터와 같은 이유로 <see cref="Rebuild"/>를 견딘다.
+        /// </summary>
+        public int ContrastCount =>
+            _contrastCount + (_director != null ? _director.ContrastCount : 0);
+
+        /// <summary>마지막으로 나간 대사. 디버그 패널이 "방금 누가 뭐라고 했나"를 띄울 때 쓴다.</summary>
+        public string LastLine { get; private set; }
+
+        /// <summary>그 대사를 말한 승객 번호. 아직 없으면 −1.</summary>
+        public int LastLinePassenger { get; private set; } = -1;
+
+        /// <summary>
+        /// 대사가 나갈 때마다 불린다. (승객 번호, 대사)
+        ///
+        /// **표시 경로를 여기서 정하지 않는다.** 지금은 <see cref="BuildFigureView"/>가
+        /// 승객 머리 위 월드 라벨로 띄우지만, 화면 하단 자막이나 HUD가 붙을 자리도
+        /// 같은 사건이어야 한다 — 표시 방식이 늘 때마다 이 파일을 고치게 되면
+        /// 반응 규칙과 UI가 다시 붙는다.
+        /// </summary>
+        public event Action<int, string> LineSpoken;
+
+        private static int CountBits(int mask)
+        {
+            int n = 0;
+            for (int m = mask; m != 0; m &= m - 1) n++;
+            return n;
+        }
+
         private void Awake()
         {
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             if (_figures == null) _figures = FindAnyObjectByType<BuildFigureView>();
+            // 오디오는 **없어도 된다.** 없으면 음성 채널만 `AudioDirector` 의 사건 버스
+            // 폴백에 남고 자세·시선·대사는 그대로 나간다. 경고하지 않는 이유는 그것이
+            // 고장이 아니라 이 씬에 오디오가 아직 없다는 뜻이기 때문이다.
+            if (_audio == null) _audio = FindAnyObjectByType<Audio.AudioDirector>();
             if (_run != null) _run.RunStarted += OnRunStarted;
         }
 
@@ -125,6 +196,14 @@ namespace Ascend.Prototype.Npc
             _suppressedBeforeRebuild = 0;
             _firedKindsBeforeRebuild = 0;
             PeakActiveCount = 0;
+
+            _poseKindsMask = 0;
+            _gazeKindsMask = 0;
+            _lineCount = 0;
+            _voiceCueCount = 0;
+            _contrastCount = 0;
+            LastLine = null;
+            LastLinePassenger = -1;
         }
 
         /// <summary>
@@ -139,12 +218,17 @@ namespace Ascend.Prototype.Npc
             // 버리기 전에 거둬 둔다 — 이 세 줄이 없으면 하차 한 번에 그 층의 반응 기록이 사라진다.
             _startedBeforeRebuild += StartedCount;
             _suppressedBeforeRebuild += SuppressedCount;
-            if (_director != null) _firedKindsBeforeRebuild |= _director.FiredKindsMask;
+            if (_director != null)
+            {
+                _firedKindsBeforeRebuild |= _director.FiredKindsMask;
+                _contrastCount += _director.ContrastCount;
+            }
 
             _director = new PassengerReactionDirector(
                 passengerCount,
                 Mathf.Max(1, _maxConcurrent),
-                LookUp);
+                LookUp,
+                LookUpContrast);
 
             _router = new PassengerReactionRouter(_director, () => Time.time);
             _router.Reacted += OnReacted;
@@ -157,12 +241,68 @@ namespace Ascend.Prototype.Npc
                 ? _reactions.For(reactionEvent)
                 : PassengerReactionSet.DefaultFor(reactionEvent);
 
+        private PassengerReactionContrast LookUpContrast(PassengerReactionEvent reactionEvent)
+            => _reactions != null
+                ? _reactions.ContrastFor(reactionEvent)
+                : PassengerReactionSet.DefaultContrastFor(reactionEvent);
+
+        /// <summary>
+        /// 정해진 반응을 표현 채널 넷으로 흘려보낸다(§9.3).
+        ///
+        /// **승객마다 반응을 따로 읽는다.** `LookUp(사건)` 하나로 전원을 칠하면 상반된
+        /// 반응이 사라진다 — 어느 승객이 대표를 받고 어느 승객이 대조를 받았는지는
+        /// 중재기만 알고, 그 결과가 `CurrentOf(i)` 에 이미 들어 있다.
+        /// </summary>
         private void OnReacted(PassengerReactionEvent reactionEvent, IReadOnlyList<int> passengers)
         {
-            if (_figures == null || passengers == null) return;
-            PassengerReaction reaction = LookUp(reactionEvent);
+            if (passengers == null) return;
+
+            PassengerReaction fallback = LookUp(reactionEvent);
+
             for (int i = 0; i < passengers.Count; i++)
-                _figures.SetReaction(passengers[i], reaction.Pose, reaction.Gaze, reaction.Intensity);
+            {
+                int passenger = passengers[i];
+                PassengerReaction reaction = _director != null
+                    ? _director.CurrentOf(passenger)
+                    : fallback;
+                if (!reaction.IsActive) reaction = fallback;
+
+                // 1·2·3 채널 — 자세 · 시선 · 짧은 대사. 정지 화면에 남는 것이 이 셋이다.
+                if (_figures != null)
+                {
+                    _figures.SetReaction(passenger, reaction.Pose, reaction.Gaze,
+                                         reaction.Intensity, reaction.Line);
+                }
+
+                // 4 채널 — 비언어 음성. 큐 ID 가 비어 있으면 데이터가 이 반응의 소리를
+                // 끈 것이므로 부르지 않는다(`PassengerReaction.VoiceCue` 주석).
+                //
+                // 큐 ID 자체는 아직 오디오에 전달되지 않는다 — `PlayPassengerVoice` 가
+                // (승객 번호, 강도)만 받고 클립은 절차적으로 굽기 때문이다. 그래도
+                // **여기서 불러야** 목소리가 실제로 반응한 승객에게 붙고,
+                // `AudioDirector` 의 사건 버스 폴백이 물러나 한 사건에 목소리가 두 번
+                // 나는 상태가 사라진다(그 파일의 배선 메모 6번).
+                if (_audio != null && reaction.HasVoice)
+                {
+                    _audio.PlayPassengerVoice(passenger, reaction.Intensity);
+                    _voiceCueCount++;
+                }
+
+                if (reaction.HasLine)
+                {
+                    _lineCount++;
+                    LastLine = reaction.Line;
+                    LastLinePassenger = passenger;
+
+                    Action<int, string> handler = LineSpoken;
+                    if (handler != null) handler(passenger, reaction.Line);
+                }
+
+                int pose = (int)reaction.Pose;
+                if (pose >= 0 && pose < 32) _poseKindsMask |= 1 << pose;
+                int gaze = (int)reaction.Gaze;
+                if (gaze >= 0 && gaze < 32) _gazeKindsMask |= 1 << gaze;
+            }
         }
 
         private void Update()

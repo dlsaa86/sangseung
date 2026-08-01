@@ -111,34 +111,23 @@ namespace Ascend.Prototype.Diagnostics
                     continue;
                 }
 
-                Type type = behaviour.GetType();
-                FieldInfo[] fields = RequiredFieldsOf(type);
-                if (fields.Length == 0)
+                // 표시된 필드가 없으면 경로 문자열조차 만들지 않는다. 씬의 대부분이 여기서 빠진다.
+                if (RequiredFieldsOf(behaviour.GetType()).Length == 0)
                 {
                     continue;
                 }
 
-                string path = null;
-                for (int f = 0; f < fields.Length; f++)
+                int before = defects.Count;
+                checkedFields += CollectDefects(behaviour, HierarchyPathOf(behaviour.transform), defects);
+
+                if (!log)
                 {
-                    checkedFields++;
-                    FieldInfo field = fields[f];
-                    if (!IsEmpty(field.GetValue(behaviour)))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    path = path ?? HierarchyPathOf(behaviour.transform);
-                    RequiredReferenceAttribute attribute =
-                        (RequiredReferenceAttribute)Attribute.GetCustomAttribute(field, typeof(RequiredReferenceAttribute));
-
-                    WiringDefect defect = new WiringDefect(path, type.Name, field.Name, attribute?.Consequence);
-                    defects.Add(defect);
-
-                    if (log)
-                    {
-                        Debug.LogError($"{LogPrefix} {defect.Describe()}", behaviour);
-                    }
+                for (int d = before; d < defects.Count; d++)
+                {
+                    Debug.LogError($"{LogPrefix} {defects[d].Describe()}", behaviour);
                 }
             }
 
@@ -163,6 +152,53 @@ namespace Ascend.Prototype.Diagnostics
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 인스턴스 **하나**를 훑어 빈 필수 참조를 <paramref name="into"/> 에 담고,
+        /// 검사한 필드 수를 돌려준다.
+        ///
+        /// **왜 <c>object</c> 를 받는가:** 이 층위에는 Unity 가 필요 없다. 반사로 필드를
+        /// 읽고 비었는지 보는 것이 전부이므로, `MonoBehaviour` 를 요구하면 검사기 자체를
+        /// **씬 없이 검증할 수 없게 된다.** 검사기가 검증되지 않으면 「결함 0건」이
+        /// 건강해서 나온 것인지 아무것도 안 봐서 나온 것인지 구분할 수 없고, 그것이
+        /// 정확히 이 항목(`UP-TECH-03`)의 이전 판본이 빠져 있던 상태다.
+        /// </summary>
+        public static int CollectDefects(object instance, string hierarchyPath, List<WiringDefect> into)
+        {
+            if (instance == null || into == null)
+            {
+                return 0;
+            }
+
+            Type type = instance.GetType();
+            FieldInfo[] fields = RequiredFieldsOf(type);
+            string path = string.IsNullOrEmpty(hierarchyPath) ? "(경로 없음)" : hierarchyPath;
+
+            for (int f = 0; f < fields.Length; f++)
+            {
+                FieldInfo field = fields[f];
+                if (!IsEmpty(field.GetValue(instance)))
+                {
+                    continue;
+                }
+
+                RequiredReferenceAttribute attribute =
+                    (RequiredReferenceAttribute)Attribute.GetCustomAttribute(field, typeof(RequiredReferenceAttribute));
+                into.Add(new WiringDefect(path, type.Name, field.Name, attribute?.Consequence));
+            }
+
+            return fields.Length;
+        }
+
+        /// <summary>
+        /// 이 타입에 <see cref="RequiredReferenceAttribute"/> 가 붙은 필드가 몇 개인가.
+        /// 「검사가 손실되지 않았다」를 세는 쪽이 쓴다 — 속성이 0개면 그 컴포넌트는
+        /// 검사기에게 보이지 않는 것과 같다.
+        /// </summary>
+        public static int RequiredFieldCountOf(Type type)
+        {
+            return type == null ? 0 : RequiredFieldsOf(type).Length;
         }
 
         /// <summary>

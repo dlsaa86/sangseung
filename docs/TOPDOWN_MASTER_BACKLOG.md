@@ -81,32 +81,68 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 # 1. 패스 상태
 
-<!-- verify-topdown.ps1 이 아래 네 줄을 파싱한다. 형식을 바꾸지 말 것. -->
+<!-- verify-topdown.ps1 이 아래 네 줄과 PASS3_GATED 줄을 파싱한다. 형식을 바꾸지 말 것. -->
 
-- PASS_1: IN_PROGRESS
-- PASS_2: NOT_STARTED
+- PASS_1: COMPLETE
+- PASS_2: IN_PROGRESS
 - PASS_3: NOT_STARTED
 - PASS_4: NOT_STARTED
 
-## Pass 1 — Breadth First Coverage
+## 1.0 패스별 완료 기준 — 게이트는 **현재 패스에만** 적용된다
+
+> **2026-08-02 구조 변경 (사용자 지시).** 직전 판본은 패스와 무관하게 항상
+> 「Required 전부 VERIFIED + 전체 테스트 + 빌드 + 캡처 + 독립 평가」를 요구했다.
+> 그 결과 **Pass 1이 사실상 최종 QA처럼 작동했다** — 플레이스홀더 하나를 넣을 때마다
+> 최종 증거를 요구받아 Coverage 속도가 죽었다. 이것은 의도와 다르다.
+
+| 패스 | 완료 기준 |
+|---|---|
+| **Pass 1** | 모든 Required 가 최소 `SKELETON` 또는 `VISIBLE` |
+| **Pass 2** | 모든 Required 가 최소 `CONNECTED` |
+| **Pass 3** | 아래 `PASS3_GATED` 항목이 `VERIFIED` + `VISUAL_VERDICT.md` 가 `ACCEPT` |
+| **Pass 4** | 모든 Required 가 `VERIFIED` + 전체 테스트·빌드·캡처·성능·독립 평가 |
+
+**모든 Required 의 `VERIFIED` 요구는 Pass 4 에서만 적용한다.**
+
+패스와 무관하게 **항상** 막는 것은 셋뿐이다 — ① 컴파일이 통과했는가(asmdef 이 없어
+스크립트 하나가 전체를 막는다) ② 분류가 모순되지 않는가 ③ 진행 문서와 브랜치가 살아 있는가.
+
+검증기는 지금 막지 않는 요구를 **「지금은 막지 않는다」 절에 항상 함께 출력한다.**
+게이트 완화가 곧 「사라진 요구사항」이 되지 않게 하기 위한 것이다.
+
+<!-- Pass 3 이 VERIFIED 를 요구하는 경험·비주얼·사운드·피드백 항목. 한 줄에 유지할 것. -->
+- PASS3_GATED: UP-VIS-01, UP-VIS-02, UP-VIS-03, UP-VIS-04, UP-VIS-05, UP-VIS-06, UP-VIS-07, UP-VIS-08, UP-VIS-09, UP-VIS-10, UP-AUD-01, UP-AUD-02, UP-AUD-03, UP-AUD-04, UP-AUD-05, UP-RISK-03, UP-RISK-04, UP-RISK-05, UP-RISK-06, UP-NPC-04, UP-CORE-11, UP-CORE-12, UP-CORE-13, UP-SPACE-03, UP-SPACE-09, UP-DEVICE-09, UP-DEVICE-10, UP-REC-05
+
+## Pass 1 — Breadth First Coverage (고속)
 
 **목표는 완성도가 아니라 필수 범위를 한 번 전부 존재하게 만드는 것이다.**
 
 - 모든 Required 시스템·콘텐츠가 코드 또는 교체 가능한 플레이스홀더로 존재한다.
 - 모든 핵심 오브젝트가 Unity 공간에 실제로 존재한다.
-- 모든 Required 층·승객·부품·계약·위험·사고·진행이 최소 `SKELETON` 이상이다.
-- **차단 조건은 셋뿐이다** — 컴파일 오류, 데이터 손상, 진행 자체 불가능.
-- 최종 모델링·최종 재질·정밀 밸런스·시각 평가 실패는 Pass 1의 차단 조건이 **아니다.**
+- **플레이스홀더·단순 형상·기본 데이터·임시 UI를 적극 쓴다.**
+- 기능이 코드·씬·화면에 존재하고 **다음 패스에서 연결할 수 있으면 다음 항목으로 간다.**
+- **한 시스템이나 장면을 두 번 연속 폴리싱하지 않는다.**
+- **차단 조건은 셋뿐이다** — 컴파일 오류, 데이터 손상, 기존 핵심 진행 파괴.
+- 최종 모델링·최종 재질·정밀 밸런스·성능 미측정·시각 평가 REJECT·최종 테스트 부재는
+  Pass 1의 차단 조건이 **아니다.**
 
-완료 조건: Required 항목 중 `NOT_STARTED`가 0개.
+### Pass 1 작업 리듬
+
+- **항목마다** 전체 EditMode·PlayMode·Windows 빌드·캡처·독립 평가를 수행하지 **않는다.**
+- 서로 연관된 **5~10개 항목을 한 배치**로 구현한 뒤 컴파일과 **최소 스모크 테스트를 한 번** 돌린다.
+- 진행 문서는 **배치 종료 시에만** 갱신한다.
+- 로컬 커밋은 **45~90분 단위의 일관된 기능 묶음**으로 만든다.
+
+완료 조건: Required 항목 중 `NOT_STARTED`가 0개 (= 전부 `SKELETON` 이상).
 
 ## Pass 2 — Full Integration
 
 - 1층부터 10층까지 모든 Required 시스템이 하나의 플레이 흐름으로 연결된다.
 - 승객·부품·적재·과적·계약·룰렛·캐스케이드·위험·과수확·사고가 서로 **실제 규칙을 바꾼다.**
 - 플레이스홀더라도 플레이어가 공간에서 발견하고 조작할 수 있다.
+- 백로그가 가리키는 증거 경로가 **끊겨 있지 않다** (파일이 실제로 존재한다).
 
-완료 조건: Required 항목 중 `NOT_STARTED`·`SKELETON`이 0개.
+완료 조건: Required 항목 중 `NOT_STARTED`·`SKELETON`·`VISIBLE`이 0개.
 
 ## Pass 3 — Experience and Visual Pass
 
@@ -116,7 +152,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - **비주얼 REJECT는 작업 종료 사유가 아니라 수정 백로그로 전환한다** — REJECT를 받으면
   §5 「수정 백로그」에 항목을 추가하고 다음 미구현 필수 범위로 이동한다.
 
-완료 조건: PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
+완료 조건: 위 `PASS3_GATED` 28항목이 전부 `VERIFIED` +
+PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ## Pass 4 — Verification and Polish
 
@@ -253,7 +290,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 하네스 실행 → `Captures/TenFloor/manifest.txt` 생성
 - 증거: `Captures/TenFloor/manifest.txt`
 - 의존: 없음
-- 남은 문제: 17번 캡처만 해상도·방식이 다르다 (리그의 기존 해법을 쓰지 않음)
+- 남은 문제: **없음.** 「17번만 해상도가 다르다」는 낡은 기록이었다 — PNG 헤더 실측으로 `17`·`19`·`20`·`01` 전부 **1920×1080** 확인 (2026-08-02). 방식 차이(화면 캡처)는 `ScreenSpaceOverlay` HUD 를 담기 위한 **요구**이지 결함이 아니다
 
 ### UP-PLAT-07 — 자체 헤드리스 테스트 러너
 - 분류: Required · 출처: PRD §16.1, `D-20260730-06`
@@ -349,7 +386,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-09 — 등을 돌려도 결과와 전력 변화를 알 수 있다
 - 분류: Required · 출처: PRD §11(무음 관전자 기준), N03 「등을 돌려도 사운드·점등·보조 UI로」, N08 §17
-- 상태: SKELETON · 패스: P2 P3
+- 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/UI/GameHudView.cs`(화면 HUD — 연쇄 단계와 힌트뿐) · `Scripts/View/InstrumentPanelView.cs`(월드 공간)
 - 접근: 장치를 등지고 선 채 레버 결과를 기다린다
 - 검증: 장치를 등진 화면 캡처에서 전력·스핀이 읽히는지 — **읽히지 않는다**
@@ -707,7 +744,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-06 — 과수확 상호작용 연출 5단계
 - 분류: Required · 출처: PRD §7.3 (접근 → 감음 → 승객 시선 → 0.3~0.7초 정적 → 재개)
-- 상태: SKELETON · 패스: P2 P3
+- 상태: VISIBLE · 패스: P2 P3
 - 구현: `Scripts/Run/OverharvestApproachBridge.cs`(접근 판정), `Scripts/Audio/SilenceWindow.cs`(정적), `Scripts/Npc/`(승객 응시 반응)
 - 접근: 과수확 레버에 손을 올린다
 - 검증: 접근 순간 고정 캡처 + 정적 구간 측정
@@ -717,7 +754,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-07 — OverharvestProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §7.4
-- 상태: SKELETON · 패스: P2
+- 상태: VISIBLE · 패스: P2
 - 구현: `Scripts/Data/Profiles/OverharvestProfile.cs`(PRD §7.4 의 9항목)
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 정적 구간 범위 조임 등
@@ -993,7 +1030,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-05 — 저주파·금속 응력음 (사이렌은 사건에만)
 - 분류: Required · 출처: PRD §8.3 「사이렌은 지속 재생하지 않는다」
-- 상태: SKELETON · 패스: P2 P3
+- 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/Audio/ProceduralClipFactory.cs`(금속 타격·저역 하강·Collapse 임펄스), `Scripts/Audio/AudioCueTable.cs`(사건 전용 발동)
 - 접근: 위험이 오르면 소리가 달라진다
 - 검증: 오디오 채널 목록 + 무영상 청취 테스트
@@ -1075,7 +1112,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
-- 상태: SKELETON · 패스: P2 P3
+- 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/Npc/PassengerReaction.cs`(자세 7종 · 시선 6종 · 음성 큐 ID), `Scripts/Build/BuildFigureView.cs`(`SetReaction`/`GazeRotation`)
 - 접근: 승객을 바라본다
 - 검증: `Ascend/Run All EditMode Tests` + 고정 캡처의 승객 자세 대비
@@ -1137,13 +1174,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-REC-05 — 기록과 사고 후 상태가 한 장에 함께 보인다
 - 분류: Required · 출처: PRD §10.3 마지막
-- 상태: SKELETON · 패스: P3
+- 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/Run/Tests/TenFloorCaptureRig.cs`
 - 접근: 사고 직후 화면
 - 검증: 고정 캡처 `17_accident_recorder`
 - 증거: `Captures/TenFloor/17_accident_recorder.png`
 - 의존: UP-REC-04
-- 남은 문제: 17번만 해상도·방식이 달라 다른 캡처와 나란히 비교되지 않는다
+- 남은 문제: **「17번만 해상도가 다르다」는 낡은 기록이었다 (2026-08-02 확인).** 매니페스트의 주장이 아니라 **PNG 헤더의 바이트를 직접 읽어** 대조했다 — `17`·`19`·`20`·`01` 전부 **1920×1080** 이다. 예전의 816×714 는 게임 뷰를 캡처 전에 고정하게 만든 변경으로 이미 해소됐고, 백로그와 `UP-PLAT-06`·`UP-FIX-16` 이 그 뒤로 갱신되지 않았을 뿐이다. **방식 차이(전용 카메라 렌더 vs 화면 캡처)는 남지만 그것은 결함이 아니라 요구다** — `ScreenSpaceOverlay` HUD 는 카메라 렌더에 절대 들어가지 않으므로, 「기록과 사고 후 상태가 한 장에」를 만족하려면 화면 캡처여야 한다. 남은 것은 **판독성**이고(패널 자기모순·잘림) 그것은 `UP-FIX-11`·`UP-FIX-22` 와 Pass 3 의 몫이다. 이 항목은 `PASS3_GATED` 에 있어 그때까지 VERIFIED 로 가지 않는다
 
 ## 2.12 VIS — 비주얼과 아트 디렉션
 
@@ -1209,13 +1246,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-VIS-07 — 시각 루브릭 통과 (판독성·스타일 평균 4.0 이상)
 - 분류: Required · 출처: PRD §15.2 통과 조건
-- 상태: NOT_STARTED · 패스: P3 P4
+- 상태: CONNECTED · 패스: P3 P4
 - 구현: `.claude/visual-criteria.md`, `.claude/skills/visual-verify/SKILL.md`
 - 접근: 해당 없음
 - 검증: `docs/runtime/VISUAL_VERDICT.md` 의 독립 판정
 - 증거: `docs/runtime/VISUAL_VERDICT.md`, `Captures/TenFloor/manifest.txt`
 - 의존: UP-VIS-06
-- 남은 문제: **2026-08-01 2회차 판정 REJECT — 판독성 2.6 / 스타일 2.45 (요구 4.0).** 20장 전부를 독립 평가자가 직접 열어 채점했다. 결정적 사유는 금지 항목 **`B-5 #15`** — 3×3 결과판과 전력/요구 계기가 **어느 캡처에서도 동시에 읽히지 않는다.** 판을 보면 계기가 잘리고 계기를 보면 판이 잘린다. 지적은 `UP-FIX-07`~`UP-FIX-13` 으로 옮겼다. **가장 먼저 고칠 것**: 과수확 3장(11·12·13)의 잘린 HUD 좌측 — 같은 크롭이 02·04·15·17·19 에도 있어 프레이밍 규칙 하나로 **20장 중 8장이 동시에 오르고**, 그것이 `B-5 #15` 를 푸는 경로다. 최고점은 `12_overharvest_unlocked`(덮개·레일·조명·계기·문구 네 채널이 동시에 같은 상태를 말한다), 최저점은 `14_contract_select`(판독성 1/5)
+- 남은 문제: **⚠ 이 상태값은 독립 감사와 충돌한다 — 조용히 한쪽으로 정리하지 말 것.** 감사자 둘은 `NOT_STARTED` 를 유지해야 한다고 판정했다: 「이 항목의 산출물은 **ACCEPT 판정 하나뿐**이고 그것이 0건이다. `구현:` 필드가 가리키는 두 파일은 평가 **절차**이지 이 항목의 산출물이 아니다.」 이 논거는 타당하다. 내 논거(아래)도 타당하다 — 어느 쪽이든 이 항목은 §1 `PASS3_GATED` 에 있어 **Pass 3 을 계속 막으므로 요구가 약해지지 않는다.** 상태값 논쟁과 무관하게 감사가 지목한 **세 결함은 고쳐야 한다**: ① `구현:` 필드를 평가 절차가 아니라 평가 **대상**(캡처 세트 + 씬)으로 바꾼다 ② 출처 `PRD §15.2` 가 동결 PRD 에서 해소되지 않는다(동결본은 §15 에서 끝나고 「4.0」은 전 문서에 0건 — 실제 출처는 Notion) ③ 아래 점수가 낡았다(2.6/2.45 는 2회차, 이후 6차가 2.78/2.35). **상태 정정 근거 (2026-08-02).** `NOT_STARTED` 였으나 그것은 **분류 오류**였다 — 루브릭 문서·평가 스킬·판정 기록이 전부 존재하고 실제 캡처로 **일곱 번** 채점됐다. `NOT_STARTED` 는 「구현이 실제로 없다」는 뜻인데 여기서 없는 것은 구현이 아니라 **합격**이다. 그 둘을 한 상태로 적으면 Pass 1(존재 여부)이 Pass 3(품질)의 실패로 막힌다. → `CONNECTED`. 이 항목은 백로그 §1 `PASS3_GATED` 에 있으므로 **루브릭이 통과할 때까지 Pass 3 을 계속 막는다** — 요구가 약해진 것이 아니라 막는 패스가 제자리를 찾은 것이다. **2026-08-01 2회차 판정 REJECT — 판독성 2.6 / 스타일 2.45 (요구 4.0).** 20장 전부를 독립 평가자가 직접 열어 채점했다. 결정적 사유는 금지 항목 **`B-5 #15`** — 3×3 결과판과 전력/요구 계기가 **어느 캡처에서도 동시에 읽히지 않는다.** 판을 보면 계기가 잘리고 계기를 보면 판이 잘린다. 지적은 `UP-FIX-07`~`UP-FIX-13` 으로 옮겼다. **가장 먼저 고칠 것**: 과수확 3장(11·12·13)의 잘린 HUD 좌측 — 같은 크롭이 02·04·15·17·19 에도 있어 프레이밍 규칙 하나로 **20장 중 8장이 동시에 오르고**, 그것이 `B-5 #15` 를 푸는 경로다. 최고점은 `12_overharvest_unlocked`(덮개·레일·조명·계기·문구 네 채널이 동시에 같은 상태를 말한다), 최저점은 `14_contract_select`(판독성 1/5)
 
 ### UP-VIS-08 — 카지노 슬롯머신·장식적 스팀펑크로 보이지 않는다
 - 분류: Required · 출처: PRD §12.1 금지, §15.2 루브릭
@@ -1229,13 +1266,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-VIS-09 — 축소 화면에서도 상태가 읽힌다
 - 분류: Required · 출처: PRD §11, §15.2 마지막 항목
-- 상태: NOT_STARTED · 패스: P3
+- 상태: CONNECTED · 패스: P3
 - 구현: `Captures/TenFloor/scaled25/` 생성기 (원본 21장 → 480×270, LANCZOS)
 - 접근: 해당 없음
 - 검증: 캡처를 25% 축소해 독립 평가
 - 증거: `Captures/TenFloor/scaled25/manifest.txt` (21장 + 대응표)
 - 의존: UP-VIS-07
-- 남은 문제: 축소 세트를 **만들었다** — 원본 1920×1080 21장을 25%(480×270)로 줄여 `Captures/TenFloor/scaled25/` 에 두고 독립 평가를 요청했다. 리샘플은 LANCZOS 로 **축소에 유리한 쪽**을 골랐다 — 더 거친 BOX/NEAREST 면 리샘플 탓인지 디자인 탓인지 갈리지 않기 때문이다. **판정은 아직이다.** 그리고 이 항목은 `UP-VIS-07`(시각 루브릭 평균 4.0)에 의존하는데 그쪽이 현재 REJECT 이므로, 축소 판정이 좋게 나와도 **이 항목만 먼저 VERIFIED 로 갈 수 없다**
+- 남은 문제: **⚠ `UP-VIS-07` 과 같은 충돌이 있다** — 독립 감사는 `NOT_STARTED` 유지를 주장했고(세트 전체 판정 0건), 그 논거를 그쪽 항목에 적어 뒀다. 이 항목도 `PASS3_GATED` 라 Pass 3 을 계속 막는다. **선행 결함이 하나 특정됐다**: `UP-FIX-18`(위험 단계가 **색만** 움직이고 명도가 그대로) 때문에 7차 평가가 480×270 에서 `Strain↔Critical` 을 「조명이 조금 흔들린 정도」로 구분 실패했다 — 축소 판독은 그것을 고치기 전에는 재판정해도 같은 결과가 나온다. **상태 정정 근거 (2026-08-02).** `UP-VIS-07` 과 같은 분류 오류였다 — 생성기와 축소 세트 **23장**, 대응표 `scaled25/manifest.txt` 가 전부 디스크에 있는데 `NOT_STARTED` 로 적혀 있었다. 없는 것은 산출물이 아니라 **판정**이다. → `CONNECTED`. `PASS3_GATED` 에 포함돼 Pass 3 을 계속 막는다. 축소 세트를 **만들었다** — 원본 1920×1080 21장을 25%(480×270)로 줄여 `Captures/TenFloor/scaled25/` 에 두고 독립 평가를 요청했다. 리샘플은 LANCZOS 로 **축소에 유리한 쪽**을 골랐다 — 더 거친 BOX/NEAREST 면 리샘플 탓인지 디자인 탓인지 갈리지 않기 때문이다. **판정은 아직이다.** 그리고 이 항목은 `UP-VIS-07`(시각 루브릭 평균 4.0)에 의존하는데 그쪽이 현재 REJECT 이므로, 축소 판정이 좋게 나와도 **이 항목만 먼저 VERIFIED 로 갈 수 없다**
 
 ### UP-VIS-10 — 안개·먼지·빛줄기가 결과판을 가리지 않는다
 - 분류: Required · 출처: PRD §12.3
@@ -1281,7 +1318,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-AUD-04 — 승객 비언어 음성
 - 분류: Required · 출처: PRD §9.3
-- 상태: SKELETON · 패스: P3
+- 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/Audio/ProceduralClipFactory.cs`(PassengerVoice — 포먼트 2개, 승객 인덱스로 피치 변화)
 - 접근: 승객이 반응할 때
 - 검증: `Ascend/Run All EditMode Tests` → 큐 종류 분기
@@ -1323,13 +1360,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-03 — 필수 참조 누락 시 개발 빌드에서 즉시 오류
 - 분류: Required · 출처: PRD §13.5, N08 §3.3
-- 상태: SKELETON · 패스: P2 P4
-- 구현: `Scripts/Player/PlayerSetupValidator.cs`
+- 상태: CONNECTED · 패스: P2 P4
+- 구현: `Scripts/Diagnostics/SceneWiringValidator.cs` + `Scripts/Diagnostics/RequiredReferenceAttribute.cs`
 - 접근: 해당 없음
 - 검증: `Logs/tenfloor_playmode.txt` 「씬 배선」 검사
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-TECH-01
-- 남은 문제: **죽은 구현이다.** `Scripts/Player/PlayerSetupValidator.cs` 는 `#if UNITY_EDITOR` 안의 `static` 클래스에 `MenuItem` 하나이고 **호출자가 0곳**이며 빌드에 들어가지 않는다. 증거로 걸려 있던 `tenfloor_playmode.txt` 「씬 배선」 줄은 `TenFloorAutoPilot` **자신이** 찍는 것이지 이 코드의 산물이 아니다. PRD §13.5 「개발 빌드에서 원인과 경로를 출력」을 만족하는 **런타임 경로가 없다**. 직전 판본은 이 항목의 남은 문제를 「없음」이라고 적고 있었다 — 미충족보다 나쁜 것은 아무도 다시 안 볼 형태로 적히는 것이다
+- 남은 문제: **백로그가 실물이 아닌 파일을 가리키고 있었다 (2026-08-02 독립 감사 + 적대적 반박으로 정정).** 「죽은 구현 · 런타임 경로가 없다」는 `Scripts/Player/PlayerSetupValidator.cs` 에 대해서는 **지금도 참**이지만, 그 파일은 더 이상 이 항목의 구현이 아니다. 실제 구현은 `Scripts/Diagnostics/SceneWiringValidator.cs`(251줄)이고 **런타임 경로가 실재한다** — `:84-90` 이 `#if DEVELOPMENT_BUILD || UNITY_EDITOR` 안의 `[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]` 다(씬 오브젝트가 아니므로 「검사기 자신이 배선에서 빠지는」 실패 모드가 없다). 껍데기도 아니다 — 상속 체인 순회·필드 캐시·박싱된 `UnityEngine.Object` 의 `==` 오버로드 함정 처리까지 들어 있다. **「죽은 구현」 가능성은 로그로 배제됐다**: `Logs/Editor.log` 에 「[배선] 필수 참조 이상 없음 — 검사 5필드 / 컴포넌트 73~75개」가 **22회** 찍혀 있고 그 문장은 `Validate(true)` 분기에서만 나오는데 `TenFloorAutoPilot` 은 `Validate(false)` 만 두 번 부른다 — 22줄 전부 자동 실행의 산물이다. 단정도 공허하지 않다: 필드 수 단정이 「결함 0건」의 공허함을 막고, 일부러 빈 참조를 심는 **음성 대조가 실제로 4건을 잡았다**. **VERIFIED 를 막는 것은 둘이다.** ① 요구가 「**개발 빌드**」인데 `Assets/Editor/WindowsBuildTask.cs:85` 가 `BuildOptions.None` 이라 `DEVELOPMENT_BUILD` 가 정의되지 않고, 현존 `Builds/Windows/Upandup_DDD.exe`(8/1 03:19)는 이 소스(8/1 19:30)보다 **낡아 코드가 들어 있지도 않다** — 모든 증거가 에디터 쪽이다. ② 표시 범위가 좁다. 이번 세션에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여 **5필드 → 17필드**가 됐으나 `[SerializeField]` 보유 런타임 파일 50개에 비하면 여전히 일부다. ③ 감사가 덧붙인 것: `Debug.LogError` 발화 경로 자체는 어떤 로그에서도 한 번도 실행된 적이 없다(Editor.log 22줄 전부 정상 분기) — 「즉시 **오류**」의 오류 쪽이 미실증이다
 
 ### UP-TECH-04 — 1080p 목표 90 FPS / 하드 플로어 60 FPS
 - 분류: Required · 출처: PRD §13.1, §17.4
@@ -1353,13 +1390,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-06 — 오브젝트 풀링 (파티클·심볼·사운드)
 - 분류: Required · 출처: PRD §13.2, §17.4
-- 상태: SKELETON · 패스: P4
-- 구현: `Scripts/Perf/ObjectPool.cs`(이중 반환 감지 포함), `ComponentPool.cs`
+- 상태: CONNECTED · 패스: P4
+- 구현: `Scripts/Perf/ObjectPool.cs`(이중 반환 감지 포함), `ComponentPool.cs`, 소비처 `Scripts/Player/CrosshairInteractor.cs`
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 풀링 20건 (prewarm·재사용·이중 반환·maxSize 초과)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-TECH-05
-- 남은 문제: **풀이 답인 지점은 하나뿐이다.** `ObjectPool`/`ComponentPool` 은 완성돼 있고 소비처가 0곳인데, GC 분해 결과 풀로 해결되는 후보는 `CrosshairInteractor.ApplyHighlight`(조준 대상 전환당 렌더러마다 `MaterialPropertyBlock` **2개** + `RendererState` 1개, ≈500 B 추정) **하나**다. 나머지 할당 후보는 전부 문자열·서식(`InstrumentPanelView` 의 `AppendFormat` 박싱, `SpinPresenter.DescribeStep`, `PaperTapePrinterView`)이라 **풀이 답이 아니다.** 파티클·심볼·사운드에 풀을 넣는다고 프레임당 0 B 가 되지 않는다 — `UP-TECH-05` 의 1,638 B 는 그쪽에서 나오는 게 아니다. 근거: `docs/runtime/GC_ALLOC_ANALYSIS.md` §4·§7
+- 남은 문제: **소비처 0곳 → 1곳 (2026-08-02).** `GC_ALLOC_ANALYSIS.md` §7 이 좁혀 놓은 유일한 지점 `CrosshairInteractor.ApplyHighlight` 를 풀 기반으로 바꿨다 — 조준 대상 전환당 렌더러마다 `MaterialPropertyBlock` 2개 + `RendererState` 1개 + `Renderer[]` 1개가 사라졌다(`readonly struct` + 재사용 `List` + `ObjectPool` 예열 8·상한 32). **동작은 보존했다** — 하이라이트 색 계산·복원 순서·`OnDisable` 정리가 동일하다. 위험 둘을 명시적으로 막았다: 반환 시 `Clear()`(잊으면 앞 대상 색이 다음 대상에 실린다), 렌더러가 파괴돼도 블록은 반드시 반환(안 하면 풀이 계속 새로 만들어 **풀을 넣은 의미가 조용히 사라진다**). `PerfTests` 에 소유권 계약 4건 — 21주기 후 `CreatedCount` 정지 / 꺼낸 블록이 비어 있는가 / **해제 두 번이면 이중 반환으로 잡히는가** / 회수 누락이 통계에 드러나는가. **VERIFIED 가 아닌 이유 둘**: ① **GC 실측을 못 했다** — 「할당하는 코드가 사라졌다」는 코드 수준 근거뿐이고 「할당이 줄었다」는 측정이 없다 ② **요구 문구의 세 대상(파티클·심볼·사운드)은 여전히 풀이 없다.** 이것은 미루기가 아니라 **측정에 근거한 결정**이다 — 같은 분해가 나머지 할당 후보를 전부 문자열·서식(`InstrumentPanelView` 의 `AppendFormat` 박싱, `SpinPresenter.DescribeStep`, `PaperTapePrinterView`)으로 지목했고 **풀은 그 답이 아니다.** PRD 가 셋을 열거한다는 이유만으로 넣으면 측정이 부정한 곳에 코드를 늘리는 것이고, 다음 사람이 「풀을 넣었는데 왜 0 B 가 안 되지」를 다시 조사하게 된다. 하이라이트는 **매 프레임이 아니라 대상 전환 시**에만 도는 경로라 `UP-TECH-05` 의 1,638 B 중 일부만 건드린다 — 이 변경으로 0 B 가 되지 않는다. **풀이 답인 지점은 하나뿐이다.** `ObjectPool`/`ComponentPool` 은 완성돼 있고 소비처가 0곳인데, GC 분해 결과 풀로 해결되는 후보는 `CrosshairInteractor.ApplyHighlight`(조준 대상 전환당 렌더러마다 `MaterialPropertyBlock` **2개** + `RendererState` 1개, ≈500 B 추정) **하나**다. 나머지 할당 후보는 전부 문자열·서식(`InstrumentPanelView` 의 `AppendFormat` 박싱, `SpinPresenter.DescribeStep`, `PaperTapePrinterView`)이라 **풀이 답이 아니다.** 파티클·심볼·사운드에 풀을 넣는다고 프레임당 0 B 가 되지 않는다 — `UP-TECH-05` 의 1,638 B 는 그쪽에서 나오는 게 아니다. 근거: `docs/runtime/GC_ALLOC_ANALYSIS.md` §4·§7
 
 ### UP-TECH-07 — 렌더링 예산 측정 (드로우콜·SetPass·오버드로우)
 - 분류: Required · 출처: PRD §13.3
@@ -1495,25 +1532,25 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-11 — 미사용 레거시 코드 정리
 - 분류: Required · 출처: PRD §4.2(9종 등급 체계 제외), N08 §22 「임시 에셋은 명확히 `Prototype` 폴더에」, Pass 4
-- 상태: NOT_STARTED · 패스: P4
-- 구현: `docs/runtime/LEGACY_DELETION_PLAN.md` — 전수 조사 목록과 웨이브 0~9 삭제 순서
+- 상태: SKELETON · 패스: P4
+- 구현: `docs/runtime/LEGACY_DELETION_PLAN.md` — 전수 조사 목록과 웨이브 0~9 삭제 순서. **웨이브 0 완료** (`Assets/Editor/PrototypeSelfTest.cs`), **A묶음 1/3 삭제** (`Scripts/Effects/IEffect.cs`)
 - 접근: 해당 없음
 - 검증: 삭제 또는 `Legacy/` 격리 후 컴파일·테스트 통과
 - 증거: `docs/runtime/LEGACY_DELETION_PLAN.md`
 - 의존: UP-TEST-01
-- 남은 문제: **목록이 확정됐다. 삭제는 아직이다.** 독립 조사자가 `Scripts/` 146 + `Assets/Editor/` 17 파일을 GUID 역검색 + 씬 YAML 파싱 + **주석 제거 후** 참조 그래프로 전수 조사했다 (주석만 뒤진 1차는 `PlayerSetupValidator`·`PrototypeUI`·`ComponentPool`·`RunOutcome` 을 「살아 있음」으로 오판했다). 결과 — **삭제 대상 46파일 4,571줄 + `.asset` 23개**, 보존 52파일 약 19,500줄. **규모 정정**: `GapAnalysis.md:205-207` 과 `WINDOWS_SETUP.md:168` 의 「약 5,000줄」은 `Scripts/Sim/` 899줄을 잘못 포함한 값이다 — `Sim/` 은 신 스택 밸런스 시뮬레이터라 남는다. **순서가 중요하다**: 레거시 `.asset` 을 먼저 지우면 `PrototypeSelfTest.cs:38-43` 의 조기 반환이 걸려 신 스택 스위트 10종이 통째로 안 돌고 `1 FAIL` 이 되며, 커밋 게이트가 **모든 커밋을 막는다.** 웨이브 0(자체 검사 편집)이 반드시 먼저다. **전제 하나**: 웨이브 1에서 `PlayerSetupValidator` 를 지우기 전에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여야 검사 손실이 없다 — 현재 이 셋에 속성이 하나도 없다. 되돌릴 수 없는 지점은 웨이브 3(씬)·8(`.asset`) 둘뿐이고 `PD-13` 승인이 전제다
+- 남은 문제: **웨이브 0 을 끝냈다 (2026-08-02) — 삭제 순서의 지뢰가 제거됐다.** `PrototypeSelfTest.cs:39-44` 의 조기 반환은 레거시 `.asset` 셋이 없으면 `fail=1` 로 끝내 **신 스택 스위트 10종을 통째로 건너뛰고 모든 커밋을 막는** 구조였다. **계획과 다르게 처리했다** — 계획은 「Test1~9 호출과 본문 제거」였으나, 그 셋을 지금 지우면 **아직 빌드에 남아 있는 옛 스택의 커버리지가 웨이브 7 전까지 비어 버린다.** 대신 조기 반환을 `if (legacyAssetsPresent)` 분기로 바꿨다: 에셋이 있는 **지금은 9건이 그대로 돌아 관측 가능한 변화가 0**이고, 에셋이 사라지는 웨이브 8 이후에는 실패가 아니라 `SKIP` 한 줄로 보고서에 **남는다**(합계만 보면 사라진 9건이 안 보이므로 조용히 넘기지 않는다). 삭제는 그것들이 지키는 코드가 사라지는 웨이브 7 과 **같은 커밋**에서 한다 — 그때는 숨기는 것이 아니라 함께 가는 것이다. **A묶음도 시작했다**: `Scripts/Effects/IEffect.cs` 삭제(구현체 0개·GUID 씬/에셋 0건을 **삭제 직전에 재확인**). 남은 A묶음 둘은 다른 작업자가 `Scripts/Perf/`·`Scripts/Player/` 를 소유 중이라 **이번 배치에서 손대지 않았다** — 병렬 소유 규칙이 우선한다. 덧붙여 `ComponentPool.cs` 는 계획 자신이 「레거시가 아니라 아직 안 쓰이는 신규 인프라 · 보류 권장」이라고 적었고 `UP-TECH-06` 이 지금 그것을 쓰게 만드는 중이라 **삭제 대상에서 뺀다.** **목록이 확정됐다. 나머지 삭제는 아직이다.** 독립 조사자가 `Scripts/` 146 + `Assets/Editor/` 17 파일을 GUID 역검색 + 씬 YAML 파싱 + **주석 제거 후** 참조 그래프로 전수 조사했다 (주석만 뒤진 1차는 `PlayerSetupValidator`·`PrototypeUI`·`ComponentPool`·`RunOutcome` 을 「살아 있음」으로 오판했다). 결과 — **삭제 대상 46파일 4,571줄 + `.asset` 23개**, 보존 52파일 약 19,500줄. **규모 정정**: `GapAnalysis.md:205-207` 과 `WINDOWS_SETUP.md:168` 의 「약 5,000줄」은 `Scripts/Sim/` 899줄을 잘못 포함한 값이다 — `Sim/` 은 신 스택 밸런스 시뮬레이터라 남는다. **순서가 중요하다**: 레거시 `.asset` 을 먼저 지우면 `PrototypeSelfTest.cs:38-43` 의 조기 반환이 걸려 신 스택 스위트 10종이 통째로 안 돌고 `1 FAIL` 이 되며, 커밋 게이트가 **모든 커밋을 막는다.** 웨이브 0(자체 검사 편집)이 반드시 먼저다. **전제 하나**: 웨이브 1에서 `PlayerSetupValidator` 를 지우기 전에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여야 검사 손실이 없다 — 현재 이 셋에 속성이 하나도 없다. 되돌릴 수 없는 지점은 웨이브 3(씬)·8(`.asset`) 둘뿐이고 `PD-13` 승인이 전제다
 
 ## 2.16 DOC — 문서 정합성
 
 ### UP-DOC-01 — Notion PRD §6.1의 정화 규칙을 인접 요구로 개정
 - 분류: Required · 출처: `D-20260801-03`, PRD §1.1(이 문서가 최상위)
-- 상태: NOT_STARTED · 패스: P4
-- 구현: Notion 페이지 `3ada30cad9c58106b9a8c4ee03dd995c` §6.1
+- 상태: VERIFIED · 패스: P4
+- 구현: Notion 페이지 `3ada30cad9c58106b9a8c4ee03dd995c` §6.1·§4.1 (2026-08-02 개정 완료)
 - 접근: 해당 없음
 - 검증: Notion 원문과 `docs/MASTER_PRD.md`가 일치
-- 증거: 없음
+- 증거: `docs/runtime/NotionSyncReport.md`
 - 의존: UP-CORE-05
-- 남은 문제: 저장소 동결 스냅샷만 개정됐고 **Notion 원본은 아직 "위치와 무관하게"**다. 최상위 문서가 코드와 어긋난 상태다
+- 남은 문제: **개정했다.** §6.1 「위치와 무관하게 기본 정화한다」 → 「3개 이상이고 **서로 인접**하면 정화한다 (직선 3연속 또는 연결 덩어리 4개 이상)」, §4.1 「같은 저항체 3개 이상 기본 정화」 → 「인접했을 때의 정화 (`D-20260801-03`)」. 문구는 새로 쓰지 않고 저장소 동결 스냅샷(`docs/MASTER_PRD.md:78`·`:128-129`)을 그대로 옮겼다 — 두 문서가 「비슷한 말」이 아니라 **같은 문장**이어야 다음 대조가 성립한다. 쓰기 직후 같은 페이지를 다시 `notion-fetch` 해 **원문에서 두 줄을 확인했다**(API 성공 응답을 근거로 삼지 않았다). §3 가설 2번과 §16.1 테스트 항목명의 「3개 기본 정화」는 **고의로 두었다** — 규칙 진술이 아니라 각각 검증 대상 가설과 테스트 이름이고, 저장소 스냅샷도 같은 문장을 그대로 둔다. 전문은 `NotionSyncReport.md` §9. **앞선 세션의 「Notion 쓰기가 권한 계층에서 거부됐다 · 사용자만 풀 수 있다」 기록은 항구적이지 않았다** — 이번엔 거부되지 않았고, 그 기록을 그대로 믿었으면 계속 사용자 대기로 남았을 것이다. **독립 확인 완료 → VERIFIED (2026-08-02).** 구현자와 분리된 확인자가 읽기 전용 `notion-fetch` 로 원본 페이지를 **직접 열어** §6.1·§4.1 두 줄이 실제로 바뀌었음을 확인하고, `docs/MASTER_PRD.md:78`·`:128-129` 와 문장이 일치함을 대조했다. 내 보고를 근거로 삼지 않았다 — 규칙 6 이 요구하는 것이 정확히 그것이다
 
 ### UP-DOC-02 — 위험 2단계 이름을 PRD와 일치시킨다 (`Strain` vs `Warning`)
 - 분류: Required · 출처: PRD §8.1
@@ -1603,13 +1640,31 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-FIX-13 | 매니페스트 주장과 그림이 다른 장 9건 | UP-VIS-06 | 열림 |
 | UP-FIX-14 | 라벨 거리 축소는 **틀린 축이었다** — 가림은 스케일 불변이다 (0.35 를 더 낮추지 말 것) | UP-VIS-08, UP-VIS-10, UP-TEST-09 | 열림 |
 | UP-FIX-15 | 결과 숫자가 연출보다 30프레임 먼저 나와 스핀을 스포일한다 | UP-CORE-11 | 열림 |
-| UP-FIX-16 | 화면 캡처 3장(`17`·`19`·`20`)이 **816×714** 다 — 나머지 18장은 1920×1080 | UP-VIS-06, UP-TECH-04 | 열림 |
+| UP-FIX-16 | 화면 캡처 3장(`17`·`19`·`20`)이 **816×714** 였다 | UP-VIS-06, UP-TECH-04 | **해결 — PNG 헤더 실측으로 셋 다 1920×1080 확인 (2026-08-02)** |
 | UP-FIX-17 | 두부 글자 원인 확정 — `⚠`(U+26A0)이 아틀라스에 **없다**(`HasCharacter` False). `[과적]`으로 교체, 교체 문자도 실재 확인 | UP-REC-02, UP-VIS-07 | **코드 완료 · 시각 판정 대기** |
 | UP-FIX-18 | 위험 단계 구분이 **색에만** 의존한다 — 회색조에서 Strain↔Critical 이 같아진다 | UP-RISK-03, UP-VIS-09 | 열림 |
 | UP-FIX-19 | `22_presenting_screen` 프레임 — 3회 시도. 숫자는 들어왔으나 우측(「폭주」) 절단 + 결과판 이탈 | UP-CORE-13, UP-VIS-06 | **3회 실패 · 배치 결정 대기** |
 | UP-FIX-20 | 순차 공개가 **정지 화면에서 안 읽힌다** — 공개 중인 칸 표식이 없어 「공개 중」과 「빈 판」이 같다 | UP-CORE-11 | 열림 |
 | UP-FIX-21 | `07_cargo_full` 승객 이름 3개가 벽 기록문과 겹쳐 **글자가 4겹** (4차 대비 악화) | UP-FIX-12, UP-VIS-10 | 열림 |
 | UP-FIX-22 | 상태 패널이 **네 시점에서** 가장자리 절단 — 해상도 탓이 아니었다(1920 에서 전수 재현) | UP-VIS-06, UP-DEVICE-06 | 열림 |
+
+## 5.1 독립 감사가 새로 찾은 결함 (2026-08-02 · 26 에이전트)
+
+**백로그에 없던 것들이다.** 위 §5 는 시각 평가에서, 이쪽은 코드·씬·로그 대조에서 나왔다.
+
+| ID | 결함 | 왜 위험한가 | 원 항목 |
+|---|---|---|---|
+| UP-AUD-06 | `AudioDirector._dangerProfile`·`_accessibilityProfile` 이 **씬 YAML 에 키 자체가 없다** → 런타임 null → 코드 프리셋 | 「접근성 옵션이 `AccessibilityProfile` 을 읽는다」 PASS 단정은 `RiskStateView` 쪽만 보므로 **이것을 못 잡는다** | UP-RISK-05·08, UP-AUD-05 |
+| UP-AUD-07 | `AudioMixProfile` **18필드 중 13개가 죽어 있다** (덕 5 + 험 배율 8). 험 배율은 계산·노출되지만 실제 험은 `RiskStateView.cs:403` 이 **절대값으로 덮어쓴다** | `DEAD_IMPLEMENTATION_AUDIT.md` §1 의 「13개」는 낡은 기록이 **아니다** — 정정하지 말 것 | UP-AUD-05 |
+| UP-VIS-11 | `VisualQualityProfile` High `_shadowDistance: 30` vs `PC_RPAsset.asset:57` `m_ShadowDistance: 50` — **어긋난다** | 성능 리포트가 **거짓 조건을 인용**한다. 7필드 중 6이 소비처 0 → 예산이 아니라 **라벨** | UP-PLAT-05, UP-TECH-07 |
+| UP-AUD-08 | `PlayedKindsMask` 가 variant 를 버린다(`AudioDirector.cs:671`) | 「응력음 1회」와 「네 단계 각각」이 **구분되지 않는다** — §8.3 의 증거가 될 수 없다 | UP-RISK-05 |
+| UP-TEST-12 | GC 인용 수치(10,443 / 8,805 / 1,638 B)의 **원본 로그가 덮어써졌다.** 현재 파일은 10807/9173/9176/10803 | 문서가 **디스크에 없는 숫자**를 인용한다 (이 저장소가 반복한 실패) | UP-TECH-05 |
+| UP-VIS-12 | 6라운드 시각 채점이 전부 **절대 5점 척도**인데 `.claude/visual-criteria.md:6-7` 이 그것을 **금지**한다 | 통과 조건의 **측정 방법 자체가 절차 위반**이다 | UP-VIS-07 |
+| UP-DOC-03 | 출처 표기 다수가 동결 `MASTER_PRD.md` 에서 해소되지 않는다 — `§14.1`·`§17.4`·`§9.3`·`§10.3`·`§7.3`·`§13.3/4`·`§15.2`. 동결본은 **§15 에서 끝나고 §16·17 이 없다** | 「출처를 확인하라」가 불가능해진다. 실제 출처는 Notion N08 | 다수 |
+| UP-DOC-04 | 백로그 자기모순 — `UP-VIS-01` 서술이 「`UP-VIS-04` 는 NOT_STARTED」라 적지만 그 항목은 SKELETON. 심볼 머티리얼도 「배정되지 않는다」 ↔ 「전부 `M_Gray_Readout` 공유」로 **정반대** (후자가 맞다) | 같은 문서의 두 줄이 서로를 부정한다 | UP-VIS-01, UP-VIS-04 |
+| UP-VIS-13 | `MAT_Ascend_*`·`MAT_Sym_*` **6종과 셰이더가 씬·코드·프리팹 참조 0건**. 게다가 머티리얼 6개가 `_AmbientFloor: 0.18` 을 직렬화로 덮어써 **「0.35 로 올렸다」가 채택 대상에 적용돼 있지 않다** | 다음 채택 시도가 **고치기 전 값으로** 다시 실패한다 | UP-VIS-04 |
+| UP-REC-06 | `TenFloorCaptureRig.cs:718-720` 하드코딩 문구 「이 한 장만 방식이 다르다 / 나머지 **18장**」 — 실제 23장·화면 캡처 4장 | 매니페스트가 **스스로 틀린 숫자**를 매번 새로 찍는다 | UP-VIS-06, UP-REC-05 |
+
 
 **`UP-FIX-19` 프레임 조정은 3회로 멈춘다 (`visual-verify` §6).**
 ① 계기판·결과판의 **중점**을 겨눔 → 중점이 눈높이 아래라 **바닥**을 봤다. 순손실.
@@ -1657,19 +1712,25 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | Required | 129 |
 | Deferred (§3 표 + `UP-RUN-09`) | 22 |
 | Approval Required (§4) | 14 |
-| 수정 백로그 (§5) | 6 |
+| 수정 백로그 (§5) | 22 |
+| 감사 발견 결함 (§5.1) | 10 |
 
-| 상태 | Required 중 개수 |
-|---|---|
-| `VERIFIED` | **67** |
-| `CONNECTED` | 41 |
-| `VISIBLE` | 0 |
-| `SKELETON` | 15 |
-| `NOT_STARTED` | **6** |
-| `BLOCKED_EXTERNAL` | 0 |
+<!-- 아래 표는 손으로 적는 것이 아니다. `verify-topdown.ps1 -Stats` 출력을 그대로 옮긴다.
+     2026-08-02 감사가 이 표를 「NOT_STARTED 6」인 채로 잡아냈다 — 실제는 0 이었다.
+     통계표가 틀리면 「얼마나 남았는가」를 묻는 모든 판단이 함께 틀린다. -->
 
-**Required 129건 중 67건(52%)이 코드·씬·테스트 증거를 모두 갖췄다.**
-직전 판본의 "VERIFIED 0"은 판정 기준이 달랐기 때문이지 구현이 없어서가 아니었다 (§0.4).
+| 상태 | Required 중 개수 | 2026-08-02 세션 시작 |
+|---|---|---|
+| `VERIFIED` | **74** | 73 |
+| `CONNECTED` | **46** | 37 |
+| `VISIBLE` | **2** | 0 |
+| `SKELETON` | **7** | 15 |
+| `NOT_STARTED` | **0** | 4 |
+| `BLOCKED_EXTERNAL` | 0 | 0 |
+
+**Pass 1 완료** (모든 Required 가 `SKELETON`·`VISIBLE` 이상). **Pass 2 바 미달 9건.**
+
+패스별 미달 수는 검증기가 `-Stats` 로 직접 센다 — 여기에 옮겨 적지 말고 그쪽을 볼 것.
 
 > **이 표는 손으로 적는 것이 아니다.** 2026-08-01 독립 감사가 항목 헤더를 직접 세어
 > 여기 적힌 66/25/31 이 실제(67/33/22)와 다르다는 것을 찾았다. 통계표가 틀리면

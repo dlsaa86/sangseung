@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Ascend.Prototype.Diagnostics;
 
 namespace Ascend.Prototype.Player
 {
@@ -10,8 +11,14 @@ namespace Ascend.Prototype.Player
     /// </summary>
     public sealed class CrosshairView : MonoBehaviour
     {
+        // 둘 다 대체 경로가 없다. `SetTarget` 이 `if (x != null)` 로 감싸고 있어서
+        // 비어 있으면 예외도 로그도 없이 **아무 일도 일어나지 않는다** — 조준해도
+        // 조준점 색이 안 변하고 프롬프트가 안 뜬다. 정확히 「조용한 실패」다.
         [Header("References")]
+        [RequiredReference("조준점 Graphic 이 없으면 상호작용 가능 여부가 색으로 전달되지 않는다")]
         [SerializeField] private Graphic _crosshairGraphic;
+
+        [RequiredReference("프롬프트 TMP_Text 가 없으면 '무엇을 할 수 있는가'가 화면에 나오지 않는다")]
         [SerializeField] private TMP_Text _promptText;
 
         [Header("Colours")]

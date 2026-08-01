@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Ascend.Prototype.Build;
+using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.Events;
 using Ascend.Prototype.Spin;
 
@@ -38,8 +39,17 @@ namespace Ascend.Prototype.Run
         private ResidualState _residual;
         private FloorResult _result;
         private float _resolvedCapacity;
-        private readonly float _anteRatio;
-        private readonly float _anteEscalation;
+
+        /// <summary>
+        /// 과수확 수치 9종의 값 사본 (`UP-POWER-07`). <see cref="OverharvestSnapshot"/>은
+        /// 순수 구조체라 이 파일이 지키는 「UnityEngine·ScriptableObject 비의존」이 유지된다 —
+        /// 에셋을 든 쪽과 안 든 쪽이 **같은 구조체**를 넘기고, 판정은 여기 한 곳에서만 한다.
+        ///
+        /// 직전 판본은 판돈 두 값만 float 로 받고 해금 임계·추가 스핀 상한은 아예 몰랐다.
+        /// 그래서 프로파일의 <c>IsUnlocked</c>·<c>EffectiveExtraSpinLimit</c> 가 만들어진 채
+        /// **호출자 0곳**이었다 — 값을 바꿔도 게임이 그대로인 상태의 정확한 원인이다.
+        /// </summary>
+        private readonly OverharvestSnapshot _overharvest;
         private float _totalAnte;
         private float _extraSpinNetPower;
         private float _lastAnte;
@@ -81,6 +91,30 @@ namespace Ascend.Prototype.Run
         public FloorSession(FloorPlan plan, SpinEngine engine,
             PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
             float anteRatio, float anteEscalation, BuildLoadout loadout)
+            : this(plan, engine, thresholds, carriedWeight, carriedResidual,
+                WithAnte(OverharvestProfile.DefaultSnapshot, anteRatio, anteEscalation), loadout)
+        {
+        }
+
+        /// <summary>
+        /// 판돈 두 값만 받던 옛 경로를 스냅샷으로 올린다. 나머지 일곱 값은 코드 기본값이라
+        /// **동작이 바뀌지 않는다** — 옛 호출자(테스트·밸런스 심)를 고치지 않고 남기기 위한 것이다.
+        /// </summary>
+        private static OverharvestSnapshot WithAnte(OverharvestSnapshot s, float anteRatio, float anteEscalation)
+        {
+            return new OverharvestSnapshot(
+                Math.Max(0f, anteRatio), Math.Max(0f, anteEscalation), s.UnlockThreshold,
+                s.ApproachMachineDuckScale, s.MinSilenceSeconds, s.MaxSilenceSeconds,
+                s.PassengerGazeDelaySeconds, s.ResumeFadeSeconds, s.MaxExtraSpins);
+        }
+
+        /// <summary>
+        /// <paramref name="overharvest"/>는 `OverharvestProfile.asset` 에서 온 값 사본이거나
+        /// 에셋이 없으면 코드 기본값이다. 어느 쪽이든 판정식은 하나다.
+        /// </summary>
+        public FloorSession(FloorPlan plan, SpinEngine engine,
+            PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
+            OverharvestSnapshot overharvest, BuildLoadout loadout)
         {
             if (engine == null) throw new ArgumentNullException(nameof(engine));
             if (plan.Spins <= 0) throw new ArgumentOutOfRangeException(nameof(plan), "A floor needs at least one spin.");
@@ -94,8 +128,7 @@ namespace Ascend.Prototype.Run
             // 적재가 요구 전력에 반영되지 않는다.
             RecomputeLoad();
             _residual = carriedResidual;
-            _anteRatio = Math.Max(0f, anteRatio);
-            _anteEscalation = Math.Max(0f, anteEscalation);
+            _overharvest = overharvest;
             _contract = ResistanceContract.None;
             _rules = null;
 
@@ -238,10 +271,27 @@ namespace Ascend.Prototype.Run
         public ResidualState Residual => _residual;
         public PowerBand CurrentBand => _thresholds.BandFor(Power, RequiredPower);
         public bool CanBank => Power >= RequiredPower;
-        public float AnteRatio => _anteRatio;
-        public float AnteEscalation => _anteEscalation;
+        public float AnteRatio => _overharvest.AnteRatio;
+        public float AnteEscalation => _overharvest.AnteEscalation;
         public int ExtraSpinsTaken { get; private set; }
-        public float PendingAnte => CanBank && Phase == FloorPhase.Decision && SpinsRemaining > 0
+
+        /// <summary>
+        /// 과수확 잠금이 풀렸는가 (PRD §7.1 「요구 전력 100% 달성 시」).
+        ///
+        /// **`CanBank` 과 일부러 분리했다.** 기본 임계 1.00 에서 둘은 같은 값이지만
+        /// 같은 것이 아니다 — 확정(브레이크)은 규칙이고 과수확 해금은 **조정 가능한 수치**다.
+        /// 하나로 묶어 두면 `UnlockThreshold` 를 바꿔도 아무 일도 일어나지 않는다.
+        /// </summary>
+        public bool IsOverharvestUnlocked => _overharvest.IsUnlocked(Power, RequiredPower);
+
+        /// <summary>남은 스핀과 프로파일 상한 중 작은 쪽. 둘 다 지켜야 한다.</summary>
+        public int ExtraSpinLimit => _overharvest.EffectiveExtraSpinLimit(SpinsRemaining);
+
+        /// <summary>한 번 더 당길 수 있는가. 상한에 닿으면 레버가 아무것도 하지 않는다.</summary>
+        public bool CanTakeExtraSpin => IsOverharvestUnlocked && SpinsRemaining > 0
+            && ExtraSpinsTaken < _overharvest.MaxExtraSpins;
+
+        public float PendingAnte => CanTakeExtraSpin && Phase == FloorPhase.Decision
             ? Power * AnteRatioForNextSpin : 0f;
         public float TotalAnte => _totalAnte;
         public float TotalStakedPower => _totalAnte;
@@ -273,7 +323,10 @@ namespace Ascend.Prototype.Run
         /// </summary>
         public bool PushYourLuck()
         {
-            if (Phase != FloorPhase.Decision || !CanBank || SpinsRemaining <= 0 || _result != null)
+            // `CanTakeExtraSpin` 이 해금 임계와 추가 스핀 상한을 **둘 다** 본다.
+            // 직전 판본은 `CanBank && SpinsRemaining > 0` 이라 프로파일의 상한이
+            // 존재하되 아무것도 막지 않았다 — 상한을 0 으로 내려도 계속 당겨졌다.
+            if (Phase != FloorPhase.Decision || !CanTakeExtraSpin || _result != null)
                 return false;
 
             // The ante is paid at choice time, before the engine consumes another
@@ -403,17 +456,27 @@ namespace Ascend.Prototype.Run
                 _announcedThreshold = gate;
                 Events?.Publish(GameEventKind.PowerThresholdCrossed, Plan.Floor, SpinsUsed - 1,
                     gate, Power);
-                if (gate == 100)
-                    Events?.Publish(GameEventKind.OverharvestUnlocked, Plan.Floor, SpinsUsed - 1,
-                        100, Power);
+            }
+
+            // 해금은 임계점 100 과 **같은 사건이 아니다.** 직전 판본은 `gate == 100` 안에서
+            // 발행해 `UnlockThreshold` 를 1.20 으로 올려도 100% 에서 해금 신호가 나갔다 —
+            // 소리·승객 반응·연출이 전부 이 이벤트를 듣기 때문에 값이 조용히 무시됐다.
+            if (!_announcedOverharvestUnlock && IsOverharvestUnlocked)
+            {
+                _announcedOverharvestUnlock = true;
+                Events?.Publish(GameEventKind.OverharvestUnlocked, Plan.Floor, SpinsUsed - 1,
+                    (int)Math.Round(_overharvest.UnlockThreshold * 100f), Power);
             }
         }
+
+        private bool _announcedOverharvestUnlock;
 
         /// <summary>승객이 반응하는 임계점(`MASTER_PRD.md` §9.2 목록의 세 지점).</summary>
         private static readonly int[] ThresholdGates = { 100, 170, 300 };
 
-        private float AnteRatioForNextSpin =>
-            AnteRatio * (1f + AnteEscalation * ExtraSpinsTaken);
+        // 식을 여기서 다시 쓰지 않고 스냅샷의 것을 부른다. 두 벌로 두면 한쪽만 고쳐도
+        // 컴파일이 통과하고, 그때 판돈 표시와 실제 차감이 조용히 갈라진다.
+        private float AnteRatioForNextSpin => _overharvest.AnteRatioForPull(ExtraSpinsTaken);
 
         public bool TrySpin(out SpinResolution resolution)
         {
