@@ -5,6 +5,19 @@ using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Run
 {
+        /// <summary>
+        /// 과적 표시. **기호를 쓰지 않는다.**
+        ///
+        /// 이전 값은 `"  ⚠ 과적"` 이었고, `⚠`(U+26A0)이 `NanumGothic SDF` 아틀라스에
+        /// 없어서 화면에 **두부 글자(□)**로 나갔다. 독립 시각 평가가
+        /// `17_accident_recorder` 에서 「무게 320/100 □ 과적」으로 두 번 지적했다.
+        ///
+        /// 이 문자열은 사고 기록기·HUD·종이 테이프 셋 다 거치므로, 아틀라스에
+        /// 확실히 있는 문자만 쓴다 — 대괄호는 ASCII 라 어느 폰트에나 있다.
+        /// **기호를 다시 넣고 싶으면 아틀라스에 먼저 넣고 캡처로 확인할 것.**
+        /// </summary>
+        private const string OverloadMarker = "  [과적]";
+
     /// <summary>
     /// 사고 기록기. 층이 끝난 뒤 "왜 이렇게 됐는가"를 플레이어가 되짚을 수 있게 만든다.
     ///
@@ -150,7 +163,7 @@ namespace Ascend.Prototype.Run
             // 무게는 허용치와 함께 적어야 뜻이 생긴다. 33kg 이 위험한지 아닌지는
             // 허용 중량을 봐야 알 수 있고, 그 허용 중량은 짐꾼이 바꾼다.
             sb.AppendLine($"적재 {Loadout}   무게 {CarriedWeight:F0}/{WeightCapacity:F0}" +
-                          (Overloaded ? "  ⚠ 과적" : string.Empty));
+                          (Overloaded ? OverloadMarker : string.Empty));
 
             if (!string.IsNullOrEmpty(FailureReason))
                 sb.AppendLine($"원인: {LocalizeFailure(FailureReason)}");
