@@ -113,13 +113,13 @@ namespace Ascend.Prototype.Run.Tests
             //   A. 연쇄 — 완주하는 시드로 오래 돈다. 과수확도 적재도 걸지 않는다.
             //      깊은 연쇄는 층이 높아야 나오고, 사고로 끝나면 거기 못 간다.
             //   B. 과수확 — 적재로 위험을 올리되 **Critical 이 될 때까지 당기지 않는다.**
-            yield return Drive(run, bridge, lever, panel, tank, overharvest, door, cam,
+            yield return Drive(run, bridge, lever, panel, tank, overharvest, door, cam, player,
                                4242, load: false, overharvestAtOrAbove: null);
             // B 도 4242 를 쓴다. 1337 은 적재를 걸면 5층에서 사고로 끝나 — `Collapse` 에는
             // 닿지만 그 사이에 과수확이 열린 `Decision` 단계가 오지 않는다. 4242 는
             // 적재 없이도 `Critical` 에 닿으면서 10층을 완주하므로 기회가 훨씬 많고,
             // 적재를 얹으면 무게가 위험 점수를 한 번 더 민다.
-            yield return Drive(run, bridge, lever, panel, tank, overharvest, door, cam,
+            yield return Drive(run, bridge, lever, panel, tank, overharvest, door, cam, player,
                                4242, load: true, overharvestAtOrAbove: RiskLevel.Critical);
 
             _report.AppendLine();
@@ -133,7 +133,8 @@ namespace Ascend.Prototype.Run.Tests
         private IEnumerator Drive(RunSessionBehaviour run, RouletteInteractionBridge bridge,
             InteractableLever lever, InteractableContractPanel panel, InteractablePowerTank tank,
             InteractableOverharvestLever overharvest, InteractableDoorControl door,
-            Camera cam, int seed, bool load, RiskLevel? overharvestAtOrAbove)
+            Camera cam, FirstPersonController player, int seed, bool load,
+            RiskLevel? overharvestAtOrAbove)
         {
             _report.AppendLine();
             _report.AppendLine($"  ── 시드 {seed} · 적재 {(load ? "함" : "안 함")} · " +
@@ -270,6 +271,9 @@ namespace Ascend.Prototype.Run.Tests
                     {
                         RiskLevel riskAtPull = CurrentRisk();
                         bool record = riskReady;
+                        // 녹화할 당김에서만 시점을 옮긴다. 옮기지 않는 당김까지 카메라를
+                        // 흔들면 런의 나머지가 다른 자리에서 진행된다.
+                        if (record) AimAtOverharvest(player);
                         _report.AppendLine($"  {number}층 과수확 — 위험 {riskAtPull} / " +
                                            $"전력 {floor.Power:F0}/{floor.RequiredPower:F0} / " +
                                            $"{(record ? "녹화" : "녹화 안 함 — 위험이 아직 낮다")}");
@@ -282,20 +286,24 @@ namespace Ascend.Prototype.Run.Tests
                             TrackRisk();
                             continue;   // 결과를 다시 판정받는다
                         }
-                        _recorder.Begin(cam, SequenceRecorder.DefaultWidth,
-                                        SequenceRecorder.DefaultFps, 12f,
+                        // **폭을 640 으로 올린다.** 위험 계기는 월드 공간 벽면 텍스트라
+                        // 2.8m 거리에서 480px 폭이면 「위험도 Critical」이 십수 화소로 뭉갠다.
+                        // 판정 대상이 프레임에 있어도 **읽히지 않으면 증거가 아니다.**
+                        _recorder.Begin(cam, 640, SequenceRecorder.DefaultFps, 12f,
                                         screenCapture: true);
 
                         // **당기기 전 상태를 필름에 넣는다.** 앞서는 `Begin()` 직후 곧바로
-                        // `Interact()` 를 불러 추출한 프레임이 전부 「스핀 0/5 과수확 3회」로
-                        // 동일했다 — 요구가 「Critical **→** 과수확 **→** 결과」라는 **순서**인데
-                        // 그 순서가 영상에 없고 로그에만 있었다. 독립 감사가 잡았다.
-                        for (int i = 0; i < 24; i++) yield return null;   // 약 1.2초
+                        // `Interact()` 를 불러 추출한 프레임이 전부 동일했다 — 요구가
+                        // 「Critical **→** 과수확 **→** 결과」라는 **순서**인데 그것이 로그에만 있었다.
+                        //
+                        // 24 → 16 프레임으로 줄인다. 재판정이 「102 중 42프레임(41%)이 완전히
+                        // 빈 판」이라고 지적했다 — 순서를 보이는 데 필요한 만큼만 남긴다.
+                        for (int i = 0; i < 16; i++) yield return null;   // 약 0.8초
 
                         overharvest.Interact(gameObject);
                         yield return null;
                         yield return WaitUnlocked(bridge);
-                        for (int i = 0; i < 20; i++) yield return null;   // 결과가 화면에 남는 여운
+                        for (int i = 0; i < 16; i++) yield return null;   // 결과가 화면에 남는 여운
                         TrackRisk();
 
                         _recorder.StopRecording();
@@ -366,6 +374,49 @@ namespace Ascend.Prototype.Run.Tests
 
             if (hadController) controller.enabled = true;
             _report.AppendLine($"  결과판 정면에 세웠다 — {stand} → {boardTarget}");
+        }
+
+        /// <summary>
+        /// 과수확 편 전용 시점. **레버와 위험 계기를 한 프레임에 넣는다.**
+        ///
+        /// 독립 재판정이 이 편을 반려한 사유가 정확히 그것이었다 — `Critical` 이 어느
+        /// 프레임에도 없었다(당기기 전 24프레임이 R=G=B 완전 중립). 위험 문자열은
+        /// `InstrumentPanelView` 의 **월드 공간 벽면 계기판**에만 있고 화면 HUD 는 위험을
+        /// 출력하지 않는데, 결과판만 겨냥한 `AimAtBoard` 가 계기판을 화각 밖으로 밀어냈다.
+        /// **과수확 레버도 한 프레임도 안 나와** 당기는 행위 자체가 필름에 없었다.
+        ///
+        /// 둘 다 앞벽 쪽이다 — 레버 (0.55, 1.19) · 계기 라벨 (-1.04, 1.38).
+        /// 뒤에서 보면 두 목표의 벌어짐이 약 32° 이고, 이 클립의 수평 화각은
+        /// **약 67°**(480×420 · 종횡비 1.14)라 중점을 겨누면 둘 다 든다.
+        /// 고정 캡처의 91°(16:9)와 다르므로 그쪽 좌표를 그대로 쓸 수 없다.
+        /// </summary>
+        private void AimAtOverharvest(FirstPersonController player)
+        {
+            if (player == null) return;
+
+            Transform root = player.transform;
+            var controller = root.GetComponent<CharacterController>();
+            bool hadController = controller != null && controller.enabled;
+            if (hadController) controller.enabled = false;
+
+            // 레버와 계기 라벨의 중점. 「대상을 겨눈다」가 아니라 **「두 대상의 중점을
+            // 겨눈다」**가 이 문제의 규칙이다 — 고정 캡처 쪽에서 같은 것을 배웠다.
+            var target = new Vector3(-0.25f, 1.50f, 1.28f);
+            var stand = new Vector3(0.20f, root.position.y, -1.35f);
+            root.position = stand;
+
+            Vector3 flat = target - stand;
+            flat.y = 0f;
+            if (flat.sqrMagnitude > 0.0001f) root.rotation = Quaternion.LookRotation(flat);
+
+            if (player.ViewCamera != null)
+            {
+                Vector3 eye = player.ViewCamera.transform.position;
+                player.ViewCamera.transform.rotation = Quaternion.LookRotation(target - eye);
+            }
+
+            if (hadController) controller.enabled = true;
+            _report.AppendLine($"  과수확 시점으로 옮겼다 — {stand} → {target} (레버 + 위험 계기)");
         }
 
         /// <summary>이 층에서 지금까지 나온 가장 깊은 연쇄.</summary>
