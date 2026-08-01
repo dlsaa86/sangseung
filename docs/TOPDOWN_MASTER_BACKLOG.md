@@ -994,12 +994,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-RISK-05 — 저주파·금속 응력음 (사이렌은 사건에만)
 - 분류: Required · 출처: PRD §8.3 「사이렌은 지속 재생하지 않는다」
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Risk/RiskStateView.cs`(절차 생성 hum 1채널)
+- 구현: `Scripts/Audio/ProceduralClipFactory.cs`(금속 타격·저역 하강·Collapse 임펄스), `Scripts/Audio/AudioCueTable.cs`(사건 전용 발동)
 - 접근: 위험이 오르면 소리가 달라진다
 - 검증: 오디오 채널 목록 + 무영상 청취 테스트
-- 증거: 없음
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-AUD-01
-- 남은 문제: 저주파 hum 하나뿐. 금속 응력음·일회성 충격음·사이렌이 없다
+- 남은 문제: 사이렌을 **지속 재생하지 않는다**는 §8.3 원칙은 구조로 지켜진다 — 위험 사운드가 전부 사건 큐이고 지속음은 hum 하나뿐이다. 다만 씬 배선 전이라 실제로 들리지 않는다
 
 ### UP-RISK-06 — Collapse 단계 (암전 → 파열음 → 급강하 → 재점등)
 - 분류: Required · 출처: PRD §8.2 Collapse
@@ -1056,12 +1056,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-NPC-02 — 프로토타입 반응 이벤트 10종
 - 분류: Required · 출처: PRD §9.2 (계약 선택 / 기본 정화 / 5연쇄 / 임계점 3개 / 과수확 해금 / 과수확 접근 / 추가 스핀 / Critical 진입 / Collapse 직전 / 사고·성공)
 - 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Build/BuildFigureView.cs`(위험 반응 1종만)
+- 구현: `Scripts/Npc/PassengerReactionEvent.cs`(11종 + `TryMap`), `PassengerReactionSet.cs`(11종 기본값), `PassengerReactionView.cs`(씬 진입점)
 - 접근: 각 사건이 일어날 때 승객을 본다
-- 검증: 이벤트별 반응 발동 로그
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 「11종 전부가 사건 목록에서 유도된다」·「5연쇄는 깊이 5부터」·「임계점 100·170·300 이 서로 갈린다」
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-01
-- 남은 문제: 10종 중 「Critical 진입」 하나만 있다
+- 남은 문제: 사건 → 반응 매핑 11종이 전부 테스트로 증명됐다. **아직 씬에서 승객이 움직이지 않는다** — `PassengerReactionView` 배선이 남았다
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
@@ -1076,12 +1076,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Build/BuildFigureView.cs`(자세만)
+- 구현: `Scripts/Npc/PassengerReaction.cs`(자세 7종 · 시선 6종 · 음성 큐 ID), `Scripts/Build/BuildFigureView.cs`(`SetReaction`/`GazeRotation`)
 - 접근: 승객을 바라본다
-- 검증: 고정 캡처 + 오디오 채널
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` + 고정 캡처의 승객 자세 대비
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-02, UP-AUD-04
-- 남은 문제: 시선(LookAt)·대사·비언어 음성이 없다
+- 남은 문제: 자세와 시선 두 채널이 코드에 생겼다. **짧은 대사는 없고**(PRD §9.4 가 긴 대화 트리를 제외하므로 한 줄 이하), 비언어 음성은 큐 ID 만 있고 재생 배선이 없다. 시선 대상 넷은 씬에서 배선해야 동작한다
 
 ### UP-NPC-05 — 동시 반응 제한 (우선순위·쿨다운·최대 수)
 - 분류: Required · 출처: PRD §9.4 「한 이벤트에서 모든 승객이 동시에 말하지 않는다」
@@ -1252,12 +1252,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-AUD-01 — 위험 단계별 오디오 레이어
 - 분류: Required · 출처: PRD §8.2, §8.3, §8.4
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Risk/RiskStateView.cs`(절차 생성 hum)
+- 구현: `Scripts/Risk/RiskStateView.cs`(절차 생성 hum), `Scripts/Audio/AudioCueTable.cs`(`RiskLevelChanged`·`CollapseBegan` 큐), `ProceduralClipFactory.cs`(금속 응력음·저주파 임펄스)
 - 접근: 위험 단계를 올린다
-- 검증: 무영상 청취 테스트 (PRD §18 Phase 4 통과 조건)
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 사건별 큐 매핑과 볼륨·피치 범위
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RISK-01
-- 남은 문제: 채널 1개. 오디오 에셋이 프로젝트에 없다
+- 남은 문제: 지속 hum 1채널에 **단계 전이 사건음이 더해졌다.** PRD §13 의 「오디오만 듣는 테스트에서 위험 단계 구분」은 `AudioDirector` 가 씬에 붙은 뒤에야 실제로 확인할 수 있다
 
 ### UP-AUD-02 — 룰렛 사운드 10종
 - 분류: Required · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
@@ -1313,13 +1313,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-02 — 씬 오브젝트 이름 검색 금지
 - 분류: Required · 출처: PRD §13.5, N08 §3.3
-- 상태: SKELETON · 패스: P2
-- 구현: Inspector 참조 + `FindAnyObjectByType` 폴백
+- 상태: VERIFIED · 패스: P2
+- 구현: Inspector 참조 + `FindAnyObjectByType` 폴백, **`tools/audit-scene-lookups.ps1`**(정적 감사)
 - 접근: 해당 없음
-- 검증: `GameObject.Find` 사용 0건 확인
-- 증거: 없음
+- 검증: `powershell -File tools/audit-scene-lookups.ps1` → exit 0 · 「런타임 코드의 이름 기반 조회 0건」
+- 증거: `Logs/scene_lookup_audit.txt`
 - 의존: UP-TECH-01
-- 남은 문제: 자동 검사가 없다. `FindAnyObjectByType` 폴백이 여러 곳에 있어 실행 순서 의존이 남는다
+- 남은 문제: **PRD §13.5 가 금지한 이름 기반 조회는 런타임 코드에 0건이며, 이제 자동으로 검사된다**(직전에는 확인 수단 자체가 없었다). 이름으로 찾는 17건은 전부 `Assets/Editor/` 의 씬 빌더이며 자기가 만든 오브젝트를 되찾는 코드라 빌드에 들어가지 않는다 — 위반으로 세지 않는다. **남은 부채는 다른 것이다**: 타입 기반 `FindAnyObjectByType` 폴백이 런타임에 112건 있고(그중 71건이 테스트·프로브 하네스), 실행 순서 의존과 조용한 null 을 남긴다. 이것은 §13.5 의 「의존성은 Inspector 참조 또는 명시적 초기화로 주입한다」 쪽이며 `-Strict` 로 셀 수 있다
 
 ### UP-TECH-03 — 필수 참조 누락 시 개발 빌드에서 즉시 오류
 - 분류: Required · 출처: PRD §13.5, N08 §3.3
@@ -1384,12 +1384,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-TECH-09 — 가변 요소의 데이터 분리 (PRD §14.1 12항목)
 - 분류: Required · 출처: PRD §14.1, §14.3
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Assets/Prototype_Elevator/Data/PrototypeConfig.asset`, `Scripts/Spin/SpinRuleSet.cs`
+- 구현: `Data/PrototypeConfig.asset`, `Scripts/Spin/SpinRuleSet.cs`, **`Scripts/Data/Profiles/` 7종**(TargetHardware · Overharvest · DangerFeedback · VisualQuality · AudioMix · Accessibility · RunSummaryTemplate), `Scripts/Npc/PassengerReactionSet.cs`
 - 접근: 해당 없음
-- 검증: §14.3 권장 자산 13종 대조
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건 (기본 스냅샷 값 대조)
+- 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: 13종 중 실제 에셋으로 존재하는 것은 소수다. `OverharvestProfile`·`DangerFeedbackProfile`·`PassengerReactionSet`·`VisualQualityProfile`·`AudioMixProfile`·`AccessibilityProfile`·`RunSummaryTemplate`·`TargetHardwareProfile`이 없다
+- 남은 문제: §14.3 권장 13종 중 **8종의 클래스가 생겼다**(직전 0종). 남은 것은 `.asset` 인스턴스 생성과 **소비 지점을 프로파일로 돌리는 일** — 클래스만 있고 코드가 여전히 하드코딩 값을 읽으면 데이터화가 아니다
 
 ## 2.15 TEST — 테스트·텔레메트리·증거
 

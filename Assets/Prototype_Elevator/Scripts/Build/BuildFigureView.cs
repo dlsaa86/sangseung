@@ -76,6 +76,72 @@ namespace Ascend.Prototype.Build
         private int _signature = int.MinValue;
         private int _doorPromptKey = int.MinValue;
 
+        [Header("시선 대상 — 좌표가 아니라 의미로 배선한다")]
+        [Tooltip("룰렛 장치. 성공 반응 대부분이 여기를 본다.")]
+        [SerializeField] private Transform _gazeDevice;
+        [Tooltip("과수확 레버. §7이 요구하는 '공간적 사건'의 시선 채널.")]
+        [SerializeField] private Transform _gazeOverharvestLever;
+        [Tooltip("문. 나갈 수 있는가를 묻는 시선.")]
+        [SerializeField] private Transform _gazeDoor;
+        [Tooltip("천장. 무너질 것을 올려다본다. 비면 승객 머리 위 2m를 쓴다.")]
+        [SerializeField] private Transform _gazeCeiling;
+
+        /// <summary>
+        /// 승객 자리 하나에 걸린 반응. `_passengerSlots[i]`의 승객에 대응한다.
+        ///
+        /// `BuildFigureView`가 반응을 **판단하지 않는다** — 어느 반응을 언제 걸지는
+        /// `PassengerReactionDirector`가 정한다(§9.4의 우선순위·쿨다운·동시 수).
+        /// 여기는 정해진 것을 몸으로 옮기기만 한다. 두 일을 한 곳에 두면
+        /// "왜 저 승객이 저러는가"를 두 파일에서 따라가야 한다.
+        /// </summary>
+        private struct SlotReaction
+        {
+            public Npc.ReactionPose Pose;
+            public Npc.ReactionGaze Gaze;
+            public float Intensity;
+            public bool Active;
+        }
+
+        /// <summary>`_carFigures` 안에서 승객인 것의 인덱스. 부품은 반응하지 않는다.</summary>
+        private readonly List<int> _passengerSlots = new List<int>();
+        private readonly List<SlotReaction> _slotReactions = new List<SlotReaction>();
+
+        /// <summary>
+        /// 지금 칸에 타고 있는 승객 수. 반응 중재기가 이 값으로 자리를 배분한다.
+        /// 부품은 세지 않는다 — 궤짝은 놀라지 않는다.
+        /// </summary>
+        public int PassengerCount => _passengerSlots.Count;
+
+        /// <summary>
+        /// 승객 하나에 반응을 건다. 인덱스는 <see cref="PassengerCount"/> 범위의 승객 번호이며
+        /// `_carFigures`의 인덱스가 아니다 — 부품이 섞여 있어 두 번호가 다르다.
+        /// 범위를 벗어나면 조용히 무시한다(적재가 줄어드는 프레임에 실제로 일어난다).
+        /// </summary>
+        public void SetReaction(int passenger, Npc.ReactionPose pose, Npc.ReactionGaze gaze, float intensity)
+        {
+            if (passenger < 0 || passenger >= _slotReactions.Count) return;
+            _slotReactions[passenger] = new SlotReaction
+            {
+                Pose = pose,
+                Gaze = gaze,
+                Intensity = Mathf.Clamp01(intensity),
+                Active = true,
+            };
+        }
+
+        /// <summary>반응을 거두고 기본 자세로 돌린다.</summary>
+        public void ClearReaction(int passenger)
+        {
+            if (passenger < 0 || passenger >= _slotReactions.Count) return;
+            _slotReactions[passenger] = default(SlotReaction);
+        }
+
+        /// <summary>전원의 반응을 거둔다. 층이 바뀌거나 런이 다시 시작할 때 쓴다.</summary>
+        public void ClearAllReactions()
+        {
+            for (int i = 0; i < _slotReactions.Count; i++) _slotReactions[i] = default(SlotReaction);
+        }
+
         /// <summary>
         /// `RiskStateView`·`Camera.main` 탐색을 매 프레임 반복하지 않기 위한 표식.
         /// 씬에 대상이 없으면 `null` 검사만으로는 영구히 매 프레임 전역 탐색이 돈다.
@@ -241,6 +307,95 @@ namespace Ascend.Prototype.Build
                 figure.transform.localRotation =
                     Quaternion.Euler(lean * 0.35f * direction, 0f, lean * direction);
             }
+
+            // 반응은 위험 자세 **위에** 얹는다. 두 채널이 서로를 지우면
+            // "지금 위험한가"와 "방금 무슨 일이 있었나"가 번갈아 사라진다.
+            ApplyReactions();
+        }
+
+        /// <summary>
+        /// 중재기가 정한 반응을 몸으로 옮긴다. 자세와 시선 둘 다 — `MASTER_PRD.md` §9.3의
+        /// 표현 채널 넷 중 정지 화면에 남는 것이 이 둘이다.
+        ///
+        /// 위험 반응이 이미 쓴 회전을 **덮어쓰지 않고 곱한다.** 웅크린 승객도 흔들려야
+        /// 하고, 흔들리는 승객도 웅크릴 수 있어야 한다.
+        /// </summary>
+        private void ApplyReactions()
+        {
+            for (int p = 0; p < _passengerSlots.Count && p < _slotReactions.Count; p++)
+            {
+                SlotReaction reaction = _slotReactions[p];
+                int index = _passengerSlots[p];
+                if (index < 0 || index >= _carFigures.Count) continue;
+                GameObject figure = _carFigures[index];
+                if (figure == null || index >= _carBasePositions.Count) continue;
+
+                Transform t = figure.transform;
+
+                if (!reaction.Active)
+                {
+                    // 반응이 끝났으면 **스케일을 되돌린다.** 위치와 회전은 위험 반응이
+                    // 매 프레임 다시 쓰지만 스케일은 아무도 건드리지 않으므로,
+                    // 여기서 놓치면 웅크린 자세가 영원히 남는다.
+                    if (t.localScale != Vector3.one) t.localScale = Vector3.one;
+                    continue;
+                }
+
+                float k = Mathf.Clamp01(reaction.Intensity);
+
+                // 자세 — 실루엣이 서로 달라야 한다. 색을 빼도 구분되는 것이 기준이다.
+                float pitch = 0f, crouch = 0f, spread = 1f, rise = 0f;
+                switch (reaction.Pose)
+                {
+                    case Npc.ReactionPose.Lean:   pitch = 16f * k; break;
+                    case Npc.ReactionPose.Flinch: pitch = -12f * k; crouch = 0.05f * k; break;
+                    case Npc.ReactionPose.Cower:  pitch = 24f * k; crouch = 0.22f * k; spread = 1f - 0.18f * k; break;
+                    case Npc.ReactionPose.Stare:  pitch = 3f * k; break;
+                    case Npc.ReactionPose.Brace:  pitch = 9f * k; crouch = 0.10f * k; spread = 1f + 0.16f * k; break;
+                    case Npc.ReactionPose.Cheer:  pitch = -14f * k; rise = 0.07f * k; break;
+                }
+
+                t.position = _carBasePositions[index] + new Vector3(0f, rise - crouch, 0f);
+                // 세로만 눌러 웅크림을 만든다. 가로까지 줄이면 사람이 아니라 축소된 모형이 된다.
+                t.localScale = new Vector3(spread, 1f - crouch * 1.6f, spread);
+
+                // 시선은 월드 방향에서 나오므로 부모 회전을 벗겨 로컬로 들여온다.
+                // 부모가 회전하지 않은 지금은 항등이지만, 나중에 칸이 기울면
+                // 이 한 줄이 없을 때만 승객이 엉뚱한 곳을 본다.
+                Quaternion look = Quaternion.Inverse(transform.rotation) * GazeRotation(reaction.Gaze, t.position);
+                t.localRotation = look * t.localRotation * Quaternion.Euler(pitch, 0f, 0f);
+            }
+        }
+
+        /// <summary>
+        /// 시선 대상을 회전으로 바꾼다. 대상이 배선되지 않았으면 회전하지 않는다 —
+        /// 없는 곳을 보게 만드는 것보다 안 보는 편이 낫다.
+        /// 몸 전체를 돌리되 **수평 성분만** 쓴다. 위아래로 꺾인 승객은 사람으로 읽히지 않는다.
+        /// </summary>
+        private Quaternion GazeRotation(Npc.ReactionGaze gaze, Vector3 from)
+        {
+            Transform target;
+            switch (gaze)
+            {
+                case Npc.ReactionGaze.Device:           target = _gazeDevice; break;
+                case Npc.ReactionGaze.OverharvestLever: target = _gazeOverharvestLever; break;
+                case Npc.ReactionGaze.Door:             target = _gazeDoor; break;
+                case Npc.ReactionGaze.Ceiling:          target = _gazeCeiling; break;
+                case Npc.ReactionGaze.Player:           target = _head; break;
+                default:                                return Quaternion.identity;
+            }
+
+            if (gaze == Npc.ReactionGaze.Ceiling && target == null)
+            {
+                // 천장은 배선이 없어도 성립한다 — 머리 위는 어디서든 위다.
+                return Quaternion.Euler(-28f, 0f, 0f);
+            }
+            if (target == null) return Quaternion.identity;
+
+            Vector3 delta = target.position - from;
+            delta.y = 0f;
+            if (delta.sqrMagnitude < 0.0004f) return Quaternion.identity;
+            return Quaternion.LookRotation(delta.normalized, Vector3.up);
         }
 
         /// <summary>라벨이 플레이어를 본다. 정면에서 읽히지 않으면 배치의 뜻이 사라진다.</summary>
@@ -299,7 +454,15 @@ namespace Ascend.Prototype.Build
                     GameObject figure = CreateFigure(item, position, false, -1);
                     _carFigures.Add(figure);
                     _carBasePositions.Add(position);
-                    _carIsPassenger.Add(item.Kind == BuildItemKind.Passenger);
+                    bool isPassenger = item.Kind == BuildItemKind.Passenger;
+                    _carIsPassenger.Add(isPassenger);
+                    if (isPassenger)
+                    {
+                        // 승객 번호는 부품을 건너뛰고 이어진다. 중재기가 "0번 승객"이라고
+                        // 말할 때 그것이 궤짝을 가리키면 안 된다.
+                        _passengerSlots.Add(_carFigures.Count - 1);
+                        _slotReactions.Add(default(SlotReaction));
+                    }
                 }
             }
 
@@ -323,6 +486,8 @@ namespace Ascend.Prototype.Build
             _labels.Clear();
             _carBasePositions.Clear();
             _carIsPassenger.Clear();
+            _passengerSlots.Clear();
+            _slotReactions.Clear();
             DestroyAll(_carFigures);
             DestroyAll(_lobbyFigures);
         }
