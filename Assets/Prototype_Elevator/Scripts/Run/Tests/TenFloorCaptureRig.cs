@@ -1210,6 +1210,43 @@ namespace Ascend.Prototype.Run.Tests
         /// **이 계수는 이 장의 값이다** — 8차 §7-1 이 잡은 오류가 정확히 이것을 다른 장의
         /// 값으로 바꿔 적은 것이었으므로, 출력에 「이 장」이라고 못박는다.
         /// </summary>
+        /// <summary>
+        /// 계기판이 이 장에서 **어디에 어떤 상태로** 있는가. 가림 계측과 독립이다 —
+        /// 가림은 「앞에 뭐가 있나」를 보고, 이건 「그게 거기 있기는 한가」를 본다.
+        /// </summary>
+        private string InstrumentPose()
+        {
+            var view = FindAnyObjectByType<InstrumentPanelView>();
+            if (view == null) return "계기판 — **없다**";
+
+            var pose = new StringBuilder("계기판 ");
+            Transform root = view.transform;
+            pose.Append($"pos {root.position:F2} · 활성 {(view.isActiveAndEnabled ? "예" : "**아니오**")}");
+
+            var labels = view.GetComponentsInChildren<TMPro.TMP_Text>(true);
+            int off = 0, transparent = 0;
+            float minAlpha = 1f;
+            var far = new StringBuilder();
+            foreach (TMPro.TMP_Text label in labels)
+            {
+                if (!label.isActiveAndEnabled) { off++; continue; }
+                float a = label.color.a;
+                if (a < minAlpha) minAlpha = a;
+                if (a < 0.05f) transparent++;
+                // 부모에서 떨어져 나갔는지 — 라벨이 판에서 멀어지면 판 밖에 그려진다.
+                float d = Vector3.Distance(label.transform.position, root.position);
+                if (d > 3f) far.Append($" {label.name}({d:F2}m)");
+            }
+            pose.Append($" · 라벨 {labels.Length}개(꺼짐 {off} · 알파<0.05 {transparent} · 최소알파 {minAlpha:F2})");
+            if (far.Length > 0) pose.Append($" · **판에서 3m 넘게 떨어진 라벨**{far}");
+
+            var renderers = view.GetComponentsInChildren<Renderer>(true);
+            int rendererOff = 0;
+            foreach (Renderer r in renderers) if (!r.enabled || !r.gameObject.activeInHierarchy) rendererOff++;
+            pose.Append($" · 판 렌더러 {renderers.Length}개(꺼짐 {rendererOff})");
+            return pose.ToString();
+        }
+
         private string FrameFacts()
         {
             Camera cam = MeasureCamera;
@@ -1217,6 +1254,22 @@ namespace Ascend.Prototype.Run.Tests
 
             CollectOccluders();
             var line = new StringBuilder("프레임 실측 — ");
+
+            // **글자가 사라진 장에서 「가려졌다」와 「안 그려졌다」를 가른다.**
+            //
+            // 11차 판정이 `13_overharvest_pulled` 에서 계기판 다섯 줄이 명도 6배
+            // 증폭에도 0줄이라고 실측했다. 같은 카메라의 `11`·`12` 는 멀쩡하다.
+            // 그런데 이 매니페스트는 그 장을 「온전 3줄 · 가림 2줄」로 적었다 —
+            // 시리즈 최대의 거짓 그린이다.
+            //
+            // 내 가림 계측이 못 잡는 것이 있다는 뜻이고, 그러면 계측을 더 정교하게
+            // 하기 전에 **무엇을 못 잡는지부터** 알아야 한다. 라벨이 그 자리에
+            // 있는데 뭔가가 앞을 막은 것인지, 애초에 다른 곳으로 갔거나 꺼졌거나
+            // 투명해진 것인지가 갈리지 않았다. 그 둘은 고치는 곳이 완전히 다르다.
+            //
+            // 그래서 장마다 계기판의 **월드 위치·활성·알파**를 적는다. `11`·`12`·`13`
+            // 세 줄을 나란히 놓으면 무엇이 달라졌는지가 한눈에 나온다.
+            line.Append(InstrumentPose()).Append(" / ");
 
             var board = FindAnyObjectByType<SpinBoardView>();
             if (board == null) line.Append("결과판 없음");
@@ -1250,7 +1303,7 @@ namespace Ascend.Prototype.Run.Tests
             if (panel == null) { line.Append(" / 계기판 없음"); return line.ToString(); }
 
             int objects = 0, plaquesSkipped = 0, visualLines = 0;
-            int whole = 0, occluded = 0, softOnly = 0, clipped = 0, offFrame = 0, blank = 0, unknown = 0;
+            int whole = 0, occluded = 0, softOnly = 0, clipped = 0, offFrame = 0, blank = 0, unknown = 0, unresolved = 0;
             float facingSum = 0f;
             int facingCount = 0;
             var detail = new StringBuilder();
@@ -1296,14 +1349,15 @@ namespace Ascend.Prototype.Run.Tests
                 {
                     visualLines++;
                     detail.Append(FactIndent).Append(ProbeLine(cam, label, info, l,
-                        ref whole, ref occluded, ref softOnly, ref clipped, ref offFrame, ref blank)).Append('\n');
+                        ref whole, ref occluded, ref softOnly, ref clipped, ref offFrame, ref blank,
+                        ref unresolved)).Append('\n');
                 }
             }
 
             line.Append($" / 계기 글자줄 — TMP 오브젝트 {objects}개가 **시각 줄 {visualLines}줄**을 그린다 " +
                         $"(예전 판본은 오브젝트 수를 「글자줄」이라 적어 `_statusLabel` 의 둘째 줄을 세지 않았다). " +
                         $"온전 {whole}줄 · 가림 {occluded}줄 · 가림? {softOnly}줄 · 잘림 {clipped}줄 · " +
-                        $"프레임밖 {offFrame}줄 · 빈줄 {blank}줄 · 확인못함 {unknown}줄 " +
+                        $"프레임밖 {offFrame}줄 · 빈줄 {blank}줄 · **보류(품음) {unresolved}줄** · 확인못함 {unknown}줄 " +
                         $"[**온전 = 프레임 안 그리고 가리는 것 없음**] " +
                         $"(계약 명판 라벨 {plaquesSkipped}개는 다른 벽이라 이 계수에서 뺐다)");
 
@@ -1346,7 +1400,8 @@ namespace Ascend.Prototype.Run.Tests
         /// </summary>
         private string ProbeLine(Camera cam, TMPro.TMP_Text label, TMPro.TMP_TextInfo info, int lineIndex,
                                  ref int whole, ref int occluded, ref int softOnly,
-                                 ref int clipped, ref int offFrame, ref int blank)
+                                 ref int clipped, ref int offFrame, ref int blank,
+                                 ref int unresolved)
         {
             TMPro.TMP_LineInfo lineInfo = info.lineInfo[lineIndex];
             Vector3 eye = cam.transform.position;
@@ -1465,6 +1520,30 @@ namespace Ascend.Prototype.Run.Tests
             else if (outside > 0)   { clipped++; verdict = "잘림"; }
             else if (hardBlocked > 0) { occluded++; verdict = "가림"; }
             else if (softBlocked > 0) { softOnly++; verdict = "가림?"; }
+            else if (_deferredForLabel.Count > 0)
+            {
+                // **품은 것을 무죄로 접지 않는다.**
+                //
+                // 직전 판본은 「AABB 가 글자를 품으면 가리는 게 아니라 품고 있는 것」이라며
+                // 후보에서 빼고 그 줄을 「온전」으로 적었다. 기울어진 배면(`PanelBack`)에
+                // 대해서는 맞는 처리였고 9차의 거짓 레드 22건이 그렇게 사라졌다.
+                //
+                // 그런데 **불투명한 판이 글자를 품으면 그건 안 보인다는 뜻이다.**
+                // 11차가 `13_overharvest_pulled` 에서 계기판 다섯 줄이 명도 6배 증폭에도
+                // 0줄인 것을 실측했는데, 이 매니페스트는 같은 장을 「온전 3줄」로 적었다.
+                // 「시리즈 최대의 거짓 그린」이라고 적힌 것이 내가 두 커밋 전에 넣은 이 예외다.
+                // 거짓 레드를 고치면서 거짓 그린을 만들었다 — 가림을 고치며 잘림을 만든 것과
+                // 같은 형태의 실패다.
+                //
+                // 옳은 처리는 **재지 못했다고 적는 것**이다. 품은 렌더러가 배면인지 덮개인지는
+                // AABB 만으로 못 가른다. 못 가르는 것을 초록으로도 빨강으로도 적지 않는다.
+                unresolved++;
+                var names = new List<string>();
+                foreach (Renderer r in _deferredForLabel) if (r != null) names.Add(r.gameObject.name);
+                names.Sort(StringComparer.Ordinal);
+                if (names.Count > 3) names.RemoveRange(3, names.Count - 3);
+                verdict = $"보류(품음 ← {string.Join(", ", names)})";
+            }
             else { whole++; verdict = "온전"; }
 
             var report = new StringBuilder();
