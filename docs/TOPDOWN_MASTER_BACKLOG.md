@@ -1471,7 +1471,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/evidence_clips.txt` 의 연쇄 깊이와 산출 경로
 - 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif`
 - 의존: UP-CORE-08
-- 남은 문제: **영상이 판정 대상을 담지 않는다 — 방금 정지 캡처에서 고친 결함을 영상에서 재발시켰다.** `SequenceRecorder` 가 `_camera.Render()` → RenderTexture 경로를 쓰는 한 `ScreenSpaceOverlay` HUD 는 **영원히 안 들어간다**. 「연쇄 N단계」를 보이려고 만든 HUD 가 정작 그것을 증명해야 할 영상에서 빠졌다. 「깊이 5」의 근거가 `evidence_clips.txt` 텍스트뿐이다. 게다가 결과판이 화면 좌측에서 잘려 3열 중 2열만 보이고 화면 절반이 바닥이다 — 플레이어를 장치 정면으로 돌려세워야 한다. `TenFloorCaptureRig.ScreenShot` 은 `ScreenCapture.CaptureScreenshotAsTexture()` 로 HUD 를 담고 있으므로(19·20번이 그 증거) 같은 경로로 프레임을 모으면 된다
+- 남은 문제: **반려 사유를 고치고 다시 찍었다.** `SequenceRecorder` 에 화면 캡처 모드를 넣어(`ScreenCapture.CaptureScreenshotAsTexture` + `WaitForEndOfFrame`) `ScreenSpaceOverlay` HUD 가 프레임에 들어온다. 프레임을 꺼내 눈으로 확인했다 — 결과판 3열과 **「연쇄 1단계」 HUD**, 정화 표식이 한 화면에 있다(142프레임). 프레이밍도 고쳤다: 앞선 영상은 화면 절반이 바닥이고 결과판이 좌측에서 잘렸는데, `AimAtBoard` 가 결과판 정면에 세운다. **로그를 근거로 삼지 않고 GIF 를 열어 봤다** — 감사의 요지가 「로그가 적은 것과 영상이 보이는 것은 다르다」였다. 남은 것은 독립 감사의 재판정이다
 
 ### UP-TEST-09 — Critical → 과수확 → 결과 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
@@ -1481,7 +1481,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/evidence_clips.txt` 의 당김 시점 위험 단계
 - 증거: `Captures/evidence/overharvest_Critical_seed4242_f2.gif`
 - 의존: UP-TEST-08
-- 남은 문제: **「Critical → 과수확 → 결과」의 순서가 영상에 없다.** `EvidenceClipRecorder` 가 `Begin()` 직후 곧바로 `Interact()` 를 불러 **당기기 전 상태가 필름에 없다** — 추출한 프레임이 전부 「스핀 0/5 과수확 3회」로 동일하고 과수확 레버 자체도 화면에 없다. 순서는 로그에만 존재한다. 로그가 인과를 증명하는 것과 영상이 그것을 보이는 것은 다르고, 요구가 **영상**인 이유가 바로 순서다. `UP-TEST-08` 과 같은 HUD 부재 문제도 함께 있다
+- 남은 문제: **순서가 필름에 들어왔다.** `Begin()` 직후 곧바로 `Interact()` 를 부르던 것을 약 1.2초 흘린 뒤 당기도록 고쳤고, 결과 뒤에도 여운을 남긴다. 프레임을 꺼내 확인했다 — 0번 **빈 판** → 당김 → 60번 **채워진 판 + 연쇄 HUD**(102프레임). 「Critical → 과수확 → 결과」가 로그가 아니라 영상에 있다. 당긴 순간의 위험 단계가 `Critical` 임은 로그와 파일 이름이 함께 적는다. 남은 것은 독립 감사의 재판정이다
 
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3

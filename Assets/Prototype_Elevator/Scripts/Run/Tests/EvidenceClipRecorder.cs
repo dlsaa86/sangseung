@@ -99,6 +99,11 @@ namespace Ascend.Prototype.Run.Tests
 
             Directory.CreateDirectory(ClipDirectory);
 
+            // **장치를 향해 세운다.** 앞선 영상은 화면 절반이 바닥이었고 결과판이 좌측에서
+            // 잘려 3열 중 2열만 보였다. 플레이어 시점으로 찍는 것과 **볼 것을 보고 있는 것**은
+            // 다르다 — 증거 영상은 후자여야 한다.
+            AimAtBoard(player);
+
             // **두 런이 필요하다.** 한 런으로 둘 다 찍으려다 실패한 기록을 남긴다 —
             // 시드 1337 에 적재와 과수확을 함께 걸었더니 5층에서 사고로 끝나 연쇄가
             // 깊이 2 에 그쳤고(기준 5), 과수확은 1층에서 위험 `Stable` 일 때 당겨져
@@ -198,8 +203,11 @@ namespace Ascend.Prototype.Run.Tests
                     // 그때 시작하면 연쇄의 시작을 놓친다. 그래서 매 스핀을 찍고,
                     // 깊지 않으면 버린다 — 필름이 아니라 메모리라 버리는 값이 싸다.
                     bool wantCascade = !_cascadeClipWritten;
+                    // **화면 캡처로 찍는다.** 카메라 렌더 경로는 `ScreenSpaceOverlay` HUD 를
+                    // 담지 못하고, 「연쇄 N단계」를 보여야 하는 영상에서 바로 그 HUD 가 빠졌다.
                     if (wantCascade) _recorder.Begin(cam, SequenceRecorder.DefaultWidth,
-                                                     SequenceRecorder.DefaultFps, 10f);
+                                                     SequenceRecorder.DefaultFps, 10f,
+                                                     screenCapture: true);
 
                     lever.Interact(gameObject);
                     spins++;
@@ -275,12 +283,19 @@ namespace Ascend.Prototype.Run.Tests
                             continue;   // 결과를 다시 판정받는다
                         }
                         _recorder.Begin(cam, SequenceRecorder.DefaultWidth,
-                                        SequenceRecorder.DefaultFps, 12f);
+                                        SequenceRecorder.DefaultFps, 12f,
+                                        screenCapture: true);
+
+                        // **당기기 전 상태를 필름에 넣는다.** 앞서는 `Begin()` 직후 곧바로
+                        // `Interact()` 를 불러 추출한 프레임이 전부 「스핀 0/5 과수확 3회」로
+                        // 동일했다 — 요구가 「Critical **→** 과수확 **→** 결과」라는 **순서**인데
+                        // 그 순서가 영상에 없고 로그에만 있었다. 독립 감사가 잡았다.
+                        for (int i = 0; i < 24; i++) yield return null;   // 약 1.2초
 
                         overharvest.Interact(gameObject);
                         yield return null;
                         yield return WaitUnlocked(bridge);
-                        for (int i = 0; i < 12; i++) yield return null;
+                        for (int i = 0; i < 20; i++) yield return null;   // 결과가 화면에 남는 여운
                         TrackRisk();
 
                         _recorder.StopRecording();
@@ -316,6 +331,41 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"  런 종료 — 완주={run.Session.IsComplete} 사고={run.Session.IsFailed} " +
                                $"도달 {run.Session.HighestFloorReached}층 · 이 런의 최고 위험 {_peakRisk}");
             if (_peakRisk > _peakRiskOverall) _peakRiskOverall = _peakRisk;
+        }
+
+        /// <summary>
+        /// 플레이어를 결과판 정면으로 돌려세운다. 좌표는 `TenFloorCaptureRig.DeviceFront`
+        /// 와 같은 근거를 쓴다 — 결과판은 월드 x[-1.10..-0.76] 을 차지하고, 판 앞면에서
+        /// 1.1m 물러나면 세 열이 한 화면에 들어온다.
+        ///
+        /// 눈높이는 **건드리지 않는다.** 그 소유자는 계층(`Head`)이고 여기서 다시 계산하면
+        /// 소유권이 둘로 갈린다 — 이번 세션에 그 실수로 시점이 천장 위로 갔다.
+        /// </summary>
+        private void AimAtBoard(FirstPersonController player)
+        {
+            if (player == null) return;
+
+            Transform root = player.transform;
+            var controller = root.GetComponent<CharacterController>();
+            bool hadController = controller != null && controller.enabled;
+            if (hadController) controller.enabled = false;   // 콜라이더가 텔레포트를 막는다
+
+            var boardTarget = new Vector3(-0.90f, 1.60f, 0.00f);
+            var stand = new Vector3(0.35f, root.position.y, 0.00f);
+            root.position = stand;
+
+            Vector3 flat = boardTarget - stand;
+            flat.y = 0f;
+            if (flat.sqrMagnitude > 0.0001f) root.rotation = Quaternion.LookRotation(flat);
+
+            if (player.ViewCamera != null)
+            {
+                Vector3 eye = player.ViewCamera.transform.position;
+                player.ViewCamera.transform.rotation = Quaternion.LookRotation(boardTarget - eye);
+            }
+
+            if (hadController) controller.enabled = true;
+            _report.AppendLine($"  결과판 정면에 세웠다 — {stand} → {boardTarget}");
         }
 
         /// <summary>이 층에서 지금까지 나온 가장 깊은 연쇄.</summary>
