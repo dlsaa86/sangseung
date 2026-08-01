@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -33,8 +34,10 @@ namespace Ascend.Prototype.Run.Tests
 
         /// <summary>
         /// 화면 캡처가 나와야 할 해상도. `VISUAL_SPEC.md:107` 의 기준 해상도이고,
-        /// RenderTexture 경로로 찍는 18장이 이미 이 크기다. 게임 뷰가 이보다 작으면
-        /// 화면 경로 3장만 작아지므로 <see cref="ScreenShot"/> 이 매니페스트에 경고를 적는다.
+        /// RenderTexture 경로는 <see cref="Width"/>×<see cref="Height"/> 로 이미 이 크기다.
+        /// 게임 뷰가 이보다 작으면 화면 경로의 장들만 작아지므로 <see cref="ScreenShot"/> 이
+        /// 매니페스트에 경고를 적는다. (여기 「18장」·「3장」이라고 적혀 있었는데 둘 다 틀렸다 —
+        /// 세트가 커져도 안 따라오는 숫자는 주석에도 쓰지 않는다.)
         /// 고정은 에디터 쪽(`Ascend/Capture Ten Floor Set`)이 캡처 시작 전에 한다.
         /// </summary>
         public const int SpecCaptureWidth = 1920;
@@ -50,6 +53,16 @@ namespace Ascend.Prototype.Run.Tests
         private RenderTexture _target;
         private Texture2D _readback;
         private int _shots;
+
+        // **장수를 세어서 적기 위한 것들이다.** 예전에는 매니페스트가 「나머지 18장」·
+        // 「이 한 장만 방식이 다르다」를 **하드코딩**으로 주장했다. 실제로는 23장이고
+        // 화면 캡처 경로만 여럿이다(`UP-REC-06`). 하드코딩된 숫자는 세트가 커질 때마다
+        // 조용히 틀려지고, 틀린 숫자를 매번 새로 찍어 낸다.
+        private int _renderShots;
+        private int _screenShots;
+
+        /// <summary>이번 런이 실제로 쓴 PNG 파일명. 끝에서 폴더와 대조해 잔존물을 잡는다.</summary>
+        private readonly HashSet<string> _written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private readonly struct Pose
         {
@@ -80,6 +93,38 @@ namespace Ascend.Prototype.Run.Tests
         // 오른쪽 끝으로 밀렸다. 시선을 장치 쪽으로 더 돌려 왼쪽 벽(결과판)과
         // 바닥·천장이 함께 들어오게 한다.
         private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.12f, 1.62f,  1.30f), new Vector3(-0.85f, 1.35f, -0.35f));
+
+        // **`UP-FIX-01` — 이 세트에는 높이를 보여주는 프레임이 0장이었다.**
+        // 1차 독립 판정의 최우선 지적이고 지금까지 **한 번도 시도된 적이 없다**.
+        // PRD §12.2 가 「좁고 높고 박스형」을 공간 미학 목표로 두는데 그 높이가
+        // 어느 장에서도 읽히지 않았다.
+        //
+        // **왜 `01_entry` 로는 안 되는가 — 산수다.** 그 시점은 (0.12, 1.62, 1.30) 에서
+        // (-0.85, 1.35, -0.35) 를 본다. 시선이 **아래로 8.03°** 다. 천장(안쪽면 y=3.20)을
+        // 가로 화각 안에서 전수로 투영해 보면 **가장 낮게 찍히는 점조차 정규화 세로 +1.220**
+        // 이다(프레임 위끝이 +1.000). 즉 어느 지점을 골라도 천장은 프레임 위로 벗어난다 —
+        // 「높이 프레임 0장」은 취향 문제가 아니라 각도가 모자란 것이다.
+        //
+        // **그래서 반대로 선다.** 앞벽 앞 0.10 · 방 한가운데 · 눈높이를 0.95 로 낮추고
+        // 시선을 **위로 10.4°** 준다. 낮은 눈높이는 두 가지를 동시에 준다 —
+        // 천장이 위로 멀어지면서 **면으로 보이고**(선이 아니라), 뒷벽의 세로 화각 폭이
+        // 줄어(h=0.95 에서 55.9° · h=1.62 에서 57.8°) 바닥선과 천장선이 **둘 다** 들어온다.
+        //
+        // 기하로 미리 계산한 값 (1920×1080 · 수직 60° · 정규화 세로 −1 아래끝 … +1 위끝):
+        //   뒷벽 안쪽면 z=1.50 의 바닥선 **−0.94** · 천장선 **+0.90** → 프레임 세로의 **92%**
+        //   출입구 상단(y=2.05) **+0.32** → 문 위로 프레임의 58% 가 더 있다 (사람 치수 기준자)
+        //   천장면이 z 1.25…1.50 구간에서 프레임 위쪽 5.0% 를 띠로 채운다
+        //   뒷벽 폭 2.40 이 가로 ±0.44 → 44% 폭 × 92% 높이. **가로보다 세로가 길게 찍힌다**
+        // 이대로 나오지 않으면 이 안이 틀린 것이다. 실측은 매니페스트의 「높이 실측」줄에 남는다.
+        //
+        // 자리 확인 (씬 YAML 실측): FrontWall z −1.70…−1.50 (카메라 뒤 0.10) ·
+        // ConsoleSlab x −1.19…−0.85 · ExecutionPlate x −1.18…−1.15 · Handrail_R x=1.14 ·
+        // 통관 z −0.69…0.69 (x≈−0.95) — (0, 0.95, −1.40) 은 어느 것과도 겹치지 않는다.
+        // 코너 챔퍼(x −1.20…−0.44 · z 0.74…1.50 · y 1.15…2.10)보다 아래이고 뒤다.
+        //
+        // **기존 아홉 시점은 하나도 건드리지 않았다.** 번호가 곧 정체성이라 이 장은 24 번으로
+        // 새로 세운다 — 백로그 §5.1 에 번호를 겹쳐 사고 난 기록이 있다.
+        private static readonly Pose EntryHeight = new Pose("EntryHeight", new Vector3( 0.00f, 0.95f, -1.40f), new Vector3( 0.00f, 1.48f,  1.50f));
         private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
         private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
         // 결과판은 x[-1.10..-0.76] · y[0.95..2.25] · z[-0.69..0.69]를 차지한다.
@@ -216,21 +261,55 @@ namespace Ascend.Prototype.Run.Tests
             ShowBoard(board, DrawSample(1337, 8, 0));
             yield return WaitFrames(3);
             yield return Shot("01_entry", Entry, risk, "입구에서 본 전체 내부 — 요구 캡처 §12");
+
+            // **`UP-FIX-01` 전용 장.** `01_entry` 와 **같은 판·같은 상태·같은 시드**에서
+            // 시점만 바꾼다 — 다른 것이 함께 달라지면 「높이가 보이게 됐다」의 원인 귀속이 무너진다.
+            yield return Shot("24_entry_height", EntryHeight, risk,
+                "**`UP-FIX-01` — 공간의 높이.** 1차 독립 판정의 최우선 지적이 " +
+                "「높이를 보여주는 프레임이 0장」이었고 이 장이 그 첫 시도다. " +
+                "`01_entry`(눈높이 1.62 · 시선 **아래로 8.03°**)로는 원리적으로 안 된다 — " +
+                "그 프레임에서 천장이 가장 낮게 찍히는 점조차 정규화 세로 **+1.220** 이다(위끝 +1.000). " +
+                "이 장은 눈높이 **0.95** 에서 **위로 10.36°** 겨눈다. " +
+                "**예측**(기하 계산, 정규화 세로 −1 아래끝 … +1 위끝): 뒷벽 안쪽면이 " +
+                "바닥선 −0.94 부터 천장선 +0.90 까지 **프레임 세로의 92%** 를 채우고, " +
+                "출입구 상단(2.05)이 +0.32 에 와서 **문 위로 프레임의 58%** 가 더 남는다. " +
+                "**이대로 나오지 않으면 이 안이 틀린 것이다** — 다음 줄의 「높이 실측」이 실제 값이고, " +
+                "높이가 실제로 읽히는가는 매니페스트가 아니라 평가자가 그림에서 판정한다. " +
+                "`01_entry` 를 포함해 **기존 시점은 하나도 바꾸지 않았다**",
+                RoomHeightFacts);
+
             yield return Shot("05_cargo_empty", CargoBay, risk, "빈 화물 공간 — 07 과 같은 좌표");
 
             // **금지 항목 `B-5 #15` 를 푸는 장.** 결과판과 전력 계기가 한 화면에 있어야
             // 「판을 보려면 계기를 포기한다」가 성립하지 않는다. 실제로 둘 다 들어왔는지는
             // 매니페스트가 주장할 것이 아니라 **평가자가 그림에서 확인할 것**이다 —
-            // 이 세트는 방금 「주장과 그림이 다른 장 9건」으로 반려됐다.
+            // 이 세트는 「주장과 그림이 다른 장 9건」으로 반려된 적이 있다(`UP-FIX-13`).
+            //
+            // **이 장의 옛 문구가 그 9건 중 하나였다.** 「문틀 기하에 가려 파편만 남는다」라고
+            // 네 라운드 동안 적혀 있었는데, 독립 설계자가 카메라→라벨 광선을 씬의 모든 후보와
+            // 교차시킨 결과 **가리는 물체가 하나도 없었다**(`PASS3_STRUCTURAL_PLAN.md` §0).
+            // 재지 않은 것을 원인이라고 적었고, 그 문장 때문에 네 번의 수정이 엉뚱한 곳을 팠다.
+            // `UP-FIX-20` A안 — 순차 공개가 **정지 화면에서** 읽히는지를 이 장이 함께 판정한다.
+            // 리그의 다른 장들은 `run.Spin()` 을 직접 불러 판을 밀어 넣으므로 `SpinPresenter`
+            // 가 돌지 않고, 실제로 연출이 도는 장은 `22` 하나인데 그 화각에 결과판이 없다
+            // (`UP-FIX-19`). 그래서 여기서 셔터 표식을 직접 세운다 — 2열까지 열린 상태면
+            // **Open · Opening · Sealed 세 단계가 한 프레임에 동시에** 남는다.
+            // 표식이 없으면 「공개 중」과 「빈 판」이 정지 화면에서 같아 보이고,
+            // 그 상태에서는 `UP-CORE-11`(순차 공개)이 영원히 증명되지 않는다.
+            FindAnyObjectByType<PurifyMarkerView>()?.ShowReveal(2);
+
             yield return Shot("21_board_and_gauge", BoardAndGauge, risk,
-                "**금지 항목 `B-5 #15` 를 풀려다 실패한 장이다. 성공했다고 주장하지 않는다.** " +
-                "3×3 결과판 아홉 칸은 온전히 들어온다. 그러나 계기 라벨(x=-1.04 z=1.38)은 " +
-                "**문틀 기하에 가려** 파편만 남는다 — 카메라를 두 번 옮겨 확인했다. " +
-                "① 시선 z=0.45: 계기가 우측 끝에서 「력」 한 글자만 남고 잘림 " +
-                "② 시선 z=0.69(두 목표의 중점): 화각 안에는 들어오나 문틀에 가림. " +
-                "**즉 크롭 문제가 아니라 가림 문제이고, 카메라로 풀 수 없다** — " +
-                "계기판이나 결과판의 배치가 바뀌어야 한다(`PD-17`). " +
-                "이 장은 그 사실의 근거로 남긴다");
+                "**금지 항목 `B-5 #15` 의 판정 장 — 3×3 결과판과 전력 계기가 한 화면에서 동시에 읽히는가.** " +
+                "**성공했다고 주장하지 않는다.** 아래 「프레임 실측」의 숫자가 이 장이 말할 수 있는 전부이고, " +
+                "읽히는가는 평가자가 그림에서 판정한다. " +
+                "**직전 네 라운드의 진단은 틀렸다** — 여기에는 「문틀 기하에 가려 파편만 남는다」라고 적혀 있었으나, " +
+                "카메라→라벨 광선을 씬의 모든 후보와 교차시킨 결과 **가리는 물체가 없다**" +
+                "(`PASS3_STRUCTURAL_PLAN.md` §0). 실제 원인은 둘이었다 — " +
+                "① 계기면을 스침각으로 본다(겉보기 폭 ×0.327 · 법선각 70.9°) " +
+                "② 라벨의 글자축이 카메라 깊이축과 같아 한 줄의 일부가 구조적으로 프레임 밖으로 자란다. " +
+                "이번 세트는 ①에 **코너 챔퍼**(계기판을 45° 회전해 결과판과의 법선 90° 분리를 화해시킨다)로 답했다. " +
+                "**챔퍼 이전 실측값이 ×0.327 이었다** — 아래 계수가 그보다 크지 않으면 챔퍼는 듣지 않은 것이다. " +
+                "②는 이 장이 고치지 않았다");
 
             yield return CapturePresentingScreen(run, bridge, risk);
 
@@ -611,7 +690,7 @@ namespace Ascend.Prototype.Run.Tests
                         yield return ScreenShot("19_cascade_deep_screen",
                             $"15번과 같은 순간의 **화면 캡처** — 연쇄 {depth}단계 / " +
                             "HUD 를 포함한다. `UP-CORE-13`(한 화면에 모든 숫자를 띄우지 않는다)은 " +
-                            "이 장으로 판정한다. 게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
+                            "이 장으로 판정한다. 해상도는 주장하지 않는다 — 위 줄의 실측값이 답이다");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -716,8 +795,10 @@ namespace Ascend.Prototype.Run.Tests
             yield return ScreenShot("17_accident_recorder",
                 $"{record} / 기록 {(recorder != null ? recorder.Records.Count : 0)}건 / " +
                 $"시드 {run.Session.Seed} / 도달 {run.Session.HighestFloorReached}층 / " +
-                "**화면 캡처** — 전용 카메라 렌더에는 화면 UI가 들어가지 않아 이 한 장만 방식이 다르다. " +
-                "게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
+                "**화면 캡처** — 전용 카메라 렌더에는 화면 UI 가 들어가지 않으므로 게임 뷰를 그대로 찍는다. " +
+                "여기에는 「이 한 장만 방식이 다르다 / 나머지 18장」이라고 적혀 있었다. **둘 다 틀렸다** — " +
+                "같은 경로를 쓰는 장이 여럿이고 세트는 18장이 아니다. 장수도 해상도도 이제 " +
+                "**세고 재서** 적는다(위 줄과 파일 끝)");
 
             // 완주 직전 — 10층에 **실제로 서 있는** 런을 찾는다. 시드 하나로 몰다가
             // 중간에 사고가 나면 "도달 8층"이 찍히고, 그건 §12가 요구한 그림이 아니다.
@@ -765,6 +846,11 @@ namespace Ascend.Prototype.Run.Tests
                 _camera.farClipPlane = source.farClipPlane;
             }
             _camera.fieldOfView = Fov;
+            // 화면비를 **못박는다.** RenderTexture 가 1920×1080 이므로 자동값도 같지만,
+            // 매니페스트의 프레임 실측이 `WorldToViewportPoint` 로 화면 위치를 계산하는데
+            // 그 값이 `Camera.aspect` 에 걸려 있다. 자동 유추에 맡기면 렌더는 RT 를 따르고
+            // 계산은 게임 뷰를 따르는 상황이 생길 수 있다 — 두 경로가 같은 수를 보게 한다.
+            _camera.aspect = (float)Width / Height;
             _camera.enabled = false;
 
             _target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32)
@@ -776,7 +862,13 @@ namespace Ascend.Prototype.Run.Tests
             _camera.targetTexture = _target;
         }
 
-        private IEnumerator Shot(string name, Pose pose, RiskStateView risk, string note)
+        /// <param name="extra">
+        /// 이 장에만 필요한 **추가 실측**. 문자열이 아니라 대리자를 받는 이유는
+        /// 셔터가 열린 뒤 카메라가 그 자리에 있을 때 계산돼야 하기 때문이다 —
+        /// 호출부에서 문자열로 만들면 카메라가 아직 이전 장의 자리에 있다.
+        /// </param>
+        private IEnumerator Shot(string name, Pose pose, RiskStateView risk, string note,
+                                 Func<string> extra = null)
         {
             _camera.transform.position = pose.Position;
             _camera.transform.LookAt(pose.LookAt);
@@ -792,15 +884,224 @@ namespace Ascend.Prototype.Run.Tests
             RenderTexture.active = previous;
             _camera.enabled = false;
 
-            string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
-            Directory.CreateDirectory(directory);
-            File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), _readback.EncodeToPNG());
-            _shots++;
+            WritePng(name, _readback.EncodeToPNG());
+            _renderShots++;
 
             _manifest.AppendLine($"{name,-26} 시점 {pose.Name,-12} pos {pose.Position:F2} look {pose.LookAt:F2}  " +
                                  $"위험 {(risk != null ? risk.Level.DisplayName() : "—")}");
             _manifest.AppendLine($"{"",-26} {note}");
             _manifest.AppendLine($"{"",-26} {GaugeFill()}");
+            _manifest.AppendLine($"{"",-26} {FrameFacts()}");
+            if (extra != null) _manifest.AppendLine($"{"",-26} {extra()}");
+        }
+
+        /// <summary>파일 하나를 쓰고 **이번 런이 쓴 것으로 기록한다.** 끝에서 폴더와 대조한다.</summary>
+        private void WritePng(string name, byte[] png)
+        {
+            string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
+            Directory.CreateDirectory(directory);
+            File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), png);
+            _written.Add($"{name}.png");
+            _shots++;
+        }
+
+        // ── 프레임 실측 ──────────────────────────────────────────────────────
+        //
+        // **매니페스트가 그림이 보이지 않는 것을 주장하면 그 세트는 증거가 아니라 목록이다**
+        // (2회차 독립 판정). 이 세트는 실제로 「주장과 그림이 다른 장 9건」으로 반려됐고
+        // (`UP-FIX-13`), 그중 하나는 **재보지도 않은 원인**(「문틀에 가림」)을 네 라운드 동안
+        // 사실처럼 실어 날랐다.
+        //
+        // 그래서 아래 값은 전부 **셔터가 열린 그 순간의 카메라 행렬로 계산한 것**이다.
+        // 사람이 쓴 주장이 아니고, 세트가 커져도 따라온다.
+        //
+        // **재지 않는 것도 적는다 — 가림은 재지 않는다.** 가림 판정은 `Physics` 콜라이더에
+        // 의존하는데 이 껍데기들에 콜라이더가 전부 붙어 있는지 확인하지 않았다. 콜라이더가
+        // 없으면 「가리는 것이 없다」가 **거짓 그린**으로 나온다. 「프레임 안에 있다」와
+        // 「보인다」는 다른 말이고, 여기서 답하는 것은 앞의 것뿐이다.
+
+        /// <summary>월드 한 점이 지금 카메라의 화각 안인가.</summary>
+        private bool InFrame(Vector3 world)
+        {
+            Vector3 v = _camera.WorldToViewportPoint(world);
+            return v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
+        }
+
+        /// <summary>정규화 세로 위치. −1 아래끝 · 0 한가운데 · +1 위끝. 뒤쪽이면 NaN.</summary>
+        private float ScreenY(Vector3 world)
+        {
+            Vector3 v = _camera.WorldToViewportPoint(world);
+            return v.z > 0f ? (v.y - 0.5f) * 2f : float.NaN;
+        }
+
+        /// <summary>월드 AABB 여덟 꼭짓점 중 프레임 안인 개수. 8이면 온전, 0이면 밖.</summary>
+        private int CornersInFrame(Bounds bounds)
+        {
+            int inside = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3(
+                    (i & 1) == 0 ? bounds.min.x : bounds.max.x,
+                    (i & 2) == 0 ? bounds.min.y : bounds.max.y,
+                    (i & 4) == 0 ? bounds.min.z : bounds.max.z);
+                if (InFrame(corner)) inside++;
+            }
+            return inside;
+        }
+
+        /// <summary>
+        /// 셔터 순간의 프레임 내용을 잰다 — 결과판·계기 글자줄·게이지.
+        ///
+        /// 계기면의 **겉보기 폭 계수**를 함께 적는다. 이것이 `B-5 #15` 의 실제 축이다:
+        /// 카메라에서 라벨로 가는 광선과 라벨 면 법선의 사잇각이 0에 가까울수록 글자가
+        /// 정면으로 보이고, 90°에 가까울수록 세로 파편으로 눌린다. 챔퍼 이전 실측이
+        /// 0.327(70.9°)이었으므로 이 수 하나로 배치 변경이 들었는지 아닌지가 갈린다.
+        /// </summary>
+        private string FrameFacts()
+        {
+            var line = new StringBuilder("프레임 실측 — ");
+
+            var board = FindAnyObjectByType<SpinBoardView>();
+            if (board == null) line.Append("결과판 없음");
+            else
+            {
+                int cells = 0, inside = 0, filled = 0;
+                var symbols = new StringBuilder();
+                for (int i = 0; i < SpinBoard.Cells; i++)
+                {
+                    Transform cell = board.CellTransform(i);
+                    if (cell == null) { symbols.Append('?'); continue; }
+                    cells++;
+                    if (InFrame(cell.position)) inside++;
+                    char mark = CellSymbolMark(cell);
+                    if (mark != '·') filled++;
+                    symbols.Append(mark);
+                    if (i % SpinBoard.Rows == SpinBoard.Rows - 1 && i < SpinBoard.Cells - 1)
+                        symbols.Append('|');
+                }
+                // 인덱스 = 열*3 + 행 이므로 `|` 로 끊은 덩어리 하나가 통관 한 개다.
+                line.Append($"결과판 {cells}칸 중 프레임 안 {inside} · 심볼 선 칸 {filled} " +
+                            $"[열별 {symbols} · 영=영혼 흡=흡수체 증=증식체 ·=빈칸]");
+            }
+
+            var panel = FindAnyObjectByType<InstrumentPanelView>();
+            if (panel == null) line.Append(" / 계기판 없음");
+            else
+            {
+                int rows = 0, whole = 0, cut = 0, outside = 0;
+                float facingSum = 0f;
+                int facingCount = 0;
+                foreach (TMPro.TMP_Text label in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+                {
+                    if (label == null) continue;
+                    // 계약 명판은 다른 벽이다. 섞으면 계기면 각도가 엉뚱해진다.
+                    if (label.name.StartsWith("ContractPlaque", StringComparison.Ordinal)) continue;
+                    if (!label.gameObject.activeInHierarchy) continue;
+                    if (string.IsNullOrWhiteSpace(label.text)) continue;
+
+                    var renderer = label.GetComponent<Renderer>();
+                    if (renderer == null) continue;   // 화면공간 TMP 면 월드 경계가 없다
+
+                    rows++;
+                    int corners = CornersInFrame(renderer.bounds);
+                    if (corners == 8) whole++;
+                    else if (corners > 0) cut++;
+                    else outside++;
+
+                    Vector3 toLabel = label.transform.position - _camera.transform.position;
+                    if (toLabel.sqrMagnitude > 1e-6f)
+                    {
+                        facingSum += Mathf.Abs(Vector3.Dot(toLabel.normalized, label.transform.forward));
+                        facingCount++;
+                    }
+                }
+                line.Append($" / 계기 글자줄 {rows} 중 온전 {whole}·잘림 {cut}·프레임 밖 {outside}");
+                if (facingCount > 0)
+                {
+                    float facing = facingSum / facingCount;
+                    float degrees = Mathf.Acos(Mathf.Clamp01(facing)) * Mathf.Rad2Deg;
+                    line.Append($" / 계기면 겉보기 폭 ×{facing:F3} (법선각 {degrees:F1}°)");
+                }
+                else line.Append(" / 계기면 각도 — 잴 라벨이 없다");
+
+                Transform pivot = panel.BarPivot;
+                line.Append(pivot != null
+                    ? $" / 게이지 피벗 {(InFrame(pivot.position) ? "프레임 안" : "프레임 밖")}"
+                    : " / 게이지 피벗 없음");
+            }
+
+            line.Append(" — **가림은 재지 않았다**(프레임 포함 여부만. 콜라이더 유무를 확인하지 않아 " +
+                        "가림 검사는 거짓 그린이 날 수 있다)");
+            return line.ToString();
+        }
+
+        /// <summary>칸에 실제로 서 있는 심볼 한 글자. 빈칸은 `·`.</summary>
+        private static char CellSymbolMark(Transform cell)
+        {
+            for (int c = 0; c < cell.childCount; c++)
+            {
+                Transform child = cell.GetChild(c);
+                if (!child.gameObject.activeSelf) continue;
+                switch (SpinBoardView.KindOf(child.name))
+                {
+                    case SymbolKind.NormalSoul:   return '영';
+                    case SymbolKind.Absorber:     return '흡';
+                    case SymbolKind.Proliferator: return '증';
+                }
+            }
+            return '·';
+        }
+
+        /// <summary>
+        /// `UP-FIX-01` 전용 실측. 「천장이 프레임에 들어왔다」를 **주장하지 않고 잰다.**
+        ///
+        /// 바닥 윗면과 천장 아랫면을 씬에서 직접 읽어 실내 높이를 구하고, 뒷벽 안쪽면에서
+        /// 두 면이 화면 세로 어디에 찍혔는지를 적는다. 출입구 상단은 사람 치수 기준자다 —
+        /// 「방이 문보다 얼마나 높은가」가 곧 「높이가 읽히는가」의 근거이기 때문이다.
+        /// </summary>
+        private string RoomHeightFacts()
+        {
+            Renderer floor = ShellRenderer("Floor");
+            Renderer ceiling = ShellRenderer("Ceiling");
+            Renderer back = ShellRenderer("BackWall_Left");
+            if (floor == null || ceiling == null || back == null)
+                return "높이 실측 — **확인 못 함.** 껍데기를 찾지 못했다 " +
+                       $"(바닥={floor != null} 천장={ceiling != null} 뒷벽={back != null}). " +
+                       "이름이 바뀌었으면 이 줄을 고쳐야 한다";
+
+            float floorTop = floor.bounds.max.y;
+            float ceilingBottom = ceiling.bounds.min.y;
+            float wallZ = back.bounds.min.z;            // 뒷벽 안쪽 면
+            float x = _camera.transform.position.x;     // 카메라 정면의 세로선에서 잰다
+
+            var low = new Vector3(x, floorTop, wallZ);
+            var high = new Vector3(x, ceilingBottom, wallZ);
+
+            var text = new StringBuilder(
+                $"높이 실측 — 바닥 윗면 y={floorTop:F2} · 천장 아랫면 y={ceilingBottom:F2} → " +
+                $"실내 높이 {ceilingBottom - floorTop:F2} m. 뒷벽 안쪽면 z={wallZ:F2} 에서 " +
+                $"바닥선 화면세로 {ScreenY(low):F2}({(InFrame(low) ? "프레임 안" : "프레임 밖")}) · " +
+                $"천장선 {ScreenY(high):F2}({(InFrame(high) ? "프레임 안" : "프레임 밖")}) " +
+                "[−1 아래끝 · +1 위끝]");
+
+            Renderer lintel = ShellRenderer("BackWall_Lintel");
+            if (lintel != null)
+            {
+                float doorTop = lintel.bounds.min.y;
+                var door = new Vector3(x, doorTop, wallZ);
+                text.Append($" / 출입구 상단 y={doorTop:F2} 화면세로 {ScreenY(door):F2} — " +
+                            $"방이 문의 {(doorTop > 0f ? (ceilingBottom - floorTop) / doorTop : 0f):F2} 배 높다");
+            }
+            else text.Append(" / 출입구 상단 — **확인 못 함**(BackWall_Lintel 을 찾지 못했다)");
+
+            return text.ToString();
+        }
+
+        /// <summary>껍데기 조각 하나. 못 찾으면 null 을 돌려주고 호출부가 그 사실을 적는다.</summary>
+        private static Renderer ShellRenderer(string name)
+        {
+            GameObject go = GameObject.Find("GrayboxWorld/Car/" + name);
+            return go != null ? go.GetComponent<Renderer>() : null;
         }
 
         /// <summary>
@@ -892,7 +1193,7 @@ namespace Ascend.Prototype.Run.Tests
                 $"조준 대상 {(aimed ? "있음" : "**없음**")} / 프롬프트 「{target}」. " +
                 "`UP-SPACE-03`(조준 하이라이트와 행동 프롬프트)은 이 장으로 판정한다 — " +
                 "전용 카메라 렌더에는 ScreenSpaceOverlay 가 들어가지 않는다. " +
-                "게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
+                "해상도는 주장하지 않는다 — 위 줄의 실측값이 답이다");
 
             root.position = savedPosition;
             root.rotation = savedRotation;
@@ -1078,19 +1379,22 @@ namespace Ascend.Prototype.Run.Tests
             Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
             try
             {
-                string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
-                Directory.CreateDirectory(directory);
-                File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), shot.EncodeToPNG());
-                _shots++;
+                WritePng(name, shot.EncodeToPNG());
+                _screenShots++;
                 // 기준 해상도와 다르면 **매니페스트에 크게 적는다.** 화면 캡처는 게임 뷰
                 // 크기로 나오므로, 뷰가 작으면 이 장들만 조용히 저해상도가 된다 —
                 // 실제로 3장이 816×714 로 나가 판독성 평가에서 그 세 장만 불리하게 채점됐고,
                 // 평가자가 「816px 게임 뷰 종속일 수 있다」는 단서를 달아야 했다.
+                //
+                // **몇 장이 이 경로인지도 세어서 적는다.** 예전에는 「이 한 장만 방식이 다르다 /
+                // 나머지 18장」이 호출부에 하드코딩돼 있었고, 세트가 23장으로 커진 뒤에도
+                // 그 문장이 매번 새로 찍혀 나갔다(`UP-REC-06`). 총계는 파일 끝에 있다.
                 bool atSpec = shot.width == SpecCaptureWidth && shot.height == SpecCaptureHeight;
-                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height}" +
+                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height} " +
+                    $"(게임 뷰 경로 {_screenShots}번째 · 전용 카메라 경로는 {Width}×{Height})" +
                     (atSpec ? string.Empty
                             : $"  ⚠ 기준 {SpecCaptureWidth}×{SpecCaptureHeight} 가 아니다 — " +
-                              "다른 18장과 해상도가 다르므로 판독성 비교에 그대로 쓰지 말 것"));
+                              "전용 카메라 경로와 해상도가 다르므로 판독성 비교에 그대로 쓰지 말 것"));
                 _manifest.AppendLine($"{"",-26} {note}");
             }
             finally
@@ -1152,15 +1456,57 @@ namespace Ascend.Prototype.Run.Tests
             // 찍혀 블렌딩 진행도가 달라진다 — 두 캡처가 바이트 단위로 갈라진다.
             _manifest.AppendLine($"captureDeltaTime {CaptureDeltaTime:F5} (vSync off) — " +
                                  "대기는 벽시계가 아니라 게임 시간으로 잰다");
-            _manifest.AppendLine("주의: 전용 카메라의 RenderTexture 렌더다. 화면 UGUI HUD는 포함되지 않는다.");
+            // **촬영 경로가 둘이라는 사실을 정확히 적는다.** 예전 머리말은 「전용 카메라의
+            // RenderTexture 렌더다」 한 줄이었는데 세트에는 게임 뷰 화면 캡처도 섞여 있다.
+            // 각 줄이 스스로 어느 경로인지 밝히고, 장수는 파일 끝에서 **센 값**을 적는다.
+            _manifest.AppendLine("촬영 경로는 둘이다 — 전용 카메라(RenderTexture)는 화면 UGUI HUD 를 담지 않고, " +
+                                 "게임 뷰 화면 캡처는 담는다. 각 줄이 어느 쪽인지 스스로 밝힌다.");
+            _manifest.AppendLine("장수·해상도·프레임 내용은 **주장하지 않고 잰다** — 하드코딩된 개수 주장은 " +
+                                 "세트가 커질 때마다 조용히 틀려진다(`UP-REC-06`).");
             _manifest.AppendLine("위험 단계는 연출이 아니라 실제 게임 상태다 — 무엇을 해서 도달했는지 각 줄에 적혀 있다.");
             _manifest.AppendLine();
+        }
+
+        /// <summary>
+        /// 폴더에 남아 있는데 **이번 런이 쓰지 않은** PNG 를 찾는다.
+        ///
+        /// 왜 필요한가: 캡처 한 장이 조용히 건너뛰어져도 옛 PNG 는 그대로 남는다.
+        /// 그러면 평가자는 **이 매니페스트가 설명하지 않는 그림**을 이 세트의 일부로 보고
+        /// 채점한다 — 「주장과 그림이 다르다」의 가장 조용한 형태다.
+        /// </summary>
+        private string StaleFiles()
+        {
+            try
+            {
+                string directory = Path.Combine(Directory.GetCurrentDirectory(), OutputDirectory);
+                if (!Directory.Exists(directory)) return "잔존 검사 — 출력 폴더가 없다";
+
+                var stale = new List<string>();
+                foreach (string path in Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly))
+                {
+                    string file = Path.GetFileName(path);
+                    if (!_written.Contains(file)) stale.Add(file);
+                }
+                if (stale.Count == 0)
+                    return $"잔존 검사 — 폴더의 PNG 가 이번 런이 쓴 {_written.Count}개와 정확히 같다. 옛 그림이 섞여 있지 않다";
+
+                stale.Sort(StringComparer.Ordinal);
+                return $"잔존 검사 — ⚠ 이번 런이 다시 찍지 않은 PNG {stale.Count}개가 폴더에 남아 있다: " +
+                       $"{string.Join(", ", stale)}. **이 파일들은 이 매니페스트가 설명하는 그림이 아니다**";
+            }
+            catch (Exception exception)
+            {
+                return $"잔존 검사 — 실패: {exception.Message}. **확인 못 함**";
+            }
         }
 
         private void Finish()
         {
             _manifest.AppendLine();
-            _manifest.AppendLine($"촬영 {_shots}장");
+            // 하드코딩 금지. 셋 다 이번 런에서 센 값이다.
+            _manifest.AppendLine($"촬영 {_shots}장 — 전용 카메라(RenderTexture {Width}×{Height}) {_renderShots}장 / " +
+                                 $"게임 뷰 화면 캡처 {_screenShots}장");
+            _manifest.AppendLine(StaleFiles());
             try
             {
                 string path = Path.Combine(Directory.GetCurrentDirectory(), ManifestPath);

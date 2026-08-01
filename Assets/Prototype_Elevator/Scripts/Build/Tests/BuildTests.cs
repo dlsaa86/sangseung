@@ -70,6 +70,16 @@ namespace Ascend.Prototype.Build.Tests
             Run("서로 다른 두 빌드가 결과를 바꾼다", TestTwoBuildsDiverge, ref passed, ref failed, report);
             Run("계약을 실제로 건 런도 10층을 완주한다", TestContractedRunCompletes, ref passed, ref failed, report);
 
+            // ── 월드 라벨 배치 (그룹 C · UP-FIX-12·14·21) ──
+            //
+            // 여기로 접어 넣는 이유: 러너 등록은 `Assets/Editor/` 에 있고 그쪽은
+            // 이 작업의 소유 경로가 아니다. 접어 넣으면 등록을 고치지 않아도
+            // `AscendTestMenu`·`PrototypeSelfTest` 양쪽에서 함께 돈다.
+            var labels = BuildLabelPlacementTests.RunAll();
+            passed += labels.passed;
+            failed += labels.failed;
+            report.Append(labels.report);
+
             report.Insert(0, "[상승] === Build Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());

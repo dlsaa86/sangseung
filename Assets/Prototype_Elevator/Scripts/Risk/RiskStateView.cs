@@ -37,8 +37,23 @@ namespace Ascend.Prototype.Risk
         [Tooltip("원래 앰비언트와 단계 색을 섞는 비율. 1이면 통째로 갈아 끼워 밝기가 튄다.")]
         [SerializeField, Range(0f, 1f)] private float _ambientBlend = 0.55f;
 
+        [Tooltip("앰비언트를 색상축뿐 아니라 명도축으로도 내린다. 끄면 단계가 색상에만 실린다 — " +
+                 "7차 독립 판정이 그 상태를 「밝기 차가 없어 같은 밴드」로 지적했다.")]
+        [SerializeField] private bool _driveAmbientValue = true;
+
+        [Tooltip("LightIntensity 가 0 일 때의 앰비언트 명도 / Stable 명도 비율. " +
+                 "낮출수록 단계 사이 밝기 간격이 벌어지고 Collapse 가 어두워진다. " +
+                 "무엇을 넣든 인접 간격 0.08 은 코드가 강제한다.")]
+        [SerializeField, Range(0.05f, 0.95f)] private float _ambientValueFloorRatio = 0.20f;
+
         private Color _originalAmbient;
         private bool _ambientCaptured;
+
+        // 사다리는 프로파일(LightIntensity)과 씬 앰비언트에서 유도한다. 새 데이터가 아니다.
+        private readonly float[] _ambientLadder = new float[RiskAmbientLadder.LevelCount];
+        private readonly RiskProfile[] _ladderProfiles = new RiskProfile[RiskAmbientLadder.LevelCount];
+        private bool _ladderBuilt;
+        private float _ambientValue = -1f;
         [SerializeField] private Renderer _lampRenderer;
         [SerializeField, Min(0f)] private float _baseLightIntensity = 1.6f;
 
@@ -155,6 +170,38 @@ namespace Ascend.Prototype.Risk
             _accessibilitySource = _accessibility != null
                 ? _accessibility.name
                 : "코드 기본값";
+
+            BuildAmbientLadder();
+        }
+
+        /// <summary>
+        /// 단계별 앰비언트 **명도**를 유도한다. 값을 새로 만들지 않는다 —
+        /// <see cref="RiskProfile.LightIntensity"/>(프로파일 데이터)와 씬의 원래 앰비언트에서
+        /// 계산한다. 그래서 `DangerFeedbackProfile` 을 갈아 끼우면 사다리도 같이 바뀐다.
+        ///
+        /// 왜 여기서 하는가: 사다리의 천장이 「지금의 Stable 앰비언트 명도」라서
+        /// 프로파일이 바뀌면(강도 프리셋 교체) 다시 계산되어야 한다.
+        /// </summary>
+        private void BuildAmbientLadder()
+        {
+            // 아직 원래 값을 붙잡기 전이라면 지금의 렌더 설정이 곧 원래 값이다.
+            Color baseAmbient = _ambientCaptured ? _originalAmbient : RenderSettings.ambientLight;
+
+            for (int i = 0; i < _ladderProfiles.Length; i++)
+                _ladderProfiles[i] = _levels.For((RiskLevel)i);
+
+            float ceiling = RiskAmbientLadder.CeilingFor(baseAmbient, _ladderProfiles[0], _ambientBlend);
+            if (!RiskAmbientLadder.BandIsSufficient(ceiling))
+            {
+                // 조용히 실패하지 않는다. 이 경우 최소 간격 보장이 하한에 걸려 깨진다.
+                Debug.LogWarning($"[상승] 앰비언트 명도 천장 {ceiling:F3} 이 낮아 " +
+                                 $"단계 간격 {RiskAmbientLadder.MinValueStep:F2} × 3 을 담지 못한다. " +
+                                 "씬 앰비언트나 Stable LightColor 가 너무 어둡다.");
+            }
+
+            RiskAmbientLadder.Build(_ladderProfiles, ceiling, _ambientValueFloorRatio, _ambientLadder);
+            _ladderBuilt = true;
+            if (_ambientValue < 0f) _ambientValue = _ambientLadder[0];
         }
 
         /// <summary>지금 쓰고 있는 연출 값의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
@@ -235,6 +282,33 @@ namespace Ascend.Prototype.Risk
 
         /// <summary>단계별 연출 값. 에셋이 배선됐으면 에셋 것이다.</summary>
         public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);
+
+        /// <summary>
+        /// 지금 앰비언트에 실린 **명도(V)**. 깜빡임을 곱하기 전 값이다.
+        ///
+        /// 왜 노출하는가: `ProfileSource`·`EffectiveHumVolume` 과 같은 이유다 — 명도축이
+        /// 실제로 움직였는지 반증할 수단이 없으면 「고쳤다」가 검증되지 않는다.
+        /// 캡처 하네스와 감사자가 이 값을 단계별로 읽어 사다리를 그대로 확인할 수 있다.
+        /// </summary>
+        public float AmbientValue => _ambientValue;
+
+        /// <summary>단계별 목표 앰비언트 명도. 사다리 자체를 밖에서 읽는다.</summary>
+        public float AmbientValueFor(RiskLevel level)
+        {
+            if (!_ladderBuilt) return -1f;
+            int index = (int)level;
+            if (index < 0) index = 0;
+            if (index >= _ambientLadder.Length) index = _ambientLadder.Length - 1;
+            return _ambientLadder[index];
+        }
+
+        /// <summary>
+        /// 인접 단계 명도차의 최솟값. **이것이 회색조 구분 가능성의 지표다** —
+        /// 「기준점(Stable)으로부터의 색거리」가 아니다. 그 지표를 믿었다가 인접 쌍을
+        /// 하나도 못 갈랐던 이력이 백로그 §5.1 에 있다.
+        /// </summary>
+        public float MinAmbientValueStep =>
+            _ladderBuilt ? RiskAmbientLadder.MinAdjacentStep(_ambientLadder) : -1f;
 
         /// <summary>
         /// **앰비언트를 반드시 되돌린다.** `RenderSettings.ambientLight` 는 씬이 아니라
@@ -374,6 +448,13 @@ namespace Ascend.Prototype.Risk
         ///
         /// **원래 값을 반드시 복원한다** — 이건 씬이 아니라 렌더 설정 전역이라,
         /// 복원하지 않으면 플레이 모드를 나간 뒤에도 에디터에 남는다.
+        ///
+        /// **2026-08-02 — 두 번째 축을 붙였다.** 위 앰비언트는 7차에 채택됐지만 같은 판정이
+        /// 이렇게 덧붙였다: 「가장 약한 인접 쌍은 Strain↔Critical 이다. 둘 다 따뜻한 갈색
+        /// 방이고 **밝기 차가 없다.**」 재계산으로 확인된다 — 색상 전용 경로의 V 사다리는
+        /// 0.6455 / 0.6450 / 0.6340 / 0.5900 이고 Strain↔Critical 간격이 **0.011** 이다.
+        /// <see cref="RiskAmbientLadder"/> 가 `LightIntensity` 를 명도축에 실어 그 간격을
+        /// 하한 0.08 이상으로 강제한다. 두 축이 같은 방향으로 움직여야 경계가 선다.
         /// </summary>
         private void ApplyAmbient(float flicker)
         {
@@ -382,11 +463,31 @@ namespace Ascend.Prototype.Risk
             {
                 _originalAmbient = RenderSettings.ambientLight;
                 _ambientCaptured = true;
+                BuildAmbientLadder();   // 천장이 원래 앰비언트에 걸려 있다. 붙잡은 뒤 다시 세운다.
             }
 
             // 단계 색을 원래 앰비언트에 섞는다. 통째로 갈아 끼우면 밝기가 튀어
             // 「조명이 바뀌었다」가 아니라 「화면이 깜빡였다」로 읽힌다.
             Color tinted = Color.Lerp(_originalAmbient, _blended.LightColor, _ambientBlend);
+
+            // **색상축만으로는 인접 단계가 갈리지 않는다.** 여기까지의 `tinted` 는 명도가
+            // 사실상 정지해 있다 — 씬 앰비언트 (0.26, 0.27, 0.31) · 표준 프리셋으로 계산하면
+            // 0.6455 / 0.6450 / 0.6340 / 0.5900 이고 Stable↔Strain 간격이 0.0005 다.
+            // `RiskAmbientLadder` 가 `LightIntensity`(이미 단조 하강하는 데이터)를 명도축에
+            // 실어 두 축이 같은 방향으로 움직이게 한다.
+            if (_driveAmbientValue && _ladderBuilt)
+            {
+                int index = (int)_evaluator.Current;
+                if (index < 0) index = 0;
+                if (index >= _ambientLadder.Length) index = _ambientLadder.Length - 1;
+
+                // `_blended` 와 같은 속도로 따라간다. 명도만 계단으로 튀면 전이가
+                // 「천천히 물들다가 툭」 이 된다 — `ApplyAudio` 의 배율과 같은 이유다.
+                _ambientValue = Mathf.Lerp(_ambientValue, _ambientLadder[index],
+                                           Mathf.Clamp01(Time.deltaTime * _blendSpeed));
+                tinted = RiskAmbientLadder.WithValue(tinted, _ambientValue);
+            }
+
             RenderSettings.ambientLight = tinted * Mathf.Lerp(1f, flicker, 0.5f);
         }
 

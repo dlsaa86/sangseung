@@ -164,6 +164,177 @@ namespace Ascend.Prototype.Risk
         }
     }
 
+    /// <summary>
+    /// 위험 단계를 **명도축(V)** 으로도 내리는 앰비언트 사다리.
+    ///
+    /// 왜 따로 있는가 — 7차 독립 판정이 앰비언트 틴트를 채택하면서 동시에 이렇게 적었다:
+    /// 「가장 약한 인접 쌍은 **Strain↔Critical** 이다. 둘 다 따뜻한 갈색 방이고 **밝기 차가
+    /// 없다.** 「기준점으로부터의 거리」는 인접 구분 가능성을 재지 못한다 — 색상만 움직이고
+    /// 명도가 그대로면 거리가 벌어져도 사람 눈에는 같은 밴드다.」
+    ///
+    /// 실제로 그랬다. `RiskStateView.ApplyAmbient` 가 쓰던 식은
+    /// <c>Lerp(원래앰비언트, LightColor, 0.55)</c> 하나였고, 여기에 <see cref="RiskProfile.LightIntensity"/>
+    /// 는 **한 번도 들어가지 않았다.** 씬 앰비언트 (0.26, 0.27, 0.31) 와 표준 프리셋으로
+    /// 계산한 그 경로의 V 사다리는
+    ///
+    ///   Stable 0.6455 → Strain 0.6450 → Critical 0.6340 → Collapse 0.5900
+    ///
+    /// 이다. Stable↔Strain 간격이 **0.0005**, Strain↔Critical 이 **0.0110** — 색상축만
+    /// 움직이고 명도축은 사실상 정지해 있었다. 단계 구분이 색맹·축소본·회색조에서 전부
+    /// 무너지는 이유가 이것이다.
+    ///
+    /// **여기서 새 값을 만들지 않는다.** 명도는 이미 데이터에 있다 —
+    /// <see cref="RiskProfile.LightIntensity"/> 는 세 프리셋 모두에서 단조 하강한다
+    /// (표준 1.00 / 0.84 / 0.58 / 0.34). 그 축이 지금까지 실내등 하나에만 닿고 방에는
+    /// 닿지 않았을 뿐이다. `DangerFeedbackProfile` 에 필드를 새로 넣지 않는 이유이기도 하다 —
+    /// 구조체에 필드를 늘리면 이미 찍혀 있는 `.asset` 의 배열이 그 필드를 0으로 읽는다.
+    /// </summary>
+    public static class RiskAmbientLadder
+    {
+        /// <summary><see cref="RiskLevel"/> 단계 수.</summary>
+        public const int LevelCount = 4;
+
+        /// <summary>
+        /// 인접 단계의 **명도차 하한**. 「색거리」가 아니라 명도차다.
+        ///
+        /// 이 저장소는 앰비언트 도입 때 「색거리 6.1 → 13.4, 두 배」를 개선 근거로 적었다가
+        /// 인접 쌍을 하나도 못 갈랐다(백로그 §5.1). 두 배가 된 것은 **기준점(Stable)으로부터의
+        /// 거리**였고, 사람이 보는 것은 **옆 단계와의 차이**다. 그래서 지표를 바꾼다.
+        /// </summary>
+        public const float MinValueStep = 0.08f;
+
+        /// <summary>
+        /// 아무리 눌러도 이 아래로는 내리지 않는다. `VISUAL_SPEC §6` 이 Collapse 에서
+        /// 암전으로 정보를 숨기는 것을 금지한다 — 어두워지되 결과는 보여야 한다.
+        /// </summary>
+        public const float HardFloor = 0.04f;
+
+        /// <summary>HSV 의 V. 최대 성분이다.</summary>
+        public static float ValueOf(Color color)
+        {
+            return Mathf.Max(color.r, Mathf.Max(color.g, color.b));
+        }
+
+        /// <summary>
+        /// 색상(H)·채도(S)를 그대로 두고 명도(V)만 바꾼다.
+        ///
+        /// RGB 를 균일 배수하는 것이 곧 HSV 의 V 교체다 — H 는 성분 **순서와 차이의 비**로,
+        /// S 는 <c>1 − min/max</c> 로 정의되므로 둘 다 균일 스케일에 불변이다.
+        /// <c>Color.RGBToHSV</c>/<c>HSVToRGB</c> 왕복보다 정확하고(부동소수 왕복 오차가 없다)
+        /// HDR 색에서도 클램프되지 않는다. 그 불변성은 테스트가 `Color.RGBToHSV` 로 확인한다.
+        /// </summary>
+        public static Color WithValue(Color color, float value)
+        {
+            float current = ValueOf(color);
+            if (current <= 0.0001f) return new Color(value, value, value, color.a);
+            float k = value / current;
+            return new Color(color.r * k, color.g * k, color.b * k, color.a);
+        }
+
+        /// <summary>
+        /// 사다리의 천장 = **지금의 Stable 앰비언트 명도 그대로**.
+        ///
+        /// Stable 을 움직이지 않는 것이 중요하다. 7차 판정이 채택한 것은 Stable 기준의
+        /// 색조 진행이고, 기준점을 같이 밀면 그 승인이 무효가 된다. 여기서 바꾸는 것은
+        /// **Stable 아래 세 단계가 얼마나 어두워지는가** 하나다.
+        /// </summary>
+        public static float CeilingFor(Color originalAmbient, RiskProfile stable, float ambientBlend)
+        {
+            Color tinted = Color.Lerp(originalAmbient, stable.LightColor, Mathf.Clamp01(ambientBlend));
+            return ValueOf(tinted);
+        }
+
+        /// <summary>
+        /// 천장이 4단계 × <see cref="MinValueStep"/> 를 담을 만큼 높은가.
+        /// 낮으면 <see cref="Build"/> 가 하한에 걸려 간격 보장을 못 지킨다 —
+        /// 조용히 못 지키는 대신 부르는 쪽이 경고를 남기라고 노출한다.
+        /// </summary>
+        public static bool BandIsSufficient(float ceiling)
+        {
+            return ceiling >= HardFloor + MinValueStep * (LevelCount - 1);
+        }
+
+        /// <summary>
+        /// 단계별 앰비언트 명도를 만든다.
+        ///
+        /// 1) 원시 값은 <see cref="RiskProfile.LightIntensity"/> 를 Stable 로 정규화해
+        ///    <c>[ceiling·floorRatio, ceiling]</c> 밴드에 선형으로 얹는다. Stable 은 천장에 정확히 붙는다.
+        /// 2) 그 다음 **단조 하강 + 최소 간격을 강제한다.** 데이터가 뒤집혀 있어도 화면은
+        ///    뒤집히지 않는다 — 승인 대기 프리셋을 사람이 손으로 고치는 에셋이라
+        ///    「값이 그렇게 들어와서」가 변명이 되면 안 된다.
+        /// </summary>
+        /// <param name="levels">Stable→Collapse 순 4단계. 짧으면 마지막 항목을 반복한다.</param>
+        /// <param name="ceiling">Stable 의 앰비언트 명도. <see cref="CeilingFor"/>.</param>
+        /// <param name="floorRatio">LightIntensity 가 0 일 때의 명도 / 천장 비율.</param>
+        /// <param name="result">길이 <see cref="LevelCount"/> 이상인 출력 버퍼.</param>
+        public static void Build(RiskProfile[] levels, float ceiling, float floorRatio, float[] result)
+        {
+            if (result == null || result.Length < LevelCount) return;
+
+            ceiling = Mathf.Max(ceiling, HardFloor);
+            floorRatio = Mathf.Clamp01(floorRatio);
+
+            float anchor = levels != null && levels.Length > 0 ? levels[0].LightIntensity : 1f;
+            if (anchor <= 0.0001f) anchor = 1f;
+
+            for (int i = 0; i < LevelCount; i++)
+            {
+                float intensity = anchor;
+                if (levels != null && levels.Length > 0)
+                    intensity = levels[Mathf.Min(i, levels.Length - 1)].LightIntensity;
+
+                float normalized = Mathf.Clamp01(intensity / anchor);
+                result[i] = ceiling * (floorRatio + (1f - floorRatio) * normalized);
+            }
+
+            for (int i = 1; i < LevelCount; i++)
+            {
+                float cap = result[i - 1] - MinValueStep;
+                if (result[i] > cap) result[i] = cap;
+                if (result[i] < HardFloor) result[i] = HardFloor;
+            }
+        }
+
+        /// <summary>배열을 새로 만드는 편의 오버로드. 테스트와 1회성 조회용이다.</summary>
+        public static float[] Build(RiskProfile[] levels, float ceiling, float floorRatio)
+        {
+            var result = new float[LevelCount];
+            Build(levels, ceiling, floorRatio, result);
+            return result;
+        }
+
+        /// <summary>
+        /// 인접 쌍 명도차의 **최솟값**. 음수면 어딘가에서 단계가 역전됐다는 뜻이다.
+        /// 「기준점으로부터의 거리」 대신 이 값을 본다.
+        /// </summary>
+        public static float MinAdjacentStep(float[] ladder)
+        {
+            if (ladder == null || ladder.Length < 2) return 0f;
+            float min = float.MaxValue;
+            for (int i = 1; i < ladder.Length; i++)
+                min = Mathf.Min(min, ladder[i - 1] - ladder[i]);
+            return min;
+        }
+
+        /// <summary>
+        /// 옛 경로 — 색상만 움직이던 앰비언트의 명도 사다리. **회귀 증인으로만 쓴다.**
+        /// 새 사다리가 이것보다 나아졌다는 것을 테스트가 수치로 비교한다.
+        /// </summary>
+        public static float[] HueOnlyLadder(Color originalAmbient, RiskProfile[] levels, float ambientBlend)
+        {
+            var result = new float[LevelCount];
+            float blend = Mathf.Clamp01(ambientBlend);
+            for (int i = 0; i < LevelCount; i++)
+            {
+                RiskProfile p = levels != null && levels.Length > 0
+                    ? levels[Mathf.Min(i, levels.Length - 1)]
+                    : default;
+                result[i] = ValueOf(Color.Lerp(originalAmbient, p.LightColor, blend));
+            }
+            return result;
+        }
+    }
+
     /// <summary>공포 표현 강도 프리셋. 사용자 승인 전까지 하나로 잠그지 않는다.</summary>
     public enum RiskIntensity
     {

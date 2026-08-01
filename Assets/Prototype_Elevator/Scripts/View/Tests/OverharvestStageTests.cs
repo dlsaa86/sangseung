@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using Ascend.Prototype.Data.Profiles;
+using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.View.Tests
 {
@@ -48,6 +49,17 @@ namespace Ascend.Prototype.View.Tests
             Run("조준을 거두면 5단계로 세지 않는다", TestReleaseIsNotResume, ref passed, ref failed, report);
             Run("배선하지 않으면 출처가 「코드 프리셋」이다", TestUnwiredReportsCodePreset, ref passed, ref failed, report);
             Run("런을 다시 시작하면 카운터가 0이 된다", TestResetClearsCounters, ref passed, ref failed, report);
+
+            // ── 순차 공개 (`UP-FIX-20` / `UP-CORE-11`) ────────────────────────
+            // 새 스위트를 만들지 않는 이유: 스위트 하나마다 `AscendTestMenu` 와
+            // `PrototypeSelfTest` 두 곳에 등록이 필요하고, 등록을 빠뜨린 검사는
+            // **돌지 않으면서 통과한 것처럼 보인다.** 여기에 붙이면 등록이 0줄이다.
+            Run("순차 공개 — 한 프레임에 세 단계가 동시에 존재한다", TestRevealHasThreeStages, ref passed, ref failed, report);
+            Run("순차 공개 — 「아직 안 열림」과 「빈 판」이 다르다", TestSealedIsNotEmpty, ref passed, ref failed, report);
+            Run("순차 공개 — 열린 열은 되돌아가지 않는다", TestRevealIsMonotonic, ref passed, ref failed, report);
+            Run("순차 공개 — 열리는 열은 언제나 하나뿐이다", TestExactlyOneOpeningColumn, ref passed, ref failed, report);
+            Run("순차 공개 — 칸 인덱스 매핑이 SpinBoard 와 같다", TestRevealCellMatchesColumn, ref passed, ref failed, report);
+            Run("순차 공개 — 셔터가 막대 풀을 넘지 않는다", TestRevealFitsInPool, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === 과수확 5단계 연출 Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -446,6 +458,133 @@ namespace Ascend.Prototype.View.Tests
             if (t.IsResuming) return "리셋 후에도 재개 중이다";
             if (!Near(t.ChannelLevel(OverharvestChannel.Warning, 0f), 1f))
                 return "리셋 후 기계 수준이 1 이 아니다";
+            return null;
+        }
+
+        // ── 순차 공개 (`UP-FIX-20`) ──────────────────────────────────────────
+        //
+        // **무엇을 반증하려는가**: 이 결함은 「순차 공개를 구현하지 않았다」가 아니라
+        // 「구현했는데 정지 화면에서 그 사실이 안 보인다」였다. 아직 안 열린 칸을
+        // `SymbolKind.Empty` 로 그렸기 때문에 **정화로 비워진 칸과 같은 픽셀**이 됐고,
+        // 그래서 캡처 한 장으로는 `UP-CORE-11` 을 영원히 증명할 수 없었다.
+        //
+        // 그러니 여기서 재는 것은 「연출이 돌았다」가 아니라 **「한 프레임의 세 상태가
+        // 서로 다른가」**다. 씬도 코루틴도 열지 않는다 — 판정은 순수 함수 하나에 있다.
+
+        private static string TestRevealHasThreeStages()
+        {
+            // 두 열이 내려앉은 순간. 0=이미 열림, 1=지금 열림, 2=아직 안 열림.
+            const int revealed = 2;
+
+            SpinPresenter.RevealStage a = SpinPresenter.StageOfColumn(0, revealed);
+            SpinPresenter.RevealStage b = SpinPresenter.StageOfColumn(1, revealed);
+            SpinPresenter.RevealStage c = SpinPresenter.StageOfColumn(2, revealed);
+
+            if (a != SpinPresenter.RevealStage.Open) return $"0열이 {a} 다";
+            if (b != SpinPresenter.RevealStage.Opening) return $"1열이 {b} 다";
+            if (c != SpinPresenter.RevealStage.Sealed) return $"2열이 {c} 다";
+            if (a == b || b == c || a == c)
+                return "세 열이 한 프레임에서 같은 단계다 — 정지 화면에서 구분되지 않는다";
+            return null;
+        }
+
+        private static string TestSealedIsNotEmpty()
+        {
+            // 「아직 안 열린 판」은 표식이 9개, 「다 열린 판」은 0개다.
+            // 두 값이 같으면 그 프레임의 그림이 같다는 뜻이고, 그것이 원래 결함이다.
+            for (int column = 0; column < SpinBoard.Columns; column++)
+            {
+                SpinPresenter.RevealStage stage = SpinPresenter.StageOfColumn(column, 0);
+                if (stage != SpinPresenter.RevealStage.Sealed)
+                    return $"아무 열도 안 열렸는데 {column}열이 {stage} 다";
+            }
+
+            int sealedBars = PurifyMarkerView.RevealBarsNeeded(0);
+            int openBars = PurifyMarkerView.RevealBarsNeeded(SpinPresenter.RevealComplete);
+
+            if (sealedBars != SpinBoard.Cells * PurifyMarkerView.SealedBarsPerCell)
+                return $"닫힌 판의 표식이 {sealedBars}개다 — 9칸이 전부 서야 한다";
+            if (openBars != 0)
+                return $"공개가 끝났는데 표식이 {openBars}개 남아 있다";
+            if (sealedBars == openBars)
+                return "닫힌 판과 다 열린 판의 표식 수가 같다 — 정지 화면에서 같은 그림이다";
+            return null;
+        }
+
+        private static string TestRevealIsMonotonic()
+        {
+            // 진행도가 올라가는데 단계가 뒤로 가면 셔터가 다시 닫히는 것처럼 보인다.
+            for (int column = 0; column < SpinBoard.Columns; column++)
+            {
+                int previous = -1;
+                for (int revealed = 0; revealed <= SpinPresenter.RevealComplete; revealed++)
+                {
+                    int now = (int)SpinPresenter.StageOfColumn(column, revealed);
+                    if (now < previous)
+                        return $"{column}열이 진행도 {revealed} 에서 {(SpinPresenter.RevealStage)previous}" +
+                               $" → {(SpinPresenter.RevealStage)now} 로 되돌아갔다";
+                    previous = now;
+                }
+                if (previous != (int)SpinPresenter.RevealStage.Open)
+                    return $"공개가 끝났는데 {column}열이 {(SpinPresenter.RevealStage)previous} 다";
+            }
+            return null;
+        }
+
+        private static string TestExactlyOneOpeningColumn()
+        {
+            for (int revealed = 0; revealed <= SpinPresenter.RevealComplete; revealed++)
+            {
+                int opening = 0;
+                for (int column = 0; column < SpinBoard.Columns; column++)
+                    if (SpinPresenter.StageOfColumn(column, revealed) == SpinPresenter.RevealStage.Opening)
+                        opening++;
+
+                int expected = revealed >= 1 && revealed <= SpinBoard.Columns ? 1 : 0;
+                if (opening != expected)
+                    return $"진행도 {revealed} 에서 열리는 열이 {opening}개다 (기대 {expected})";
+            }
+            return null;
+        }
+
+        private static string TestRevealCellMatchesColumn()
+        {
+            // 좌표 변환을 두 번 구현하면 표식과 판이 어긋난다. 같은 답이 나와야 한다.
+            for (int revealed = 0; revealed <= SpinPresenter.RevealComplete; revealed++)
+            for (int cell = 0; cell < SpinBoard.Cells; cell++)
+            {
+                SpinPresenter.RevealStage byCell = SpinPresenter.StageOfCell(cell, revealed);
+                SpinPresenter.RevealStage byColumn =
+                    SpinPresenter.StageOfColumn(SpinBoard.ColumnOf(cell), revealed);
+                if (byCell != byColumn)
+                    return $"칸 {cell}(진행도 {revealed}) 가 {byCell} 인데 " +
+                           $"{SpinBoard.ColumnOf(cell)}열은 {byColumn} 다";
+            }
+
+            // 범위 밖은 예외가 아니라 「열림」으로 접힌다 — 연출이 인덱스로 죽으면 안 된다.
+            if (SpinPresenter.StageOfCell(-1, 0) != SpinPresenter.RevealStage.Open) return "음수 칸이 Open 이 아니다";
+            if (SpinPresenter.StageOfColumn(9, 0) != SpinPresenter.RevealStage.Open) return "범위 밖 열이 Open 이 아니다";
+            if (SpinPresenter.StageOfColumn(0, -5) != SpinPresenter.RevealStage.Sealed) return "음수 진행도가 Sealed 로 접히지 않는다";
+            if (SpinPresenter.StageOfColumn(0, 99) != SpinPresenter.RevealStage.Open) return "과대 진행도가 Open 으로 접히지 않는다";
+            return null;
+        }
+
+        private static string TestRevealFitsInPool()
+        {
+            // 풀이 모자라면 `PurifyMarkerView.PlaceBar` 가 **조용히** 생략한다.
+            // 그 경우 캡처에는 셔터가 몇 칸만 서고, 그림이 사실과 다른 진행도를 주장한다.
+            int peak = 0;
+            for (int revealed = -2; revealed <= SpinPresenter.RevealComplete + 2; revealed++)
+            {
+                int need = PurifyMarkerView.RevealBarsNeeded(revealed);
+                if (need > peak) peak = need;
+            }
+
+            if (peak > PurifyMarkerView.RevealPoolRequirement)
+                return $"셔터 최대 {peak}개가 요구 풀 {PurifyMarkerView.RevealPoolRequirement}개를 넘는다";
+            if (peak != PurifyMarkerView.RevealPoolRequirement)
+                return $"요구 풀이 {PurifyMarkerView.RevealPoolRequirement}인데 실제 최대는 {peak}다 — " +
+                       "상수가 실제를 재지 않으면 다음 사람이 그것을 믿고 줄인다";
             return null;
         }
     }

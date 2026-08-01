@@ -17,6 +17,12 @@ namespace Ascend.Prototype.View
     /// (`TECH_SPEC.md` §5). 이 컴포넌트를 통째로 꺼도 게임과 테스트는 그대로 돌아야 한다.
     ///
     /// 연출 타이밍은 전부 인스펙터 값이다 — 최종 연출은 승인 대기 항목이라 코드에 잠그지 않는다.
+    ///
+    /// **정지 화면에서도 순차 공개가 읽혀야 한다(`UP-FIX-20`).** 판정은 캡처 한 장으로 하는데,
+    /// 예전에는 아직 안 열린 칸이 `SymbolKind.Empty`로 그려져 **정화로 비워진 칸과 픽셀이
+    /// 같았다.** 그래서 「공개 중」과 「빈 판」이 구분되지 않았고, `UP-CORE-11`은 어떤 캡처로도
+    /// 증명될 수 없었다. 지금은 <see cref="PurifyMarkerView"/>가 칸마다 셔터 막대를 세운다 —
+    /// 색이 아니라 **막대 개수·위치·두께**로 갈리므로 회색조에서도 살아남는다.
     /// </summary>
     public sealed class SpinPresenter : MonoBehaviour, ISpinPresentation
     {
@@ -33,11 +39,41 @@ namespace Ascend.Prototype.View
             Brisk = 2,
         }
 
+        /// <summary>
+        /// 순차 공개에서 한 칸(정확히는 그 칸이 속한 통관)이 놓인 단계.
+        ///
+        /// **셋이 한 프레임에서 갈려야 한다**(`UP-FIX-20`). 갈리는 축은 색이 아니라 형태다 —
+        /// 그룹 B가 남긴 교훈이 「색상축만 움직이고 명도축이 그대로면 회색조에서 같은 밴드」였다.
+        /// </summary>
+        public enum RevealStage
+        {
+            /// <summary>아직 안 열린 칸. 셔터가 칸 한가운데를 가로지른다 — 「빈 판」과 여기서 갈린다.</summary>
+            Sealed = 0,
+
+            /// <summary>지금 열리는 칸. 셔터가 갈라져 위아래로 물러나 있다(막대 2개, 밝다).</summary>
+            Opening = 1,
+
+            /// <summary>다 열린 칸. 표식이 없고 심볼만 남는다.</summary>
+            Open = 2,
+        }
+
+        /// <summary>
+        /// 「공개가 끝났다」를 뜻하는 <see cref="RevealedColumns"/> 값.
+        ///
+        /// 3(마지막 열이 방금 내려앉음)과 구별해야 한다 — 3은 세 번째 통관이 아직
+        /// <see cref="RevealStage.Opening"/>인 상태이고, 여기서는 표식이 전부 사라진다.
+        /// </summary>
+        public const int RevealComplete = SpinBoard.Columns + 1;
+
         [SerializeField] private SpinBoardView _board;
         [SerializeField] private PurifyMarkerView _markers;
         [SerializeField] private Tempo _tempo = Tempo.Standard;
 
         [Header("템포 (초)")]
+        [Tooltip("아무 열도 열리기 전 — 셔터가 전부 닫힌 판을 보여주는 시간. " +
+                 "0으로 두면 '닫힌 판'이라는 시작 상태가 한 프레임도 안 남아 " +
+                 "순차 공개가 1/3에서 시작하는 것처럼 보인다.")]
+        [SerializeField] private float _sealedHold = 0.22f;
         [Tooltip("통관 한 열이 결과를 드러내는 간격. 세 열이 순차로 선다.")]
         [SerializeField] private float _columnRevealInterval = 0.32f;
         [Tooltip("판을 읽을 시간. 정화가 시작되기 전 정지.")]
@@ -69,6 +105,29 @@ namespace Ascend.Prototype.View
         /// <summary>이번 단계에 발동한 정화 설명. 한 화면에 모든 숫자를 띄우지 않기 위한 한 줄.</summary>
         public string CurrentCause { get; private set; } = string.Empty;
 
+        /// <summary>
+        /// 지금까지 내려앉은 통관 수(0~3), 공개가 끝나면 <see cref="RevealComplete"/>.
+        ///
+        /// 표식 뷰와 캡처 하네스가 「지금 몇 열까지 열렸는가」를 물어보는 유일한 창구다.
+        /// 상태를 두 군데서 세면 표식과 판이 어긋난다.
+        /// </summary>
+        public int RevealedColumns { get; private set; } = RevealComplete;
+
+        /// <summary>
+        /// **결과 숫자를 화면에 내보내도 되는가.** 연출이 도는 동안 거짓이다.
+        ///
+        /// 왜 <see cref="IsPresenting"/>과 따로 두는가: `IsPresenting`은 「입력을 잠글까」를
+        /// 묻는 질문이고(`RouletteInteractionBridge.IsLocked`), 이쪽은 「전력·스핀·잔류를
+        /// 그려도 되는가」를 묻는 질문이다. 둘은 지금 같은 값이지만 **바뀌는 이유가 다르다** —
+        /// 예컨대 연출 마지막 여운 동안 입력만 먼저 풀어 주는 변경이 오면 여기만 늦춰야 한다.
+        ///
+        /// `UP-FIX-15`: `RunSession.Spin()`은 레버를 당긴 **그 프레임에** 전력·스핀·잔류를
+        /// 전부 확정하는데, 연출은 그때부터 1~3초를 더 돈다. 매 프레임 런 상태를 그대로
+        /// 읽는 표시물은 결과를 30프레임 먼저 뱉는다. `GameHudView.UpdateAux`는 이미 이
+        /// 구간에 값을 얼리고 있고, **`InstrumentPanelView`는 아직 얼리지 않는다**(씬 오너 요청).
+        /// </summary>
+        public bool ResultRevealed => _playing == null;
+
         private void Awake()
         {
             if (_board == null) _board = FindAnyObjectByType<SpinBoardView>();
@@ -83,14 +142,17 @@ namespace Ascend.Prototype.View
             switch (_tempo)
             {
                 case Tempo.Readable:
+                    _sealedHold = 0.32f;
                     _columnRevealInterval = 0.45f; _readPause = 0.70f; _purifyPulse = 0.80f;
                     _emptyHold = 0.45f; _refillHold = 0.60f;
                     break;
                 case Tempo.Brisk:
+                    _sealedHold = 0.12f;
                     _columnRevealInterval = 0.18f; _readPause = 0.25f; _purifyPulse = 0.32f;
                     _emptyHold = 0.16f; _refillHold = 0.22f;
                     break;
                 default:
+                    _sealedHold = 0.22f;
                     _columnRevealInterval = 0.32f; _readPause = 0.45f; _purifyPulse = 0.55f;
                     _emptyHold = 0.30f; _refillHold = 0.40f;
                     break;
@@ -110,6 +172,7 @@ namespace Ascend.Prototype.View
             if (_playing != null) { StopCoroutine(_playing); _playing = null; }
             CurrentDepth = 0;
             CurrentCause = string.Empty;
+            RevealedColumns = RevealComplete;
             _markers?.Clear();
             if (_board != null)
             {
@@ -124,7 +187,7 @@ namespace Ascend.Prototype.View
         /// </summary>
         private IEnumerator Play(SpinResolution resolution)
         {
-            if (_board == null) { _playing = null; yield break; }
+            if (_board == null) { _playing = null; RevealedColumns = RevealComplete; yield break; }
             _board.DrivenExternally = true;
 
             // 1. 세 통관이 순차로 선다. 9칸이 동시에 뜨면 "세 통관 × 3칸" 구조가 안 읽힌다
@@ -179,18 +242,63 @@ namespace Ascend.Prototype.View
             _playing = null;
         }
 
+        /// <summary>
+        /// 세 통관이 순차로 선다. **각 상태가 정지 화면에서 갈려야 한다**(`UP-FIX-20`).
+        ///
+        /// 판만 밀어 넣던 예전 구현에는 상태가 둘뿐이었다 — 심볼이 있거나(열림) 없거나(빈칸).
+        /// 그런데 「빈칸」은 정화로 비워진 칸도 쓰는 표현이라, 캡처 한 장에서 「아직 안 열림」과
+        /// 「방금 정화됨」이 **같은 픽셀**이었다. 셔터 표식이 그 둘을 가른다.
+        ///
+        /// 닫힌 판을 <see cref="_sealedHold"/>만큼 먼저 보여주는 이유: 예전에는 빈 판을
+        /// 세우자마자 같은 프레임에 첫 열을 채워, **어떤 프레임에도 「아무 열도 안 열린 판」이
+        /// 존재하지 않았다.** 순차 공개가 1/3에서 시작하면 그건 순차가 아니라 도약이다.
+        /// </summary>
         private IEnumerator RevealColumns(SpinBoard board)
         {
             var partial = default(SpinBoard);
             _board.ShowBoard(partial);
+            SetRevealed(0);
+            yield return Wait(_sealedHold, 1);
 
             for (int column = 0; column < SpinBoard.Columns; column++)
             {
                 for (int row = 0; row < SpinBoard.Rows; row++)
                     partial[column, row] = board[column, row];
                 _board.ShowBoard(partial);
+                SetRevealed(column + 1);
                 yield return Wait(_columnRevealInterval, 1);
             }
+
+            SetRevealed(RevealComplete);
+        }
+
+        /// <summary>공개 진행도를 한 곳에서만 바꾼다 — 표식과 판이 어긋나지 않게.</summary>
+        private void SetRevealed(int revealedColumns)
+        {
+            RevealedColumns = revealedColumns;
+            _markers?.ShowReveal(revealedColumns);
+        }
+
+        /// <summary>
+        /// 통관 하나가 놓인 단계. **순수 함수다** — 씬도 코루틴도 필요 없어 헤드리스로 검사된다
+        /// (`Scripts/View/Tests/OverharvestStageTests.cs`). 이 규칙의 구현은 여기 하나뿐이고
+        /// <see cref="PurifyMarkerView"/>도 이것을 부른다.
+        /// </summary>
+        public static RevealStage StageOfColumn(int column, int revealedColumns)
+        {
+            if (column < 0 || column >= SpinBoard.Columns) return RevealStage.Open;
+
+            int revealed = Mathf.Clamp(revealedColumns, 0, RevealComplete);
+            if (revealed >= RevealComplete) return RevealStage.Open;
+            if (column < revealed - 1) return RevealStage.Open;
+            return column == revealed - 1 ? RevealStage.Opening : RevealStage.Sealed;
+        }
+
+        /// <summary>칸 인덱스로 묻는 같은 질문. 좌표 변환은 <see cref="SpinBoard"/>가 소유한다.</summary>
+        public static RevealStage StageOfCell(int cellIndex, int revealedColumns)
+        {
+            if (cellIndex < 0 || cellIndex >= SpinBoard.Cells) return RevealStage.Open;
+            return StageOfColumn(SpinBoard.ColumnOf(cellIndex), revealedColumns);
         }
 
         /// <summary>

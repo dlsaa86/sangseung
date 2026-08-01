@@ -374,7 +374,18 @@ namespace Ascend.Prototype.EditorTools
             Transform panel = car.Find("InstrumentPanel");
             if (panel != null)
             {
-                const float squeeze = 0.66f;
+                // 0.66 → 0.62. `PASS3_STRUCTURAL_PLAN.md` 안 1(코너 챔퍼)이 계기판을
+                // 45° 로 돌려 결과판과의 법선 90° 분리를 화해시켰고, 그때 폭이
+                // 코너에 들어가도록 이 값을 함께 조였다.
+                //
+                // **이 상수를 안 고치면 이 메뉴를 한 번 더 돌리는 순간 안 1 이 조용히 파괴된다** —
+                // 패널이 다시 0.66 으로 넓어져 좌벽을 뚫는다. 씬만 고치고 빌더를 그대로 두는 것이
+                // 이 저장소가 반복해서 당한 종류의 실패다(문서와 코드가 서로 다른 값을 가리킨다).
+                //
+                // ⚠ 이 메뉴는 **회전과 위치는 복원하지 않는다.** 안 1 을 되살리려면
+                // `InstrumentPanel` 의 `localPosition (0.50, 0, 0.43)` · `localRotation Euler(0,-45,0)` 도
+                // 함께 다시 써야 한다. 계획 문서에 원복값과 함께 적혀 있다.
+                const float squeeze = 0.62f;
                 panel.localScale = new Vector3(squeeze, 1f, 1f);
                 foreach (TMPro.TMP_Text label in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
                 {

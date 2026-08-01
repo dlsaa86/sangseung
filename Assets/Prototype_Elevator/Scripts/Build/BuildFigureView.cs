@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Run;
 
@@ -63,17 +64,31 @@ namespace Ascend.Prototype.Build
         private readonly List<GameObject> _lobbyFigures = new List<GameObject>();
         private readonly List<InteractableBuildCandidate> _candidates =
             new List<InteractableBuildCandidate>();
-        private readonly List<TMP_Text> _labels = new List<TMP_Text>();
 
         /// <summary>
-        /// 이 거리(m) 밖에서는 라벨 크기를 손대지 않는다. 안쪽에서만 거리에 비례해 줄여
-        /// **화면 크기의 상한**을 만든다 — 1.8m 에서 보이는 크기가 그 상한이다.
-        /// 조작 거리(0.9m)에서는 절반이 된다.
+        /// 라벨 홀더들. **승객·부품의 자식이 아니라 이 컴포넌트의 자식이다.**
+        ///
+        /// 예전에는 승객 루트의 자식이었는데, 반응 자세가 루트에 비균등 스케일을 걸므로
+        /// (`ApplyReactions` 의 `localScale = (spread, 1 - crouch*1.6, spread)`)
+        /// 웅크린 승객의 이름표가 세로로 최대 35% 눌렸다. 배킹판 크기 계산도 그 스케일을
+        /// 다시 타고 들어가 어긋난다. 위치만 따라가면 되는 것이라 부모를 끊는다 —
+        /// 대신 여기서 명시적으로 파괴해야 한다(`ClearFigures`).
         /// </summary>
-        private const float LabelReferenceDistance = 1.8f;
+        private readonly List<GameObject> _labelHolders = new List<GameObject>();
 
-        /// <summary>축소 하한. 코앞이어도 이보다 작아지지 않는다 — 읽을 수는 있어야 한다.</summary>
-        private const float LabelMinScale = 0.35f;
+        /// <summary>가시성을 켜고 끄는 대상. `BuildLabelLayout` 에 넘기는 것과 같은 목록이다.</summary>
+        private readonly List<Renderer> _labelRenderers = new List<Renderer>();
+
+        /// <summary>카메라마다 자세·크기·가시성을 다시 잡는 배치기.</summary>
+        private readonly BuildLabelLayout _layout = new BuildLabelLayout();
+
+        private Material _plateMaterial;
+
+        /// <summary>
+        /// 이번 프레임에 SRP 콜백이 배치를 끝냈는가. URP 에서는 매 프레임 참이 되므로
+        /// `LateUpdate` 의 예비 경로가 헛돌지 않는다.
+        /// </summary>
+        private int _solvedFrame = int.MinValue;
 
         /// <summary>승객 실루엣의 높이. 이름표와 대사 라벨이 이 값을 기준으로 얹힌다.</summary>
         private const float PassengerHeight = 1.56f;
@@ -93,6 +108,7 @@ namespace Ascend.Prototype.Build
         private Material _candidateMaterial;
         private Risk.RiskStateView _risk;
         private Transform _head;
+        private Camera _headCamera;
         private int _signature = int.MinValue;
         private int _doorPromptKey = int.MinValue;
 
@@ -213,7 +229,41 @@ namespace Ascend.Prototype.Build
             if (_run != null) _run.RunStarted += OnRunStarted;
 
             Camera camera = Camera.main;
-            if (camera != null) _head = camera.transform;
+            if (camera != null) { _head = camera.transform; _headCamera = camera; }
+        }
+
+        /// <summary>
+        /// **그리는 카메라마다** 라벨을 다시 배치한다.
+        ///
+        /// 이 훅이 이 파일에서 가장 중요한 한 줄이다. 예전 코드는 라벨을 플레이어 머리
+        /// 쪽으로만 돌리고 「카메라가 둘인데 라벨은 하나만 볼 수 있다」고 적어 두었는데,
+        /// 그 결론이 틀렸다 — URP 는 카메라마다 컬링 **전에** 이 콜백을 부른다.
+        /// 고정 캡처는 전용 카메라를 쓰므로, 이것이 없으면 캡처에서 라벨의 절반이
+        /// 뒷면 컬링으로 **통째로 사라진다**(`07_cargo_full` 실측 6자리 중 2자리).
+        /// </summary>
+        private void OnEnable()
+        {
+            RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
+        }
+
+        private void OnDisable()
+        {
+            RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        }
+
+        private void OnBeginCameraRendering(ScriptableRenderContext context, Camera camera)
+        {
+            if (camera == null) return;
+            // 미리보기·반사 카메라는 판정 대상이 아니다. 게임 뷰와 씬 뷰만 잡는다.
+            if (camera.cameraType != CameraType.Game && camera.cameraType != CameraType.SceneView) return;
+            EnsureObstacles();
+            _layout.Solve(camera);
+            _solvedFrame = Time.frameCount;
+        }
+
+        private void EnsureObstacles()
+        {
+            if (!_layout.ObstaclesValid) _layout.RefreshObstacles(_labelRenderers);
         }
 
         private void OnDestroy()
@@ -223,6 +273,7 @@ namespace Ascend.Prototype.Build
             DestroyMaterial(ref _passengerMaterial);
             DestroyMaterial(ref _partMaterial);
             DestroyMaterial(ref _candidateMaterial);
+            DestroyMaterial(ref _plateMaterial);
         }
 
         private static void DestroyMaterial(ref Material material)
@@ -464,6 +515,11 @@ namespace Ascend.Prototype.Build
             }
 
             label.text = shown;
+            // 배킹판을 새 문자열 길이에 맞춘다. 문자열이 바뀔 때만 도는 자리라
+            // `ForceMeshUpdate` 를 여기서 한 번 부르는 비용은 매 프레임이 아니다.
+            BuildLabelPlate.Measure(label, out Vector2 center, out Vector2 half);
+            BuildLabelPlate.Attach(label, _plateMaterial, BuildLabelPlate.Find(label), center, half);
+            _layout.UpdatePlate(label.GetComponent<Renderer>(), center, half);
             if (!label.gameObject.activeSelf) label.gameObject.SetActive(true);
         }
 
@@ -498,10 +554,25 @@ namespace Ascend.Prototype.Build
             return Quaternion.LookRotation(delta.normalized, Vector3.up);
         }
 
-        /// <summary>라벨이 플레이어를 본다. 정면에서 읽히지 않으면 배치의 뜻이 사라진다.</summary>
+        /// <summary>
+        /// SRP 콜백이 돌지 않는 경로(내장 파이프라인·에디터 정지 상태)를 위한 예비 배치.
+        ///
+        /// 크기 규칙은 `BuildLabelGeometry` 로 옮겼을 뿐 값이 같다 — 기준 거리 1.8m,
+        /// 하한 0.35. **하한을 더 내리지 않는다**(`TOPDOWN_MASTER_BACKLOG.md` §5.1:
+        /// 독립 평가 둘이 「축이 틀렸다」고 판정했고, 더 내리면 「가리는 면적은 그대로인
+        /// 채 의미만 없는 얼룩」이 된다).
+        ///
+        /// 3차 감사가 증거 영상에서 「문상객」 라벨이 **프레임의 54%** 에서 대표
+        /// 오브젝트를 덮는다고 지적했고, 시각 평가도 같은 것을 봤다
+        /// (`10_risk_critical` 에서 「광신자」가 프레임 좌측 22% 를 차지하며
+        /// 결과판 첫 열의 획 위를 지나간다). 그 상한은 그대로 둔다.
+        /// </summary>
         private void FaceReader()
         {
-            if (_head == null)
+            // 카메라가 그리기 직전에 이미 잡았으면 다시 하지 않는다.
+            if (_solvedFrame >= Time.frameCount - 1) return;
+
+            if (_headCamera == null)
             {
                 // 한 번만 찾는다. 못 찾았을 때 매 프레임 다시 찾으면 카메라가 없는 씬에서
                 // 영구적으로 전역 탐색이 돈다.
@@ -510,40 +581,11 @@ namespace Ascend.Prototype.Build
                 Camera camera = Camera.main;
                 if (camera == null) return;
                 _head = camera.transform;
+                _headCamera = camera;
             }
 
-            for (int i = 0; i < _labels.Count; i++)
-            {
-                TMP_Text label = _labels[i];
-                if (label == null) continue;
-                // TMP 는 +Z 가 글자 정면이고, `LookRotation(label − head)`가 그 +Z 를
-                // 카메라에서 멀어지는 쪽으로 돌린다. 결과적으로 글자는 카메라를 향한다.
-                //
-                // 한 번 이걸 뒤집으려다 되돌렸고, "씬에 원래 있던 라벨을 뒤에서 본
-                // 것"이라고 적어 뒀다. 절반만 맞았다. 뒤에서 봐서 뒤집힌 건 맞지만
-                // **여기서 만드는 라벨도 그렇다** — 이 회전은 `_head`를 향하고,
-                // 고정 캡처는 전용 카메라로 찍기 때문에 둘이 어긋난다.
-                //
-                // 회전으로는 못 고친다. 카메라가 둘인데 라벨은 하나만 볼 수 있다.
-                // 재질을 단면으로 두는 것이 답이다(`AddLabel` 참조).
-                Vector3 toReader = label.transform.position - _head.position;
-                toReader.y = 0f;
-                if (toReader.sqrMagnitude > 0.0001f)
-                    label.transform.rotation = Quaternion.LookRotation(toReader, Vector3.up);
-
-                // **가까울수록 줄인다.** 고정 월드 크기 텍스트는 다가갈수록 화면에서
-                // 무한히 커진다 — 인쇄된 표지판이라면 옳지만 이름표에는 파국이다.
-                // 3차 감사가 증거 영상에서 「문상객」 라벨이 **프레임의 54%** 에서
-                // 대표 오브젝트를 덮는다고 지적했고, 시각 평가도 같은 것을 봤다
-                // (`10_risk_critical` 에서 「광신자」가 프레임 좌측 22% 를 차지하며
-                // 결과판 첫 열의 획 위를 지나간다).
-                //
-                // 기준 거리 밖에서는 손대지 않는다 — 멀리서 작아 보이는 것은 옳다.
-                // 안쪽에서만 거리에 비례해 줄여 **화면 크기의 상한**을 만든다.
-                float distance = Vector3.Distance(label.transform.position, _head.position);
-                float shrink = Mathf.Clamp(distance / LabelReferenceDistance, LabelMinScale, 1f);
-                label.transform.localScale = Vector3.one * shrink;
-            }
+            EnsureObstacles();
+            _layout.Solve(_headCamera);
         }
 
         private void Rebuild()
@@ -598,16 +640,17 @@ namespace Ascend.Prototype.Build
             for (int i = 0; i < _candidates.Count; i++)
                 if (_candidates[i] != null) _candidates[i].Picked -= OnCandidatePicked;
             _candidates.Clear();
-            _labels.Clear();
             _carBasePositions.Clear();
             _carIsPassenger.Clear();
             _passengerSlots.Clear();
             _slotReactions.Clear();
-            // 라벨 자체는 승객 오브젝트의 자식이라 `DestroyAll` 이 함께 지운다.
-            // 여기서 비우지 않으면 파괴된 TMP 를 가리키는 참조가 남아 다음 프레임에
-            // 「이미 파괴된 오브젝트」 예외가 난다.
+            // 라벨은 이제 승객의 자식이 **아니므로** 여기서 직접 지운다. 남겨 두면
+            // 파괴된 승객을 따라다니려다 다음 프레임에 「이미 파괴된 오브젝트」 예외가 난다.
             _speechLabels.Clear();
             _speechShown.Clear();
+            _labelRenderers.Clear();
+            _layout.Clear();
+            DestroyAll(_labelHolders);
             DestroyAll(_carFigures);
             DestroyAll(_lobbyFigures);
         }
@@ -702,11 +745,15 @@ namespace Ascend.Prototype.Build
             }
         }
 
-        private void AddLabel(Transform parent, BuildItem item, float height, bool isCandidate)
+        private void AddLabel(Transform follow, BuildItem item, float height, bool isCandidate)
         {
+            float rise = height + 0.24f;
             var holder = new GameObject("Label");
-            holder.transform.SetParent(parent, false);
-            holder.transform.localPosition = new Vector3(0f, height + 0.24f, 0f);
+            // **승객이 아니라 이 컴포넌트의 자식이다.** 반응 자세가 승객 루트에 거는
+            // 비균등 스케일을 이름표가 물려받으면 웅크릴 때 글자가 눌리고, 배킹판
+            // 크기 계산도 그 스케일을 다시 타고 들어가 어긋난다. 위치만 따라간다.
+            holder.transform.SetParent(transform, false);
+            holder.transform.position = follow.position + Vector3.up * rise;
 
             var text = holder.AddComponent<TextMeshPro>();
             text.text = isCandidate
@@ -719,17 +766,30 @@ namespace Ascend.Prototype.Build
             var rect = holder.GetComponent<RectTransform>();
             if (rect != null) rect.sizeDelta = new Vector2(1.6f, 0.7f);
 
-            // 라벨은 `_head`(플레이어 머리)를 향해 돈다. 그래서 플레이어에게는 항상
-            // 바로 읽히지만, **다른 카메라로 보면 뒷면**이 잡힌다 — 고정 캡처가 전용
-            // 카메라를 쓰기 때문에 화물칸 시점에서 글자가 거울상으로 나왔다.
-            //
-            // TMP 기본 재질은 `_CullMode = 0`(Off)이라 뒷면까지 그린다. 뒷면은 정의상
-            // 거울상이다. 단면으로 두면 뒤에서는 안 보일 뿐, 뒤집힌 글자는 없다.
-            // 안 보이는 것과 거꾸로 보이는 것 중에는 안 보이는 쪽이 낫다.
+            // 라벨은 그리는 카메라를 향해 돈다(`OnBeginCameraRendering`). 단면 재질은
+            // 그래도 남긴다 — 콜백이 닿지 않는 카메라(미리보기·반사)에서 뒷면은 정의상
+            // 거울상이고, 거꾸로 보이는 것보다는 안 보이는 편이 낫다.
             Material single = SingleSided(text.fontSharedMaterial);
             if (single != null) text.fontSharedMaterial = single;
 
-            _labels.Add(text);
+            RegisterLabel(holder, text, follow, rise);
+        }
+
+        /// <summary>
+        /// 라벨 하나를 배치기에 넘긴다. 배킹판을 이 시점에 만들어 **글자 크기에 맞춘다** —
+        /// 렉트(이름표 1.6m)에 맞추면 세 글자 이름 뒤에 널빤지가 선다.
+        /// </summary>
+        private void RegisterLabel(GameObject holder, TMP_Text text, Transform follow, float rise)
+        {
+            _plateMaterial ??= BuildLabelPlate.CreateMaterial();
+            BuildLabelPlate.Measure(text, out Vector2 center, out Vector2 half);
+            Renderer plate = BuildLabelPlate.Attach(text, _plateMaterial, null, center, half);
+            var textRenderer = text.GetComponent<Renderer>();
+
+            _labelHolders.Add(holder);
+            if (textRenderer != null) _labelRenderers.Add(textRenderer);
+            if (plate != null) _labelRenderers.Add(plate);
+            _layout.Add(holder.transform, follow, rise, textRenderer, plate, center, half);
         }
 
         /// <summary>
@@ -737,16 +797,16 @@ namespace Ascend.Prototype.Build
         /// TMP 가 매 프레임 빈 메시를 그리고, 무엇보다 "대사가 없다"와 "대사 시스템이
         /// 없다"가 화면에서 같아 보인다.
         ///
-        /// `_labels`에도 넣는다. 그래야 <see cref="FaceReader"/>가 이름표와 같은 규칙으로
-        /// 플레이어를 향해 돌리고 가까울 때 줄여 준다 — 대사만 따로 처리하면 이름표는
-        /// 작아지는데 대사는 화면을 덮는 상태가 된다(그 함수의 주석이 적은 실패다).
+        /// 배치기(`BuildLabelLayout`)에도 등록한다. 그래야 이름표와 **같은 규칙**으로
+        /// 돌고·당겨지고·크기가 잡히고·양보한다 — 대사만 따로 처리하면 이름표는
+        /// 작아지는데 대사는 화면을 덮는 상태가 된다(예전 `FaceReader` 주석이 적은 실패다).
         /// </summary>
-        private TMP_Text AddSpeechLabel(Transform parent)
+        private TMP_Text AddSpeechLabel(Transform follow)
         {
+            float rise = PassengerHeight + 0.24f + SpeechLabelRise;
             var holder = new GameObject("Speech");
-            holder.transform.SetParent(parent, false);
-            holder.transform.localPosition =
-                new Vector3(0f, PassengerHeight + 0.24f + SpeechLabelRise, 0f);
+            holder.transform.SetParent(transform, false);
+            holder.transform.position = follow.position + Vector3.up * rise;
 
             var text = holder.AddComponent<TextMeshPro>();
             text.text = string.Empty;
@@ -759,12 +819,12 @@ namespace Ascend.Prototype.Build
             var rect = holder.GetComponent<RectTransform>();
             if (rect != null) rect.sizeDelta = new Vector2(2.2f, 0.6f);
 
-            // 이름표와 같은 이유로 단면 재질을 쓴다 — 고정 캡처 카메라에서 거울상이 나온다.
+            // 이름표와 같은 이유로 단면 재질을 쓴다 — 콜백이 닿지 않는 카메라에서 거울상이 나온다.
             Material single = SingleSided(text.fontSharedMaterial);
             if (single != null) text.fontSharedMaterial = single;
 
+            RegisterLabel(holder, text, follow, rise);
             holder.SetActive(false);
-            _labels.Add(text);
             return text;
         }
 

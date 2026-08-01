@@ -23,6 +23,17 @@ namespace Ascend.Prototype.View
         [SerializeField] private RouletteInteractionBridge _bridge;
         [SerializeField] private RiskStateView _risk;
 
+        /// <summary>
+        /// `UP-FIX-15` — 결과 숫자가 연출보다 먼저 나와 스핀을 스포일한다.
+        ///
+        /// 원인이 여기였다. `RunSession.Spin()` 은 당긴 프레임에 전부 확정하는데
+        /// 이 뷰는 `LateUpdate` 마다 `floor.Power` 를 그대로 읽고 **연출자를 참조조차
+        /// 하지 않았다.** 결과판(`DrivenExternally`)과 HUD(`IsPresenting` 동결)는 이미
+        /// 막혀 있었고 계기판만 새고 있었다 — 감사 영상의 f12→f30 변화가 전부 이 문자열이다.
+        /// 「30프레임」이라고 적혀 있었으나 Standard 템포에서 실제로는 **71프레임**이다.
+        /// </summary>
+        [SerializeField] private SpinPresenter _presenter;
+
         [Header("표시")]
         [SerializeField] private TextMeshPro _floorLabel;
         [SerializeField] private TextMeshPro _powerLabel;
@@ -97,6 +108,7 @@ namespace Ascend.Prototype.View
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             if (_bridge == null) _bridge = FindAnyObjectByType<RouletteInteractionBridge>();
             if (_risk == null) _risk = FindAnyObjectByType<RiskStateView>();
+            if (_presenter == null) _presenter = FindAnyObjectByType<SpinPresenter>();
             if (_run != null) _run.RunStarted += _ => InvalidateCache();
         }
 
@@ -151,6 +163,21 @@ namespace Ascend.Prototype.View
             //
             // 정수 하나로 압축하는 대신 값을 따로 들고 비교한다. 비트를 접는 순간
             // "무엇이 키에 빠졌는가"가 눈에 안 보이게 되고, 그게 이 결함의 원인이었다.
+            // 연출 중에는 **스핀 결과를 담은 세 블록만** 건너뛴다 (`UP-FIX-15`).
+            // 층·위험도(`_floorLabel`)와 계약 미리보기·명판은 살려 둔다 — 스핀 결과가
+            // 아니고, 얼리면 연출 중 위험 표시가 죽는다.
+            //
+            // 캐시 키(`_shownPower` 등)를 **건드리지 않고** 건너뛰므로 직전 값 문자열이
+            // 그대로 남는다. 추가 상태가 필요 없고, 연출이 끝나면 다음 프레임에 정상 갱신된다.
+            // `15`·`19`·`21` 은 연출자를 거치지 않고 판을 밀어 넣으므로 이 게이트가 무력 → 회귀 없음.
+            bool spoil = _presenter != null && !_presenter.ResultRevealed;
+            if (spoil)
+            {
+                ApplyContractPreview(floor);
+                ApplyPlaques(floor);
+                return;
+            }
+
             int power = Mathf.RoundToInt(floor.Power);
             int required = Mathf.RoundToInt(floor.RequiredPower);
             int band = (int)floor.CurrentBand;
@@ -298,11 +325,47 @@ namespace Ascend.Prototype.View
         /// 게이지는 요구 전력(100%)을 넘는 순간 색이 바뀐다. 임계점 돌파가 단순한 숫자 증가가
         /// 아니라 사건으로 보여야 한다는 요구(`visual-criteria.md` B-3.9)의 최소선이다.
         /// </summary>
+        /// <summary>
+        /// `UP-FIX-10` — 게이지가 **위급도와 반대로** 움직이고 있었다.
+        ///
+        /// 7차 판정: 「방이 가장 붉은 `16`(Collapse) 에서 전력 바가 **창백한 라벤더-흰색
+        /// 조각**이다.」 원인은 색이 전력% 에만 묶여 있고 위험 단계를 **한 번도 읽지
+        /// 않은 것**이다 — 300% 를 넘긴 순간이 가장 밝고, 그 순간이 곧 가장 위험한 순간이다.
+        ///
+        /// 고치는 축은 **명도**다(그룹 B 와 같은 교훈). 색상만 붉게 물들이면 회색조에서
+        /// 여전히 같은 밴드로 읽힌다 — 이 저장소가 「색거리 2배」로 두 번 실패한 자리다.
+        /// 위험이 오를수록 ① 채움색을 위험색 쪽으로 물들이고 ② **명도를 함께 낮춘다.**
+        /// 두 축이 같은 방향으로 움직여야 경계가 선다.
+        ///
+        /// `_risk` 가 없으면 옛 동작 그대로다 — 배선이 빠져도 게이지가 죽지 않는다.
+        /// </summary>
         private void ApplyBar(float ratio, FloorSession floor)
         {
             Color color = ratio < 1f ? _belowRequired
                         : floor.ExtraSpinsTaken > 0 ? _overharvested
                         : _atRequired;
+
+            if (_risk != null)
+            {
+                RiskLevel level = _risk.Level;
+                // Stable 에서 0, Collapse 에서 1. 단계 수가 바뀌어도 따라간다.
+                float t = (int)RiskLevel.Collapse > 0
+                        ? Mathf.Clamp01((float)(int)level / (int)RiskLevel.Collapse) : 0f;
+
+                // ① 색상축 — 위험색 쪽으로. 절반까지만 물들여 「전력이 얼마나 찼는가」를 지운다.
+                color = Color.Lerp(color, _dangerTint, t * 0.55f);
+
+                // ② 명도축 — Stable 대비 그 단계의 앰비언트 명도 비율만큼 어둡게.
+                //    바닥 0.45 를 둔다. 0 까지 내리면 Collapse 에서 게이지가 사라져
+                //    `VISUAL_SPEC §6`(암전으로 결과를 숨기지 않는다)을 어긴다.
+                float top = _risk.AmbientValueFor(RiskLevel.Stable);
+                if (top > 0.0001f)
+                {
+                    float v = Mathf.Clamp(_risk.AmbientValueFor(level) / top, 0.45f, 1f);
+                    color = new Color(color.r * v, color.g * v, color.b * v, color.a);
+                }
+            }
+
             SetBar(ratio, color);
         }
 

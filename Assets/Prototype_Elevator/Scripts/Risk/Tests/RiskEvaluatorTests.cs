@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using UnityEngine;
 
 namespace Ascend.Prototype.Risk.Tests
 {
@@ -26,6 +27,14 @@ namespace Ascend.Prototype.Risk.Tests
             Run("층 실패는 점수와 무관하게 Collapse", TestFailureIsCollapse, ref passed, ref failed, report);
             Run("실패가 풀리면 점수 기반으로 복귀", TestCollapseRecovers, ref passed, ref failed, report);
             Run("원인 설명이 실제 요인을 담는다", TestExplain, ref passed, ref failed, report);
+
+            // 명도축 — 그룹 B. 색상만 움직이던 상태를 못박아 두지 않으면 다시 돌아간다.
+            Run("앰비언트 명도가 4단계 단조 하강한다", TestAmbientValueMonotone, ref passed, ref failed, report);
+            Run("인접 단계 명도차가 하한 0.08 이상 (프리셋 3종)", TestAmbientValueStep, ref passed, ref failed, report);
+            Run("Stable 앰비언트 명도는 승인된 값 그대로다", TestAmbientCeilingUnchanged, ref passed, ref failed, report);
+            Run("새 사다리가 색상 전용 경로보다 인접 간격이 크다", TestBeatsHueOnlyPath, ref passed, ref failed, report);
+            Run("명도 교체가 색상·채도를 보존한다", TestWithValuePreservesHueSaturation, ref passed, ref failed, report);
+            Run("역전된 프로파일도 단조 하강으로 교정된다", TestLadderRepairsNonMonotone, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Risk Evaluator Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -216,6 +225,159 @@ namespace Ascend.Prototype.Risk.Tests
             string text = evaluator.Explain(in loaded);
             foreach (string token in new[] { "흡수체", "증식체", "과수확", "과적", "소진" })
                 if (!text.Contains(token)) return $"설명에 '{token}' 이 빠졌다: {text}";
+            return null;
+        }
+
+        // ── 앰비언트 명도축 ────────────────────────────────────────────────
+        //
+        // 7차 독립 판정: 「가장 약한 인접 쌍은 Strain↔Critical 이다. 둘 다 따뜻한 갈색 방이고
+        // **밝기 차가 없다**. 「기준점으로부터의 거리」는 인접 구분 가능성을 재지 못한다 —
+        // 색상만 움직이고 명도가 그대로면 거리가 벌어져도 사람 눈에는 같은 밴드다.」
+        //
+        // 그래서 여기서 재는 것은 색거리가 아니라 **인접 쌍의 명도차**다. 백로그 §5.1 이
+        // 「색거리 6.1 → 13.4, 두 배」를 개선으로 적었다가 인접 쌍을 하나도 못 가른 이력이
+        // 있다 — 두 배가 된 것은 Stable 로부터의 거리였고 사람이 보는 것은 옆 단계와의 차이다.
+
+        /// <summary>
+        /// 씬(`Prototype_Elevator.unity`)의 `m_AmbientSkyColor`. `m_AmbientMode: 3`(Flat)이라
+        /// 이 값이 곧 <c>RenderSettings.ambientLight</c> 다.
+        ///
+        /// **한계**: 여기에 베껴 둔 상수라 씬 쪽이 바뀌면 이 테스트는 그 사실을 모른다.
+        /// 다만 단조성과 최소 간격 자체는 <see cref="RiskAmbientLadder.Build"/> 가 설정과
+        /// 무관하게 강제하고(<see cref="TestLadderRepairsNonMonotone"/>), 이 상수들은
+        /// **출하 설정에서 실제로 얼마가 나오는지**를 못박기 위한 것이다.
+        /// </summary>
+        private static readonly Color SceneAmbient = new Color(0.26f, 0.27f, 0.31f);
+
+        /// <summary><c>RiskStateView._ambientBlend</c> 의 기본값.</summary>
+        private const float SceneAmbientBlend = 0.55f;
+
+        /// <summary><c>RiskStateView._ambientValueFloorRatio</c> 의 기본값.</summary>
+        private const float SceneFloorRatio = 0.20f;
+
+        private static float[] LadderFor(RiskIntensity intensity)
+        {
+            RiskProfile[] levels = RiskProfile.Preset(intensity);
+            float ceiling = RiskAmbientLadder.CeilingFor(SceneAmbient, levels[0], SceneAmbientBlend);
+            return RiskAmbientLadder.Build(levels, ceiling, SceneFloorRatio);
+        }
+
+        private static string Describe(float[] ladder)
+        {
+            return $"[{ladder[0]:F4} / {ladder[1]:F4} / {ladder[2]:F4} / {ladder[3]:F4}]";
+        }
+
+        private static string TestAmbientValueMonotone()
+        {
+            foreach (RiskIntensity intensity in new[]
+                     { RiskIntensity.Restrained, RiskIntensity.Standard, RiskIntensity.Heavy })
+            {
+                float[] ladder = LadderFor(intensity);
+                for (int i = 1; i < ladder.Length; i++)
+                    if (ladder[i] >= ladder[i - 1])
+                        return $"{intensity}: {(RiskLevel)i} 가 {(RiskLevel)(i - 1)} 보다 어둡지 않다 {Describe(ladder)}";
+            }
+            return null;
+        }
+
+        private static string TestAmbientValueStep()
+        {
+            foreach (RiskIntensity intensity in new[]
+                     { RiskIntensity.Restrained, RiskIntensity.Standard, RiskIntensity.Heavy })
+            {
+                float[] ladder = LadderFor(intensity);
+                float step = RiskAmbientLadder.MinAdjacentStep(ladder);
+
+                // 부동소수 여유 — Build 가 정확히 하한에 붙여 놓는 경우가 있다.
+                if (step < RiskAmbientLadder.MinValueStep - 0.0005f)
+                    return $"{intensity}: 최소 인접 명도차 {step:F4} < 하한 " +
+                           $"{RiskAmbientLadder.MinValueStep:F2} {Describe(ladder)}";
+
+                // 정보를 어둠에 숨기지 않는다 (VISUAL_SPEC §6 Collapse).
+                if (ladder[ladder.Length - 1] <= RiskAmbientLadder.HardFloor)
+                    return $"{intensity}: Collapse 명도 {ladder[ladder.Length - 1]:F4} 가 하한에 붙었다 — 암전이다";
+            }
+            return null;
+        }
+
+        private static string TestAmbientCeilingUnchanged()
+        {
+            // Stable 은 7차 판정이 채택한 기준점이다. 기준점을 같이 밀면 그 승인이 무효가 된다.
+            RiskProfile[] levels = RiskProfile.Preset(RiskIntensity.Standard);
+            float ceiling = RiskAmbientLadder.CeilingFor(SceneAmbient, levels[0], SceneAmbientBlend);
+            float[] ladder = LadderFor(RiskIntensity.Standard);
+
+            if (Mathf.Abs(ladder[0] - ceiling) > 0.0001f)
+                return $"Stable 명도 {ladder[0]:F4} ≠ 색상 전용 경로의 Stable {ceiling:F4}";
+
+            // 색상 전용 경로의 Stable 값과도 같아야 한다 — 바뀐 것은 아래 세 단계뿐이다.
+            float[] hueOnly = RiskAmbientLadder.HueOnlyLadder(SceneAmbient, levels, SceneAmbientBlend);
+            if (Mathf.Abs(ladder[0] - hueOnly[0]) > 0.0001f)
+                return $"Stable 이 옛 경로({hueOnly[0]:F4})와 달라졌다: {ladder[0]:F4}";
+            return null;
+        }
+
+        private static string TestBeatsHueOnlyPath()
+        {
+            foreach (RiskIntensity intensity in new[]
+                     { RiskIntensity.Restrained, RiskIntensity.Standard, RiskIntensity.Heavy })
+            {
+                RiskProfile[] levels = RiskProfile.Preset(intensity);
+                float[] hueOnly = RiskAmbientLadder.HueOnlyLadder(SceneAmbient, levels, SceneAmbientBlend);
+                float[] ladder = LadderFor(intensity);
+
+                float before = RiskAmbientLadder.MinAdjacentStep(hueOnly);
+                float after = RiskAmbientLadder.MinAdjacentStep(ladder);
+                if (after <= before)
+                    return $"{intensity}: 최소 인접 명도차가 나아지지 않았다 " +
+                           $"(색상 전용 {before:F4} {Describe(hueOnly)} → 새 사다리 {after:F4} {Describe(ladder)})";
+            }
+            return null;
+        }
+
+        private static string TestWithValuePreservesHueSaturation()
+        {
+            // 균일 RGB 배수가 곧 HSV 의 V 교체라는 근거. H·S 가 움직이면 7차가 채택한
+            // 색조 진행(파랑이 빠지며 따뜻해지다 Collapse 에서 빨강이 뛴다)이 깨진다.
+            foreach (RiskProfile profile in RiskProfile.Preset(RiskIntensity.Standard))
+            {
+                Color source = profile.LightColor;
+                Color.RGBToHSV(source, out float h0, out float s0, out float v0);
+
+                foreach (float target in new[] { 0.62f, 0.43f, 0.30f })
+                {
+                    Color moved = RiskAmbientLadder.WithValue(source, target);
+                    Color.RGBToHSV(moved, out float h1, out float s1, out float v1);
+
+                    if (Mathf.Abs(v1 - target) > 0.001f)
+                        return $"V 가 목표에 안 맞는다: {v1:F4} ≠ {target:F2}";
+                    if (Mathf.Abs(h1 - h0) > 0.002f)
+                        return $"H 가 움직였다: {h0:F4} → {h1:F4} (V {v0:F3} → {v1:F3})";
+                    if (Mathf.Abs(s1 - s0) > 0.002f)
+                        return $"S 가 움직였다: {s0:F4} → {s1:F4}";
+                }
+            }
+            return null;
+        }
+
+        private static string TestLadderRepairsNonMonotone()
+        {
+            // 프리셋은 사람이 인스펙터에서 고치는 승인 대기 데이터다. 「값이 그렇게 들어와서」가
+            // 변명이 되면 안 된다 — 뒤집힌 데이터가 들어와도 화면은 뒤집히지 않아야 한다.
+            RiskProfile[] levels = RiskProfile.Preset(RiskIntensity.Standard);
+            levels[0].LightIntensity = 0.30f;   // Stable 을 가장 어둡게
+            levels[1].LightIntensity = 1.00f;
+            levels[2].LightIntensity = 0.95f;
+            levels[3].LightIntensity = 0.90f;   // Collapse 를 가장 밝게
+
+            float ceiling = RiskAmbientLadder.CeilingFor(SceneAmbient, levels[0], SceneAmbientBlend);
+            float[] ladder = RiskAmbientLadder.Build(levels, ceiling, SceneFloorRatio);
+
+            for (int i = 1; i < ladder.Length; i++)
+                if (ladder[i] > ladder[i - 1] - RiskAmbientLadder.MinValueStep + 0.0005f)
+                    return $"역전 입력이 교정되지 않았다 {Describe(ladder)}";
+            if (ladder[ladder.Length - 1] < RiskAmbientLadder.HardFloor)
+                return $"교정이 하한 아래로 내렸다: {ladder[ladder.Length - 1]:F4}";
             return null;
         }
     }
