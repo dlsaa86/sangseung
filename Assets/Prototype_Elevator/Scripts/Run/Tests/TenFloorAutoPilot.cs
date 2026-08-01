@@ -105,7 +105,8 @@ namespace Ascend.Prototype.Run.Tests
         private void CheckEyeHeight()
         {
             var player = FindAnyObjectByType<Player.FirstPersonController>();
-            _player = player;   // 연출 잠금 중 조작 생존 검사가 다시 쓴다
+            _player = player;   // 연출 잠금 중 이동·회전 검사가 다시 쓴다
+            _character = player != null ? player.GetComponent<CharacterController>() : null;
             if (player == null)
             {
                 Check("1인칭 카메라 눈높이", false, "FirstPersonController 없음");
@@ -385,6 +386,7 @@ namespace Ascend.Prototype.Run.Tests
         private bool _sawPresentationLock;
         private bool _sawNonEmptyOwnerCheck;
         private Player.FirstPersonController _player;
+        private CharacterController _character;
         private Npc.PassengerReactionView _reactionView;
 
         private static int BitCount(int mask)
@@ -643,16 +645,43 @@ namespace Ascend.Prototype.Run.Tests
                               floor.SpinsRemaining == spinsBefore,
                               $"남은 스핀 {spinsBefore} → {floor.SpinsRemaining}");
 
-                        // ② 판정 중에도 이동·시점 회전이 막히지 않는다 (`UP-SPACE-08`).
-                        //    결과 공개 중 플레이어를 얼어붙게 하는 것이 전형적 실패다.
-                        //    입력을 흉내 내는 대신 **얼릴 방법 두 가지**가 쓰이지 않았는지 본다.
-                        if (_player != null)
-                            Check($"{number}층 연출 중에도 플레이어 조작이 살아 있다",
-                                  _player.enabled && _player.gameObject.activeInHierarchy &&
-                                  Time.timeScale > 0f,
-                                  $"controller={_player.enabled} " +
-                                  $"active={_player.gameObject.activeInHierarchy} " +
-                                  $"timeScale={Time.timeScale}");
+                        // ② 판정 중에도 **이동과 시점 회전이 실제로 된다** (`UP-SPACE-08`).
+                        //
+                        //    앞선 판본은 「얼리는 방법 세 가지가 안 쓰였다」만 봤다. 독립 감사가
+                        //    그것으로는 요구를 재지 못한다고 지적했고 옳았다 — 게다가 백로그에는
+                        //    `CharacterController` 를 본다고 적혀 있었는데 코드는
+                        //    `FirstPersonController.enabled` 를 보고 있었다(거짓 기록).
+                        //
+                        //    마우스 입력은 하네스가 흉내 낼 수 없다(`HandleLook` 은 커서 잠금을
+                        //    요구하고 씬은 `_lockCursorOnStart: 0` 이다). 그래서 **결과**를 잰다 —
+                        //    돌리고 움직인 뒤 그것이 남아 있는지. 연출이 플레이어를 붙잡으면
+                        //    (트랜스폼을 되돌리거나 컨트롤러를 끄면) 여기서 걸린다.
+                        if (_player != null && _character != null)
+                        {
+                            Transform root = _player.transform;
+                            Quaternion beforeRotation = root.rotation;
+                            Vector3 beforePosition = root.position;
+
+                            root.Rotate(Vector3.up, 25f, Space.World);
+                            _character.Move(root.right * 0.05f);
+                            yield return null;
+
+                            float turned = Quaternion.Angle(beforeRotation, root.rotation);
+                            float moved = Vector3.Distance(beforePosition, root.position);
+
+                            Check($"{number}층 연출 중 시점 회전이 유지된다 — {turned:F1}°",
+                                  turned > 20f,
+                                  $"25° 돌렸는데 {turned:F1}° 남았다 — 연출이 시점을 되돌린다");
+                            Check($"{number}층 연출 중 이동이 반영된다 — {moved * 100f:F1}cm",
+                                  moved > 0.005f,
+                                  $"움직였는데 {moved * 100f:F1}cm — 연출이 플레이어를 붙잡는다 " +
+                                  $"(controller={_character.enabled} timeScale={Time.timeScale})");
+
+                            // 되돌린다. 하네스가 플레이어를 조금씩 밀어 놓으면 나중 층의
+                            // 캡처·조준이 다른 자리에서 일어난다.
+                            root.rotation = beforeRotation;
+                            _character.Move(beforePosition - root.position);
+                        }
                     }
 
                     yield return WaitWhileLocked(bridge);
