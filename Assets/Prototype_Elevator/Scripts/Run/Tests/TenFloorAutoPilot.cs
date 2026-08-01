@@ -1045,8 +1045,19 @@ namespace Ascend.Prototype.Run.Tests
             Diagnostics.WiringValidationResult auto = Diagnostics.SceneWiringValidator.Validate(false);
             // `> 0` 은 한 필드만 남아도 통과한다. 표시 범위가 줄어드는 것 자체가 회귀이고
             // 그때 「결함 0건」은 검사가 아니라 **검사할 것이 없다**는 뜻이 된다.
-            // 하한은 현재 실측(17필드)에서 여유를 둔 값이다 — 요구 수치가 아니라 방지선.
-            const int RequiredFieldFloor = 15;
+            //
+            // 하한 10 은 **이 런에서 실제로 관측된 수**다 — 씬에 있는 다섯 클래스의
+            // 표시 필드 합(`CollapseSequence` 1 + `RouletteInteractionBridge` 4 +
+            // `FirstPersonController` 2 + `CrosshairInteractor` 1 + `CrosshairView` 2).
+            //
+            // **처음에 15 로 적었다가 이 검사에 걸렸다.** 통합 보고서가 「5 → 17필드」라고
+            // 적은 것을 그대로 옮겼는데, 17 은 소스의 속성 개수를 잘못 센 것이고 실측은 10 이다.
+            // 서술된 숫자로 회귀 방지선을 세우면 그 선이 지키는 것은 사실이 아니다 —
+            // 이 저장소가 반복해서 당한 실패이고, 검사가 그것을 즉시 잡았다.
+            //
+            // 요구 수치가 아니다. `UP-TECH-03` 이 VERIFIED 로 가려면 표시 범위를 넓혀야 하고
+            // (`[SerializeField]` 보유 런타임 파일 50개 중 5클래스뿐이다) 그때 이 값도 함께 오른다.
+            const int RequiredFieldFloor = 10;
             Check($"필수로 표시된 참조가 존재한다 — {auto.RequiredFieldsChecked}필드 / {auto.BehavioursScanned}컴포넌트",
                   auto.RequiredFieldsChecked >= RequiredFieldFloor,
                   $"표시된 필드가 {auto.RequiredFieldsChecked}개로 하한 {RequiredFieldFloor} 미만이다 — 결함 0건이 공허하게 참이 된다");
