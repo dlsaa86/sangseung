@@ -115,7 +115,14 @@ namespace Ascend.Prototype.Perf
         {
             if (e.Kind == GameEventKind.FloorStarted) { Sample(e.Floor, true); return; }
             if (e.Kind == GameEventKind.FloorResolved) { Sample(e.Floor, false); return; }
-            if (e.Kind == GameEventKind.RunEnded && _writeOnRunEnded) WriteReport();
+            if (e.Kind == GameEventKind.RunEnded)
+            {
+                // **런이 끝난 뒤에 강제 수집한다.** 측정 중이었다면 이 수집 자체가
+                // 프레임 스파이크라 잴 대상을 망쳤겠지만, 런이 끝났으므로 그 대가가 없다.
+                // 이것 없이 쓴 보고서는 「누수」와 「아직 안 치운 쓰레기」를 구분하지 못한다.
+                SettleAndSample();
+                if (_writeOnRunEnded) WriteReport();
+            }
         }
 
         /// <summary>
@@ -150,6 +157,76 @@ namespace Ascend.Prototype.Perf
         }
 
         /// <summary>층별 표와 첫 층 대비 마지막 층 증가분.</summary>
+        /// <summary>
+        /// **누수와 미수거 쓰레기를 가른다.** 런이 끝난 뒤 강제 수집하고 다시 잰다.
+        ///
+        /// 왜 이것이 없으면 판정이 안 되는가: 위 표의 `GC.GetTotalMemory(false)` 는
+        /// **수집을 강제하지 않은** 값이라, 층마다 나는 쓰레기가 아직 안 치워졌을 뿐인
+        /// 상태와 실제로 붙잡혀 있는 상태를 **구분하지 못한다.** 둘 다 단조 증가로 보인다.
+        /// 그래서 이 프로브는 「+160 MB 단조 증가 → 요구사항 위반」이라고 적었지만
+        /// 같은 표에서 **Unity 총 할당은 +5.97 MB(0.5%)로 안정**이었다 — 두 숫자가
+        /// 서로 다른 이야기를 하고 있었고, 그 불일치가 곧 「아직 안 치웠다」의 신호다.
+        ///
+        /// 측정 중에 강제 수집하지 않는 판단은 옳다(그 자체가 프레임 스파이크다).
+        /// 그러나 **런이 끝난 뒤**에는 스파이크가 잴 대상을 망치지 않는다.
+        /// `PRD §17.4` 가 요구하는 것은 「지속 누적 없음」이지 「쓰레기가 즉시 치워짐」이 아니다.
+        /// </summary>
+        public void SettleAndSample()
+        {
+            _beforeSettleBytes = GC.GetTotalMemory(false);
+            // 두 번 부르는 이유: 첫 수집이 파이널라이저 큐에 넣은 것을 두 번째가 거둔다.
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            _settledBytes = GC.GetTotalMemory(true);
+            _settled = true;
+        }
+
+        private bool _settled;
+        private long _beforeSettleBytes;
+        private long _settledBytes;
+
+        /// <summary>강제 수집 뒤의 힙. 재지 않았으면 -1.</summary>
+        public long SettledBytes { get { return _settled ? _settledBytes : -1L; } }
+
+        private void AppendSettledVerdict(StringBuilder sb)
+        {
+            sb.AppendLine();
+            if (!_settled)
+            {
+                sb.AppendLine("[강제 수집 후] **재지 않았다.** 위 표만으로는 「누수」와 「아직 안 치운 쓰레기」를");
+                sb.AppendLine("구분할 수 없다 — 둘 다 단조 증가로 보인다. `SettleAndSample()` 을 부를 것.");
+                return;
+            }
+
+            long firstEnd = FirstOfPhase(_gcBytes, false);
+            sb.AppendLine("[강제 수집 후] 수집 전 " + MemoryTrend.FormatBytes(_beforeSettleBytes) +
+                          " → 수집 후 " + MemoryTrend.FormatBytes(_settledBytes) +
+                          " (회수 " + MemoryTrend.FormatBytes(_beforeSettleBytes - _settledBytes) + ")");
+
+            if (firstEnd <= 0)
+            {
+                sb.AppendLine("  첫 층 표본이 없어 기준선과 대조하지 못한다.");
+                return;
+            }
+
+            long retained = _settledBytes - firstEnd;
+            sb.AppendLine("  첫 층 종료 " + MemoryTrend.FormatBytes(firstEnd) +
+                          " 대비 " + (retained >= 0 ? "+" : "−") +
+                          MemoryTrend.FormatBytes(Math.Abs(retained)));
+            sb.AppendLine(retained > MemoryTrend.DefaultAbsoluteToleranceBytes
+                ? "  → **수집 후에도 남아 있다. 진짜 누적이다.** 무엇이 붙잡고 있는지 찾아야 한다."
+                : "  → 수집 후 기준선으로 돌아온다. **위 표의 단조 증가는 미수거 쓰레기였다.**");
+            sb.AppendLine("  이 줄이 판정이고 위 표는 추세다 — 강제 수집 없는 값은 둘을 구분하지 못한다.");
+        }
+
+        private long FirstOfPhase(long[] values, bool atStart)
+        {
+            for (int i = 0; i < _count; i++)
+                if (_atFloorStart[i] == atStart) return values[i];
+            return -1L;
+        }
+
         public string Report()
         {
             var sb = new StringBuilder(2048);
@@ -191,6 +268,8 @@ namespace Ascend.Prototype.Perf
             AppendPhase(sb, "층 종료 시점 · 관리 힙", _gcBytes, false);
             AppendPhase(sb, "층 시작 시점 · 관리 힙", _gcBytes, true);
             AppendPhase(sb, "층 종료 시점 · Unity 총 할당", _unityBytes, false);
+
+            AppendSettledVerdict(sb);
 
             sb.AppendLine();
             sb.AppendLine("판정 규칙: 표본 " + MemoryTrend.MinimumSamplesForMonotonicRule +
