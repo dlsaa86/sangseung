@@ -79,6 +79,25 @@ namespace Ascend.Prototype.Npc
         /// <summary>동시 반응 한도나 쿨다운 때문에 버려진 반응 수. 한도가 너무 낮은지 판단하는 근거다.</summary>
         public int SuppressedCount { get; private set; }
 
+        /// <summary>
+        /// 실제로 반응을 일으킨 사건 종류의 비트 집합. 비트 n 은 `(PassengerReactionEvent)n`.
+        ///
+        /// **총합이 아니라 종류를 세는 이유**: `UP-NPC-02` 는 「프로토타입 반응 이벤트 10종」을
+        /// 요구한다. 「반응 110건」은 한 종류가 110번 울려도 나오는 숫자다.
+        /// </summary>
+        public int FiredKindsMask { get; private set; }
+
+        /// <summary>울린 종류 수. 비트를 센다.</summary>
+        public int FiredKindCount
+        {
+            get
+            {
+                int n = 0;
+                for (int mask = FiredKindsMask; mask != 0; mask &= mask - 1) n++;
+                return n;
+            }
+        }
+
         public bool IsReacting(int passenger) =>
             passenger >= 0 && passenger < _slots.Length && _slots[passenger].Active;
 
@@ -115,6 +134,7 @@ namespace Ascend.Prototype.Npc
             _cursor = 0;
             StartedCount = 0;
             SuppressedCount = 0;
+            FiredKindsMask = 0;
         }
 
         /// <summary>
@@ -184,6 +204,12 @@ namespace Ascend.Prototype.Npc
             _selected.Add(index);
             _cursor = (index + 1) % _slots.Length;
             StartedCount++;
+
+            // 어떤 **종류**가 울렸는지 비트로 남긴다. 총합만으로는 한 종류가 110번 울린 것과
+            // 열한 종류가 열 번씩 울린 것이 구분되지 않고, `UP-NPC-02` 가 묻는 것은 후자다.
+            // 종류는 1~11 이라 int 하나로 충분하다.
+            int bit = (int)reactionEvent;
+            if (bit > 0 && bit < 32) FiredKindsMask |= 1 << bit;
         }
 
         private PassengerReaction Resolve(PassengerReactionEvent reactionEvent)

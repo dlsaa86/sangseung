@@ -36,6 +36,7 @@ namespace Ascend.Prototype.Npc
 
         private int _startedBeforeRebuild;
         private int _suppressedBeforeRebuild;
+        private int _firedKindsBeforeRebuild;
 
         /// <summary>지금 반응 중인 승객 수. 검증 하네스가 §9.4 상한을 확인할 때 읽는다.</summary>
         public int ActiveReactionCount => _director != null ? _director.ActiveCount : 0;
@@ -78,6 +79,24 @@ namespace Ascend.Prototype.Npc
         /// <summary>중재 대상 승객 수. 0 이면 칸이 비어 있어 반응이 **관측 불가**한 것이다.</summary>
         public int PassengerCount => _director != null ? _director.PassengerCount : 0;
 
+        /// <summary>
+        /// 런 전체에서 울린 사건 종류의 비트 집합. 누적 카운터와 같은 이유로 재구성을 견딘다 —
+        /// 하차 한 번에 「어떤 종류가 울렸나」가 통째로 사라지면 `UP-NPC-02` 를 셀 수 없다.
+        /// </summary>
+        public int FiredKindsMask =>
+            _firedKindsBeforeRebuild | (_director != null ? _director.FiredKindsMask : 0);
+
+        /// <summary>울린 종류 수.</summary>
+        public int FiredKindCount
+        {
+            get
+            {
+                int n = 0;
+                for (int mask = FiredKindsMask; mask != 0; mask &= mask - 1) n++;
+                return n;
+            }
+        }
+
         private void Awake()
         {
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
@@ -104,6 +123,7 @@ namespace Ascend.Prototype.Npc
             // 누적에 더한 뒤라 0 으로 돌아가지 않는다.
             _startedBeforeRebuild = 0;
             _suppressedBeforeRebuild = 0;
+            _firedKindsBeforeRebuild = 0;
             PeakActiveCount = 0;
         }
 
@@ -116,9 +136,10 @@ namespace Ascend.Prototype.Npc
         {
             _router?.Detach();
 
-            // 버리기 전에 거둬 둔다 — 이 두 줄이 없으면 하차 한 번에 그 층의 반응 기록이 사라진다.
+            // 버리기 전에 거둬 둔다 — 이 세 줄이 없으면 하차 한 번에 그 층의 반응 기록이 사라진다.
             _startedBeforeRebuild += StartedCount;
             _suppressedBeforeRebuild += SuppressedCount;
+            if (_director != null) _firedKindsBeforeRebuild |= _director.FiredKindsMask;
 
             _director = new PassengerReactionDirector(
                 passengerCount,

@@ -105,6 +105,7 @@ namespace Ascend.Prototype.Run.Tests
         private void CheckEyeHeight()
         {
             var player = FindAnyObjectByType<Player.FirstPersonController>();
+            _player = player;   // 연출 잠금 중 조작 생존 검사가 다시 쓴다
             if (player == null)
             {
                 Check("1인칭 카메라 눈높이", false, "FirstPersonController 없음");
@@ -279,7 +280,9 @@ namespace Ascend.Prototype.Run.Tests
                                    ? $" · 과적 최대 {_overWeight:F0}/{_overCapacityAt:F0}kg"
                                    : " · 과적 없음"));
             _report.AppendLine($"  승객반응 시작 {_reactionsStarted} · 억제 {_reactionsSuppressed} · " +
-                               $"최대동시 {_peakConcurrentReactions}(상한 {_maxConcurrentSeen})");
+                               $"최대동시 {_peakConcurrentReactions}(상한 {_maxConcurrentSeen}) · " +
+                               $"울린 종류 {BitCount(_reactionKindsMask)}");
+            _report.AppendLine($"  오디오 큐 울린 종류 {BitCount(_audioKindsMask)}");
 
             Check($"칸을 끝까지 채운 적이 있다 — {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸",
                   _peakLoadSlots >= BuildLoadout.MaxSlots,
@@ -319,6 +322,37 @@ namespace Ascend.Prototype.Run.Tests
                   $"뷰={_sawReactionView} 상한={_maxConcurrentSeen} 승객최대={_peakPassengersHeld} " +
                   $"최대동시={_peakConcurrentReactions} — 상한 초과이거나 관측 조건이 안 섰다");
 
+            // 위의 두 단정(`중복 입력`·`조작 생존`)은 **잠긴 프레임 안에서만** 돈다.
+            // 잠금을 한 번도 못 봤으면 그 둘은 실행되지 않았고, 실행되지 않은 단정은
+            // 통과가 아니라 미검증이다 — 이 줄이 없으면 그 사실이 로그에 남지 않는다.
+            Check("연출 잠금을 실제로 관측했다", _sawPresentationLock,
+                  "한 번도 `IsLocked == true` 인 프레임을 못 봤다 — " +
+                  "중복 입력·조작 생존 단정이 하나도 실행되지 않았다는 뜻이다");
+
+            Check("승객이 탄 상태에서 두 소유자를 대조했다", _sawNonEmptyOwnerCheck,
+                  "0명 == 0명 만 비교했다 — 통과가 아니라 공허다");
+
+            // ── 종류 하한 (라쳇) ──
+            //
+            // **이것은 요구사항 검사가 아니다.** `UP-NPC-02` 는 반응 10종, `UP-AUD-02` 는
+            // 사운드 10종을 요구하고, 아래 하한은 **지금 실제로 관측된 수**다. 되찾은 땅을
+            // 잃지 않기 위한 회귀 방지선이며, 요구 수치를 만족한다는 뜻이 아니다.
+            // 관측 수가 올라가면 하한도 함께 올린다 — 내려가면 그것이 회귀다.
+            const int ReactionKindFloor = 8;    // 전체 11종 중
+            const int AudioKindFloor = 14;      // 전체 16종 중
+
+            int reactionKinds = BitCount(_reactionKindsMask);
+            int audioKinds = BitCount(_audioKindsMask);
+
+            Check($"승객 반응 종류가 줄지 않았다 — {reactionKinds}종 (하한 {ReactionKindFloor})",
+                  reactionKinds >= ReactionKindFloor,
+                  $"{reactionKinds}종 — 하한 {ReactionKindFloor} 아래로 내려갔다. " +
+                  "총합이 아니라 **종류**가 줄었다는 뜻이다");
+
+            Check($"오디오 큐 종류가 줄지 않았다 — {audioKinds}종 (하한 {AudioKindFloor})",
+                  audioKinds >= AudioKindFloor,
+                  $"{audioKinds}종 — 하한 {AudioKindFloor} 아래로 내려갔다");
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
             _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
             Finish();
@@ -346,6 +380,19 @@ namespace Ascend.Prototype.Run.Tests
         private int _maxConcurrentSeen;
         private bool _sawReactionView;
         private bool _budgetExhausted;
+        private int _reactionKindsMask;
+        private int _audioKindsMask;
+        private bool _sawPresentationLock;
+        private bool _sawNonEmptyOwnerCheck;
+        private Player.FirstPersonController _player;
+        private Npc.PassengerReactionView _reactionView;
+
+        private static int BitCount(int mask)
+        {
+            int n = 0;
+            for (int m = mask; m != 0; m &= m - 1) n++;
+            return n;
+        }
 
         /// <summary>
         /// 적재 방식. <c>boardCount</c> 하나로는 「몇 개」만 말할 수 있고 「무엇을」은 말할 수 없다.
@@ -517,6 +564,27 @@ namespace Ascend.Prototype.Run.Tests
                           loadedFigures >= run.Session.Loadout.Count,
                           $"적재 {run.Session.Loadout.Count}개인데 오브젝트 {loadedFigures}개");
 
+                    // **승객 수의 소유자가 둘이다.** 세션 적재(`BuildLoadout`)와 중재기 슬롯 수
+                    // (`BuildFigureView` 가 만든 승객 수)가 우연히 같은 상한(6)을 가질 뿐이고,
+                    // `MaxSlots` 를 8 로 올리면 7·8번째는 오브젝트도 중재기 슬롯도 없다.
+                    // `Rebuild` 의 `i < CarSlots.Length` 가 경고 없이 자르므로 무게와 요구 전력은
+                    // 8개를 세는데 화면과 반응은 6개가 된다.
+                    //
+                    // **적재 직후에 잰다.** 런이 끝난 뒤에 재면 승객이 이미 내려서 0 == 0 만
+                    // 비교하게 되고, 그것은 통과가 아니라 공허다 — 실제로 처음엔 10건 중 9건이 그랬다.
+                    if (_reactionView != null)
+                    {
+                        int held = BuildLoadPolicy.CountPassengers(run.Session.Loadout);
+                        yield return null;   // 뷰가 인원 변화를 반영할 한 프레임
+                        Check($"{number}층 승객 수의 두 소유자가 같다 — " +
+                              $"적재 {held}명 / 중재기 {_reactionView.PassengerCount}명",
+                              held == _reactionView.PassengerCount,
+                              $"적재는 {held}명인데 중재기는 {_reactionView.PassengerCount}명 — " +
+                              $"`BuildLoadout.MaxSlots`({BuildLoadout.MaxSlots})와 " +
+                              "`BuildFigureView.CarSlots.Length` 가 어긋났을 수 있다");
+                        if (held > 0) _sawNonEmptyOwnerCheck = true;
+                    }
+
                     door.Interact(gameObject);
                     yield return null;
                     peakWeight = Mathf.Max(peakWeight, run.Session.CarriedWeight);
@@ -556,6 +624,37 @@ namespace Ascend.Prototype.Run.Tests
                     lever.Interact(gameObject);
                     spins++;
                     yield return null;
+
+                    // **잠긴 순간을 여기서만 볼 수 있다.** 아래 `WaitWhileLocked` 뒤에 재면
+                    // 언제나 `연출잠금=False` 다 — 실제로 395건 중 `True` 가 0회였고,
+                    // 그래서 `UP-RUN-08`·`UP-SPACE-08` 의 증거로 걸린 그 필드는 잠금을
+                    // 한 번도 관측한 적이 없었다.
+                    if (bridge.IsLocked)
+                    {
+                        _sawPresentationLock = true;
+
+                        // ① 중복 입력이 상태를 손상시키지 않는다 (`UP-RUN-08`).
+                        //    연출 중에 레버를 또 눌러도 스핀이 하나 더 소비되면 안 된다.
+                        int spinsBefore = floor.SpinsRemaining;
+                        lever.Interact(gameObject);
+                        lever.Interact(gameObject);
+                        yield return null;
+                        Check($"{number}층 연출 중 레버를 더 눌러도 스핀이 줄지 않는다",
+                              floor.SpinsRemaining == spinsBefore,
+                              $"남은 스핀 {spinsBefore} → {floor.SpinsRemaining}");
+
+                        // ② 판정 중에도 이동·시점 회전이 막히지 않는다 (`UP-SPACE-08`).
+                        //    결과 공개 중 플레이어를 얼어붙게 하는 것이 전형적 실패다.
+                        //    입력을 흉내 내는 대신 **얼릴 방법 두 가지**가 쓰이지 않았는지 본다.
+                        if (_player != null)
+                            Check($"{number}층 연출 중에도 플레이어 조작이 살아 있다",
+                                  _player.enabled && _player.gameObject.activeInHierarchy &&
+                                  Time.timeScale > 0f,
+                                  $"controller={_player.enabled} " +
+                                  $"active={_player.gameObject.activeInHierarchy} " +
+                                  $"timeScale={Time.timeScale}");
+                    }
+
                     yield return WaitWhileLocked(bridge);
                 }
 
@@ -784,6 +883,9 @@ namespace Ascend.Prototype.Run.Tests
         /// </summary>
         private void CheckProfileInjection()
         {
+            // 여기서 잡아 둔다 — 적재 직후의 승객 수 대조가 첫 런부터 돌아야 한다.
+            _reactionView = FindAnyObjectByType<Npc.PassengerReactionView>();
+
             Risk.RiskStateView risk = FindAnyObjectByType<Risk.RiskStateView>();
             Check("위험 연출이 DangerFeedbackProfile 을 읽는다",
                   risk != null && risk.ProfileSource.EndsWith("Profile"),
@@ -867,6 +969,18 @@ namespace Ascend.Prototype.Run.Tests
             if (view.PeakActiveCount > _peakConcurrentReactions)
                 _peakConcurrentReactions = view.PeakActiveCount;
             if (view.MaxConcurrent > _maxConcurrentSeen) _maxConcurrentSeen = view.MaxConcurrent;
+            _reactionKindsMask |= view.FiredKindsMask;
+
+            Audio.AudioDirector audio = FindAnyObjectByType<Audio.AudioDirector>();
+            if (audio != null) _audioKindsMask |= audio.PlayedKindsMask;
+
+            // **승객 수의 소유자가 둘이다.** 세션 적재(`BuildLoadout`)와 중재기 슬롯 수
+            // (`BuildFigureView` 가 만든 승객 수)가 우연히 같은 상한을 갖고 있을 뿐,
+            // `MaxSlots` 를 8 로 올리면 7·8번째는 오브젝트도 중재기 슬롯도 없다.
+            // `Rebuild` 의 `i < CarSlots.Length` 가 경고 없이 자르므로 무게와 요구 전력은
+            // 8개를 세는데 화면과 반응은 6개가 된다. 두 수를 나란히 찍기만 하고 비교하지
+            // 않으면 그 어긋남이 로그 안에서 보이지 않는다.
+            _reactionView = view;
 
             _report.AppendLine($"  승객반응 시작 {view.TotalStartedCount} / 억제 {view.TotalSuppressedCount}" +
                                $" / 최대동시 {view.PeakActiveCount}(상한 {view.MaxConcurrent})" +

@@ -109,6 +109,23 @@ namespace Ascend.Prototype.Audio
         public int DroppedCueCount { get; private set; }
 
         /// <summary>
+        /// 실제로 재생된 큐 **종류**의 비트 집합. 비트 n 은 `(AudioCueKind)n`.
+        /// 총합(<see cref="PlayedCueCount"/>)으로는 「10종이 각각 났는가」를 셀 수 없다.
+        /// </summary>
+        public int PlayedKindsMask { get; private set; }
+
+        /// <summary>재생된 큐 종류 수.</summary>
+        public int PlayedKindCount
+        {
+            get
+            {
+                int n = 0;
+                for (int mask = PlayedKindsMask; mask != 0; mask &= mask - 1) n++;
+                return n;
+            }
+        }
+
+        /// <summary>
         /// 소리 없이 지나간 사건 수. 층 흐름 사건처럼 **의도적으로** 조용한 것도 포함한다 —
         /// 0이어야 하는 값이 아니라, 매핑 표를 고쳤을 때 이 수가 크게 움직였는지 보는 값이다.
         /// </summary>
@@ -392,6 +409,13 @@ namespace Ascend.Prototype.Audio
             source.PlayOneShot(clip, req.Volume);
 
             PlayedCueCount++;
+
+            // **총합이 아니라 종류를 센다.** `UP-AUD-02` 는 「룰렛 사운드 10종」을 요구하는데
+            // 「재생 3건」으로는 한 종류가 세 번 난 것과 세 종류가 한 번씩 난 것이 구분되지 않는다.
+            // 종류가 32 미만이라 int 하나로 충분하다.
+            int bit = (int)req.Kind;
+            if (bit > 0 && bit < 32) PlayedKindsMask |= 1 << bit;
+
             if (_logCues) Debug.Log("[상승] 오디오 큐 " + req + " ch=" + channel);
         }
 

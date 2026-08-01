@@ -339,13 +339,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-08 — 판정 진행 중에도 이동·시점 회전 허용
 - 분류: Required · 출처: PRD §17.1(진행 불가 상태 없음), N01 「자동 연쇄가 진행되는 동안 이동과 시점 회전은 허용」, N08 §17
-- 상태: CONNECTED · 패스: P2
+- 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/View/SpinPresenter.cs`(연출 잠금은 입력만 잠근다), `FirstPersonController.cs`
 - 접근: 레버를 당긴 직후 이동해 본다
-- 검증: `Logs/tenfloor_playmode.txt` 「연출잠금」 상태 기록
+- 검증: `TenFloorAutoPilot` 의 「연출 중에도 플레이어 조작이 살아 있다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-SPACE-01, UP-CORE-11
-- 남은 문제: 전용 단정이 없다. 현재는 상태 로그로만 확인된다
+- 남은 문제: 잠긴 프레임에서 `CharacterController` 활성·오브젝트 활성·`Time.timeScale > 0` 을 확인한다. **얼리는 방법 두 가지가 쓰이지 않았음**을 보는 것이지 실제로 움직여 본 것은 아니다 — 입력 시뮬레이션은 하네스가 못 한다. 결과 공개 중 플레이어를 얼어붙게 하는 것이 전형적 실패라 이 축이 필요했다
 
 ### UP-SPACE-09 — 등을 돌려도 결과와 전력 변화를 알 수 있다
 - 분류: Required · 출처: PRD §11(무음 관전자 기준), N03 「등을 돌려도 사운드·점등·보조 UI로」, N08 §17
@@ -809,13 +809,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-08 — 중복 입력으로 상태가 손상되지 않는다
 - 분류: Required · 출처: N08 §19.2, §24 「결과 공개가 끝나기 전에 중복 스핀 가능한 구조」 금지
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: CONNECTED · 패스: P2
 - 구현: `Scripts/Run/RouletteInteractionBridge.cs`(연출 잠금)
 - 접근: 스핀 중 레버를 연타한다
-- 검증: `Logs/tenfloor_playmode.txt` 「연출잠금」
+- 검증: `TenFloorAutoPilot` 의 「연출 중 레버를 더 눌러도 스핀이 줄지 않는다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-CORE-11
-- 남은 문제: 없음
+- 남은 문제: **처음으로 잠긴 순간에 관측했다.** 이전 단정은 `WaitWhileLocked` 뒤에 상태를 찍어서 395건 중 `연출잠금=True` 가 **0회**였다 — 즉 잠금 자체를 한 번도 본 적이 없었다. 이제 레버를 당긴 직후 잠긴 프레임에서 레버를 두 번 더 누르고 남은 스핀이 변하지 않는지 본다. 「연출 잠금을 실제로 관측했다」 단정이 이 검사가 도달했음을 보증한다 — 실행되지 않은 단정은 통과가 아니다
 
 ### UP-RUN-09 — 돈(Money) 자원
 - 분류: Deferred · 출처: N99 「핵심 재화: 전력·돈」, N08 §5.1 — **PRD §4.1에 없다**
@@ -1055,13 +1055,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-02 — 프로토타입 반응 이벤트 10종
 - 분류: Required · 출처: PRD §9.2 (계약 선택 / 기본 정화 / 5연쇄 / 임계점 3개 / 과수확 해금 / 과수확 접근 / 추가 스핀 / Critical 진입 / Collapse 직전 / 사고·성공)
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Npc/PassengerReactionEvent.cs`(11종 + `TryMap`), `PassengerReactionSet.cs`(11종 기본값), `PassengerReactionView.cs`(씬 진입점)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Npc/PassengerReactionEvent.cs`(11종) + `PassengerReactionDirector.FiredKindsMask` + 씬 `PassengerReactionView`
 - 접근: 각 사건이 일어날 때 승객을 본다
-- 검증: `Ascend/Run All EditMode Tests` → 「11종 전부가 사건 목록에서 유도된다」·「5연쇄는 깊이 5부터」·「임계점 100·170·300 이 서로 갈린다」
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `TenFloorAutoPilot` 의 「승객 반응 종류가 줄지 않았다」 + `Ascend/Run All EditMode Tests`
+- 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-NPC-01
-- 남은 문제: 사건 → 반응 매핑 11종이 전부 테스트로 증명됐다. **아직 씬에서 승객이 움직이지 않는다** — `PassengerReactionView` 배선이 남았다
+- 남은 문제: **11종 중 8종이 실제로 울렸다**(총 110건). 이제 총합이 아니라 종류를 센다 — 「반응 110건」은 한 종류가 110번 울려도 나오는 숫자였다. **안 울린 3종을 특정해야 한다** — 하네스가 과수확을 안 당기는 적재 런에서는 `OverharvestUnlocked`·`OverharvestApproach`·`ExtraSpin` 이 안 나올 수 있다(추정). 요구는 10종이고 하한 8 은 회귀 방지선이지 충족이 아니다
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
@@ -1085,13 +1085,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-05 — 동시 반응 제한 (우선순위·쿨다운·최대 수)
 - 분류: Required · 출처: PRD §9.4 「한 이벤트에서 모든 승객이 동시에 말하지 않는다」
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Npc/PassengerReactionDirector.cs`(우선순위·쿨다운·최대 동시 수·결정론적 라운드 로빈)
+- 상태: CONNECTED · 패스: P2
+- 구현: `Scripts/Npc/PassengerReactionDirector.cs`(우선순위·쿨다운·최대 수) + 씬 배선
 - 접근: 해당 없음
-- 검증: `Ascend/Run All EditMode Tests` → 동시 반응 상한·쿨다운·우선순위 덮어쓰기·승객 0명
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `TenFloorAutoPilot` 의 「동시 반응이 상한을 넘지 않았다」
+- 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-NPC-02
-- 남은 문제: 중재기는 완성됐으나 **승객 오브젝트에 붙지 않았다.** `BuildFigureView`가 반응을 실제 자세·시선으로 옮겨야 한다
+- 남은 문제: **승객 4명 > 상한 2 인 상태에서 최대동시가 2 를 넘지 않았다** — 관측 조건이 성립한 상태의 단정이다. 승객이 상한 이하면 §9.4 는 관측 불가이지 충족이 아니므로, 단정 자체에 그 조건을 걸어 공허한 통과를 막았다. **억제 130건은 증거가 아니다** — `SuppressedCount` 는 「아무도 못 했다」에서만 오르고 그 대부분은 상한이 아니라 쿨다운(4~10초)이다
 
 ## 2.11 REC — 사고 기록기
 
@@ -1267,7 +1267,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` 13건 + `WaveBRuntimeProbe` 재생 카운터
 - 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-CORE-11
-- 남은 문제: **소리가 실제로 난다** — 큐 3건 재생 / 0건 버림. 남은 것은 10종 각각이 서로 다른 소리로 들리는지의 청취 확인(PRD §13 「오디오만 듣는 테스트」)이며 사람이 필요하다
+- 남은 문제: **16종 중 14종이 실제로 재생됐다.** `AudioDirector.PlayedKindsMask` 가 종류를 센다 — 이전에는 「재생 3건」만 있어서 한 종류가 세 번 난 것과 세 종류가 한 번씩 난 것이 구분되지 않았다. 남은 것은 ① 안 난 2종의 특정 ② 10종이 서로 **다른 소리로 들리는가**의 청취 확인(PRD §13, 사람이 필요하다)
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
 - 분류: Required · 출처: PRD §7.3(4)
