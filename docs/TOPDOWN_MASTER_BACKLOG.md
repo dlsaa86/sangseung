@@ -1597,7 +1597,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-FIX-07 | HUD 텍스트가 화면 오른쪽 끝에서 잘린다 | UP-CORE-13, UP-VIS-09 | 열림 |
 | UP-FIX-08 | 계기와 3×3 판이 한 화면에 안 들어온다 (금지 `B-5 #15`) | UP-VIS-07, UP-CORE-13, UP-SPACE-09 | 열림 |
 | UP-FIX-09 | `14_contract_select` 재설계 — 판독성 1/5 | UP-CONTRACT-05, UP-VIS-07 | 열림 |
-| UP-FIX-10 | Critical/Collapse 게이지가 Strain 보다 창백하다 (위급도 역전) | UP-RISK-03, UP-VIS-07 | 열림 |
+| UP-FIX-10 | 게이지가 위험 단계를 읽는다 — Critical 0.55 / Collapse 0.85 로 위급색에 끌린다 | UP-RISK-03, UP-VIS-07 | **코드 완료 · 시각 판정 대기** |
 | UP-FIX-11 | 사고 기록기가 자기 자신과 모순한다 (3건) | UP-REC-02, UP-REC-03 | 열림 |
 | UP-FIX-12 | 월드 라벨이 통관 지오메트리에 **절단**된다 — 축이 크기가 아니라 깊이·가림이다 | UP-NPC-04, UP-VIS-10 | 열림 |
 | UP-FIX-13 | 매니페스트 주장과 그림이 다른 장 9건 | UP-VIS-06 | 열림 |

@@ -61,6 +61,9 @@ namespace Ascend.Prototype.View
         [SerializeField] private Color _atRequired = new Color(0.45f, 0.90f, 0.70f);
         [SerializeField] private Color _overharvested = new Color(1f, 0.66f, 0.25f);
 
+        [Tooltip("Critical·Collapse 에서 게이지가 끌려가는 색. 전력 비율과 무관하게 위급이 이긴다.")]
+        [SerializeField] private Color _dangerTint = new Color(0.92f, 0.24f, 0.20f);
+
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
@@ -313,11 +316,36 @@ namespace Ascend.Prototype.View
                 _barPivot.localScale = scale;
             }
 
+            // **위험 단계가 전력 비율을 이긴다.** 이전에는 색이 비율과 과수확 횟수만
+            // 보고 결정돼서, Collapse 인데 비율이 낮으면 창백한 회색이 되고 Stable
+            // 336% 는 선명한 녹색이 됐다. 독립 시각 평가가 **세 번 연속** 「최악 상태의
+            // 계기가 가장 태연하다」고 지적한 것이 이것이다(`UP-FIX-10`).
+            //
+            // 덮어쓰지 않고 **끌어당긴다** — 통째로 갈면 「전력이 얼마나 찼는가」라는
+            // 게이지 본래의 정보가 사라진다. 색만 위급해지고 길이는 그대로다.
+            color = ApplyRiskUrgency(color);
+
             if (_barFill == null) return;
             _barFill.GetPropertyBlock(_block);
             _block.SetColor(BaseColorId, color);
             _block.SetColor(EmissionColorId, color * 1.6f);
             _barFill.SetPropertyBlock(_block);
+        }
+
+        /// <summary>
+        /// 위험 단계에 따라 게이지 색을 위급 쪽으로 끌어당긴다.
+        /// Stable·Strain 은 그대로 두고 Critical 부터 개입한다 — 이르게 개입하면
+        /// 「전력이 모자란 것」과 「위험한 것」이 구분되지 않는다.
+        /// </summary>
+        private Color ApplyRiskUrgency(Color baseColor)
+        {
+            if (_risk == null) return baseColor;
+            switch (_risk.Level)
+            {
+                case Risk.RiskLevel.Critical: return Color.Lerp(baseColor, _dangerTint, 0.55f);
+                case Risk.RiskLevel.Collapse: return Color.Lerp(baseColor, _dangerTint, 0.85f);
+                default:                      return baseColor;
+            }
         }
 
         /// <summary>
