@@ -11,7 +11,7 @@
 |---|---|
 | 현재 패스 | **Pass 1 — Breadth First Coverage** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `33f1b54` — 세션 기록 (테스트 110 PASS / 0 FAIL) |
+| 마지막 정상 커밋 | `27dab79` — 탑다운 실행 구조 설치 (게임 코드 변경 없음) |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` (Required 130 · VERIFIED 0) |
 | 갱신 시각 | 2026-08-01 |
@@ -67,6 +67,6 @@ Pass 1의 완료 조건은 **Required 항목 중 `NOT_STARTED`가 0개**다. 현
 형식: `YYYY-MM-DD HH:MM · <커밋> · <패스> · <완료한 ID> · <테스트 결과>`
 
 ```
-2026-08-01 · (커밋 전) · Pass 1 · 탑다운 실행 구조 설치 · 게임 코드 변경 없음
+2026-08-01 · 27dab79 · Pass 1 · 탑다운 실행 구조 설치 (백로그 130 / 검증기 / Stop hook 2개) · 게임 코드 변경 없음, EditMode 91 PASS / PlayMode 394 PASS 유지
 ```
 </content>
