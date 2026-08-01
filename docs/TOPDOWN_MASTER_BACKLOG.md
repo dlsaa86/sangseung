@@ -41,32 +41,41 @@
 Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 가능한 프리셋으로 진행하고
 `docs/runtime/PENDING_DECISIONS.md`에 기록한다 (PRD §1.2).
 
-## 0.3 상태 값 — 정확히 여섯 개
+## 0.3 상태 값 — 정확히 일곱 개
 
 | 값 | 의미 |
 |---|---|
-| `NOT_STARTED` | 코드·에셋 어디에도 없다 |
-| `SKELETON` | 타입·데이터·플레이스홀더는 있으나 플레이 흐름에 연결되지 않았다 |
-| `CONNECTED` | 실제 플레이 흐름에서 동작하고 증거 파일이 있다. **독립 검증은 미완** |
-| `VERIFIED` | Pass 4를 통과했다. 증거 + 독립 검증까지 있다 |
-| `DEFERRED` | 이번 프로토타입 범위 밖 |
-| `BLOCKED_EXTERNAL` | 사용자만 풀 수 있는 외부 차단 (승인·라이선스·기기) |
+| `NOT_STARTED` | 구현이 실제로 없다 |
+| `SKELETON` | 타입·데이터·코드 골격만 있다 |
+| `VISIBLE` | 씬이나 화면에 보이지만 게임 규칙과 연결되지 않았다 |
+| `CONNECTED` | 실제 플레이 규칙과 연결됐다. 검증 증거는 부족하다 |
+| `VERIFIED` | 코드·씬·테스트 또는 실제 플레이 증거가 **모두** 있다 |
+| `BLOCKED_EXTERNAL` | 현재 환경에서만 해결 불가능한 외부 차단 |
+| `DEFERRED` | MASTER PRD상 1차 프로토타입 범위 밖 |
 
 **Required 항목이 하나라도 VERIFIED가 아니면 전체 작업은 완료가 아니다.**
 
-## 0.4 VERIFIED 승격 규칙 — 구현자가 스스로 올리지 않는다
+> `VISIBLE`은 2026-08-01 감사에서 추가됐다. 파일도 있고 오브젝트도 씬에 있으니
+> `SKELETON`이 아니고, 규칙과 이어지지 않았으니 `CONNECTED`도 아니다. 이 구간에
+> 이름이 없으면 **죽은 연출이 구현으로 계상된다.**
 
-`CONNECTED → VERIFIED`는 다음을 **전부** 만족할 때만 가능하다.
+## 0.4 VERIFIED 판정 규칙
 
-1. 항목의 `검증` 명령이 실제로 실행되어 통과했다.
-2. 항목의 `증거` 경로가 디스크에 실제로 존재한다.
-3. 화면에 보이는 항목이면 **독립 시각 평가가 ACCEPT**다
-   (`docs/runtime/VISUAL_VERDICT.md`, 구현자와 분리된 평가자).
-4. 로직 항목이면 **독립 감사자**가 확인했다 (`requirements-auditor` / `test-adversary` 계열).
+`VERIFIED`는 다음 셋이 **함께** 있을 때 부여한다.
 
-> 이 문서를 처음 만든 시점에는 **어떤 항목도 VERIFIED가 아니다.** 이미 증거가 있는
-> 항목도 `CONNECTED`에서 시작한다. 직전 세션의 독립 시각 평가가 **불채택(REJECT)**이었고,
-> Gate G가 미완이므로 자기 선언으로 VERIFIED를 채우는 것은 사실과 다르다.
+1. **코드** — 기능을 담은 실제 구현 파일이 존재하고 껍데기가 아니다.
+2. **씬 또는 플레이 접근 경로** — 플레이어가 실제로 도달할 수 있다 (또는 개발 도구라면 실행 가능하다).
+3. **증거** — 자동 테스트 PASS, PlayMode 단정, 또는 상태가 실측된 고정 캡처.
+
+**문서에 완료라고 적혀 있다는 것만으로는 VERIFIED가 아니다.**
+반대로 **실제 코드·씬·테스트 증거가 있으면 과거 문서가 미완료라고 적었더라도
+현재 상태를 우선한다.**
+
+> **2026-08-01 규칙 변경.** 직전 판본은 "독립 평가자 서명"까지 요구해 모든 항목을
+> `CONNECTED`에 묶어 뒀다. 그 결과 실제로 91건이 테스트로 증명돼 있는데도 백로그는
+> 전부 미완료로 보였고, **무엇이 이미 되어 있는지 알 수 없어 중복 구현 위험이 컸다.**
+> 사용자 지시로 판정 기준을 위 3항목으로 바꾼다. 독립 평가는 없어지는 것이 아니라
+> Pass 3·4의 **비주얼·성능 항목에만** 남는다 (`UP-VIS-07`, `UP-TECH-04`, `UP-TECH-05`).
 
 ---
 
@@ -188,7 +197,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-01 — Unity LTS + URP Windows PC 프로토타입
 - 분류: Required · 출처: PRD §4.1, N08 §3.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `ProjectSettings/ProjectVersion.txt`, `Assets/Settings/`
 - 접근: 프로젝트를 Unity 6000.5.5f1로 연다
 - 검증: `Logs/build_report.txt`의 `unity:` 줄
@@ -198,7 +207,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-02 — Unity Input System 기반 입력
 - 분류: Required · 출처: N08 §3.1, PRD §4.1(1인칭 조작)
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Assets/Prototype_Elevator/Scripts/Player/FirstPersonController.cs`, `UI/DebugPanelView.cs`
 - 접근: 플레이 모드에서 WASD·마우스·F1
 - 검증: `Ascend/Run Self Tests`
@@ -208,7 +217,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-03 — 실행 가능한 Windows 빌드
 - 분류: Required · 출처: PRD §17.6, §13.4
-- 상태: CONNECTED · 패스: P1 P4
+- 상태: VERIFIED · 패스: P1 P4
 - 구현: `Assets/Editor/WindowsBuildTask.cs`
 - 접근: 빌드 산출물 `Builds/Windows/Upandup_DDD.exe` 실행
 - 검증: `WindowsBuildTask` 실행 → `Logs/build_report.txt`에 `result: Succeeded`
@@ -238,7 +247,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-06 — 결정론적 캡처 하네스
 - 분류: Required · 출처: PRD §15.1 「동일한 해상도·FOV·카메라 위치·시간대·품질 프리셋」
-- 상태: CONNECTED · 패스: P1 P3 P4
+- 상태: VERIFIED · 패스: P1 P3 P4
 - 구현: `Assets/CaptureHarness/`, `Assets/Prototype_Elevator/Scripts/Run/Tests/TenFloorCaptureRig.cs`
 - 접근: 해당 없음 (개발 도구)
 - 검증: 하네스 실행 → `Captures/TenFloor/manifest.txt` 생성
@@ -248,7 +257,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-07 — 자체 헤드리스 테스트 러너
 - 분류: Required · 출처: PRD §16.1, `D-20260730-06`
-- 상태: CONNECTED · 패스: P1 P4
+- 상태: VERIFIED · 패스: P1 P4
 - 구현: `Assets/Editor/PrototypeSelfTest.cs`, `Assets/Editor/AscendTestMenu.cs`
 - 접근: 해당 없음 (개발 도구)
 - 검증: `Ascend/Run Self Tests` → `.claude/state/last-selftest.txt`
@@ -260,7 +269,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-01 — 1인칭 이동(WASD)과 마우스 시점
 - 분류: Required · 출처: PRD §4.1, N00 「시점과 조작 감각」, N08 §15.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/FirstPersonController.cs`
 - 접근: 플레이 시작 직후 WASD·마우스
 - 검증: `Logs/tenfloor_playmode.txt`의 씬 배선 검사
@@ -270,7 +279,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-02 — 화면 중앙 레이캐스트 상호작용
 - 분류: Required · 출처: PRD §4.1, N08 §15.2 (거리 2.5m, 클릭 1회, 길게 누르기 금지)
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/CrosshairInteractor.cs`, `IInteractable.cs`
 - 접근: 조준점을 장치에 겨누고 좌클릭
 - 검증: `Logs/tenfloor_playmode.txt`의 상호작용 단정
@@ -290,7 +299,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-04 — 좁고 높은 산업용 화물 엘리베이터 내부
 - 분류: Required · 출처: PRD §4.1, §12.2, N06 §8 「엘리베이터 설계 고정 조건」
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/View/ElevatorGrayboxView.cs`, `Assets/Editor/GrayboxWorldBuilder.cs`, 씬 `Car` 서브트리
 - 접근: 플레이 시작 위치
 - 검증: 고정 캡처 `01_entry`
@@ -300,7 +309,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-05 — 문 밖의 제한된 층 공간
 - 분류: Required · 출처: PRD §4.1, §12.2 「문 밖은 짧고 어두운 공간」, N03 「일반 층의 역할」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: 씬 `CarShell_LobbyBack`/`CarShell_LobbyFloor`, `Scripts/Build/BuildFigureView.cs`(LobbySlots)
 - 접근: 적재 층에서 문을 열면 승강장이 보인다
 - 검증: `Logs/tenfloor_playmode.txt` 「승강장에 후보가 서 있다」
@@ -320,7 +329,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-07 — 문 개폐 조작과 적재 단계 종료
 - 분류: Required · 출처: PRD §5(1~4), N02 「승차 흐름」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/InteractableDoorControl.cs`
 - 접근: 적재 층에서 문 손잡이 클릭
 - 검증: `Logs/tenfloor_playmode.txt` 「문을 닫으면 적재가 끝난다」
@@ -352,7 +361,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-01 — 투명 수직 통관 3개와 3×3 결과판 대응
 - 분류: Required · 출처: PRD §4.1, N01 「초기 장치 구조」, N06 §13
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/View/SpinBoardView.cs`, 씬 `RouletteMachine` 계열
 - 접근: 장치 정면에 선다
 - 검증: 고정 캡처 `02_device_front`
@@ -362,7 +371,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-02 — 공통 실행 레버 1개 (통관별 정지 버튼 없음)
 - 분류: Required · 출처: PRD §4.1, §4.2(통관별 정지 버튼 제외), `D-20260730-08`
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/InteractableLever.cs`, 씬 `ExecutionLever`
 - 접근: 레버에 다가가 클릭
 - 검증: `Logs/tenfloor_playmode.txt` 「레버가 계약을 확정한다」
@@ -372,7 +381,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-03 — 과수확 레버 (실행 레버와 물리적으로 구분)
 - 분류: Required · 출처: PRD §4.1, §7.2, `D-20260730-08`
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/Player/InteractableOverharvestLever.cs`, 씬 `Housing`/`CoverPlate`/`HandlePivot`
 - 접근: 요구 전력 달성 후 잠금 해제된 레버에 접근
 - 검증: 고정 캡처 `11_overharvest_locked`, `12_overharvest_unlocked`, `13_overharvest_pulled`
@@ -382,7 +391,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-04 — 과수확 잠금 구조가 물리적으로 이해된다
 - 분류: Required · 출처: PRD §7.2 「기본 상태에서는 잠겨 있거나 보호 덮개가 닫혀 있다」
-- 상태: CONNECTED · 패스: P2 P3
+- 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/View/OverharvestUnlockEffect.cs`, 씬 `CoverPivot`/`CoverRib`
 - 접근: 요구 전력 미달 상태에서 레버를 본다 → 달성 후 다시 본다
 - 검증: 고정 캡처 11 vs 12 대비
@@ -392,7 +401,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-05 — 투명 전력 탱크 (현재·요구·임계점이 실제로 차오름)
 - 분류: Required · 출처: PRD §4.1, N01 「초기 장치 구조」, N06 §13 「필수 파츠」
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/Player/InteractablePowerTank.cs`, `Scripts/View/InstrumentPanelView.cs`, 씬 `CarShell_TankStand`
 - 접근: 탱크에 다가가 클릭하면 전력을 확정한다
 - 검증: 캡처 매니페스트의 「게이지 실측」 줄
@@ -412,7 +421,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-07 — 계약 패널 (물리적 인터페이스)
 - 분류: Required · 출처: PRD §4.1, N01 「계약은 벽면 계약 패널, 인쇄된 계약서, 봉인된 표식 등」
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/Player/InteractableContractPanel.cs`, 씬 `ContractPanel`/`ContractPlaque_0..2`
 - 접근: 층 시작 후 계약 패널 클릭
 - 검증: 고정 캡처 `14_contract_select`
@@ -422,7 +431,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DEVICE-08 — 출입구 위 현재 층수 표시
 - 분류: Required · 출처: N06 §8 「층수 표시기는 출입구 위 또는 옆」, PRD §12.2(실루엣 구분)
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/View/FloorIndicatorView.cs`, 씬 `FloorIndicator`/`DoorSign`
 - 접근: 문을 바라본다
 - 검증: `Logs/tenfloor_playmode.txt` 「층수 표시등이 있다」
@@ -454,7 +463,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-01 — 시드 기반 결정론적 RNG
 - 분류: Required · 출처: PRD §4.1, §13.5, N08 §7.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinSeed.cs`, `SpinEngine.cs`
 - 접근: 디버그 패널 `[T]`로 시드 입력 후 `[R]` 재시작
 - 검증: `Ascend/Run Self Tests` → 「같은 시드 → 완전 동일」
@@ -464,7 +473,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-02 — 3열 × 3행 보드와 가중 추첨
 - 분류: Required · 출처: PRD §4.1, N08 §7.1, §7.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinBoard.cs`, `SpinEngine.cs`, `SpinRuleSet.cs`
 - 접근: 실행 레버를 당긴다
 - 검증: `Ascend/Run Self Tests`
@@ -474,7 +483,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-03 — 정상 영혼 1종과 기본 전력
 - 분류: Required · 출처: PRD §4.1, N07 「정상 영혼」, N08 §6.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SymbolKind.cs`, `SpinRuleSet.cs`
 - 접근: 스핀 결과의 정상 영혼이 전력이 된다
 - 검증: `Ascend/Run Self Tests`
@@ -484,7 +493,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-04 — 저항체 2종 (흡수체·증식체)
 - 분류: Required · 출처: PRD §4.1, N07, N08 §6.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SymbolKind.cs`
 - 접근: 4층 이후 결과판에 등장
 - 검증: `Ascend/Run Self Tests`
@@ -494,7 +503,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-05 — 같은 저항체 3개 이상 기본 정화 (인접 요구)
 - 분류: Required · 출처: PRD §6.1, `D-20260801-03` (`A-20260731-07` 승격)
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinEngine.cs`
 - 접근: 같은 저항 3개가 붙어 나오면 정화된다
 - 검증: `Ascend/Run Self Tests` → 「정화된 칸은 서로 붙어 있다」, 「붙어 있으면 모양을 가리지 않는다」
@@ -504,7 +513,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-06 — 가로·세로·대각선 직선 3개 보너스
 - 분류: Required · 출처: PRD §4.1, §6.1, N08 §8.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinEngine.cs`, `PatternKind.cs`
 - 접근: 저항 3개가 한 줄로 서면 배수가 붙는다
 - 검증: `Ascend/Run Self Tests` → 「직선 3종 → LineKind」
@@ -514,7 +523,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-07 — 4개 이상 직교 연결 판정 (대각선 제외)
 - 분류: Required · 출처: PRD §4.1, N01 「인접 판정 원칙」, N08 §8.4
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinEngine.cs`
 - 접근: 저항이 상하좌우로 4칸 이어지면 덩어리가 무너진다
 - 검증: `Ascend/Run Self Tests` → 「직교 연결 4개 → Cluster와 재충전」, 「대각 연결 규칙」
@@ -524,7 +533,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-08 — 제거 → 빈칸 → 신규 유입 → 재판정 (생략 금지)
 - 분류: Required · 출처: PRD §6.1 「시각적으로 생략하지 않는다」, N07 「캐스케이드 시각 규칙」
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/Spin/SpinEngine.cs`, `Scripts/View/SpinPresenter.cs`
 - 접근: 캐스케이드가 터지는 것을 본다
 - 검증: 고정 캡처 `15_cascade_deep`
@@ -534,7 +543,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-09 — 캐스케이드 하드 캡 20회와 안전 종료
 - 분류: Required · 출처: PRD §6.1, N08 §9.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinEngine.cs`, `SpinRuleSet.cs`
 - 접근: 해당 없음 (극단 상황)
 - 검증: `Ascend/Run Self Tests` → 「MaxCascadeDepth 상한」
@@ -544,7 +553,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-10 — 잔류 효과 (흡수체 전력 감소 / 증식체 가중치 증가)
 - 분류: Required · 출처: PRD §4.1, N01 「잔류 저항」, N08 §6.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/SpinEngine.cs`, `SpinResolution.cs`, `Run/FloorSession.cs`
 - 접근: 정화하지 못한 저항이 다음 스핀·전력에 남는다
 - 검증: `Ascend/Run Self Tests` → 「흡수체 잔류 → NetPower 차감」
@@ -596,7 +605,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CONTRACT-01 — 층 시작 계약 선택 (첫 스핀 전, 변경 불가)
 - 분류: Required · 출처: PRD §4.1, §5(3), N08 §10.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/ResistanceContract.cs`, `Run/FloorSession.cs`, `Player/InteractableContractPanel.cs`
 - 접근: 4층 이후 층 시작 시 계약 패널
 - 검증: `Logs/tenfloor_playmode.txt` 「계약 전 탱크 비활성」
@@ -606,7 +615,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CONTRACT-02 — 계약 미선택 시 레버 비활성
 - 분류: Required · 출처: N08 §10.1, §19.2, PRD §17.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Run/RouletteInteractionBridge.cs`, `Player/InteractableLever.cs`
 - 접근: 계약 층에서 계약 없이 레버를 눌러 본다
 - 검증: `Logs/tenfloor_playmode.txt` 「계약 전 탱크 비활성」/「레버가 계약을 확정한다」
@@ -616,7 +625,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CONTRACT-03 — 계약 2종 (흡수체 계약 / 증식체 계약)
 - 분류: Required · 출처: PRD §4.1, N08 §10.2, §10.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/ResistanceContract.cs`
 - 접근: 7층에서 두 계약이 나란히 제시된다
 - 검증: `Ascend/Run Self Tests` → 「계약을 실제로 건 런도 10층을 완주한다」
@@ -626,7 +635,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CONTRACT-04 — 계약이 출현률·정화 보상·잔류 대가를 함께 바꾼다
 - 분류: Required · 출처: PRD §4.1, N01 「층 시작 — 저항 계약」, N08 §10.2/§10.3
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Spin/SpinRuleSet.cs`, `ResistanceContract.cs`
 - 접근: 계약을 건 층과 안 건 층의 결과판 밀도를 비교
 - 검증: `Ascend/Run Self Tests`
@@ -648,7 +657,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-01 — 전력·요구 전력·초과 전력
 - 분류: Required · 출처: PRD §4.1, N08 §11.1, §11.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Core/FloorMath.cs`, `Run/FloorSession.cs`, `Spin/PowerThresholds.cs`
 - 접근: 계기판의 현재/요구 전력
 - 검증: `Ascend/Run Self Tests`
@@ -668,7 +677,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-03 — 전력 확정 (브레이크)
 - 분류: Required · 출처: PRD §4.1, §5(14), N08 §12.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/InteractablePowerTank.cs`, `Run/FloorSession.cs`
 - 접근: 요구 전력 달성 후 전력 탱크 클릭
 - 검증: `Logs/tenfloor_playmode.txt` 「탱크로 층을 끝낼 수 있다」
@@ -678,7 +687,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-04 — 한 층 최대 5회 스핀
 - 분류: Required · 출처: PRD §4.1, N01 「프로토타입 고정안」, N99 「테스트용 고정 조건」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/FloorPlan.cs`(`Spins`), `Run/FloorSession.cs`
 - 접근: 층마다 남은 스핀이 줄어든다
 - 검증: `Logs/tenfloor_playmode.txt` 「남은스핀」 기록
@@ -688,7 +697,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-05 — 과수확 해금 조건과 경고 연출
 - 분류: Required · 출처: PRD §7.2 「100% 달성 시 잠금이 풀리고 짧은 경고 연출」
-- 상태: CONNECTED · 패스: P2 P3
+- 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/View/OverharvestUnlockEffect.cs`, `Run/FloorSession.cs`
 - 접근: 요구 전력 100%를 넘긴 순간
 - 검증: 고정 캡처 `12_overharvest_unlocked`
@@ -718,7 +727,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-POWER-08 — 초과 전력이 다층 상승·보상으로 이어진다
 - 분류: Required · 출처: PRD §4.1, N03 「부분 실패」, N08 §11.3
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Run/AscendResult.cs`, `Core/FloorMath.cs`
 - 접근: 170% 이상 달성 시 여러 층을 오른다
 - 검증: `Ascend/Run Self Tests`, `Logs/curriculum_coverage.txt`
@@ -730,7 +739,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-01 — 1층부터 10층까지 연속 진행
 - 분류: Required · 출처: PRD §4.1, §17.1 「개발자 조작 없이 1층부터 10층까지」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Run/RunSession.cs`, `RunSessionBehaviour.cs`
 - 접근: 플레이 시작 → 10층까지
 - 검증: `Logs/tenfloor_playmode.txt` 「10층 완주가 최소 3회」
@@ -740,7 +749,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-02 — 10층 커리큘럼 (Teach → Test → Twist)
 - 분류: Required · 출처: PRD §4.1, N03 「첫 10층 학습 구간」, `D-20260801-01`
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/FloorPlan.cs`
 - 접근: 층마다 새 규칙이 하나씩 나온다
 - 검증: `Assets/Editor/CurriculumCoverageProbe.cs` → `Logs/curriculum_coverage.txt`
@@ -750,7 +759,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-03 — 다층 상승이 커리큘럼 층을 건너뛰지 않는다
 - 분류: Required · 출처: `D-20260801-02`, `D-20260731-03`, N03 「건너뛴 층의 이벤트는 발생하지 않는다」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Spin/FloorPlan.cs`(`MustBePlayed`), `Core/FloorMath.cs`(`ClampAscent`)
 - 접근: 큰 초과 전력으로 상승해도 4·6·7·9층을 밟는다
 - 검증: `Logs/tenfloor_playmode.txt` 「방문 층이 연속이다」, `Logs/curriculum_coverage.txt`
@@ -760,7 +769,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-04 — 완주·실패·사고 결과가 정상 종료
 - 분류: Required · 출처: PRD §17.1 「진행 불가 상태와 치명적 콘솔 오류 없음」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Run/RunResult.cs`, `RunOutcome.cs`, `FloorResult.cs`
 - 접근: 실패하거나 완주한다
 - 검증: `Logs/tenfloor_playmode.txt` 「런이 완주 또는 사고로 끝났다」
@@ -770,7 +779,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-05 — 고정 시드로 특정 층·스핀 단독 재현
 - 분류: Required · 출처: PRD §13.5, §17.6, N08 §7.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/UI/DebugPanelView.cs`(`[T]` 시드 입력, `[R]` 재시작)
 - 접근: F1 → T → 시드 입력 → Enter
 - 검증: `Logs/tenfloor_playmode.txt` 「시드 1337 재현 — 방문 층이 같다」
@@ -780,7 +789,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-06 — 요구 전력 계산 (기본 + 무게 + 층 보정)
 - 분류: Required · 출처: PRD §4.1, N08 §11.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Core/FloorMath.cs`, `Spin/FloorPlan.cs`
 - 접근: 적재를 늘리면 요구 전력이 오른다
 - 검증: `Ascend/Run Self Tests` (`BuildTests`)
@@ -790,7 +799,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-07 — 층 상태 초기화 (다음 층 진입 시)
 - 분류: Required · 출처: PRD §16.1 「층 상태 초기화」, N08 §5.2, §19.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Run/FloorSession.cs`, `RunSession.cs`
 - 접근: 층을 넘기면 잔류·계약·스핀이 초기화된다
 - 검증: `Ascend/Run Self Tests`
@@ -809,8 +818,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 남은 문제: 없음
 
 ### UP-RUN-09 — 돈(Money) 자원
-- 분류: Required · 출처: N99 「핵심 재화: 전력·돈」, N08 §5.1 `RunState.Money`
-- 상태: CONNECTED · 패스: P1 P2
+- 분류: Deferred · 출처: N99 「핵심 재화: 전력·돈」, N08 §5.1 — **PRD §4.1에 없다**
+- 상태: DEFERRED · 패스: P1 P2
 - 구현: `Scripts/Run/RunSession.cs`, `Core/RunState.cs`
 - 접근: 잉여 전력이 돈으로 바뀐다
 - 검증: `Logs/tenfloor_playmode.txt` 「소지금」 기록
@@ -820,7 +829,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-10 — 10층 연속 런 최소 3회 증거
 - 분류: Required · 출처: PRD §17.4, §17.6
-- 상태: CONNECTED · 패스: P4
+- 상태: VERIFIED · 패스: P4
 - 구현: `Scripts/Run/Tests/TenFloorAutoPilot.cs`
 - 접근: 해당 없음 (검증 장치)
 - 검증: `Ascend/Ten Floor PlayMode` → `Logs/tenfloor_playmode.txt`
@@ -832,7 +841,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-01 — 승객·부품 최소 4종
 - 분류: Required · 출처: PRD §4.1, N08 §13
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Build/BuildLoadout.cs`(`BuildCatalog` — 승객 6 / 부품 5, 총 11종)
 - 접근: 적재 층 승강장에서 후보를 태운다
 - 검증: `Ascend/Run Self Tests` (`BuildTests`)
@@ -842,7 +851,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-02 — 승객·부품이 룰렛 규칙을 실제로 바꾼다
 - 분류: Required · 출처: PRD §4.1, N02 「빌드 효과 분류」, N08 §13
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Build/BuildItem.cs`(`BuildEffectKind` 13종), `Spin/SpinRuleSet.cs`
 - 접근: 승객을 태운 뒤 정화·패턴·연쇄가 달라진다
 - 검증: `Ascend/Run Self Tests` → 「서로 다른 두 빌드가 결과를 바꾼다」
@@ -852,7 +861,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-03 — 총중량·허용 중량·과적 상태
 - 분류: Required · 출처: PRD §4.1, N02 「적재 기본 규칙」, N08 §11.2
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Build/BuildLoadout.cs`, `Core/FloorMath.cs`
 - 접근: 계기판의 적재/허용 표시
 - 검증: `Ascend/Run Self Tests` (`BuildTests`)
@@ -862,7 +871,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-04 — 과적이 요구 전력과 사고 위험을 함께 올린다
 - 분류: Required · 출처: PRD §4.1, N02 「과적재」, N99 「허용 중량 초과 시 요구 전력과 사고 위험 증가」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Core/FloorMath.cs`, `Risk/RiskEvaluator.cs`
 - 접근: 허용 중량을 넘겨 태운 뒤 층을 시작한다
 - 검증: `Ascend/Run Self Tests` (`RiskEvaluatorTests`, `BuildTests`)
@@ -872,7 +881,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-05 — 승객·부품이 엘리베이터 안에 실제 오브젝트로 배치
 - 분류: Required · 출처: PRD §4.1, N00 「메뉴 속 아이콘에만 존재하지 않고」, N02
-- 상태: CONNECTED · 패스: P1 P2 P3
+- 상태: VERIFIED · 패스: P1 P2 P3
 - 구현: `Scripts/Build/BuildFigureView.cs`
 - 접근: 태운 뒤 뒤를 돌아본다
 - 검증: `Logs/tenfloor_playmode.txt` 「실은 것이 실제 오브젝트로 서 있다」
@@ -882,7 +891,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-06 — 승차·하차·획득·배치 흐름
 - 분류: Required · 출처: PRD §5(4), N02 「승차 흐름」
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Player/InteractableBuildCandidate.cs`, `InteractablePassenger.cs`, `Build/BuildLoadout.cs`
 - 접근: 적재 층 → 문 열기 → 후보 클릭 → 문 닫기
 - 검증: `Logs/tenfloor_playmode.txt` 「적재 단계를 실제로 거쳤다」
@@ -892,7 +901,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-07 — 승객 목적지와 하차 보상
 - 분류: Required · 출처: N02 「NPC는 추가로 목적지·욕망·승하차 조건을 가진다」, N08 §5.1
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Build/BuildLoadout.cs`(`DestinationFloor`, `DisembarkReward`)
 - 접근: 목적지 층에 도착하면 승객이 내린다
 - 검증: `Ascend/Run Self Tests` (`BuildTests`)
@@ -902,7 +911,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-08 — 최소 두 개의 명확히 다른 빌드 전략
 - 분류: Required · 출처: PRD §18 Phase 3 통과 조건 「서로 다른 두 빌드가 실제 판정 규칙과 의사결정을 바꾼다」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Build/BuildLoadout.cs`, `Sim/RunSimulator.cs`
 - 접근: 직선 특화 vs 연결 붕괴형으로 다르게 태운다
 - 검증: `Ascend/Run Self Tests` → 「서로 다른 두 빌드가 결과를 바꾼다」
@@ -922,7 +931,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-10 — 무게가 클수록 강한 효과 (충돌하는 교환)
 - 분류: Required · 출처: PRD §3(가설 7), N02 「이 빌드를 끝까지 감당할 수 있는가」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Build/BuildLoadout.cs`(부품 18~26kg vs 승객 6~16kg)
 - 접근: 무거운 부품을 달고 요구 전력을 본다
 - 검증: `Ascend/Run Self Tests` (`BuildTests`)
@@ -932,7 +941,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-11 — 화물 포기 구간(70~89%)이 실제로 무언가를 빼앗는다
 - 분류: Required · 출처: N03 「부분 실패」, N08 §11.3
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Core/FloorMath.cs`, `Run/FloorSession.cs`
 - 접근: 요구 전력의 70~89%로 층을 끝낸다
 - 검증: `Ascend/Run Self Tests`
@@ -944,7 +953,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-01 — 위험 4단계 상태 기계
 - 분류: Required · 출처: PRD §4.1, §8.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Risk/RiskLevel.cs`, `RiskEvaluator.cs`
 - 접근: 과적·잔류·과수확이 쌓이면 단계가 오른다
 - 검증: `Ascend/Run Self Tests` (`RiskEvaluatorTests` 11건)
@@ -954,7 +963,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-02 — 위험이 실제 게임 상태와 동기화된다
 - 분류: Required · 출처: PRD §17.1 「감각적 위험 상태가 실제 게임 상태와 동기화됨」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Risk/RiskEvaluator.cs`, `RiskStateView.cs`
 - 접근: 위험 단계가 연출이 아니라 상태에서 나온다
 - 검증: 캡처 매니페스트의 「위험 단계는 연출이 아니라 실제 게임 상태다」 줄
@@ -1024,7 +1033,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Core/OverchargeOption.cs`, `Risk/RiskEvaluator.cs`
 - 접근: 과수확 레버를 당긴 뒤 위험 계기를 본다
 - 검증: `Ascend/Run Self Tests` (`RiskEvaluatorTests`)
@@ -1088,7 +1097,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-REC-01 — 층·런 종료 시 기록 생성
 - 분류: Required · 출처: PRD §4.1, §10.1
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Run/AccidentRecorder.cs`, `FloorRecord.cs`
 - 접근: 층이 끝나면 기록이 남는다
 - 검증: `Logs/tenfloor_playmode.txt` 「사고 기록기가 층마다 기록했다」
@@ -1294,7 +1303,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-01 — 게임 규칙과 프레젠테이션 분리
 - 분류: Required · 출처: PRD §13.5, N08 §3.3, §24
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P1 P2
 - 구현: `Scripts/Spin/`(순수 C#) vs `Scripts/View/`(MonoBehaviour)
 - 접근: 해당 없음
 - 검증: EditMode 테스트가 씬 없이 통과함
@@ -1386,7 +1395,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-01 — EditMode 자동 테스트 (PRD §16.1의 12항목)
 - 분류: Required · 출처: PRD §16.1, §17.4, N08 §19.1
-- 상태: CONNECTED · 패스: P1 P4
+- 상태: VERIFIED · 패스: P1 P4
 - 구현: `Scripts/Spin/Tests/SpinEngineTests.cs`, `Run/Tests/RunTests.cs`, `Build/Tests/BuildTests.cs`, `Risk/Tests/RiskEvaluatorTests.cs`
 - 접근: 해당 없음
 - 검증: `Ascend/Run Self Tests` → `합계: N PASS / 0 FAIL`
@@ -1396,7 +1405,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-02 — PlayMode 테스트 (N08 §19.2의 7항목)
 - 분류: Required · 출처: PRD §17.4, N08 §19.2
-- 상태: CONNECTED · 패스: P1 P4
+- 상태: VERIFIED · 패스: P1 P4
 - 구현: `Scripts/Run/Tests/TenFloorAutoPilot.cs`, `Assets/Editor/PlayModeSmokeTest.cs`
 - 접근: 해당 없음
 - 검증: `Ascend/Ten Floor PlayMode` → `결과: N PASS / 0 FAIL / 콘솔오류 0건`
@@ -1406,7 +1415,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-03 — 서로 다른 고정 시드 최소 3개
 - 분류: Required · 출처: PRD §17.6
-- 상태: CONNECTED · 패스: P4
+- 상태: VERIFIED · 패스: P4
 - 구현: `Scripts/Run/Tests/TenFloorAutoPilot.cs`
 - 접근: 해당 없음
 - 검증: `Logs/tenfloor_playmode.txt` 「서로 다른 완주 시드가 최소 3개」
@@ -1416,7 +1425,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-04 — 치명적 콘솔 오류 0
 - 분류: Required · 출처: PRD §17.1, §17.4
-- 상태: CONNECTED · 패스: P1 P4
+- 상태: VERIFIED · 패스: P1 P4
 - 구현: `Scripts/Run/Tests/TenFloorAutoPilot.cs`(콘솔 감시)
 - 접근: 해당 없음
 - 검증: `Logs/tenfloor_playmode.txt` 「치명적 콘솔 오류 없음」
@@ -1446,7 +1455,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-07 — 밸런스 프로브 (시드 대량 시뮬레이션)
 - 분류: Required · 출처: PRD §15.3 「측정 가능한 차이 없이 무작정 반복하지 않는다」, §16.3
-- 상태: CONNECTED · 패스: P4
+- 상태: VERIFIED · 패스: P4
 - 구현: `Assets/Editor/BalanceProbe.cs`, `CurriculumCoverageProbe.cs`, `Scripts/Sim/RunSimulator.cs`
 - 접근: 해당 없음
 - 검증: 프로브 실행 → `Logs/curriculum_coverage.txt`
@@ -1595,23 +1604,28 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 # 6. 통계
 
 > 아래 수치는 `tools/verify-topdown.ps1 -Stats`가 이 파일에서 직접 세어 대조한다.
-> 손으로 고치지 말고 검증기 출력과 맞춘다.
+> 손으로 고치지 말고 검증기 출력과 맞춘다. **최종 갱신: 2026-08-01 실증 감사.**
 
 | 분류 | 개수 |
 |---|---|
-| Required (§2, 추적 항목) | 130 |
-| Deferred (§3) | 21 |
+| 추적 항목 (§2) | 130 |
+| Required | 129 |
+| Deferred (§3 표 + `UP-RUN-09`) | 22 |
 | Approval Required (§4) | 14 |
 | 수정 백로그 (§5) | 6 |
 
 | 상태 | Required 중 개수 |
 |---|---|
-| `NOT_STARTED` | 23 |
+| `VERIFIED` | **64** |
+| `CONNECTED` | 26 |
+| `VISIBLE` | 0 |
 | `SKELETON` | 16 |
-| `CONNECTED` | 91 |
-| `VERIFIED` | **0** |
+| `NOT_STARTED` | 23 |
+| `BLOCKED_EXTERNAL` | 0 |
 
-**Required 130개 중 VERIFIED는 0개다.** §0.4의 승격 규칙에 따라 Pass 4에서 독립
-검증을 거쳐야 올라간다. 현재 상태로 `tools/verify-topdown.ps1`은 반드시 실패한다.
-</content>
-</invoke>
+**Required 129건 중 64건(50%)이 코드·씬·테스트 증거를 모두 갖췄다.**
+직전 판본의 "VERIFIED 0"은 판정 기준이 달랐기 때문이지 구현이 없어서가 아니었다 (§0.4).
+
+`VISIBLE`이 0건인 것은 후보가 없어서가 아니라, 가장 유력한 두 후보가 Required 항목이
+아니라 **레거시 정리 대상**이기 때문이다 — 상세는
+`docs/runtime/CURRENT_IMPLEMENTATION_AUDIT.md` §6, 추적은 `UP-TEST-11`.

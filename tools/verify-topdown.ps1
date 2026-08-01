@@ -55,7 +55,9 @@ if (-not (Test-Path (Join-Path $Root 'Assets'))) {
 # 탑다운 작업과 무관한 세션(설정 정비, 문서 작업, 조사)에서 Stop 게이트를 끈다.
 # 프로젝트의 기존 관례와 같다: SKIP_SELFTEST_GATE, SKIP_UNITY_GUARD.
 #   PowerShell:  $env:SKIP_TOPDOWN_GATE = "1"
-if ($env:SKIP_TOPDOWN_GATE -eq '1') {
+#
+# -Stats 는 게이트가 아니라 계수기다. 꺼져 있어도 항상 세어야 백로그 표를 맞출 수 있다.
+if ($env:SKIP_TOPDOWN_GATE -eq '1' -and -not $Stats) {
     Write-Output 'TOPDOWN_GATE_SKIPPED (SKIP_TOPDOWN_GATE=1)'
     exit 0
 }
@@ -103,7 +105,10 @@ function Read-Utf8Lines {
 # ══════════════════════════════════════════════════════════════════════════════
 # C1 — 백로그 파싱
 # ══════════════════════════════════════════════════════════════════════════════
-$ValidStates = @('NOT_STARTED','SKELETON','CONNECTED','VERIFIED','DEFERRED','BLOCKED_EXTERNAL')
+# VISIBLE 은 2026-08-01 감사에서 추가됐다 — "씬이나 화면에 보이지만 게임과 연결되지 않음".
+# 파일이 있고 오브젝트도 있으니 SKELETON 은 아니고, 규칙과 이어지지 않았으니 CONNECTED 도 아니다.
+# 이 구간이 이름 없이 남아 있으면 죽은 연출이 구현으로 계상된다.
+$ValidStates = @('NOT_STARTED','SKELETON','VISIBLE','CONNECTED','VERIFIED','DEFERRED','BLOCKED_EXTERNAL')
 $Items = New-Object System.Collections.ArrayList
 $PassState = @{}
 
@@ -178,10 +183,10 @@ if ($Stats) {
 # ══════════════════════════════════════════════════════════════════════════════
 # C2 — Required 항목에 NOT_STARTED / SKELETON / CONNECTED 가 남아 있지 않다
 # ══════════════════════════════════════════════════════════════════════════════
-$Unfinished = @($Required | Where-Object { @('NOT_STARTED','SKELETON','CONNECTED') -contains $_.State })
+$Unfinished = @($Required | Where-Object { @('NOT_STARTED','SKELETON','VISIBLE','CONNECTED') -contains $_.State })
 if ($Unfinished.Count -gt 0) {
     $byState = @()
-    foreach ($s in @('NOT_STARTED','SKELETON','CONNECTED')) {
+    foreach ($s in @('NOT_STARTED','SKELETON','VISIBLE','CONNECTED')) {
         $g = @($Unfinished | Where-Object { $_.State -eq $s })
         if ($g.Count -gt 0) {
             $byState += "  [$s] $($g.Count)건"
