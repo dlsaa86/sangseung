@@ -295,6 +295,12 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"    울린 것: {KindNames<Audio.AudioCueKind>(_audioKindsMask)}");
             _report.AppendLine($"    안 울린 것: {MissingKindNames<Audio.AudioCueKind>(_audioKindsMask)}");
 
+            _report.AppendLine($"  방 앰비언트 서로 다른 값 {_ambientSeenCount}종");
+            // **1종이면 방이 단계와 무관하게 늘 같다는 뜻이다.** 그것이 지적 ⑧의 실체였다.
+            Check($"위험 단계가 방 전체 색을 움직인다 — 앰비언트 {_ambientSeenCount}종",
+                  _ambientSeenCount >= 2,
+                  $"{_ambientSeenCount}종 — 캐빈 등 하나로만 전달되면 벽 색차가 2% 에 그친다");
+
             if (_particles != null)
             {
                 int peak = _particles.PeakConcurrent;
@@ -414,6 +420,8 @@ namespace Ascend.Prototype.Run.Tests
         private CharacterController _character;
         private Npc.PassengerReactionView _reactionView;
         private Effects.AmbientParticleDirector _particles;
+        private readonly Color[] _ambientSeen = new Color[16];
+        private int _ambientSeenCount;
 
         private static int BitCount(int mask)
         {
@@ -1175,6 +1183,22 @@ namespace Ascend.Prototype.Run.Tests
                 _peakConcurrentReactions = view.PeakActiveCount;
             if (view.MaxConcurrent > _maxConcurrentSeen) _maxConcurrentSeen = view.MaxConcurrent;
             _reactionKindsMask |= view.FiredKindsMask;
+
+            // 위험 단계가 **방 전체**에 닿는가. 캐빈 등 하나로는 벽 색이 2% 밖에 안 움직여
+            // 독립 평가가 세 라운드 연속 「Critical 이 Stable 과 같은 방」이라고 지적했다.
+            // 앰비언트를 단계별로 물들이게 고쳤고, 그것이 **실제로 다른 값이 되는지**를 여기서 센다.
+            Color ambient = RenderSettings.ambientLight;
+            bool novel = true;
+            for (int i = 0; i < _ambientSeenCount; i++)
+            {
+                // `Color` 에는 `sqrMagnitude` 가 없다 — 성분으로 잰다.
+                Color d = _ambientSeen[i] - ambient;
+                if (d.r * d.r + d.g * d.g + d.b * d.b < 0.0004f) { novel = false; break; }
+            }
+            if (novel && _ambientSeenCount < _ambientSeen.Length)
+            {
+                _ambientSeen[_ambientSeenCount++] = ambient;
+            }
 
             Audio.AudioDirector audio = FindAnyObjectByType<Audio.AudioDirector>();
             if (audio != null) _audioKindsMask |= audio.PlayedKindsMask;

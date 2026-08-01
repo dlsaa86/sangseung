@@ -29,6 +29,16 @@ namespace Ascend.Prototype.Risk
 
         [Header("조명")]
         [SerializeField] private Light _cabinLight;
+
+        [Header("방 전체 색조 (위험 → 환경)")]
+        [Tooltip("끄면 위험 단계가 캐빈 등 하나로만 전달된다 — 그 경우 벽·천장 색차가 약 2% 다.")]
+        [SerializeField] private bool _driveAmbient = true;
+
+        [Tooltip("원래 앰비언트와 단계 색을 섞는 비율. 1이면 통째로 갈아 끼워 밝기가 튄다.")]
+        [SerializeField, Range(0f, 1f)] private float _ambientBlend = 0.55f;
+
+        private Color _originalAmbient;
+        private bool _ambientCaptured;
         [SerializeField] private Renderer _lampRenderer;
         [SerializeField, Min(0f)] private float _baseLightIntensity = 1.6f;
 
@@ -140,6 +150,22 @@ namespace Ascend.Prototype.Risk
         /// <summary>단계별 연출 값. 에셋이 배선됐으면 에셋 것이다.</summary>
         public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);
 
+        /// <summary>
+        /// **앰비언트를 반드시 되돌린다.** `RenderSettings.ambientLight` 는 씬이 아니라
+        /// 렌더 설정 전역이라, 복원하지 않으면 플레이 모드를 나간 뒤에도 에디터에 남고
+        /// 다음 캡처가 오염된 조명으로 찍힌다. 이 저장소는 「직전 상태를 조용히 물려받는」
+        /// 오염을 이미 한 번 겪었다 — 캡처 눈높이가 2.60m 로 남아 있던 건이 그것이다.
+        /// </summary>
+        private void OnDisable()
+        {
+            RestoreAmbient();
+        }
+
+        private void OnDestroy()
+        {
+            RestoreAmbient();
+        }
+
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
@@ -226,6 +252,8 @@ namespace Ascend.Prototype.Risk
                 _cabinLight.color = _blended.LightColor;
             }
 
+            ApplyAmbient(flicker);
+
             if (_lampRenderer != null)
             {
                 _lampRenderer.GetPropertyBlock(_block);
@@ -233,6 +261,44 @@ namespace Ascend.Prototype.Risk
                 _block.SetColor(EmissionColorId, _blended.LightColor * (2.4f * _blended.LightIntensity * flicker));
                 _lampRenderer.SetPropertyBlock(_block);
             }
+        }
+
+        /// <summary>
+        /// 위험 단계를 **방 전체**에 전달한다.
+        ///
+        /// 왜 필요한가: 지금까지 위험이 환경에 닿는 경로는 `_cabinLight.color` **한 줄**뿐이었고,
+        /// 등 하나로는 벽·천장·바닥이 거의 안 움직인다. 되돌린 뒤 실측 —
+        /// `06` Stable 벽 (96.5, 98.5, 99.4) vs `16` Collapse (96.5, 93.7, 95.7),
+        /// 차이가 255 중 5 미만(**약 2%**)이다. 독립 평가가 세 라운드 연속
+        /// 「Critical 이 Stable 과 같은 방」이라고 지적한 것의 구조적 원인이 이것이다.
+        ///
+        /// `RenderSettings.ambientLight` 는 URP Lit 이 그대로 읽는 **전역** 값이라
+        /// 머티리얼을 하나도 안 건드리고 방 전체를 물들인다. 셰이더 교체가
+        /// 순손실로 반려된 뒤 남은 가장 싼 채널이다.
+        ///
+        /// **원래 값을 반드시 복원한다** — 이건 씬이 아니라 렌더 설정 전역이라,
+        /// 복원하지 않으면 플레이 모드를 나간 뒤에도 에디터에 남는다.
+        /// </summary>
+        private void ApplyAmbient(float flicker)
+        {
+            if (!_driveAmbient) return;
+            if (!_ambientCaptured)
+            {
+                _originalAmbient = RenderSettings.ambientLight;
+                _ambientCaptured = true;
+            }
+
+            // 단계 색을 원래 앰비언트에 섞는다. 통째로 갈아 끼우면 밝기가 튀어
+            // 「조명이 바뀌었다」가 아니라 「화면이 깜빡였다」로 읽힌다.
+            Color tinted = Color.Lerp(_originalAmbient, _blended.LightColor, _ambientBlend);
+            RenderSettings.ambientLight = tinted * Mathf.Lerp(1f, flicker, 0.5f);
+        }
+
+        private void RestoreAmbient()
+        {
+            if (!_ambientCaptured) return;
+            RenderSettings.ambientLight = _originalAmbient;
+            _ambientCaptured = false;
         }
 
         private void ApplyWarningLight()
