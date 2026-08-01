@@ -235,7 +235,7 @@ namespace Ascend.Prototype.Data.Profiles
         {
             switch (level)
             {
-                case RiskLevel.Warning:  return _humVolumeWarning;
+                case RiskLevel.Strain:  return _humVolumeWarning;
                 case RiskLevel.Critical: return _humVolumeCritical;
                 case RiskLevel.Collapse: return _humVolumeCollapse;
                 default:                 return _humVolumeStable;
@@ -246,7 +246,7 @@ namespace Ascend.Prototype.Data.Profiles
         {
             switch (level)
             {
-                case RiskLevel.Warning:  return _humPitchWarning;
+                case RiskLevel.Strain:  return _humPitchWarning;
                 case RiskLevel.Critical: return _humPitchCritical;
                 case RiskLevel.Collapse: return _humPitchCollapse;
                 default:                 return _humPitchStable;

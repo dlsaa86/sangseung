@@ -976,7 +976,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/Risk/RiskStateView.cs`, `RiskProfile.cs`
 - 접근: 위험이 오르면 조명이 어두워지고 붉어진다
-- 검증: 고정 캡처 `06_risk_stable`, `09_risk_warning`, `10_risk_critical`
+- 검증: 고정 캡처 `06_risk_stable`, `09_risk_strain`, `10_risk_critical`
 - 증거: `Captures/TenFloor/06_risk_stable.png`, `Captures/TenFloor/10_risk_critical.png`
 - 의존: UP-RISK-01
 - 남은 문제: **Critical과 Collapse가 캡처에서 구분되지 않는다**
@@ -1048,8 +1048,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P1 P2
 - 구현: `Scripts/Build/BuildFigureView.cs`(`ReactToRisk`)
 - 접근: 위험이 오르면 승객 자세가 바뀐다
-- 검증: 고정 캡처 `09_risk_warning`, `10_risk_critical`
-- 증거: `Captures/TenFloor/09_risk_warning.png`, `Captures/TenFloor/10_risk_critical.png`
+- 검증: 고정 캡처 `09_risk_strain`, `10_risk_critical`
+- 증거: `Captures/TenFloor/09_risk_strain.png`, `Captures/TenFloor/10_risk_critical.png`
 - 의존: UP-BUILD-05, UP-RISK-01
 - 남은 문제: 반응 진폭은 `A-20260731-04`대로 임시값
 
@@ -1517,13 +1517,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-DOC-02 — 위험 2단계 이름을 PRD와 일치시킨다 (`Strain` vs `Warning`)
 - 분류: Required · 출처: PRD §8.1
-- 상태: NOT_STARTED · 패스: P4
-- 구현: `Scripts/Risk/RiskLevel.cs` 또는 Notion PRD §8.1
+- 상태: CONNECTED · 패스: P4
+- 구현: `Scripts/Risk/RiskLevel.cs` 의 `Warning` → `Strain` + 참조 10곳 + `RiskEvaluator.StrainEnter`/`StrainExit` + 캡처 `09_risk_strain` + `docs/MASTER_PRD.md` §9 · `TECH_SPEC.md` §8 · `VISUAL_SPEC.md`
 - 접근: 해당 없음
-- 검증: 이름 일치
-- 증거: 없음
+- 검증: 열거 값 불변 확인(0/1/2/3) + `RiskEvaluatorTests` 11 PASS + 재캡처 20장
+- 증거: `Logs/editmode_tests.txt`, `Captures/TenFloor/09_risk_strain.png`
 - 의존: UP-RISK-01
-- 남은 문제: 어느 쪽을 고칠지는 되돌릴 수 있는 결정이므로 기본값(코드를 PRD에 맞춤)으로 진행한다. **범위는 정확히 `RiskLevel.Warning` → `RiskLevel.Strain` 한 멤버와 그 참조 11곳뿐이다.** 나머지 `Warning*` 는 전부 다른 것을 가리키므로 **손대지 않는다** — ① `RiskProfile.WarningColor`·`WarningPulseRate`·`WarningEmission` 은 위험 **단계**가 아니라 경고 **등**이고 `DangerFeedbackProfile.asset` 에 그 이름으로 직렬화돼 있어 바꾸면 값이 끊긴다 ② `AudioCueChannel.Warning`·`AudioChannel.Warning` 은 오디오 채널이다(6곳) ③ 씬의 `WarningStripe` 는 오브젝트 이름이다. **일괄 치환(`sed`) 금지** — 열거 멤버는 int 로 직렬화되므로 이름만 바꾸는 것은 안전하지만, 필드 이름을 함께 바꾸면 에셋이 조용히 손상된다
+- 남은 문제: **값은 그대로 두고 이름만 바꿨다** — 열거는 int 로 직렬화되므로 `Stable=0 / Strain=1 / Critical=2 / Collapse=3` 이 유지되면 에셋이 어긋나지 않는다. 실행해서 확인했다. **손대지 않은 것**: `RiskProfile.WarningColor`·`WarningPulseRate`·`WarningEmission` 은 위험 단계가 아니라 경고 **등**이고 `DangerFeedbackProfile.asset` 에 그 이름으로 직렬화돼 있다. `AudioCueChannel.Warning`·`AudioChannel.Warning` 은 오디오 채널이다. **일괄 치환했으면 에셋이 조용히 끊겼다.** 표시명은 「경고」 → 「응력」. 캡처 파일 이름도 함께 옮겼다 — 그것을 남겨 두면 이 항목이 막으려는 드리프트가 그대로 재발한다
 
 ---
 

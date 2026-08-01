@@ -62,10 +62,10 @@ namespace Ascend.Prototype.Risk.Tests
         private static string TestResidualRaisesWarning()
         {
             var evaluator = new RiskEvaluator();
-            // 흡수체 2 + 증식체 2 = 2.0 + 2.4 = 4.4 → WarningEnter(3.0) 초과, CriticalEnter(7.0) 미만
+            // 흡수체 2 + 증식체 2 = 2.0 + 2.4 = 4.4 → StrainEnter(3.0) 초과, CriticalEnter(7.0) 미만
             var inputs = new RiskInputs(2, 2, 0, false, 3, 0.8f, false);
             RiskLevel level = evaluator.Evaluate(in inputs);
-            if (level != RiskLevel.Warning) return $"단계 {level} / 점수 {evaluator.CurrentScore}";
+            if (level != RiskLevel.Strain) return $"단계 {level} / 점수 {evaluator.CurrentScore}";
             return null;
         }
 
@@ -116,7 +116,7 @@ namespace Ascend.Prototype.Risk.Tests
             var evaluator = new RiskEvaluator
             {
                 AbsorberWeight = 1f, ProliferatorWeight = 1f, OverharvestWeight = 1f,
-                WarningEnter = 3f, WarningExit = 2f, CriticalEnter = 7f, CriticalExit = 5.5f,
+                StrainEnter = 3f, StrainExit = 2f, CriticalEnter = 7f, CriticalExit = 5.5f,
             };
 
             evaluator.Evaluate(new RiskInputs(8, 0, 0, false, 1, 1.1f, false));   // 8 → Critical
@@ -129,15 +129,15 @@ namespace Ascend.Prototype.Risk.Tests
 
             // 5.0 — CriticalExit 아래. 이제 Warning 으로 내려간다.
             RiskLevel dropped = evaluator.Evaluate(new RiskInputs(5, 0, 0, false, 1, 1.1f, false));
-            if (dropped != RiskLevel.Warning)
+            if (dropped != RiskLevel.Strain)
                 return $"이탈 임계값 아래인데 Critical 유지 ({dropped}, 점수 {evaluator.CurrentScore})";
 
-            // 2.5 — WarningEnter(3) 아래지만 WarningExit(2) 위. Warning 유지.
+            // 2.5 — StrainEnter(3) 아래지만 StrainExit(2) 위. Warning 유지.
             RiskLevel stillWarning = evaluator.Evaluate(new RiskInputs(2, 0, 0, false, 1, 1.1f, false));
-            if (stillWarning != RiskLevel.Warning)
+            if (stillWarning != RiskLevel.Strain)
                 return $"Warning 이탈 임계값 위인데 내려감 ({stillWarning}, 점수 {evaluator.CurrentScore})";
 
-            // 1.0 — WarningExit 아래. Stable 복귀.
+            // 1.0 — StrainExit 아래. Stable 복귀.
             if (evaluator.Evaluate(new RiskInputs(1, 0, 0, false, 1, 1.1f, false)) != RiskLevel.Stable)
                 return $"충분히 내렸는데 Stable 로 복귀하지 않음 (점수 {evaluator.CurrentScore})";
 
@@ -158,8 +158,8 @@ namespace Ascend.Prototype.Risk.Tests
         private static string TestSingleOverharvestLeavesStable()
         {
             var evaluator = new RiskEvaluator();
-            if (evaluator.OverharvestWeight < evaluator.WarningEnter)
-                return $"과수확 가중치 {evaluator.OverharvestWeight} < Warning 진입 {evaluator.WarningEnter}";
+            if (evaluator.OverharvestWeight < evaluator.StrainEnter)
+                return $"과수확 가중치 {evaluator.OverharvestWeight} < Warning 진입 {evaluator.StrainEnter}";
 
             // 잔류도 과적도 없는 가장 깨끗한 상황에서 과수확만 1회.
             var inputs = new RiskInputs(0, 0, 1, false, 2, 1.1f, false);
@@ -172,11 +172,11 @@ namespace Ascend.Prototype.Risk.Tests
         private static string TestThresholdOrdering()
         {
             var evaluator = new RiskEvaluator();
-            if (evaluator.WarningExit >= evaluator.WarningEnter)
-                return $"Warning 이탈 {evaluator.WarningExit} ≥ 진입 {evaluator.WarningEnter}";
+            if (evaluator.StrainExit >= evaluator.StrainEnter)
+                return $"Warning 이탈 {evaluator.StrainExit} ≥ 진입 {evaluator.StrainEnter}";
             if (evaluator.CriticalExit >= evaluator.CriticalEnter)
                 return $"Critical 이탈 {evaluator.CriticalExit} ≥ 진입 {evaluator.CriticalEnter}";
-            if (evaluator.WarningEnter >= evaluator.CriticalEnter)
+            if (evaluator.StrainEnter >= evaluator.CriticalEnter)
                 return "Warning 진입이 Critical 진입보다 낮지 않다";
             return null;
         }

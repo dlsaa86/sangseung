@@ -268,7 +268,7 @@ namespace Ascend.Prototype.Build
             float tilt;      // 도(°). 정지 화면에서 읽히는 유일한 채널이다.
             switch (_risk.Level)
             {
-                case Risk.RiskLevel.Warning:  amplitude = 0.006f; speed = 3.2f;  tilt = 3.5f;  break;
+                case Risk.RiskLevel.Strain:  amplitude = 0.006f; speed = 3.2f;  tilt = 3.5f;  break;
                 case Risk.RiskLevel.Critical: amplitude = 0.017f; speed = 9.5f;  tilt = 8.0f;  break;
                 case Risk.RiskLevel.Collapse: amplitude = 0.020f; speed = 14.0f; tilt = 11.0f; break;
                 default:                      amplitude = 0f;     speed = 0f;    tilt = 0f;    break;

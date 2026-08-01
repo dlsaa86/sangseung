@@ -85,7 +85,7 @@ RuntimeSystems
 - `CascadeResolver`: 제거, 재충전, 재판정, 하드 캡
 - `PowerController`: 기본 전력, 보너스, 임계점, 확정
 - `ResidualController`: 미정화 흡수체·증식체 잔류 효과
-- `RiskStateController`: Stable/Warning/Critical/Collapse 상태 산출
+- `RiskStateController`: Stable/Strain/Critical/Collapse 상태 산출
 - `PassengerController`·`PartController`: 빌드 효과와 무게
 - `AccidentRecorder`: 실패와 런 결과의 설명 가능한 기록
 - `TelemetryLogger`: 재현 가능한 이벤트 로그와 플레이테스트 지표

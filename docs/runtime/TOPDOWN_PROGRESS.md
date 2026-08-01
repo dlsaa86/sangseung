@@ -187,6 +187,29 @@ PlayMode 394 → 395 는 **눈높이 단정 하나**가, 395 → 494 는 **적�
 번호를 한 번 겹쳤다. `18_final_floor` 가 이미 있는데 새 샷에 18 을 붙였다 —
 고정 세트는 번호가 곧 정체성이라 19·20 으로 옮겼다.
 
+## `UP-DOC-02` — 이름만 바꾸고 값은 건드리지 않았다
+
+PRD §8.1 은 위험 2단계를 `Strain` 이라 부르는데 저장소의 동결 스냅샷이 `Warning` 으로
+흘러 있었다(`D-20260801-05`). 개명 범위는 **정확히 `RiskLevel.Warning` 한 멤버와
+그 참조 10곳**이다.
+
+| 바꾼 것 | 안 바꾼 것 (전부 다른 것을 가리킨다) |
+|---|---|
+| `RiskLevel.Warning` → `Strain` (+참조 10곳) | `RiskProfile.WarningColor`·`WarningPulseRate`·`WarningEmission` — 위험 **단계**가 아니라 경고 **등**. `DangerFeedbackProfile.asset` 에 그 이름으로 직렬화돼 있다 |
+| `RiskEvaluator.WarningEnter/Exit` → `StrainEnter/Exit` (직렬화 안 됨) | `AudioCueChannel.Warning`·`AudioChannel.Warning` — 오디오 채널 |
+| 표시명 「경고」 → 「응력」 | 씬의 `WarningStripe` — 오브젝트 이름 |
+| 캡처 `09_risk_warning` → `09_risk_strain` | |
+| `MASTER_PRD` §9 · `TECH_SPEC` §8 · `VISUAL_SPEC` | |
+
+**일괄 치환(`sed s/Warning/Strain/`)했으면 에셋이 조용히 끊겼을 것이다.**
+열거는 int 로 직렬화되므로 이름만 바꾸는 것은 안전하지만 필드 이름은 아니다.
+실행해서 값이 그대로임을 확인했다 — `Stable=0 / Strain=1 / Critical=2 / Collapse=3`.
+
+캡처 파일 이름도 함께 옮겼다. 그것을 남겨 두면 **이 항목이 막으려는 드리프트가
+그대로 재발한다** — 코드는 `Strain` 인데 증거는 `warning` 이라고 불리는 상태.
+
+**스스로 VERIFIED 로 올리지 않았다**(규칙 6). 독립 감사자의 승격 판정을 기다린다.
+
 ## 구조 감사 — 새로 만든 것을 바로 공격받았다
 
 독립 아키텍처 감사를 구현 직후에 돌렸다. **「지금 동작한다」와 「오래 간다」를 갈라 달라**고 요구했고,

@@ -214,7 +214,7 @@ namespace Ascend.Prototype.Run.Tests
             //
             // 대조군은 **나머지를 고정해야** 대조군이다. Stable 도 여기서 찍는다 —
             // 같은 층, 같은 적재, 같은 요구 전력. 달라지는 것은 위험 단계뿐이다.
-            //   Warning  ← 과적 (OverloadScore 3.0 ≥ WarningEnter 3.0)
+            //   Strain   ← 과적 (OverloadScore 3.0 ≥ StrainEnter 3.0)
             //   Critical ← 과적 + 과수확 (3.0 + 3.2 + 잔류 ≥ CriticalEnter 7.0)
             //   Collapse ← 층 실패 (점수와 무관하게 Collapse) — 이것만 별도 런이다
             FloorSession riskFloor = run.Session.Current;
@@ -230,8 +230,8 @@ namespace Ascend.Prototype.Run.Tests
 
             run.Session.AddWeight(140f);   // 허용 중량을 확실히 넘긴다
             yield return WaitSeconds(2.5f);   // 조명·험 블렌딩이 수렴할 시간(2.2/초)
-            yield return Shot("09_risk_warning", Risk, risk,
-                $"Warning — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
+            yield return Shot("09_risk_strain", Risk, risk,
+                $"Strain — {(riskFloor != null ? riskFloor.Plan.Floor : 0)}층 / " +
                 $"과적 {run.Session.CarriedWeight:F0}/{run.Session.WeightCapacity:F0} / " +
                 $"실제 단계 {LevelName(risk)} — 06 에서 무게만 +140kg");
 

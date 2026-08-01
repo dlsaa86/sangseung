@@ -65,7 +65,7 @@ namespace Ascend.Prototype.Risk
         public float ProliferatorWeight = 1.2f;
 
         /// <summary>
-        /// 과수확 1회당 점수. **반드시 <see cref="WarningEnter"/> 이상이어야 한다.**
+        /// 과수확 1회당 점수. **반드시 <see cref="StrainEnter"/> 이상이어야 한다.**
         ///
         /// `MASTER_PRD.md` §7: 과수확은 "단순한 점수 버튼이 아니라 조명, 음향, 진동, 승객
         /// 반응, 기계 상태를 변화시키는 공간적 사건이어야 한다." 한 번 당겼는데 방이 그대로
@@ -81,8 +81,8 @@ namespace Ascend.Prototype.Risk
 
         // ── 진입·이탈 임계값 (이탈이 항상 더 낮다) ──
 
-        public float WarningEnter = 3.0f;
-        public float WarningExit = 2.0f;
+        public float StrainEnter = 3.0f;
+        public float StrainExit = 2.0f;
         public float CriticalEnter = 7.0f;
         public float CriticalExit = 5.5f;
 
@@ -128,17 +128,17 @@ namespace Ascend.Prototype.Risk
             {
                 case RiskLevel.Stable:
                     if (CurrentScore >= CriticalEnter) level = RiskLevel.Critical;
-                    else if (CurrentScore >= WarningEnter) level = RiskLevel.Warning;
+                    else if (CurrentScore >= StrainEnter) level = RiskLevel.Strain;
                     break;
 
-                case RiskLevel.Warning:
+                case RiskLevel.Strain:
                     if (CurrentScore >= CriticalEnter) level = RiskLevel.Critical;
-                    else if (CurrentScore < WarningExit) level = RiskLevel.Stable;
+                    else if (CurrentScore < StrainExit) level = RiskLevel.Stable;
                     break;
 
                 default:   // Critical
-                    if (CurrentScore < WarningExit) level = RiskLevel.Stable;
-                    else if (CurrentScore < CriticalExit) level = RiskLevel.Warning;
+                    if (CurrentScore < StrainExit) level = RiskLevel.Stable;
+                    else if (CurrentScore < CriticalExit) level = RiskLevel.Strain;
                     break;
             }
 

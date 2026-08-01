@@ -161,7 +161,7 @@ outputPath: Builds/Windows/Upandup_DDD.exe   ← 디스크에 실존 확인
 
 | 캡처 | 실측된 상태 |
 |---|---|
-| `09_risk_warning` | 과적 218/130 → 실제 단계 Warning (06에서 무게만 +140kg) |
+| `09_risk_strain` | 과적 218/130 → 실제 단계 Warning (06에서 무게만 +140kg) |
 | `10_risk_critical` | 실제 단계 Critical / 점수 7.0 / 게이지 0.401m |
 | `12_overharvest_unlocked` | unlocked=True 덮개열림=True / 게이지 0.632m |
 | `13_overharvest_pulled` | 판돈 46 지불 / 추가 스핀 0→1 / 전력 421/350 |

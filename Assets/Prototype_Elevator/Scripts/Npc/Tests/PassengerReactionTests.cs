@@ -152,7 +152,7 @@ namespace Ascend.Prototype.Npc.Tests
             }
 
             // Warning 진입은 반응하지 않는다 — 매 경고마다 비명이면 Critical 이 강해지지 않는다.
-            return ExpectNoReaction(GameEventKind.RiskLevelChanged, (int)Risk.RiskLevel.Warning);
+            return ExpectNoReaction(GameEventKind.RiskLevelChanged, (int)Risk.RiskLevel.Strain);
         }
 
         private static string TestFiveChainDepth()
