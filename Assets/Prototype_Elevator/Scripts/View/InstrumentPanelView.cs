@@ -402,8 +402,26 @@ namespace Ascend.Prototype.View
         /// <summary>결과를 <see cref="_text"/>에 남긴다. 문자열을 돌려주지 않는다 — 그게 할당이다.</summary>
         private void BuildStatus(FloorSession floor)
         {
-            // **두 줄을 넘기지 않는다.** 세 줄이 되면 아래의 전력 게이지를 덮어
-            // 잔류 경고와 눈금이 서로를 가린다 — 실제로 첫 캡처에서 그렇게 나왔다.
+            // **세 줄로 나눈다.** 「두 줄을 넘기지 않는다」였고, 그래서 잔류 두 종류를
+            // `  /  ` 로 이어 한 줄에 넣었다. 그 줄이 안 들어간다 — 재 보고 알았다.
+            //
+            //   쓸 수 있는 폭            20.80
+            //   흡수체 절만              18.15  들어감
+            //   스핀·과수확·판돈 줄      19.42  들어감
+            //   흡수체 + 증식체 이어붙임 34.65  **넘침**
+            //
+            // 넘친 14 단위가 화면에서 x≈1273 px 의 잉크 절단으로 나온 것이다.
+            // 9차·10차 판정이 두 번 같은 자리를 짚었고, 10차는 「그 줄이 프레임에 걸린
+            // 10장 중 9장에서 값이 사라진다」고 실측했다. 잘린 것이 하필 `B-3 #10` 이
+            // 요구하는 대가 수치다.
+            //
+            // 두 라운드 동안 나는 이걸 글자 크기 문제로 보고 오토사이즈를 걸었다.
+            // 틀린 축이었다 — 오토사이즈는 34.65 를 20.80 에 넣으려고 글자를 60% 로
+            // 줄이고, 그러면 「잘려서 못 읽는다」가 「작아서 못 읽는다」로 바뀔 뿐이다.
+            // 10차가 `18` 에서 그 결과를 h=20 px 로 실측했다(다른 줄 27~31 px).
+            //
+            // 높이는 문제가 아니었다 — 세 줄이 3.52 / 6.00 이다. 폭이 문제였고,
+            // 폭을 못 늘리면 줄을 늘리는 것이 남은 축이다.
             _text.Clear();
             _text.Append("스핀 ").Append(floor.SpinsRemaining).Append('/').Append(floor.Plan.Spins);
             if (floor.ExtraSpinsTaken > 0)
@@ -422,10 +440,12 @@ namespace Ascend.Prototype.View
                     _text.Append("흡수체 ").Append(residual.AbsorberCount)
                          .Append("개 → 저장 전력 −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
                 if (residual.AbsorberCount > 0 && residual.ProliferatorCount > 0)
-                    _text.Append("  /  ");
+                    _text.AppendLine();
                 if (residual.ProliferatorCount > 0)
+                    // 「출현」을 뺐다. 이 줄만 21 단위를 넘겨서다 — 흡수체 줄과 달리
+                    // 한 낱말이 더 들어 있었다. 뜻은 앞의 「다음 스핀」이 이미 옮긴다.
                     _text.Append("증식체 ").Append(residual.ProliferatorCount)
-                         .Append("개 → 다음 스핀 출현 +")
+                         .Append("개 → 다음 스핀 +")
                          .AppendFormat("{0:F2}", residual.NextProliferatorWeightAdd);
             }
         }

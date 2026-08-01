@@ -31,6 +31,19 @@ Shader "Ascend/Stylized"
         // **점등이 사라진 채 아무 오류도 안 난다** — `UP-CORE-12` 가 GIF 로 확인된
         // 바로 그 연출이 그렇게 죽는다.
         [HDR] _EmissionColor ("발광 (MaterialPropertyBlock 이 쓴다)", Color) = (0, 0, 0, 1)
+
+        // **기본값이 흰색인 것이 이 프로퍼티의 안전 장치다.**
+        //
+        // 이 셰이더에는 텍스처 슬롯이 하나도 없었다. 그래서 `UP-VIS-01` 스타일 락의
+        // 첫 항목(「저해상도 손그림 픽셀 텍스처」)이 에셋을 만들어도 화면에 올라갈 데가
+        // 없었고, 머티리얼에 배정해도 **조용히 무시된 채 아무 오류도 안 났다.**
+        //
+        // 흰색을 곱하면 아무것도 달라지지 않는다. 그래서 기존 머티리얼 23장은
+        // 이 변경 뒤에도 픽셀 단위로 같은 그림을 낸다 — 되돌릴 일이 생기지 않는다.
+        // 이 저장소는 셰이더·머티리얼 일괄 교체를 두 번 되돌렸고(6차 판정 「순손실」),
+        // 그 두 번 다 「바꾼 뒤에 비교」했다. 이번엔 **바꿔도 같은 상태**에서 시작해
+        // 머티리얼 하나씩 텍스처를 물리며 매번 판정한다.
+        _BaseMap ("표면 텍스처 (흰색이면 무지 — 기존과 동일)", 2D) = "white" {}
     }
 
     SubShader
@@ -67,12 +80,17 @@ Shader "Ascend/Stylized"
                 float  _ShadowLift;
                 float  _RimStrength;
                 float4 _EmissionColor;
+                float4 _BaseMap_ST;
             CBUFFER_END
+
+            TEXTURE2D(_BaseMap);
+            SAMPLER(sampler_BaseMap);
 
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
+                float2 uv         : TEXCOORD0;
             };
 
             struct Varyings
@@ -81,6 +99,7 @@ Shader "Ascend/Stylized"
                 float3 normalWS   : TEXCOORD0;
                 float3 positionWS : TEXCOORD1;
                 float  fogCoord   : TEXCOORD2;
+                float2 uv         : TEXCOORD3;
             };
 
             Varyings Vert(Attributes input)
@@ -92,6 +111,7 @@ Shader "Ascend/Stylized"
                 output.positionWS = pos.positionWS;
                 output.normalWS   = nrm.normalWS;
                 output.fogCoord   = ComputeFogFactor(pos.positionCS.z);
+                output.uv         = TRANSFORM_TEX(input.uv, _BaseMap);
                 return output;
             }
 
@@ -116,7 +136,13 @@ Shader "Ascend/Stylized"
                                   _FalloffPower);
                 float lambert = Quantize(ndotl * atten, _Steps);
 
-                float3 lit = _BaseColor.rgb * mainLight.color * lambert;
+                // 텍스처를 **기본색에 곱한다.** 흰 텍스처면 `albedo == _BaseColor.rgb` 라
+                // 기존 머티리얼의 결과가 비트 단위로 같다. 아래 세 군데가 전부 이 값을 쓴다 —
+                // 하나라도 `_BaseColor` 를 직접 쓰면 텍스처가 그늘에서만 사라지는
+                // 「반쯤 적용」이 되고, 그게 가장 찾기 어려운 종류의 결함이다.
+                float3 albedo = _BaseColor.rgb * SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv).rgb;
+
+                float3 lit = albedo * mainLight.color * lambert;
 
                 #ifdef _ADDITIONAL_LIGHTS
                 uint count = GetAdditionalLightsCount();
@@ -126,7 +152,7 @@ Shader "Ascend/Stylized"
                     float extraNdotl = saturate(dot(normalWS, extra.direction));
                     float extraAtten = pow(saturate(extra.distanceAttenuation * extra.shadowAttenuation),
                                            _FalloffPower);
-                    lit += _BaseColor.rgb * extra.color * Quantize(extraNdotl * extraAtten, _Steps);
+                    lit += albedo * extra.color * Quantize(extraNdotl * extraAtten, _Steps);
                 }
                 #endif
 
@@ -137,7 +163,7 @@ Shader "Ascend/Stylized"
                 // 그래서 어두운 기본색(무쇠 0.16)이 그늘에서 거의 0 이 됐다.
                 // 심볼 3종에 채택했다가 「거의 검은 덩어리」가 되어 되돌렸다.
                 // 기본색을 일정 비율 남기고 색조를 **더한다** — 어두운 재질도 형태가 남는다.
-                float3 shadowed = _BaseColor.rgb * _ShadowLift + _ShadowTint.rgb * 0.35;
+                float3 shadowed = albedo * _ShadowLift + _ShadowTint.rgb * 0.35;
                 float3 color = lerp(shadowed, lit, saturate(lambert + _AmbientFloor));
 
                 // 실루엣을 살짝 세운다. 「큰 실루엣」이 락의 첫 항목이고,

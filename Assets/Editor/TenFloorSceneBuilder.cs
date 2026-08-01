@@ -574,15 +574,15 @@ namespace Ascend.Prototype.EditorTools
 
             // 공유 재질을 그대로 칠하면 같은 재질을 쓰는 다른 오브젝트까지 바뀐다.
             // 오브젝트마다 전용 인스턴스를 만들어 씬에 묻는다.
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            var material = new Material(shader) { name = "CarShell_" + name };
-            material.color = color;
-            // 광택을 죽인다. 반사가 있으면 로우폴리 면이 매끈해 보여 PS1 방향에서 멀어진다.
-            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.03f);
-            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
+            // **벽·바닥·천장이 스타일 셰이더의 첫 무리다.** 가장 넓은 면이라
+            // 플랫 셰이딩과 회녹색 그림자가 가장 크게 드러나고, 나빠져도 되돌리기가
+            // 이 인자 하나다. 장치·심볼은 아직 켜지 않는다 — 심볼 셋은 6차에
+            // 「거의 검은 덩어리」로 되돌린 바로 그것이라 맨 마지막이고 별도 판정이다.
+            Material material = Ascend.CaptureHarness.EditorTools.AscendMaterialFactory.Create(
+                "CarShell_" + name, color, stylized: true, out string usedShader);
             renderer.sharedMaterial = material;
             EditorUtility.SetDirty(renderer);
-            report.AppendLine($"  {name} → #{ColorUtility.ToHtmlStringRGB(color)}");
+            report.AppendLine($"  {name} → #{ColorUtility.ToHtmlStringRGB(color)} · {usedShader}");
         }
 
         private static void Place(Transform parent, string name, Vector3 localPosition,

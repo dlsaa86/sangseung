@@ -1354,10 +1354,21 @@ namespace Ascend.Prototype.Run.Tests
 
             var text = new StringBuilder();
             var blockedText = new StringBuilder();
-            var cutText = new StringBuilder();
             var flags = new List<bool>(32);
             var tally = new Dictionary<string, int>();
-            int visible = 0, outside = 0, hardBlocked = 0, softBlocked = 0, rectCut = 0;
+            int visible = 0, outside = 0, hardBlocked = 0, softBlocked = 0;
+
+            // **`isVisible` 로는 이걸 못 잰다.** 직전 판본이 「글자상자 밖으로 밀려난 글자」를
+            // `isVisible == false` 로 세려 했는데, 이 라벨들의 `overflowMode` 는 `Overflow` 다 —
+            // TMP 가 넘친 글자를 **그대로 그린다.** 그래서 그 계수기는 24장 전부에서 0 이었고,
+            // 10차 판정은 같은 다섯 장에서 잉크가 x=1273 px 에서 끊기는 것을 실측했다.
+            // 재지 못하는 축에 0 을 적어 초록불을 준 것이고, 그건 이 매니페스트가 이미
+            // 두 번 지적받은 실패다.
+            //
+            // 그래서 **잉크의 실제 오른쪽 끝**을 글자상자의 쓸 수 있는 오른쪽 끝과 견준다.
+            // 넘치면 화면 어디에 있든 그 줄은 상자 밖으로 나간 것이다.
+            float inkRight = float.MinValue, lastInkRight = float.MinValue;
+            char lastInk = ' ';
 
             int last = Mathf.Min(lineInfo.lastCharacterIndex, info.characterCount - 1);
 
@@ -1393,28 +1404,17 @@ namespace Ascend.Prototype.Run.Tests
                 {
                     if (text.Length < 28 && !char.IsControl(character.character)) text.Append(character.character);
 
-                    // **TMP 자신의 rect 클리핑을 재지 않고 있었다.** 9차 판정이 잡은 거짓 그린
-                    // 7건이 이것이다 — 06·08·09·10(2줄)·12 의 줄이 x≈1274 px 에서 하드 컷
-                    // 되는데 「온전」으로 적혔다. 잘린 것이 하필 `B-3 #10` 이 요구하는 대가
-                    // 수치(−16.0 / −24.0 / −32.0)와 「추락 위험」·「판돈 329」였다.
-                    //
-                    // 원인은 프레임 포함만 보고 **글자상자 밖으로 밀려난 글자**를 안 본 것이다.
-                    // TMP 는 넘친 글자를 characterInfo 에 남긴 채 `isVisible=false` 로만
-                    // 표시한다. 그것을 「안 보이니 셀 것도 없다」로 흘리면, 잘려서 사라진
-                    // 글자가 조용히 분모에서 빠지고 남은 글자만으로 100% 온전이 된다.
-                    //
-                    // 공백·제어문자는 원래 안 그려지므로 제외한다 — 그것까지 세면 모든 줄이
-                    // 항상 잘림이 되어 신호가 죽는다.
-                    if (!char.IsWhiteSpace(character.character) && !char.IsControl(character.character))
-                    {
-                        rectCut++;
-                        if (cutText.Length < 14) cutText.Append(character.character);
-                    }
                     continue;
                 }
 
                 visible++;
                 if (text.Length < 28 && !char.IsControl(character.character)) text.Append(character.character);
+                if (character.topRight.x > inkRight) inkRight = character.topRight.x;
+                if (!char.IsWhiteSpace(character.character))
+                {
+                    lastInk = character.character;
+                    lastInkRight = character.topRight.x;
+                }
 
                 bool anyOut = false;
                 Renderer hard = null;
@@ -1448,21 +1448,19 @@ namespace Ascend.Prototype.Run.Tests
 
             if (visible == 0)
             {
-                if (rectCut > 0)
-                {
-                    clipped++;
-                    return $"· {label.name} 줄{lineIndex + 1} — **줄 전체가 글자상자 밖이다** " +
-                           $"({rectCut}자 「{cutText}」). 빈 줄이 아니라 잘린 줄이다";
-                }
                 blank++;
                 return $"· {label.name} 줄{lineIndex + 1} — 빈 줄(보이는 글자 0자). 온전에 넣지 않는다";
             }
 
-            // 판정 우선순위: 프레임밖 > 잘림(rect) > 잘림(프레임) > 가림 > 가림? > 온전.
-            // rect 잘림이 프레임 잘림보다 앞인 이유 — 글자가 **아예 그려지지 않은** 것이고,
-            // 카메라를 어디에 두어도 돌아오지 않는다. 배치가 아니라 글자상자의 문제다.
+            // 판정 우선순위: 상자넘침 > 프레임밖 > 잘림 > 가림 > 가림? > 온전.
+            // 상자넘침이 맨 앞인 이유 — 카메라를 어디에 두어도 돌아오지 않는다.
+            Rect box = label.rectTransform.rect;
+            float usableRight = box.xMax - label.margin.z;
+            float overflow = inkRight > float.MinValue ? inkRight - usableRight : 0f;
+            bool overran = overflow > 0.001f;
+
             string verdict;
-            if (rectCut > 0)        { clipped++; verdict = "잘림(글자상자)"; }
+            if (overran)            { clipped++; verdict = "상자넘침"; }
             else if (outside == visible) { offFrame++; verdict = "프레임밖"; }
             else if (outside > 0)   { clipped++; verdict = "잘림"; }
             else if (hardBlocked > 0) { occluded++; verdict = "가림"; }
@@ -1474,9 +1472,10 @@ namespace Ascend.Prototype.Run.Tests
                   .Append($"보이는 글자 {visible}자 · 프레임밖 {outside}자({Percent(outside, visible)}) · ")
                   .Append($"가림 {hardBlocked}자({Percent(hardBlocked, visible)})");
 
-            if (rectCut > 0)
-                report.Append($" · **글자상자 밖으로 잘린 글자 {rectCut}자** 「{cutText}」 " +
-                              "(TMP 가 아예 안 그렸다 — 카메라를 옮겨도 돌아오지 않는다)");
+            report.Append($" · 잉크 오른끝 {inkRight:F2} / 상자 {usableRight:F2}");
+            if (overran)
+                report.Append($" — **{overflow:F2} 단위 넘침**. 마지막 잉크 「{lastInk}」가 {lastInkRight:F2} 에 있다 " +
+                              "(카메라를 옮겨도 돌아오지 않는다 — 배치가 아니라 글자상자의 문제다)");
 
             if (hardBlocked > 0)
             {
