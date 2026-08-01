@@ -1003,13 +1003,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-06 — Collapse 단계 (암전 → 파열음 → 급강하 → 재점등)
 - 분류: Required · 출처: PRD §8.2 Collapse
-- 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Risk/CollapseSequence.cs`(암전 → 급강하 → 불규칙 재점등, `CollapseBegan` 사건 구독)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Risk/CollapseSequence.cs`, 씬 `AscendRun` 배선 + `CameraRig`·`CeilingLampRig`
 - 접근: 층을 실패한다
-- 검증: 고정 캡처 `16_risk_collapse` + 시퀀스 진행 중 캡처
-- 증거: `Captures/TenFloor/16_risk_collapse.png`
+- 검증: `WaveBRuntimeProbe` → `Logs/waveb_runtime.txt`
+- 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-RISK-01, UP-AUD-01
-- 남은 문제: 연출 코드는 생겼으나 **씬에 붙지 않아 여전히 Critical 과 구분되지 않는다.** 낙하 대상·카메라 리그 배선이 필요하다
+- 남은 문제: **연출이 실제로 돈다** — 낙차 lampRig/tank/sign 0.5794m · camRig 0.4138m, 실내등 배수 0.000(완전 암전) ~ 1.000, **복귀 오차 전부 0.00000**. 남은 것은 ① 파열음이 실제로 울렸는지 큐 단위로 확인되지 않았다(오디오 3건 재생됐으나 어느 것인지 미확인) ② Critical 과의 **시각적** 구분은 여전히 미증명 — 게임 카메라가 눈높이보다 1.6m 높아(부록 D) 비교 캡처를 신뢰할 수 없다
 
 ### UP-RISK-07 — DangerFeedbackProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §8.4, §14.1
@@ -1065,13 +1065,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Npc/PassengerReactionSet.cs`(ScriptableObject · 11종 기본값 · 폴백)
+- 상태: CONNECTED · 패스: P2
+- 구현: `Scripts/Npc/PassengerReactionSet.cs` + `Data/Profiles/PassengerReactionSet.asset`(11종 채움) + 씬 `PassengerReactionView` 배선
 - 접근: 해당 없음
-- 검증: `Ascend/Run All EditMode Tests` → 승객 반응 14건
+- 검증: 에셋 항목 수 11 확인 + `Ascend/Run All EditMode Tests` 14건
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-02
-- 남은 문제: 클래스는 있으나 **`.asset` 인스턴스가 없다.** 씬 오너가 만들어 배선해야 데이터 교체가 실제로 가능해진다
+- 남은 문제: 에셋이 실재하고 11종이 서로 다른 자세·시선·우선순위(5~55)로 채워져 있으며 뷰에 배선됐다. **데이터 교체가 실제로 반응을 바꾸는지는 미확인** — 승객이 탄 런이 아직 없다(부록 E)
 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
@@ -1127,13 +1127,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-REC-04 — 기계식 프린터·종이 테이프 형태의 물리적 출력
 - 분류: Required · 출처: PRD §10.1 「단순 결과창 대신 엘리베이터 내부의 기계식 프린터, 종이 테이프 또는 펀치카드」
-- 상태: SKELETON · 패스: P3
-- 구현: `Scripts/View/PaperTapePrinterView.cs`(월드 공간 기계식 프린터 · 줄 단위 인쇄)
+- 상태: CONNECTED · 패스: P3
+- 구현: `Scripts/View/PaperTapePrinterView.cs`, 씬 `AccidentPrinter` @ (0.55, 2.05, −1.43) 정면 벽
 - 접근: 층이 끝나면 화면에 뜬다
-- 검증: 고정 캡처 `17_accident_recorder`
-- 증거: `Captures/TenFloor/17_accident_recorder.png`
+- 검증: `WaveBRuntimeProbe` 의 인쇄 줄 수 + `EyeLevelCapture` 09번 각도
+- 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-REC-02
-- 남은 문제: 프린터 컴포넌트는 생겼고 `FloorRecord` 를 그대로 읽는다(§10.3). **씬에 장치가 없다** — 벽면 위치와 테이프 슬롯 배치가 필요하다
+- 남은 문제: 장치가 씬에 서 있고 **2줄을 실제로 찍었다.** 위치는 문으로 들어와 정면이며 다른 장치와 겹치지 않는다. **결함: 글자가 테이프 폭 0.28m 를 1.16m 로 넘쳐 흐른다**(`EnsureParts` 의 TMP 폰트 크기·rect 설정). 읽을 수 없으므로 Pass 3 에서 고친다
 
 ### UP-REC-05 — 기록과 사고 후 상태가 한 장에 함께 보인다
 - 분류: Required · 출처: PRD §10.3 마지막
@@ -1251,33 +1251,33 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-AUD-01 — 위험 단계별 오디오 레이어
 - 분류: Required · 출처: PRD §8.2, §8.3, §8.4
-- 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Risk/RiskStateView.cs`(절차 생성 hum), `Scripts/Audio/AudioCueTable.cs`(`RiskLevelChanged`·`CollapseBegan` 큐), `ProceduralClipFactory.cs`(금속 응력음·저주파 임펄스)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Risk/RiskStateView.cs`(hum), `Scripts/Audio/AudioCueTable.cs`(단계 전이 사건음), 씬 배선
 - 접근: 위험 단계를 올린다
-- 검증: `Ascend/Run All EditMode Tests` → 사건별 큐 매핑과 볼륨·피치 범위
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `WaveBRuntimeProbe` + EditMode 큐 매핑
+- 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-RISK-01
-- 남은 문제: 지속 hum 1채널에 **단계 전이 사건음이 더해졌다.** PRD §13 의 「오디오만 듣는 테스트에서 위험 단계 구분」은 `AudioDirector` 가 씬에 붙은 뒤에야 실제로 확인할 수 있다
+- 남은 문제: 지속 hum + 사건음이 씬에서 함께 돈다. **위험 단계가 프로브 중 Stable 을 벗어나지 않아** 단계별 차이는 아직 귀로도 계측으로도 확인되지 않았다
 
 ### UP-AUD-02 — 룰렛 사운드 10종
 - 분류: Required · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
-- 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Audio/AudioCueKind.cs`(10종+4), `AudioCueTable.cs`(사건→큐 매핑), `ProceduralClipFactory.cs`(절차 생성), `AudioDirector.cs`
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Audio/` 5파일 + 씬 `AudioDirector` 배선
 - 접근: 스핀을 돌린다
-- 검증: `Ascend/Run All EditMode Tests` → 사운드 매핑 13건 (10종 전부 매핑·깊이별 피치 단조 증가)
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `Ascend/Run All EditMode Tests` 13건 + `WaveBRuntimeProbe` 재생 카운터
+- 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-CORE-11
-- 남은 문제: `AudioDirector`가 **씬에 없어 소리가 나지 않는다.** 매핑과 합성은 테스트로 증명됐다
+- 남은 문제: **소리가 실제로 난다** — 큐 3건 재생 / 0건 버림. 남은 것은 10종 각각이 서로 다른 소리로 들리는지의 청취 확인(PRD §13 「오디오만 듣는 테스트」)이며 사람이 필요하다
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
 - 분류: Required · 출처: PRD §7.3(4)
-- 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Audio/SilenceWindow.cs`(0.3~0.7초 조임 · 게인 타임라인), `Scripts/Run/OverharvestApproachBridge.cs`(접근 사건)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Audio/SilenceWindow.cs`, `AudioDirector`, `Scripts/Run/OverharvestApproachBridge.cs` — 씬 배선 완료
 - 접근: 과수확 레버에 손을 올린다
-- 검증: `Ascend/Run All EditMode Tests` → 정적 구간 경계·단조성·범위 조임
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `WaveBRuntimeProbe` 의 정적 게인 타임라인
+- 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-POWER-06, UP-AUD-01
-- 남은 문제: 게인 곡선은 검증됐으나 **씬에 붙지 않아 실제로 음량이 줄지 않는다**
+- 남은 문제: **게인이 실제로 떨어진다** — 접근 0.25초 후 0.000, 1.45초 후 1.000 복귀. 남은 것은 플레이어가 실제로 레버를 조준했을 때의 발동 — 프로브는 접근 사건을 직접 넣었고 `IsApproaching=False` 였다(조준 대상 없음)
 
 ### UP-AUD-04 — 승객 비언어 음성
 - 분류: Required · 출처: PRD §9.3
@@ -1363,23 +1363,23 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-07 — 렌더링 예산 측정 (드로우콜·SetPass·오버드로우)
 - 분류: Required · 출처: PRD §13.3
-- 상태: SKELETON · 패스: P4
-- 구현: `Scripts/Perf/RenderBudgetProbe.cs`(드로우콜·SetPass·삼각형 샘플링, 측정 불가 시 명시)
+- 상태: CONNECTED · 패스: P4
+- 구현: `Scripts/Perf/RenderBudgetProbe.cs` + 씬 배선
 - 접근: 해당 없음
-- 검증: 프로브 실행 → `Logs/render_budget.txt`
-- 증거: `Logs/editmode_tests.txt`
+- 검증: PlayMode 런 중 자동 수집 → `Logs/render_budget.txt`
+- 증거: `Logs/render_budget.txt`
 - 의존: UP-TECH-04
-- 남은 문제: 프로브는 있으나 **아직 한 번도 돌리지 않았다.** 최악 시점 기준도 정하지 않았다
+- 남은 문제: **처음으로 값이 나왔다** — 표본 88,310개. 드로우콜 중앙 218/95% 232/최악 900, SetPass 63/73/280, 삼각형 17,910/23,620/34,656, 프레임타임 8.45ms(118 FPS)/8.72/147.28. **판정은 아직 없다** — `VisualQualityProfile` 의 예산이 주입되지 않아 프로브가 스스로 「값만 기록했다」고 적는다. 최악값이 중앙값의 4배인 지점이 어디인지도 미확인
 
 ### UP-TECH-08 — 10층 연속 플레이에서 메모리 누적 없음
 - 분류: Required · 출처: PRD §17.4
-- 상태: SKELETON · 패스: P4
-- 구현: `Scripts/Perf/MemoryTrendProbe.cs`(층 경계 샘플링), `MemoryTrend.Analyze`
+- 상태: CONNECTED · 패스: P4
+- 구현: `Scripts/Perf/MemoryTrendProbe.cs` + 씬 배선
 - 접근: 해당 없음
-- 검증: 10층 런 전후 스냅샷 → `Logs/memory_trend.txt`
-- 증거: `Logs/editmode_tests.txt`
+- 검증: 10층 런 중 층 경계 샘플링 → `Logs/memory_trend.txt`
+- 증거: `Logs/memory_trend.txt`
 - 의존: UP-RUN-10
-- 남은 문제: 추세 판정 로직만 검증됐다. **10층 런을 실제로 재지 않았다**
+- 남은 문제: **측정 결과가 요구사항 위반이다.** 시드 1337·8층·표본 15개에서 관리 힙 1.043→1.080 GB(**+38.40 MB**), 층 종료 시점 기준 **7/7 구간 단조 증가**, 표본당 +5.49MB. `Profiler.GetTotalAllocatedMemoryLong` 도 +7.90MB 로 같이 오르므로 「GC 가 안 돈 것」으로 설명되지 않는다. PRD §17.4 는 지속 누적 없음을 요구한다 — **프로브가 생겼다는 것과 기준을 만족한다는 것은 다르다.** 원인 후보: 스핀마다 새로 나는 `Steps`/`Purifies` 배열이 `_history` 에 층 끝까지 쌓임, 텔레메트리 sink 버퍼. Pass 4 에서 스냅샷으로 가른다
 
 ### UP-TECH-09 — 가변 요소의 데이터 분리 (PRD §14.1 12항목)
 - 분류: Required · 출처: PRD §14.1, §14.3

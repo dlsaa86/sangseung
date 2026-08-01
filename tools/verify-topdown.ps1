@@ -246,33 +246,64 @@ if ($missingEvidence.Count -gt 0) {
 # C5 — Unity 컴파일 오류 0
 #
 #   Unity 를 띄우지 않고 컴파일 성공을 확인하는 방법:
-#   컴파일이 성공해야만 Library/ScriptAssemblies/Assembly-CSharp.dll 이 새로 쓰인다.
-#   따라서 "가장 최근에 수정된 .cs 가 이 DLL 보다 새것이 아니다" 는 곧
+#   컴파일이 성공해야만 Library/ScriptAssemblies/ 의 어셈블리가 새로 쓰인다.
+#   따라서 "가장 최근에 수정된 .cs 가 그 DLL 보다 새것이 아니다" 는 곧
 #   "마지막 소스 변경이 실제로 컴파일을 통과했다" 는 뜻이다.
 #   자체 검증 마커(fail=0)는 그 어셈블리로 테스트가 실제 실행됐음을 보탠다.
+#
+#   **어셈블리는 하나가 아니다.** `Assets/Editor/` 와 `*/Editor/` 아래의 스크립트는
+#   `Assembly-CSharp-Editor.dll` 로, 나머지는 `Assembly-CSharp.dll` 로 간다.
+#   둘을 구분하지 않고 전부 `Assembly-CSharp.dll` 과 비교하면 **에디터 스크립트를
+#   건드리는 순간 C5 가 영원히 실패한다** — 그 파일은 런타임 어셈블리를 절대
+#   갱신하지 않기 때문이다. 이 게이트가 통과할 수 없는 상태가 되므로 실제 결함이다.
+#   (2026-08-01 발견: 씬 배선 스크립트가 정상 컴파일됐는데도 C5 가 계속 막았다.)
 # ══════════════════════════════════════════════════════════════════════════════
-$newestSrc = $null
-foreach ($d in $SourceDirs) {
-    if (-not (Test-Path $d)) { continue }
-    $c = Get-ChildItem -LiteralPath $d -Filter *.cs -Recurse -File -ErrorAction SilentlyContinue |
-         Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    if ($null -ne $c) {
-        if ($null -eq $newestSrc -or $c.LastWriteTimeUtc -gt $newestSrc.LastWriteTimeUtc) { $newestSrc = $c }
+$EditorAssembly = Join-Path $Root 'Library\ScriptAssemblies\Assembly-CSharp-Editor.dll'
+
+function Get-NewestSource {
+    param([bool] $EditorScope)
+    $newest = $null
+    foreach ($d in $SourceDirs) {
+        if (-not (Test-Path $d)) { continue }
+        $found = Get-ChildItem -LiteralPath $d -Filter *.cs -Recurse -File -ErrorAction SilentlyContinue |
+                 Where-Object { ($_.FullName -match '\\Editor\\') -eq $EditorScope } |
+                 Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        if ($null -ne $found) {
+            if ($null -eq $newest -or $found.LastWriteTimeUtc -gt $newest.LastWriteTimeUtc) { $newest = $found }
+        }
     }
+    return $newest
 }
 
-if (-not (Test-Path $P.Assembly)) {
-    Add-Failure 'C5 컴파일' "Library/ScriptAssemblies/Assembly-CSharp.dll 이 없다. 프로젝트가 한 번도 컴파일되지 않았다."
-} elseif ($null -ne $newestSrc) {
-    $dll = Get-Item -LiteralPath $P.Assembly
-    if ($newestSrc.LastWriteTimeUtc -gt $dll.LastWriteTimeUtc) {
-        $rel = $newestSrc.FullName.Substring($Root.Length).TrimStart('\')
-        Add-Failure 'C5 컴파일' "컴파일 결과보다 새로운 소스가 있다 — 마지막 변경이 컴파일을 통과했다는 증거가 없다." `
-            @("  최신 소스 : $rel  ($($newestSrc.LastWriteTime))",
-              "  어셈블리  : Assembly-CSharp.dll  ($($dll.LastWriteTime))",
+$newestRuntimeSrc = Get-NewestSource $false
+$newestEditorSrc  = Get-NewestSource $true
+
+# 자체 검증 비교는 범위를 가리지 않는다 — 어느 쪽이 바뀌었든 테스트를 다시 돌려야 한다.
+$newestSrc = $newestRuntimeSrc
+if ($null -ne $newestEditorSrc -and
+    ($null -eq $newestSrc -or $newestEditorSrc.LastWriteTimeUtc -gt $newestSrc.LastWriteTimeUtc)) {
+    $newestSrc = $newestEditorSrc
+}
+
+function Test-Compiled {
+    param([string] $AssemblyPath, [string] $AssemblyName, $NewestSource, [string] $ScopeLabel)
+    if (-not (Test-Path $AssemblyPath)) {
+        Add-Failure 'C5 컴파일' "Library/ScriptAssemblies/$AssemblyName 이 없다. 프로젝트가 한 번도 컴파일되지 않았다."
+        return
+    }
+    if ($null -eq $NewestSource) { return }
+    $dll = Get-Item -LiteralPath $AssemblyPath
+    if ($NewestSource.LastWriteTimeUtc -gt $dll.LastWriteTimeUtc) {
+        $rel = $NewestSource.FullName.Substring($Root.Length).TrimStart('\')
+        Add-Failure 'C5 컴파일' "$ScopeLabel 컴파일 결과보다 새로운 소스가 있다 — 마지막 변경이 컴파일을 통과했다는 증거가 없다." `
+            @("  최신 소스 : $rel  ($($NewestSource.LastWriteTime))",
+              "  어셈블리  : $AssemblyName  ($($dll.LastWriteTime))",
               "  조치      : Unity 에 포커스를 줘 컴파일시킨 뒤 다시 검증할 것")
     }
 }
+
+Test-Compiled $P.Assembly     'Assembly-CSharp.dll'        $newestRuntimeSrc '런타임'
+Test-Compiled $EditorAssembly 'Assembly-CSharp-Editor.dll' $newestEditorSrc  '에디터'
 
 if (-not (Test-Path $P.SelfTest)) {
     Add-Failure 'C5 자체 검증' ".claude/state/last-selftest.txt 가 없다. 'Ascend/Run Self Tests' 를 실행할 것."
