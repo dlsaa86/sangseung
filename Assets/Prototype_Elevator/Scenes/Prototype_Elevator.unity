@@ -9128,6 +9128,7 @@ GameObject:
   - component: {fileID: 998528537}
   - component: {fileID: 998528536}
   - component: {fileID: 998528535}
+  - component: {fileID: 998528543}
   m_Layer: 0
   m_Name: AscendRun
   m_TagString: Untagged
@@ -9518,6 +9519,22 @@ MonoBehaviour:
   _run: {fileID: 998528527}
   _writeFiles: 1
   _directoryOverride: 
+--- !u!114 &998528543
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 998528525}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c7daf404ed546a4881ab45d933e75f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Effects.AmbientParticleDirector
+  _risk: {fileID: 0}
+  _run: {fileID: 0}
+  _volumeRadius: 1.35
+  _volumeHeight: 2.4
 --- !u!1 &1017002491
 GameObject:
   m_ObjectHideFlags: 0

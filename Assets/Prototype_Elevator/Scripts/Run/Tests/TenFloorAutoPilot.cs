@@ -154,6 +154,7 @@ namespace Ascend.Prototype.Run.Tests
             CheckEyeHeight();
             CheckProfileInjection();
             CheckRequiredReferenceGuard();
+            CheckParticles();
 
             if (run.Mode != RunMode.TenFloor)
             {
@@ -294,6 +295,21 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"    울린 것: {KindNames<Audio.AudioCueKind>(_audioKindsMask)}");
             _report.AppendLine($"    안 울린 것: {MissingKindNames<Audio.AudioCueKind>(_audioKindsMask)}");
 
+            if (_particles != null)
+            {
+                int peak = _particles.PeakConcurrent;
+                int cap = Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Collapse) * 5;
+                _report.AppendLine($"  파티클 최대 동시 {peak} / 전 계통 상한 {cap} " +
+                                   $"({_particles.SystemCount}종 × Collapse 상한)");
+                // **공허하게 참이 되지 않게 한다** — 한 번도 안 나왔으면 상한 비교는 의미가 없다.
+                Check($"파티클이 실제로 나왔다 — 최대 동시 {peak}",
+                      peak > 0,
+                      "런 내내 파티클이 0개였다. 배출률이 0 이거나 디렉터가 안 돌았다");
+                Check($"파티클이 예산을 넘지 않았다 — {peak} / {cap}",
+                      peak <= cap,
+                      $"{peak} > {cap}. PRD §12.5 의 단계별 상한을 넘었다");
+            }
+
             Check($"칸을 끝까지 채운 적이 있다 — {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸",
                   _peakLoadSlots >= BuildLoadout.MaxSlots,
                   $"최대 {_peakLoadSlots}칸 — 최대 적재 상태를 한 번도 안 만들었으면 " +
@@ -397,6 +413,7 @@ namespace Ascend.Prototype.Run.Tests
         private Player.FirstPersonController _player;
         private CharacterController _character;
         private Npc.PassengerReactionView _reactionView;
+        private Effects.AmbientParticleDirector _particles;
 
         private static int BitCount(int mask)
         {
@@ -964,6 +981,29 @@ namespace Ascend.Prototype.Run.Tests
         {
             _failed++;
             _report.AppendLine($"  FAIL  {name} — {detail}");
+        }
+
+        /// <summary>
+        /// 파티클 다섯 갈래가 **존재하고 예산 안에 있는가**(PRD §12.5).
+        ///
+        /// 「존재」만 묻지 않는 이유: 파티클은 저사양에서 가장 먼저 무너지는 쪽이고,
+        /// 상한 없이 켜면 그 사실이 캡처에서는 안 보인다. 그래서 **실측 최대 동시 수**를
+        /// 단계 상한과 대조한다. 다만 이 단정은 런이 끝난 뒤에도 다시 본다 —
+        /// 여기서는 시작 시점이라 아직 0 일 수 있다.
+        /// </summary>
+        private void CheckParticles()
+        {
+            _particles = FindAnyObjectByType<Effects.AmbientParticleDirector>();
+            Check("파티클 디렉터가 씬에 있다", _particles != null,
+                  "AmbientParticleDirector 없음 — UP-VIS-05");
+            if (_particles == null) return;
+
+            Check($"파티클 다섯 갈래가 만들어졌다 — {_particles.SystemCount}종",
+                  _particles.SystemCount == 5,
+                  $"{_particles.SystemCount}종 — 먼지·녹가루·스파크·정화 파편·캐스케이드 유입 다섯이어야 한다");
+            Check($"단계 상한이 데이터에서 온다 — 현재 {_particles.CurrentBudget}",
+                  _particles.CurrentBudget > 0,
+                  "MaxParticlesFor 가 0 을 돌려준다");
         }
 
         /// <summary>

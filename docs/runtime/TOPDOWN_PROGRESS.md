@@ -607,5 +607,6 @@ Wave A가 만든 컴포넌트를 씬에 붙이고 `.asset` 7종을 만든다. �
 2026-08-01 ·  ceddf0f · Pass 2 · UP-TECH-03 런타임 배선 검사(음성 대조 포함 5단정) · UP-TEST-06 릴리스 빌드 가드 · GC 측정 결함 F-1/F-2 수정 · UP-TECH-08 판정식 like-for-like 정정 · UP-VIS-09 축소 세트 21장 · PlayMode 1335 → 1340 PASS / 0 FAIL / 콘솔오류 0
 2026-08-01 ·  dc70de3 · Pass 2 · 감사 5건 반영 — UP-NPC-01 승격(픽셀 대조) · UP-SPACE-08 공허 단정 정정 · 종류 이름 로깅(안 울린 3종 특정) · AccessibilitySource · 캡처 21장 전부 1920×1080 · 레거시 삭제 계획 확정(46파일 4,571줄) · PlayMode 1340 → 1877 PASS / 0 FAIL / 콘솔오류 0
 2026-08-01 ·  124ca43 · Pass 2 · UP-CORE-11/12 증거를 실제 레버 경로 GIF 로 이전 · 22_presenting_screen 신규(연출 중 화면, 잠금 True, 「연쇄 N단계」 HUD 포함) · 캡처 22장 전부 1920×1080 · 자체 검증 213 PASS / 0 FAIL
-2026-08-01 ·  (이번) · Pass 2 · 23_back_turned_screen 신규 — UP-SPACE-09 의 **미충족을 증명하는** 증거. 등지면 화면에 「연쇄 0단계」 한 줄만 남는다(전력·스핀은 월드 공간 라벨이라 시선을 따라간다). 캡처 23장 · 자체 검증 213 PASS / 0 FAIL
+2026-08-01 ·  fbce50a · Pass 2 · 23_back_turned_screen 신규 — UP-SPACE-09 의 **미충족을 증명하는** 증거. 등지면 화면에 「연쇄 0단계」 한 줄만 남는다(전력·스핀은 월드 공간 라벨이라 시선을 따라간다). 캡처 23장 · 자체 검증 213 PASS / 0 FAIL
+2026-08-01 ·  (이번) · Pass 3 · UP-VIS-05 파티클 5종 구현(NOT_STARTED → CONNECTED) — 단계별 상한 24/48/80/120, 실측 최대 동시 274/600 · 시각 5차 판정 REJECT 2.45/2.23(내려갔다) · PlayMode 1877 → 1882 PASS / 0 FAIL
 ```
