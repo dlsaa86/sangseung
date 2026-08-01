@@ -754,7 +754,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-POWER-07 — OverharvestProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §7.4
-- 상태: VISIBLE · 패스: P2
+- 상태: CONNECTED · 패스: P2
 - 구현: `Scripts/Data/Profiles/OverharvestProfile.cs`(PRD §7.4 의 9항목)
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 정적 구간 범위 조임 등

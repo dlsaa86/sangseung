@@ -811,6 +811,37 @@ Wave A가 만든 컴포넌트를 씬에 붙이고 `.asset` 7종을 만든다. �
 
 ---
 
+## W1 씬 배선 — 한 번에 6건 (2026-08-02)
+
+`.unity` 를 텍스트로 고치지 않았다. `Unity_RunCommand` 로 `SerializedObject` 를 통해
+쓰고 `SaveScene` 했다 — 워크트리 가드가 텍스트 편집을 막는 이유가 이것이다.
+
+```
++ RunSessionBehaviour._overharvestProfile  <- OverharvestProfile
++ GameHudView._summaryTemplate             <- RunSummaryTemplate
++ GameHudView._risk                        <- AscendRun (RiskStateView)
++ PassengerReactionView._audio             <- AscendRun (AudioDirector)
++ AudioDirector._dangerProfile             <- DangerFeedbackProfile
++ AudioDirector._accessibilityProfile      <- AccessibilityProfile
+```
+
+**뒤 둘은 씬 YAML 에 키 자체가 없었다** — 인스펙터가 비어 보이는 것이 아니라
+직렬화에 아예 없어서 런타임 null 이었고, 그래서 「접근성 옵션이 프로파일을 읽는다」
+PASS 단정이 `RiskStateView` 쪽만 보느라 이것을 못 잡고 있었다.
+
+**조용히 첫 번째를 고르지 않게 만들었다** — 대상 컴포넌트가 씬에 둘 이상이면
+배선하지 않고 「사람이 골라야 한다」로 보고한다. 어느 것인지가 결정이기 때문이다.
+
+**씬 diff 를 눈으로 확인했다**: 배선 6줄 + 레인들이 추가한 새 직렬화 필드의 기본값
+(`_accessibility`·`_driveAmbient`·`_ambientBlend`·`_voiceFromEvents`·`_voiceCooldownSeconds`·
+`_sirenEnabled`) + 색상 부동소수 미세차(Unity 왕복). **구조 손상 없음.**
+
+**폰트 아틀라스가 함께 바뀌었고 이번엔 되돌리지 않는다** — 글리프 **+36 / −0 순증가**다.
+새 UI 텍스트(보조 표시·승객 대사·런 요약 9줄)가 문자를 늘린 것이고,
+이 저장소가 경계하는 것은 순**손실**이다. 방향이 반대이므로 커밋한다.
+
+---
+
 ## 🎯 다음 세션 시작점 (2026-08-02 · Pass 2 · 최신)
 
 > 아래 「2026-08-01 22:00 기준」 절은 **옛 기록**이다. 이 절이 우선한다.

@@ -1749,7 +1749,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.23899993, g: 0.26699993, b: 0.24699992, a: 1}
-    - _Color: {r: 0.23899993, g: 0.26699993, b: 0.24699992, a: 1}
+    - _Color: {r: 0.2389999, g: 0.26699987, b: 0.24699989, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -4206,7 +4206,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.25899994, g: 0.28599995, b: 0.26699993, a: 1}
-    - _Color: {r: 0.25899994, g: 0.28599995, b: 0.26699993, a: 1}
+    - _Color: {r: 0.2589999, g: 0.28599992, b: 0.26699987, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -4334,7 +4334,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.08599996, g: 0.09399993, b: 0.08999997, a: 1}
-    - _Color: {r: 0.08599996, g: 0.09399993, b: 0.08999997, a: 1}
+    - _Color: {r: 0.08599994, g: 0.0939999, b: 0.08999994, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -4760,6 +4760,7 @@ MonoBehaviour:
   _gazeOverharvestLever: {fileID: 1043996981}
   _gazeDoor: {fileID: 1200230782}
   _gazeCeiling: {fileID: 0}
+  _accessibility: {fileID: 0}
 --- !u!4 &484013967
 Transform:
   m_ObjectHideFlags: 0
@@ -5124,7 +5125,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.29799995, g: 0.31799993, b: 0.3019999, a: 1}
-    - _Color: {r: 0.29799995, g: 0.31799993, b: 0.3019999, a: 1}
+    - _Color: {r: 0.29799992, g: 0.3179999, b: 0.30199987, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -7096,7 +7097,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.19199994, g: 0.21599993, b: 0.19999993, a: 1}
-    - _Color: {r: 0.19199994, g: 0.21599993, b: 0.19999993, a: 1}
+    - _Color: {r: 0.19199991, g: 0.2159999, b: 0.1999999, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -9182,6 +9183,7 @@ MonoBehaviour:
   _seed: 1337
   _startingWeight: 0
   _startingMoney: 0
+  _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
   _anteRatio: 0.12
   _anteEscalation: 0.35
 --- !u!4 &998528528
@@ -9282,6 +9284,8 @@ MonoBehaviour:
   _feedbackProfile: {fileID: 11400000, guid: 59fe4646137260e40b5e518a582a068d, type: 2}
   _accessibility: {fileID: 11400000, guid: 2a8ae36728c81d444b724821347a3221, type: 2}
   _cabinLight: {fileID: 684782632}
+  _driveAmbient: 1
+  _ambientBlend: 0.55
   _lampRenderer: {fileID: 799892948}
   _baseLightIntensity: 1.6
   _warningLight: {fileID: 1230526762}
@@ -9452,6 +9456,7 @@ MonoBehaviour:
   _run: {fileID: 998528527}
   _figures: {fileID: 484013966}
   _reactions: {fileID: 11400000, guid: ecdc717e1942bca4d9300884c21f4071, type: 2}
+  _audio: {fileID: 998528541}
   _maxConcurrent: 2
 --- !u!114 &998528538
 MonoBehaviour:
@@ -9522,6 +9527,8 @@ MonoBehaviour:
   _run: {fileID: 998528527}
   _mixProfile: {fileID: 11400000, guid: c91f8052ebc92f747b6920660b08eb85, type: 2}
   _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
+  _dangerProfile: {fileID: 11400000, guid: 59fe4646137260e40b5e518a582a068d, type: 2}
+  _accessibilityProfile: {fileID: 11400000, guid: 2a8ae36728c81d444b724821347a3221, type: 2}
   _masterVolume: 0.8
   _machineVolume: 1
   _eventVolume: 0.85
@@ -9531,6 +9538,14 @@ MonoBehaviour:
   _duckSeconds: 0.12
   _resumeSeconds: 0.25
   _duckGlobalListener: 1
+  _voiceFromEvents: 1
+  _voiceCooldownSeconds: 0.9
+  _sirenEnabled: 1
+  _sirenCooldownSeconds: 1.2
+  _dangerBedEnabled: 1
+  _subBedScale: 0.9
+  _stressBedScale: 0.7
+  _bedSwapSeconds: 0.18
   _maxLeadSeconds: 1.5
   _logCues: 0
   _prewarmClips: 1
@@ -9547,6 +9562,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Telemetry.TelemetryRecorderBehaviour
   _run: {fileID: 998528527}
+  _riskView: {fileID: 0}
   _writeFiles: 1
   _directoryOverride: 
 --- !u!114 &998528543
@@ -10837,7 +10853,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.23499992, g: 0.26299992, b: 0.24299994, a: 1}
-    - _Color: {r: 0.23499992, g: 0.26299992, b: 0.24299994, a: 1}
+    - _Color: {r: 0.23499987, g: 0.2629999, b: 0.24299991, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -11699,7 +11715,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.27799994, g: 0.26299992, b: 0.23099992, a: 1}
-    - _Color: {r: 0.27799994, g: 0.26299992, b: 0.23099992, a: 1}
+    - _Color: {r: 0.2779999, g: 0.2629999, b: 0.23099989, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -12175,7 +12191,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.25899994, g: 0.28599995, b: 0.26699993, a: 1}
-    - _Color: {r: 0.25899994, g: 0.28599995, b: 0.26699993, a: 1}
+    - _Color: {r: 0.2589999, g: 0.28599992, b: 0.26699987, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -14129,7 +14145,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.105999924, g: 0.11399994, b: 0.10999993, a: 1}
-    - _Color: {r: 0.105999924, g: 0.11399994, b: 0.10999993, a: 1}
+    - _Color: {r: 0.105999894, g: 0.11399991, b: 0.1099999, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -16296,6 +16312,8 @@ MonoBehaviour:
   _bridge: {fileID: 998528529}
   _presenter: {fileID: 998528531}
   _recorder: {fileID: 998528534}
+  _risk: {fileID: 998528532}
+  _summaryTemplate: {fileID: 11400000, guid: e2aa689ce5d9dc248adebc7c2bfce2c0, type: 2}
   _hintGroup: {fileID: 172142480}
   _hintText: {fileID: 1778745005}
   _cascadeGroup: {fileID: 1471919549}
@@ -16304,6 +16322,10 @@ MonoBehaviour:
   _resultGroup: {fileID: 253121188}
   _resultTitleText: {fileID: 1325278969}
   _resultBodyText: {fileID: 207870739}
+  _auxGroup: {fileID: 0}
+  _auxRatioText: {fileID: 0}
+  _auxStateText: {fileID: 0}
+  _auxRiskLamps: []
   _fadeSpeed: 6
 --- !u!114 &1854592947
 MonoBehaviour:
@@ -16587,7 +16609,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.29799995, g: 0.31799993, b: 0.3019999, a: 1}
-    - _Color: {r: 0.29799995, g: 0.31799993, b: 0.3019999, a: 1}
+    - _Color: {r: 0.29799992, g: 0.3179999, b: 0.30199987, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -17182,7 +17204,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.23899993, g: 0.26699993, b: 0.24699992, a: 1}
-    - _Color: {r: 0.23899993, g: 0.26699993, b: 0.24699992, a: 1}
+    - _Color: {r: 0.2389999, g: 0.26699987, b: 0.24699989, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
@@ -17821,6 +17843,7 @@ MonoBehaviour:
   _belowRequired: {r: 0.55, g: 0.6, b: 0.68, a: 1}
   _atRequired: {r: 0.45, g: 0.9, b: 0.7, a: 1}
   _overharvested: {r: 1, g: 0.66, b: 0.25, a: 1}
+  _dangerTint: {r: 0.92, g: 0.24, b: 0.2, a: 1}
 --- !u!1 &2140668104
 GameObject:
   m_ObjectHideFlags: 0
@@ -18252,7 +18275,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.24299994, g: 0.21599993, b: 0.18399993, a: 1}
-    - _Color: {r: 0.24299994, g: 0.21599993, b: 0.18399993, a: 1}
+    - _Color: {r: 0.24299991, g: 0.2159999, b: 0.1839999, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
