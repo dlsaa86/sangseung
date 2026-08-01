@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41b88e5e1d36f1e4aad8fd4ce0caf7a6, type: 3}
+  m_Name: AccessibilityProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.AccessibilityProfile
+  _cameraShakeScale: 1
+  _worldSwayScale: 1
+  _allowFlicker: 1
+  _maxFlickerHz: 3
+  _flickerDepthScale: 1
+  _allowSiren: 1
+  _lowFrequencyScale: 1
+  _showSubtitles: 1

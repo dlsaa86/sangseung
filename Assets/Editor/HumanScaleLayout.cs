@@ -620,12 +620,30 @@ public static class HumanScaleLayout
         head.localPosition = new Vector3(0f, EyeHeight, 0f);
         head.localRotation = Quaternion.identity;
 
-        // 기존 Main Camera를 그대로 머리에 붙인다. 카메라 설정(클리어 플래그·포스트 처리)을
+        // 머리와 카메라 사이에 리그를 하나 둔다. `RiskStateView._cameraTarget`이 Head의
+        // localPosition을 매 LateUpdate마다 **절대값으로** 다시 쓰기 때문에,
+        // `CollapseSequence`의 급강하가 쓸 트랜스폼이 따로 있어야 두 연출이 서로를 지우지
+        // 않는다. 여기서 리그를 만들지 않으면 이 빌더를 다시 돌리는 것만으로 낙하 연출이
+        // 사라지고, 콘솔에는 아무것도 남지 않는다.
+        Transform camRig = head.Find("CameraRig");
+        if (camRig == null)
+        {
+            var rigGo = new GameObject("CameraRig");
+            rigGo.transform.SetParent(head, false);
+            camRig = rigGo.transform;
+            _index["CameraRig"] = camRig;
+            _log.AppendLine("  CameraRig 생성");
+        }
+        camRig.localPosition = Vector3.zero;
+        camRig.localRotation = Quaternion.identity;
+        camRig.localScale = Vector3.one;
+
+        // 기존 Main Camera를 그대로 붙인다. 카메라 설정(클리어 플래그·포스트 처리)을
         // 새로 만들면 렌더링이 달라져 비교가 어긋난다.
         Transform cam = Find("Main Camera");
         if (cam != null)
         {
-            cam.SetParent(head, false);
+            cam.SetParent(camRig, false);
             cam.localPosition = Vector3.zero;
             cam.localRotation = Quaternion.identity;
         }

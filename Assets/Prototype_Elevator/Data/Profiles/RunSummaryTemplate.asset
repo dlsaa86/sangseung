@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 76b29ea38399d9c4f929e56a0537ddbb, type: 3}
+  m_Name: RunSummaryTemplate
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.RunSummaryTemplate
+  _separator: '  '
+  _missingText: "\uAE30\uB85D \uC5C6\uC74C"
+  _highestFloorLabel: "\uCD5C\uACE0 \uCE35"
+  _highestFloorFormat: "{0}\uCE35"
+  _peakCascadeLabel: "\uCD5C\uACE0 \uCE90\uC2A4\uCF00\uC774\uB4DC"
+  _peakCascadeFormat: "{0}\uB2E8\uACC4"
+  _peakOverharvestLabel: "\uCD5C\uACE0 \uACFC\uC218\uD655"
+  _peakOverharvestFormat: "\uC694\uAD6C \uC804\uB825\uC758 {0:P0}"
+  _keyContractLabel: "\uD575\uC2EC \uACC4\uC57D"
+  _keyContractFormat: '{0}'
+  _keyLoadoutLabel: "\uD575\uC2EC \uC2B9\uAC1D\xB7\uBD80\uD488"
+  _keyLoadoutFormat: '{0}'
+  _endCauseLabel: "\uC885\uB8CC \uC6D0\uC778"
+  _endCauseFormat: '{0}'
+  _lastOverharvestLabel: "\uB9C8\uC9C0\uB9C9 \uC120\uD0DD"
+  _lastOverharvestFormat: '{0}'
+  _lostCargoLabel: "\uC783\uC740 \uAC83"
+  _lostCargoFormat: '{0}'
+  _runSeedLabel: "\uB7F0 \uC2DC\uB4DC"
+  _runSeedFormat: '{0}'

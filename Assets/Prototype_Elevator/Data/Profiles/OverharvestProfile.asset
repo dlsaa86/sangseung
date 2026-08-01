@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d75905b223427644c8564417920f391f, type: 3}
+  m_Name: OverharvestProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.OverharvestProfile
+  _anteRatio: 0.12
+  _anteEscalation: 0.35
+  _unlockThreshold: 1
+  _approachMachineDuckScale: 0.35
+  _minSilenceSeconds: 0.3
+  _maxSilenceSeconds: 0.7
+  _passengerGazeDelaySeconds: 0.18
+  _resumeFadeSeconds: 0.25
+  _maxExtraSpins: 4

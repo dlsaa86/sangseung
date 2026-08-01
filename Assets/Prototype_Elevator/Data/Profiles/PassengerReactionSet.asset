@@ -1,0 +1,114 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9515fc463b679f245af7d606c8d381e1, type: 3}
+  m_Name: PassengerReactionSet
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Npc.PassengerReactionSet
+  _entries:
+  - Event: 1
+    Reaction:
+      Pose: 1
+      Gaze: 1
+      VoiceCue: npc_murmur_low
+      Duration: 1.6
+      Intensity: 0.3
+      Priority: 10
+      Cooldown: 6
+  - Event: 2
+    Reaction:
+      Pose: 1
+      Gaze: 1
+      VoiceCue: npc_relief_short
+      Duration: 0.9
+      Intensity: 0.22
+      Priority: 5
+      Cooldown: 4
+  - Event: 3
+    Reaction:
+      Pose: 6
+      Gaze: 1
+      VoiceCue: npc_awe
+      Duration: 2.2
+      Intensity: 0.7
+      Priority: 40
+      Cooldown: 8
+  - Event: 4
+    Reaction:
+      Pose: 6
+      Gaze: 1
+      VoiceCue: npc_relief_long
+      Duration: 1.8
+      Intensity: 0.55
+      Priority: 35
+      Cooldown: 8
+  - Event: 5
+    Reaction:
+      Pose: 4
+      Gaze: 1
+      VoiceCue: npc_gasp
+      Duration: 1.8
+      Intensity: 0.65
+      Priority: 45
+      Cooldown: 8
+  - Event: 6
+    Reaction:
+      Pose: 5
+      Gaze: 1
+      VoiceCue: npc_awe_deep
+      Duration: 2.4
+      Intensity: 0.85
+      Priority: 55
+      Cooldown: 10
+  - Event: 7
+    Reaction:
+      Pose: 4
+      Gaze: 3
+      VoiceCue: npc_murmur_rise
+      Duration: 2
+      Intensity: 0.5
+      Priority: 50
+      Cooldown: 8
+  - Event: 8
+    Reaction:
+      Pose: 5
+      Gaze: 3
+      VoiceCue: npc_breath_hold
+      Duration: 2.6
+      Intensity: 0.8
+      Priority: 70
+      Cooldown: 6
+  - Event: 9
+    Reaction:
+      Pose: 3
+      Gaze: 3
+      VoiceCue: npc_yelp
+      Duration: 2.2
+      Intensity: 0.9
+      Priority: 75
+      Cooldown: 7
+  - Event: 10
+    Reaction:
+      Pose: 3
+      Gaze: 5
+      VoiceCue: npc_scream_short
+      Duration: 3
+      Intensity: 1
+      Priority: 95
+      Cooldown: 5
+  - Event: 11
+    Reaction:
+      Pose: 0
+      Gaze: 4
+      VoiceCue: npc_sigh
+      Duration: 2.4
+      Intensity: 0.45
+      Priority: 60
+      Cooldown: 6

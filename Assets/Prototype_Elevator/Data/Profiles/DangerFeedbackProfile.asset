@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e981839128f49204eb105bceaaacfca3, type: 3}
+  m_Name: DangerFeedbackProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.DangerFeedbackProfile
+  _sourcePreset: 1
+  _presetName: "\uD45C\uC900"
+  _levels:
+  - LightIntensity: 1
+    LightColor: {r: 0.85, g: 0.87, b: 0.92, a: 1}
+    FlickerRate: 0
+    FlickerDepth: 0
+    WarningColor: {r: 0.18, g: 0.19, b: 0.21, a: 1}
+    WarningPulseRate: 0
+    WarningEmission: 0
+    SwayAmplitude: 0
+    SwayRate: 0
+    CameraShake: 0
+    HumVolume: 0.1
+    HumPitch: 1
+  - LightIntensity: 0.84
+    LightColor: {r: 0.96, g: 0.72, b: 0.38, a: 1}
+    FlickerRate: 2.2
+    FlickerDepth: 0.16
+    WarningColor: {r: 0.98, g: 0.64, b: 0.2, a: 1}
+    WarningPulseRate: 1.6
+    WarningEmission: 1.5
+    SwayAmplitude: 0.008
+    SwayRate: 2.2
+    CameraShake: 0.0008
+    HumVolume: 0.2
+    HumPitch: 1.09
+  - LightIntensity: 0.58
+    LightColor: {r: 0.94, g: 0.52, b: 0.34, a: 1}
+    FlickerRate: 4.8
+    FlickerDepth: 0.3
+    WarningColor: {r: 1, g: 0.32, b: 0.22, a: 1}
+    WarningPulseRate: 3.4
+    WarningEmission: 2.9
+    SwayAmplitude: 0.018
+    SwayRate: 4
+    CameraShake: 0.0026
+    HumVolume: 0.34
+    HumPitch: 1.22
+  - LightIntensity: 0.34
+    LightColor: {r: 0.86, g: 0.34, b: 0.28, a: 1}
+    FlickerRate: 4.5
+    FlickerDepth: 0.38
+    WarningColor: {r: 1, g: 0.18, b: 0.14, a: 1}
+    WarningPulseRate: 5.5
+    WarningEmission: 4
+    SwayAmplitude: 0.026
+    SwayRate: 5.5
+    CameraShake: 0.005
+    HumVolume: 0.42
+    HumPitch: 0.78

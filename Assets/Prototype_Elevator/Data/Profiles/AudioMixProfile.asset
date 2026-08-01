@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 533fc5100e36b984f98c99abc55b1de1, type: 3}
+  m_Name: AudioMixProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.AudioMixProfile
+  _masterVolume: 1
+  _machineVolume: 0.55
+  _eventVolume: 0.8
+  _passengerVolume: 0.7
+  _warningVolume: 0.75
+  _masterDuck: 1
+  _machineDuck: 0.05
+  _eventDuck: 0.1
+  _passengerDuck: 0.35
+  _warningDuck: 0.15
+  _humVolumeScale:
+  - 1
+  - 1
+  - 1
+  - 1
+  _humPitchScale:
+  - 1
+  - 1
+  - 1
+  - 1

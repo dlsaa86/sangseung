@@ -80,6 +80,9 @@ public static class EyeLevelCapture
             ("07_entry",          new Vector3(0.65f, 1.62f, 1.35f), new Vector3(-0.70f, 1.35f, -0.90f)),
             // 층수 표시등은 출입구 위에 있다. 고개를 든 시야가 따로 필요하다.
             ("08_floor_sign",     eye, new Vector3( 0.65f, 2.26f,  1.45f)),
+            // 사고 기록기는 정면 벽(z=-1.43)에 있다. 위 시야 어느 것도 그 벽을 보지 않아
+            // "입구에서 들어와 보이는가"를 판정할 그림이 없었다. 문지방에서 정면을 본다.
+            ("09_accident_printer", new Vector3(0.65f, 1.62f, 1.10f), new Vector3(0.55f, 2.02f, -1.43f)),
         };
 
         foreach (var s in shots)
