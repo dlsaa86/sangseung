@@ -605,5 +605,6 @@ Wave A가 만든 컴포넌트를 씬에 붙이고 `.asset` 7종을 만든다. �
 2026-08-01 · d22c04c · Pass 2 · 프로파일 5종을 소비 지점에 주입 — 「배선됐는가」가 아니라 「읽혔는가」를 묻는 검사 · PlayMode 494 → 496 PASS / 0 FAIL
 2026-08-01 ·  d3e52fa · Pass 2 · 종류별 카운터(반응 8/11 · 오디오 14/16)와 연출 잠금 단정 536건 · PlayMode 496 → 1065 PASS / 0 FAIL, 자체 검증 213 PASS / 0 FAIL
 2026-08-01 ·  ceddf0f · Pass 2 · UP-TECH-03 런타임 배선 검사(음성 대조 포함 5단정) · UP-TEST-06 릴리스 빌드 가드 · GC 측정 결함 F-1/F-2 수정 · UP-TECH-08 판정식 like-for-like 정정 · UP-VIS-09 축소 세트 21장 · PlayMode 1335 → 1340 PASS / 0 FAIL / 콘솔오류 0
-2026-08-01 ·  (이번) · Pass 2 · 감사 5건 반영 — UP-NPC-01 승격(픽셀 대조) · UP-SPACE-08 공허 단정 정정 · 종류 이름 로깅(안 울린 3종 특정) · AccessibilitySource · 캡처 21장 전부 1920×1080 · 레거시 삭제 계획 확정(46파일 4,571줄) · PlayMode 1340 → 1877 PASS / 0 FAIL / 콘솔오류 0
+2026-08-01 ·  dc70de3 · Pass 2 · 감사 5건 반영 — UP-NPC-01 승격(픽셀 대조) · UP-SPACE-08 공허 단정 정정 · 종류 이름 로깅(안 울린 3종 특정) · AccessibilitySource · 캡처 21장 전부 1920×1080 · 레거시 삭제 계획 확정(46파일 4,571줄) · PlayMode 1340 → 1877 PASS / 0 FAIL / 콘솔오류 0
+2026-08-01 ·  (이번) · Pass 2 · UP-CORE-11/12 증거를 실제 레버 경로 GIF 로 이전 · 22_presenting_screen 신규(연출 중 화면, 잠금 True, 「연쇄 N단계」 HUD 포함) · 캡처 22장 전부 1920×1080 · 자체 검증 213 PASS / 0 FAIL
 ```

@@ -232,6 +232,8 @@ namespace Ascend.Prototype.Run.Tests
                 "계기판이나 결과판의 배치가 바뀌어야 한다(`PD-17`). " +
                 "이 장은 그 사실의 근거로 남긴다");
 
+            yield return CapturePresentingScreen(run, bridge, risk);
+
             // ── 2) 적재 ──
             // 2층까지 몰고 가서 실을 수 있는 만큼 싣는다. 최대 적재 캡처는 "동선이
             // 살아 있는가"를 판정하는 자료라 실제로 꽉 찬 상태여야 한다.
@@ -896,6 +898,78 @@ namespace Ascend.Prototype.Run.Tests
             root.rotation = savedRotation;
             if (hadController) controller.enabled = true;
             yield return WaitFrames(2);
+        }
+
+        /// <summary>
+        /// **연출이 도는 중**의 화면 캡처. `UP-CORE-13` 의 유일한 판정 자료다.
+        ///
+        /// 왜 따로 필요한가: 이 리그의 다른 연쇄 장(`15`·`19`)은 `run.Spin()` 을 **직접**
+        /// 부르고 판을 손으로 밀어 넣는다. 그건 의도된 우회다 — 연출이 끝나기를 기다리면
+        /// 엔진이 수확·정화된 칸을 전부 비워 판이 「회색 상자 하나」로 찍힌다.
+        /// 그러나 그 우회 때문에 `SpinPresenter` 가 **한 번도 돌지 않고**,
+        /// `IsPresenting` 이 영원히 false 라 `GameHudView.cs:152` 의 연출 중 힌트 페이드가
+        /// 걸리지 않는다. 독립 감사가 `19` 의 하단 힌트가 또렷한 것을 근거로 이 사실을 짚었다 —
+        /// **판정 대상(연출 중 화면)이 그림에서 구조적으로 빠져 있었다.**
+        ///
+        /// 그래서 이 장만은 **레버를 실제로 당기고**, 잠금이 걸린 동안 찍는다.
+        /// 판이 비는 문제는 여기서는 상관없다 — 재는 것이 판이 아니라 **HUD** 이기 때문이다.
+        /// </summary>
+        private IEnumerator CapturePresentingScreen(RunSessionBehaviour run,
+                                                    RouletteInteractionBridge bridge,
+                                                    Risk.RiskStateView risk)
+        {
+            var lever = FindAnyObjectByType<Ascend.Prototype.Player.InteractableLever>();
+            if (lever == null || bridge == null)
+            {
+                _manifest.AppendLine($"{"22_presenting_screen",-26} **찍지 못했다** — " +
+                                     $"레버={lever != null} 브리지={bridge != null}");
+                yield break;
+            }
+
+            run.ResetRun(RunMode.TenFloor, 4242);
+            yield return WaitFrames(2);
+            yield return DriveToFloor(run, bridge, 3);
+
+            FloorSession floor = run.Session.Current;
+            if (floor == null) yield break;
+            if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
+            if (floor.Phase == FloorPhase.ContractSelection)
+                run.SelectContract(floor.Plan.ContractChoices.Length - 1);
+            yield return WaitFrames(2);
+
+            if (floor.Phase != FloorPhase.Spinning || floor.SpinsRemaining <= 0)
+            {
+                _manifest.AppendLine($"{"22_presenting_screen",-26} **찍지 못했다** — " +
+                                     $"단계 {floor.Phase} / 남은 스핀 {floor.SpinsRemaining}");
+                yield break;
+            }
+
+            lever.Interact(gameObject);
+
+            // 잠금이 걸리기를 기다린다. 걸리지 않으면 연출자가 배선되지 않은 것이고,
+            // 그 사실을 **매니페스트에 적는다** — 조용히 아무 장도 안 남기지 않는다.
+            int guard = 0;
+            while (!bridge.IsLocked && guard++ < 120) yield return null;
+            if (!bridge.IsLocked)
+            {
+                _manifest.AppendLine($"{"22_presenting_screen",-26} **찍지 못했다** — " +
+                                     "레버를 당겼는데 연출 잠금이 걸리지 않았다 " +
+                                     "(연출자 미배선 의심)");
+                yield break;
+            }
+
+            // 잠긴 상태 한가운데. 너무 이르면 첫 열도 안 열렸고, 끝나면 잠금이 풀린다.
+            for (int i = 0; i < 12 && bridge.IsLocked; i++) yield return null;
+
+            bool stillLocked = bridge.IsLocked;
+            yield return ScreenShot("22_presenting_screen",
+                $"**연출이 도는 중**의 화면 캡처 (촬영 순간 잠금 {stillLocked}) — " +
+                "시드 4242 / 3층 / 증식체 계약. `UP-CORE-13`(한 화면에 모든 숫자를 " +
+                "띄우지 않는다)과 `UP-CORE-11`(순차 공개)은 **이 장으로 판정한다.** " +
+                "15·19 는 `run.Spin()` 을 직접 불러 `SpinPresenter` 를 거치지 않으므로 " +
+                "연출 중 HUD 를 담을 수 없다 — 그 두 장을 이 요구의 증거로 쓰지 말 것. " +
+                "이 장은 레버를 실제로 당겨 찍었다");
+            if (risk != null) { /* 상태 유지 — 위험 뷰는 캡처에 영향을 주지 않는다 */ }
         }
 
         private IEnumerator ScreenShot(string name, string note)

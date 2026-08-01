@@ -566,8 +566,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/View/SpinPresenter.cs`
 - 접근: 레버를 당기면 열 단위로 공개된다
-- 검증: 고정 캡처 `15_cascade_deep` + 연출 프리셋 3종
-- 증거: `Captures/TenFloor/15_cascade_deep.png`
+- 검증: GIF f0~f6 1열 · f8~f12 1+2열 · f14~ 3열 — 순차 공개가 필름에 있다
+- 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif` (실제 레버 경로 142프레임)
 - 의존: UP-CORE-02
 - 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **진짜 증거는 이미 저장소에 있다** — `Captures/evidence/cascade_depth5_seed4242_f3.gif` 142프레임에 순차 공개가 찍혀 있다(f0~f6 1열 · f8~f12 1+2열 · f14~ 3열). `EvidenceClipRecorder.cs:209-213` 이 `lever.Interact()` 로 실제 경로를 돌린 필름이다. 증거를 그 GIF 로 옮기고, `SYMBOL_DESIGN_SPEC.md` §7 「총 공개 1.5~2.5초」를 재는 검사를 붙여야 한다 — 씬 Standard 값 계산은 0.32×3+0.45 = **1.41초**로 하한 밖인데 재는 코드가 0건이다
 
@@ -576,8 +576,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/View/PurifyMarkerView.cs`, `SpinPresenter.cs`
 - 접근: 정화가 일어나는 순간 결과판을 본다
-- 검증: 고정 캡처 `15_cascade_deep`
-- 증거: `Captures/TenFloor/15_cascade_deep.png`
+- 검증: GIF f30 「연결 정화 4칸」+ㄱ자 표식 · f118 「직선 3칸」+대각 막대 — 형상으로 갈린다
+- 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif` (실제 레버 경로 142프레임)
 - 의존: UP-CORE-08
 - 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **진짜 증거도 같은 GIF 에 있다** — f30 「흡수체 연결 정화 4칸 ×3」+ㄱ자 표식, f62 8칸, f86 지그재그, f118 「흡수체 직선 3칸 ×2」+대각 막대. 연결과 직선이 형상으로 갈린다. 남은 것: 「개수 정화(Scattered)」가 필름에 한 번도 없어 3종 대비가 2/3 이다
 
@@ -586,10 +586,10 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/UI/GameHudView.cs`, `Scripts/View/SpinPresenter.cs`
 - 접근: 깊은 캐스케이드 중 화면을 본다
-- 검증: 고정 캡처 `19_cascade_deep_screen` — 15번과 같은 순간의 화면 캡처
-- 증거: `Captures/TenFloor/19_cascade_deep_screen.png`
+- 검증: 레버를 실제로 당겨 `SpinPresenter` 가 도는 중에 찍은 화면 캡처
+- 증거: `Captures/TenFloor/22_presenting_screen.png` (촬영 순간 연출 잠금 True)
 - 의존: UP-CORE-12
-- 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **그래서 판정 대상이 그림에서 구조적으로 빠진다.** `19_cascade_deep_screen` 하단에 「전력 탱크로 확정하거나…」 힌트가 또렷한데, `GameHudView.cs:152` 는 연출 중이면 그 힌트를 0 으로 페이드한다 → 셔터 순간이 **연출 중이 아니었다**(`IsPresenting` 이 영원히 false). 그런데 매니페스트는 「연쇄 8단계 / HUD 를 포함한다」고 적는다 — 「주장과 그림이 다르다」의 재발이다. 고칠 길은 이미 있다: 리그가 `run.Spin()` 대신 **레버를 당기게** 하면 `UP-CORE-11`·`12`·`13` 이 한 번에 오른다
+- 남은 문제: **판정 대상이 처음으로 그림에 들어왔다.** 이전 증거 `19_cascade_deep_screen` 은 리그가 `run.Spin()` 을 직접 불러 `SpinPresenter` 를 거치지 않았고, 그래서 `IsPresenting` 이 영원히 false 라 **연출 중 화면이 한 번도 찍히지 않았다** — 감사자가 「하단 힌트가 또렷하다」는 것을 근거로 이 사실을 짚었다(`GameHudView.cs:152` 는 연출 중 힌트를 0 으로 페이드한다). 새 장 `22_presenting_screen` 은 **레버를 실제로 당기고** 잠금이 걸린 동안 찍는다. 확인된 것 셋 — ① 촬영 순간 `bridge.IsLocked == True` ② **「연쇄 0단계」 HUD 가 있다**(19 에 구조적으로 빠져 있던 바로 그 요소) ③ **하단 힌트가 사라졌다**(페이드 경로가 실제로 돌았다). **다만 충족 여부는 내가 판정하지 않는다.** 읽히는 것은 「연쇄 **0**단계」라 공개 초입이고 깊은 연쇄가 아니며, 좌측 1/3이 어두운 벽이라 구도가 낭비된다. 「한 화면에 모든 숫자를 띄우지 않는다」의 통과 여부는 **독립 평가가 정할 일**이다
 
 ### UP-CORE-14 — 가중치 합이 0이면 명시적 오류
 - 분류: Required · 출처: N08 §7.2 마지막 문장, PRD §13.5(조용한 실패 금지)
