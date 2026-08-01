@@ -37,10 +37,61 @@ namespace Ascend.Prototype.View
         [Header("표시")]
         [SerializeField] private TextMeshPro _floorLabel;
         [SerializeField] private TextMeshPro _powerLabel;
+
+        /// <summary>
+        /// `UP-FIX-23` — 「전력 N / 요구 M」 한 줄이 9.01 rect 단위라 어떤 여백값으로도
+        /// 통관 그림자(하한 3.12)와 레버 덮개(상한 10.21) 사이 **7.09 단위**에 못 들어간다.
+        /// 산술적으로 해가 없어서 직전 시도는 글자를 30% 줄이는 대가를 치렀다.
+        ///
+        /// **줄을 나누면 그 대가가 0 이 된다** — 「전력 N」 4.5 단위 · 「요구 M」 4.4 단위.
+        /// 비면 옛 동작 그대로 한 줄에 합쳐 쓴다(배선이 빠져도 정보가 사라지지 않는다).
+        /// </summary>
+        [SerializeField] private TextMeshPro _requiredLabel;
         [SerializeField] private TextMeshPro _statusLabel;
 
         [Tooltip("계약 미리보기 — 출현률·정화 보상·잔류 대가를 한 줄에. 비어 있으면 표시하지 않는다.")]
         [SerializeField] private TextMeshPro _contractLabel;
+
+        /// <summary>
+        /// 8차 판정 §4 — 「전력」 두 글자가 통관 뒤에서 시작한다(24장 중 11장).
+        ///
+        /// **원인을 씬 좌표로 다시 쟀다. 「반투명 통관 너머로 비친다」가 아니다.**
+        /// 가리는 것은 `TubesRoot/Tube_2`(프레임과 가운데 칸 심볼)이고 라벨보다
+        /// **카메라 쪽**에 서 있다. 그래서 글자 뒤에 배킹판을 까는 수법은 여기서
+        /// 원리적으로 듣지 않는다 — 승객 이름표에서 같은 수법이 24장 중 0장 보였던
+        /// 것과는 실패 이유가 다르다(그쪽은 안 보였고, 이쪽은 있어도 소용이 없다).
+        ///
+        /// 계기 라벨 셋은 pivot(0, 0.5)·좌측 정렬이라 계기판 **좌단**(rect u=0)에서
+        /// 시작해 오른쪽으로만 자란다. Risk 시점(`06`·`09`·`10`·`16`·`18`)에서
+        /// `Tube_2` 실루엣의 오른쪽 끝은 화면 x=**911 px**, 라벨 시작점은 x=**816 px**.
+        /// 다섯 장 전부에서 잰 같은 값이고, 씬 YAML 좌표로 쏜 광선이 예측한 경계
+        /// (911 px)와 1 px 안에서 일치한다. 그 95 px = **rect 3.12 단위**이고
+        /// 그 안에 「전력 1616」의 앞 여섯 글자가 들어 있다.
+        ///
+        /// 고치는 축은 **가로 예산**이다. 글자를 그만큼 오른쪽으로 밀고(`margin.x`),
+        /// 민 만큼 오른쪽이 넘치므로 줄 전체를 같이 줄인다. 둘 중 하나만 만지면
+        /// 반드시 반대쪽 가장자리가 깨진다 — 네 라운드 연속으로 그렇게 깨졌다
+        /// (우측 → 상단 → 좌측).
+        ///
+        /// 예산은 실측이다. Risk 시점의 무가림 구간은 rect **3.12…15.34**,
+        /// `21_board_and_gauge` 는 **0…10.21**(과수확 레버 덮개가 그 뒤를 가린다).
+        /// 전력 줄 전체는 15.14 단위, 그중 보호해야 할 앞머리 「전력 N / 요구 M」은
+        /// **9.01 단위**(4자리 전력 기준, `06` 에서 px 818…1090 실측).
+        /// 두 구간을 동시에 만족하는 해는 `pad + 줄폭·scale ≤ 두 상한` 뿐이고,
+        /// 축소 없이는 **산술적으로 해가 없다** — 9.01 > 10.21 − 3.12 = 7.09.
+        /// </summary>
+        [Header("가로 예산 — 통관 가림 회피")]
+        [Tooltip("계기판 좌단에서 글자 시작까지 비우는 폭(rect 단위). Risk 시점 통관 실루엣이 3.12 까지 덮는다. 0 이면 예전 동작.")]
+        [SerializeField] private float _leftPadUnits = 5.20f;
+
+        [Tooltip("글자 크기 배율. 좌측 여백만큼 오른쪽이 밀리므로 함께 줄인다. 1 이면 예전 동작.")]
+        [SerializeField, Range(0.5f, 1f)] private float _textScale = 1.00f;
+
+        // 배율을 곱할 원본 크기. **런타임 값에서 읽지 않는다.** 라벨이 이미 들고 있는
+        // 크기를 원본으로 삼으면, 이 컴포넌트가 한 번 쓴 값을 다음 번에 다시 원본으로
+        // 읽어 배율이 복리로 걸린다. 씬 세 라벨은 전부 10 이고 그 사실을 여기 못 박는다.
+        [Tooltip("계기 라벨 셋의 기준 글자 크기. 씬 값이 아니라 이 값이 이긴다 — 배율이 복리로 걸리는 것을 막는다.")]
+        [SerializeField] private float _baseFontSize = 10f;
 
         [Header("전력 게이지")]
         [SerializeField] private Transform _barPivot;
@@ -110,6 +161,36 @@ namespace Ascend.Prototype.View
             if (_risk == null) _risk = FindAnyObjectByType<RiskStateView>();
             if (_presenter == null) _presenter = FindAnyObjectByType<SpinPresenter>();
             if (_run != null) _run.RunStarted += _ => InvalidateCache();
+
+            ApplyLabelFit();
+        }
+
+        /// <summary>
+        /// 계기 라벨 셋에 좌측 여백과 크기 배율을 건다. 계약 라벨(`_contractLabel`)은
+        /// **뺀다** — 그건 오른쪽 벽의 계약 장치에 붙어 있어 통관과 무관하고,
+        /// 같은 여백을 걸면 아무 이유 없이 오른쪽으로 밀린다.
+        /// </summary>
+        private void ApplyLabelFit()
+        {
+            Fit(_floorLabel);
+            Fit(_powerLabel);
+            Fit(_requiredLabel);
+            Fit(_statusLabel);
+        }
+
+        private void Fit(TextMeshPro label)
+        {
+            if (label == null || _baseFontSize <= 0f) return;
+
+            float size = _baseFontSize * _textScale;
+            if (!Mathf.Approximately(label.fontSize, size)) label.fontSize = size;
+
+            Vector4 margin = label.margin;
+            if (!Mathf.Approximately(margin.x, _leftPadUnits))
+            {
+                margin.x = _leftPadUnits;
+                label.margin = margin;
+            }
         }
 
         /// <summary>런이 새로 시작되면 캐시 키를 푼다. 안 그러면 종료 화면이 그대로 남는다.</summary>
@@ -128,6 +209,10 @@ namespace Ascend.Prototype.View
 
         private void LateUpdate()
         {
+            // 값이 바뀔 때만 실제로 쓴다(비교 여섯 번). 매 프레임 거는 이유는 하나다 —
+            // 인스펙터에서 예산을 바꿔 보는 동안에도 화면이 따라와야 캡처 전에 검산할 수 있다.
+            ApplyLabelFit();
+
             RunSession run = _run != null ? _run.Session : null;
             if (run == null) return;
 
@@ -186,12 +271,29 @@ namespace Ascend.Prototype.View
                 _shownPower = power;
                 _shownRequired = required;
                 _shownBand = band;
-                _text.Clear();
-                _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
-                     .Append(" / 요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
-                     .Append("   ").AppendFormat("{0:P0}", ratio)
-                     .Append("  ").Append(floor.CurrentBand.DisplayName());
-                Apply(_powerLabel, _text);
+                if (_requiredLabel != null)
+                {
+                    // 두 줄로 나눈다 — 각 줄이 5.0 rect 단위 아래라 통관 그림자와
+                    // 레버 덮개 사이에 온전히 들어간다 (`UP-FIX-23`).
+                    _text.Clear();
+                    _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power);
+                    Apply(_powerLabel, _text);
+
+                    _text.Clear();
+                    _text.Append("요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
+                         .Append("  ").AppendFormat("{0:P0}", ratio);
+                    Apply(_requiredLabel, _text);
+                }
+                else
+                {
+                    // 배선이 없으면 옛 한 줄. 정보가 사라지는 것보다 잘리는 편이 낫다.
+                    _text.Clear();
+                    _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
+                         .Append(" / 요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
+                         .Append("   ").AppendFormat("{0:P0}", ratio)
+                         .Append("  ").Append(floor.CurrentBand.DisplayName());
+                    Apply(_powerLabel, _text);
+                }
             }
 
             int statusKey = floor.SpinsRemaining

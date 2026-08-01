@@ -110,11 +110,20 @@ namespace Ascend.Prototype.Run.Tests
         // 천장이 위로 멀어지면서 **면으로 보이고**(선이 아니라), 뒷벽의 세로 화각 폭이
         // 줄어(h=0.95 에서 55.9° · h=1.62 에서 57.8°) 바닥선과 천장선이 **둘 다** 들어온다.
         //
-        // 기하로 미리 계산한 값 (1920×1080 · 수직 60° · 정규화 세로 −1 아래끝 … +1 위끝):
-        //   뒷벽 안쪽면 z=1.50 의 바닥선 **−0.94** · 천장선 **+0.90** → 프레임 세로의 **92%**
-        //   출입구 상단(y=2.05) **+0.32** → 문 위로 프레임의 58% 가 더 있다 (사람 치수 기준자)
-        //   천장면이 z 1.25…1.50 구간에서 프레임 위쪽 5.0% 를 띠로 채운다
-        //   뒷벽 폭 2.40 이 가로 ±0.44 → 44% 폭 × 92% 높이. **가로보다 세로가 길게 찍힌다**
+        // 기하로 미리 계산한 값 (1920×1080 px · 수직 60° · `ndc` = −1 아래끝 … +1 위끝):
+        //   뒷벽 안쪽면 z=1.50 m 의 바닥선 **−0.94 ndc** · 천장선 **+0.90 ndc**
+        //     → 두 선 사이 1.84 ndc = 프레임세로의 **92%**
+        //   출입구 상단(y=2.05 m) **+0.32 ndc** (사람 치수 기준자)
+        //     → 문 위 여백 0.68 ndc = 프레임세로의 **34%**
+        //     → 문 상단~천장선 0.58 ndc = 프레임세로의 **29%**
+        //   천장면이 z 1.25…1.50 m 구간에서 프레임 위쪽 5.0% 를 띠로 채운다
+        //   뒷벽 폭 2.40 m 이 가로 ±0.44 ndc → 44% 폭 × 92% 높이. **가로보다 세로가 길게 찍힌다**
+        //
+        // **여기 「문 위로 프레임의 58%」라고 적혀 있었다. 단위 혼동이다** — 0.58 은
+        // 문 상단에서 천장선까지의 **ndc 길이**이고, 화면 전체가 2.0 ndc 이므로 프레임
+        // 비율로는 **29%** 다. 8차 독립 판정이 이 수를 잡았고 그림에서 잰 값(≈34%)은
+        // 문 위 *여백*(0.68 ndc)에 해당한다. **ndc 와 % 를 한 문장에 이름 없이 섞지 않는다.**
+        // 변환은 `NdcSpanToFramePercent`(×50) 하나만 쓴다.
         // 이대로 나오지 않으면 이 안이 틀린 것이다. 실측은 매니페스트의 「높이 실측」줄에 남는다.
         //
         // 자리 확인 (씬 YAML 실측): FrontWall z −1.70…−1.50 (카메라 뒤 0.10) ·
@@ -267,12 +276,15 @@ namespace Ascend.Prototype.Run.Tests
             yield return Shot("24_entry_height", EntryHeight, risk,
                 "**`UP-FIX-01` — 공간의 높이.** 1차 독립 판정의 최우선 지적이 " +
                 "「높이를 보여주는 프레임이 0장」이었고 이 장이 그 첫 시도다. " +
-                "`01_entry`(눈높이 1.62 · 시선 **아래로 8.03°**)로는 원리적으로 안 된다 — " +
-                "그 프레임에서 천장이 가장 낮게 찍히는 점조차 정규화 세로 **+1.220** 이다(위끝 +1.000). " +
-                "이 장은 눈높이 **0.95** 에서 **위로 10.36°** 겨눈다. " +
-                "**예측**(기하 계산, 정규화 세로 −1 아래끝 … +1 위끝): 뒷벽 안쪽면이 " +
-                "바닥선 −0.94 부터 천장선 +0.90 까지 **프레임 세로의 92%** 를 채우고, " +
-                "출입구 상단(2.05)이 +0.32 에 와서 **문 위로 프레임의 58%** 가 더 남는다. " +
+                "`01_entry`(눈높이 1.62 m · 시선 **아래로 8.03°**)로는 원리적으로 안 된다 — " +
+                "그 프레임에서 천장이 가장 낮게 찍히는 점조차 **+1.220 ndc** 다(위끝 +1.000 ndc). " +
+                "이 장은 눈높이 **0.95 m** 에서 **위로 10.36°** 겨눈다. " +
+                "**예측**(기하 계산 · `ndc` = −1 아래끝 … +1 위끝, 화면 전체 2.0 ndc): 뒷벽 안쪽면이 " +
+                "바닥선 **−0.94 ndc** 부터 천장선 **+0.90 ndc** 까지, 즉 1.84 ndc = **프레임세로의 92%** 를 채우고, " +
+                "출입구 상단(2.05 m)이 **+0.32 ndc** 에 와서 문 위 여백이 0.68 ndc = **프레임세로의 34%**, " +
+                "문 상단~천장선이 0.58 ndc = **프레임세로의 29%** 가 된다. " +
+                "**여기 「문 위로 프레임의 58%」라고 적혀 있었다 — 8차 판정이 잡은 단위 혼동이다.** " +
+                "0.58 은 ndc 길이이고 프레임 비율로는 그 절반인 29% 다(ndc 길이 ×50 = 프레임 %). " +
                 "**이대로 나오지 않으면 이 안이 틀린 것이다** — 다음 줄의 「높이 실측」이 실제 값이고, " +
                 "높이가 실제로 읽히는가는 매니페스트가 아니라 평가자가 그림에서 판정한다. " +
                 "`01_entry` 를 포함해 **기존 시점은 하나도 바꾸지 않았다**",
@@ -887,7 +899,12 @@ namespace Ascend.Prototype.Run.Tests
             WritePng(name, _readback.EncodeToPNG());
             _renderShots++;
 
-            _manifest.AppendLine($"{name,-26} 시점 {pose.Name,-12} pos {pose.Position:F2} look {pose.LookAt:F2}  " +
+            // 실측 기준을 전용 카메라로 못박는다. 게임 뷰 화면 캡처와 화각이 다르므로
+            // 이 한 줄을 빠뜨리면 매니페스트가 스스로 다른 장의 화각으로 이 장을 잰다.
+            _measureCamera = _camera;
+
+            _manifest.AppendLine($"{name,-26} 시점 {pose.Name,-12} pos {pose.Position:F2} m look {pose.LookAt:F2} m  " +
+                                 $"FOV {Fov:F0}° · {Width}×{Height} px  " +
                                  $"위험 {(risk != null ? risk.Level.DisplayName() : "—")}");
             _manifest.AppendLine($"{"",-26} {note}");
             _manifest.AppendLine($"{"",-26} {GaugeFill()}");
@@ -915,24 +932,70 @@ namespace Ascend.Prototype.Run.Tests
         // 그래서 아래 값은 전부 **셔터가 열린 그 순간의 카메라 행렬로 계산한 것**이다.
         // 사람이 쓴 주장이 아니고, 세트가 커져도 따라온다.
         //
-        // **재지 않는 것도 적는다 — 가림은 재지 않는다.** 가림 판정은 `Physics` 콜라이더에
-        // 의존하는데 이 껍데기들에 콜라이더가 전부 붙어 있는지 확인하지 않았다. 콜라이더가
-        // 없으면 「가리는 것이 없다」가 **거짓 그린**으로 나온다. 「프레임 안에 있다」와
-        // 「보인다」는 다른 말이고, 여기서 답하는 것은 앞의 것뿐이다.
+        // **8차 판정이 이 절을 다시 열었다.** 열한 장(`06`·`08`·`09`·`10`·`11`·`12`·`13`·
+        // `16`·`18`·`22`·`24`)에서 「전력」 두 글자가 반투명 통관에 먹혀 「…력 1616」으로
+        // 남는데, **매니페스트는 그 열한 장을 전부 「온전 3 · 잘림 0」으로 적었다.**
+        // 스스로 「가림은 재지 않았다」고 고지해 두고 초록불을 준 것이다 —
+        // **측정하지 않은 항목에 대한 초록불이다.**
+        //
+        // 그래서 이제 **가림을 실제로 잰다.** 방식은 콜라이더가 아니다. 직전 판본이
+        // 스스로 「콜라이더 유무를 확인하지 않아 거짓 그린이 날 수 있다」고 적었고 그
+        // 고지가 옳았다 — 콜라이더는 **있을 수도 없을 수도** 있는 부속이다. 대신
+        // **렌더러의 월드 AABB**(`Renderer.bounds`)를 모아 카메라 → 글자 선분과
+        // 교차시킨다. 렌더러는 「그려지는 것」의 정의 그 자체라 「부속이 안 붙어서
+        // 못 봤다」가 원리적으로 생기지 않고, 반투명이어도 잡힌다(글자를 흐리면 가림이다).
+        //
+        // **그래서 「온전」의 정의가 바뀌었다 — 프레임 안 *그리고* 가리는 것이 없음.**
+        // 예전 정의(프레임 포함 여부)로 초록을 적던 자리가 여기서 갈린다.
+        // 그리고 **재지 못한 축은 「온전」에 넣지 않는다** — 아래 「가림 계측 한계」줄이
+        // 무엇을 못 쟀는지 이름과 개수로 적고, 그 항목에 걸린 줄은 `가림?` 으로 남는다.
+        //
+        // **단위 규칙**(8차 판정 §7-5 의 단위 혼동을 막는다):
+        //   `ndc` = 정규화 좌표 −1(아래·왼끝) … +1(위·오른끝). 화면 전체가 **2.0 ndc** 다.
+        //   `%`   = 프레임 비율. ndc 길이를 % 로 옮길 때는 <see cref="NdcSpanToFramePercent"/>
+        //           **하나만** 쓴다(×50). 「0.58」을 「58%」로 읽은 것이 8차의 오독이었다 —
+        //           0.58 ndc 는 프레임의 **29%** 다.
+        //   그래서 이 파일이 내보내는 모든 수에는 단위가 붙는다. 붙지 않은 수는 버그다.
+
+        /// <summary>
+        /// 지금 실측이 기준으로 삼는 카메라. 전용 카메라 경로는 <see cref="_camera"/>(1920×1080 ·
+        /// 화면비 못박음), 게임 뷰 화면 캡처 경로는 플레이어 카메라다. **두 경로의 화각이
+        /// 다르므로 섞으면 안 된다** — 섞으면 「다른 장의 숫자를 이 장의 성과로 옮겨 적는」
+        /// 8차 §7-1 과 같은 오류가 매니페스트 안에서 자동으로 일어난다.
+        /// </summary>
+        private Camera _measureCamera;
+        private Camera MeasureCamera => _measureCamera != null ? _measureCamera : _camera;
 
         /// <summary>월드 한 점이 지금 카메라의 화각 안인가.</summary>
         private bool InFrame(Vector3 world)
         {
-            Vector3 v = _camera.WorldToViewportPoint(world);
+            Camera cam = MeasureCamera;
+            if (cam == null) return false;
+            Vector3 v = cam.WorldToViewportPoint(world);
             return v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
         }
 
-        /// <summary>정규화 세로 위치. −1 아래끝 · 0 한가운데 · +1 위끝. 뒤쪽이면 NaN.</summary>
+        /// <summary>
+        /// 정규화 세로 위치 **ndc**. −1 아래끝 · 0 한가운데 · +1 위끝. 뒤쪽이면 NaN.
+        /// **이 값은 ndc 이지 프레임 비율(%)이 아니다** — 둘을 한 문장에 섞지 않는다.
+        /// </summary>
         private float ScreenY(Vector3 world)
         {
-            Vector3 v = _camera.WorldToViewportPoint(world);
+            Camera cam = MeasureCamera;
+            if (cam == null) return float.NaN;
+            Vector3 v = cam.WorldToViewportPoint(world);
             return v.z > 0f ? (v.y - 0.5f) * 2f : float.NaN;
         }
+
+        /// <summary>
+        /// **ndc 길이 → 프레임 비율(%).** 화면 전체가 2.0 ndc 이므로 ×50 이다.
+        /// ndc 좌표(위치)를 그대로 넣으면 안 된다 — 넣는 것은 **길이**다.
+        /// 이 변환을 손으로 하지 않는 것이 이 함수가 존재하는 이유다.
+        /// </summary>
+        private static float NdcSpanToFramePercent(float ndcSpan) => ndcSpan * 50f;
+
+        /// <summary>매니페스트 여러 줄을 계기 줄 들여쓰기에 맞춘다.</summary>
+        private const string FactIndent = "                           ";
 
         /// <summary>월드 AABB 여덟 꼭짓점 중 프레임 안인 개수. 8이면 온전, 0이면 밖.</summary>
         private int CornersInFrame(Bounds bounds)
@@ -949,6 +1012,142 @@ namespace Ascend.Prototype.Run.Tests
             return inside;
         }
 
+        // ── 가림 계측 ────────────────────────────────────────────────────────
+
+        /// <summary>이번 셔터에서 가림 후보로 쓸 렌더러와 그 월드 AABB. 매 장 새로 모은다.</summary>
+        private readonly List<Renderer> _solidOccluders = new List<Renderer>();
+        private readonly List<Bounds> _solidBounds = new List<Bounds>();
+
+        /// <summary>
+        /// 입자·선·궤적 렌더러. AABB 가 실제 그려지는 면적의 성긴 대리값이라 **확정으로 세지
+        /// 않는다** — 그러나 후보에서 빼 버리면 「재지 않은 것을 초록으로 적는」 8차의 실패를
+        /// 그대로 반복하게 된다. 그래서 별도로 세고 `가림?` 으로 남긴다.
+        /// </summary>
+        private readonly List<Renderer> _softOccluders = new List<Renderer>();
+        private readonly List<Bounds> _softBounds = new List<Bounds>();
+
+        /// <summary>계측에서 제외한 TMP 렌더러 수. 글자가 글자를 가린다고 세면 자기 자신이 걸린다.</summary>
+        private int _skippedTextRenderers;
+
+        /// <summary>AABB 가 글자를 **품어 버려** 판정할 수 없었던 렌더러 이름. 초록으로 적지 않는다.</summary>
+        private readonly HashSet<string> _containingBounds = new HashSet<string>();
+
+        /// <summary>글자 한 칸에서 뽑는 표본 위치(0..1 사각형 안). 가로 절단과 세로 절단을 함께 잡는다.</summary>
+        private static readonly Vector2[] CharSamples =
+        {
+            new Vector2(0.50f, 0.50f),
+            new Vector2(0.22f, 0.50f),
+            new Vector2(0.78f, 0.50f),
+            new Vector2(0.50f, 0.24f),
+            new Vector2(0.50f, 0.76f),
+        };
+
+        /// <summary>
+        /// 씬의 렌더러를 가림 후보로 모은다. **콜라이더를 보지 않는다** — 콜라이더는 있을
+        /// 수도 없을 수도 있는 부속이고, 그 불확실성이 직전 판본이 스스로 경고한
+        /// 「거짓 그린」의 원인이었다. 렌더러는 그려지는 것의 정의 그 자체다.
+        /// </summary>
+        private void CollectOccluders()
+        {
+            _solidOccluders.Clear(); _solidBounds.Clear();
+            _softOccluders.Clear();  _softBounds.Clear();
+            _containingBounds.Clear();
+            _skippedTextRenderers = 0;
+
+            var solid = new List<Renderer>(256);
+            var soft = new List<Renderer>(16);
+            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            {
+                if (renderer == null || !renderer.enabled) continue;
+                if (!renderer.gameObject.activeInHierarchy) continue;
+                if (renderer.GetComponent<TMPro.TMP_Text>() != null) { _skippedTextRenderers++; continue; }
+
+                if (renderer is ParticleSystemRenderer || renderer is LineRenderer || renderer is TrailRenderer)
+                    soft.Add(renderer);
+                else
+                    solid.Add(renderer);
+            }
+
+            // **순서를 못박는다.** `FindObjectsByType` 는 순서를 보장하지 않는다. 순서가 흔들리면
+            // 겹친 후보 중 어느 이름이 보고되는지가 런마다 달라지고, 그러면 매니페스트가
+            // 같은 씬·같은 시드에서 다른 문장을 낸다 — 고정 캡처 세트의 전제가 무너진다.
+            solid.Sort(ByNameThenPosition);
+            soft.Sort(ByNameThenPosition);
+
+            foreach (Renderer renderer in solid) { _solidOccluders.Add(renderer); _solidBounds.Add(renderer.bounds); }
+            foreach (Renderer renderer in soft)  { _softOccluders.Add(renderer);  _softBounds.Add(renderer.bounds); }
+        }
+
+        /// <summary>이름 → 위치 순. 같은 이름이 여럿인 껍데기(`TubeFrame` 셋)까지 갈린다.</summary>
+        private static int ByNameThenPosition(Renderer a, Renderer b)
+        {
+            int byName = string.CompareOrdinal(a.gameObject.name, b.gameObject.name);
+            if (byName != 0) return byName;
+            Vector3 pa = a.bounds.center, pb = b.bounds.center;
+            if (pa.x != pb.x) return pa.x < pb.x ? -1 : 1;
+            if (pa.y != pb.y) return pa.y < pb.y ? -1 : 1;
+            if (pa.z != pb.z) return pa.z < pb.z ? -1 : 1;
+            return 0;
+        }
+
+        /// <summary>
+        /// 선분(origin→target)이 AABB 안으로 **들어가는 지점**. 슬랩 방식.
+        /// 대상이 그 안에 있으면 가리는 게 아니라 품고 있는 것이므로 호출부가 먼저 거른다.
+        /// </summary>
+        private static bool SegmentEntersBounds(Vector3 origin, Vector3 target, in Bounds bounds, out float entry)
+        {
+            entry = 0f;
+            Vector3 direction = target - origin;
+            float enter = 0f, exit = 1f;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                float o = origin[axis], d = direction[axis];
+                float low = bounds.min[axis], high = bounds.max[axis];
+                if (Mathf.Abs(d) < 1e-8f)
+                {
+                    if (o < low || o > high) return false;
+                    continue;
+                }
+                float t1 = (low - o) / d, t2 = (high - o) / d;
+                if (t1 > t2) { float swap = t1; t1 = t2; t2 = swap; }
+                if (t1 > enter) enter = t1;
+                if (t2 < exit) exit = t2;
+                if (enter > exit) return false;
+            }
+            // 카메라가 그 안에 있거나(enter≈0) 대상 뒤에서 시작하는 것(enter≈1)은 가림이 아니다.
+            entry = enter;
+            return enter > 0.001f && enter < 0.999f;
+        }
+
+        /// <summary>
+        /// 선분을 막는 렌더러 중 **카메라에 가장 가까운 것.** 없으면 null.
+        /// 첫 발견이 아니라 최근접인 이유는 둘이다 — ①플레이어가 실제로 보는 것이 최근접이다
+        /// ②후보 순서가 결과를 바꾸지 않아 같은 씬이면 같은 문장이 나온다.
+        /// 대상을 품는 AABB 는 가림이 아니므로 이름만 남기고 통과시킨다.
+        /// </summary>
+        private Renderer Blocker(Vector3 origin, Vector3 target,
+                                 List<Renderer> pool, List<Bounds> bounds, bool recordContaining)
+        {
+            Renderer nearest = null;
+            float nearestEntry = float.MaxValue;
+            for (int i = 0; i < pool.Count; i++)
+            {
+                Renderer renderer = pool[i];
+                if (renderer == null) continue;
+                Bounds box = bounds[i];
+                if (box.Contains(target))
+                {
+                    if (recordContaining) _containingBounds.Add(renderer.gameObject.name);
+                    continue;
+                }
+                if (!SegmentEntersBounds(origin, target, in box, out float entry)) continue;
+                if (entry >= nearestEntry) continue;
+                nearestEntry = entry;
+                nearest = renderer;
+            }
+            return nearest;
+        }
+
         /// <summary>
         /// 셔터 순간의 프레임 내용을 잰다 — 결과판·계기 글자줄·게이지.
         ///
@@ -956,9 +1155,15 @@ namespace Ascend.Prototype.Run.Tests
         /// 카메라에서 라벨로 가는 광선과 라벨 면 법선의 사잇각이 0에 가까울수록 글자가
         /// 정면으로 보이고, 90°에 가까울수록 세로 파편으로 눌린다. 챔퍼 이전 실측이
         /// 0.327(70.9°)이었으므로 이 수 하나로 배치 변경이 들었는지 아닌지가 갈린다.
+        /// **이 계수는 이 장의 값이다** — 8차 §7-1 이 잡은 오류가 정확히 이것을 다른 장의
+        /// 값으로 바꿔 적은 것이었으므로, 출력에 「이 장」이라고 못박는다.
         /// </summary>
         private string FrameFacts()
         {
+            Camera cam = MeasureCamera;
+            if (cam == null) return "프레임 실측 — **확인 못 함**(카메라가 없다)";
+
+            CollectOccluders();
             var line = new StringBuilder("프레임 실측 — ");
 
             var board = FindAnyObjectByType<SpinBoardView>();
@@ -980,59 +1185,250 @@ namespace Ascend.Prototype.Run.Tests
                         symbols.Append('|');
                 }
                 // 인덱스 = 열*3 + 행 이므로 `|` 로 끊은 덩어리 하나가 통관 한 개다.
-                line.Append($"결과판 {cells}칸 중 프레임 안 {inside} · 심볼 선 칸 {filled} " +
-                            $"[열별 {symbols} · 영=영혼 흡=흡수체 증=증식체 ·=빈칸]");
+                // **결과판에는 「온전」을 쓰지 않는다** — 심볼은 통관 유리 *안*에 있어
+                // 유리가 늘 선분에 걸린다. 그건 결함이 아니라 의도된 표현이라 가림으로
+                // 세면 매 장 거짓 경보가 난다. 여기서 재는 것은 프레임 포함뿐이고,
+                // 그 사실을 단어 선택으로 드러낸다.
+                line.Append($"결과판 {cells}칸 중 프레임 안 {inside}칸 · 심볼 선 칸 {filled}칸 " +
+                            $"[열별 {symbols} · 영=영혼 흡=흡수체 증=증식체 ·=빈칸] " +
+                            "(결과판은 통관 유리 안이라 가림 계측 대상이 아니다)");
             }
 
             var panel = FindAnyObjectByType<InstrumentPanelView>();
-            if (panel == null) line.Append(" / 계기판 없음");
-            else
+            if (panel == null) { line.Append(" / 계기판 없음"); return line.ToString(); }
+
+            int objects = 0, plaquesSkipped = 0, visualLines = 0;
+            int whole = 0, occluded = 0, softOnly = 0, clipped = 0, offFrame = 0, blank = 0, unknown = 0;
+            float facingSum = 0f;
+            int facingCount = 0;
+            var detail = new StringBuilder();
+
+            foreach (TMPro.TMP_Text label in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
             {
-                int rows = 0, whole = 0, cut = 0, outside = 0;
-                float facingSum = 0f;
-                int facingCount = 0;
-                foreach (TMPro.TMP_Text label in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+                if (label == null) continue;
+                // 계약 명판은 다른 벽이다. 섞으면 계기면 각도가 엉뚱해진다.
+                if (label.name.StartsWith("ContractPlaque", StringComparison.Ordinal)) { plaquesSkipped++; continue; }
+                if (!label.gameObject.activeInHierarchy) continue;
+                if (label.GetComponent<Renderer>() == null) continue;   // 화면공간 TMP 면 월드 경계가 없다
+
+                objects++;
+
+                Vector3 toLabel = label.transform.position - cam.transform.position;
+                if (toLabel.sqrMagnitude > 1e-6f)
                 {
-                    if (label == null) continue;
-                    // 계약 명판은 다른 벽이다. 섞으면 계기면 각도가 엉뚱해진다.
-                    if (label.name.StartsWith("ContractPlaque", StringComparison.Ordinal)) continue;
-                    if (!label.gameObject.activeInHierarchy) continue;
-                    if (string.IsNullOrWhiteSpace(label.text)) continue;
-
-                    var renderer = label.GetComponent<Renderer>();
-                    if (renderer == null) continue;   // 화면공간 TMP 면 월드 경계가 없다
-
-                    rows++;
-                    int corners = CornersInFrame(renderer.bounds);
-                    if (corners == 8) whole++;
-                    else if (corners > 0) cut++;
-                    else outside++;
-
-                    Vector3 toLabel = label.transform.position - _camera.transform.position;
-                    if (toLabel.sqrMagnitude > 1e-6f)
-                    {
-                        facingSum += Mathf.Abs(Vector3.Dot(toLabel.normalized, label.transform.forward));
-                        facingCount++;
-                    }
+                    facingSum += Mathf.Abs(Vector3.Dot(toLabel.normalized, label.transform.forward));
+                    facingCount++;
                 }
-                line.Append($" / 계기 글자줄 {rows} 중 온전 {whole}·잘림 {cut}·프레임 밖 {outside}");
-                if (facingCount > 0)
+
+                // TMP 의 글자 기하는 메시가 갱신된 뒤에만 유효하다. PNG 는 이미 읽은 뒤이므로
+                // 여기서 강제 갱신해도 찍힌 그림에 영향이 없다 — 대신 문자열과 기하가 어긋날
+                // 여지가 사라진다.
+                label.ForceMeshUpdate();
+                TMPro.TMP_TextInfo info = label.textInfo;
+                if (info == null || info.lineInfo == null || info.characterInfo == null)
                 {
-                    float facing = facingSum / facingCount;
-                    float degrees = Mathf.Acos(Mathf.Clamp01(facing)) * Mathf.Rad2Deg;
-                    line.Append($" / 계기면 겉보기 폭 ×{facing:F3} (법선각 {degrees:F1}°)");
+                    unknown++; visualLines++;
+                    detail.Append(FactIndent).Append($"· {label.name} — **확인 못 함**(TMP 글자 기하 없음)\n");
+                    continue;
                 }
-                else line.Append(" / 계기면 각도 — 잴 라벨이 없다");
 
-                Transform pivot = panel.BarPivot;
-                line.Append(pivot != null
-                    ? $" / 게이지 피벗 {(InFrame(pivot.position) ? "프레임 안" : "프레임 밖")}"
-                    : " / 게이지 피벗 없음");
+                int lines = Mathf.Min(info.lineCount, info.lineInfo.Length);
+                if (lines <= 0)
+                {
+                    blank++;
+                    detail.Append(FactIndent).Append($"· {label.name} — 빈 줄(글자 0자). 온전에 넣지 않는다\n");
+                    continue;
+                }
+
+                for (int l = 0; l < lines; l++)
+                {
+                    visualLines++;
+                    detail.Append(FactIndent).Append(ProbeLine(cam, label, info, l,
+                        ref whole, ref occluded, ref softOnly, ref clipped, ref offFrame, ref blank)).Append('\n');
+                }
             }
 
-            line.Append(" — **가림은 재지 않았다**(프레임 포함 여부만. 콜라이더 유무를 확인하지 않아 " +
-                        "가림 검사는 거짓 그린이 날 수 있다)");
+            line.Append($" / 계기 글자줄 — TMP 오브젝트 {objects}개가 **시각 줄 {visualLines}줄**을 그린다 " +
+                        $"(예전 판본은 오브젝트 수를 「글자줄」이라 적어 `_statusLabel` 의 둘째 줄을 세지 않았다). " +
+                        $"온전 {whole}줄 · 가림 {occluded}줄 · 가림? {softOnly}줄 · 잘림 {clipped}줄 · " +
+                        $"프레임밖 {offFrame}줄 · 빈줄 {blank}줄 · 확인못함 {unknown}줄 " +
+                        $"[**온전 = 프레임 안 그리고 가리는 것 없음**] " +
+                        $"(계약 명판 라벨 {plaquesSkipped}개는 다른 벽이라 이 계수에서 뺐다)");
+
+            if (facingCount > 0)
+            {
+                float facing = facingSum / facingCount;
+                float degrees = Mathf.Acos(Mathf.Clamp01(facing)) * Mathf.Rad2Deg;
+                line.Append($" / 계기면 겉보기 폭 ×{facing:F3} (법선각 {degrees:F1}° · 라벨 {facingCount}개 평균 · " +
+                            "**이 장의 값이다 — 다른 장의 계수를 이 장의 성과로 옮겨 적지 말 것**)");
+            }
+            else line.Append(" / 계기면 각도 — **확인 못 함**(잴 라벨이 없다)");
+
+            Transform pivot = panel.BarPivot;
+            if (pivot == null) line.Append(" / 게이지 피벗 없음");
+            else
+            {
+                bool pivotIn = InFrame(pivot.position);
+                Renderer pivotBlocker = Blocker(cam.transform.position, pivot.position,
+                                                _solidOccluders, _solidBounds, false);
+                line.Append($" / 게이지 피벗 {(pivotIn ? "프레임 안" : "프레임 밖")} · " +
+                            (pivotBlocker != null
+                                ? $"가림 있음 ← `{pivotBlocker.gameObject.name}`"
+                                : "가림 없음") + " (표본 1점 — 글자줄만큼 촘촘히 재지 않았다)");
+
+                Renderer bar = pivot.GetComponentInChildren<Renderer>();
+                line.Append(bar != null
+                    ? $" · 게이지 막대 AABB 꼭짓점 8개 중 프레임 안 {CornersInFrame(bar.bounds)}개"
+                    : " · 게이지 막대 렌더러 — **확인 못 함**");
+            }
+
+            if (detail.Length > 0) line.Append('\n').Append(detail.ToString().TrimEnd('\n'));
+
+            line.Append('\n').Append(FactIndent).Append(OcclusionMethodNote());
             return line.ToString();
+        }
+
+        /// <summary>
+        /// 시각 줄 하나를 잰다 — 글자마다 표본 5점을 카메라에서 쏴 프레임 포함과 가림을 함께 본다.
+        /// **한 점만 막혀도 그 글자는 가림이다**(안전한 쪽으로 틀린다: 거짓 그린이 아니라 거짓 레드).
+        /// </summary>
+        private string ProbeLine(Camera cam, TMPro.TMP_Text label, TMPro.TMP_TextInfo info, int lineIndex,
+                                 ref int whole, ref int occluded, ref int softOnly,
+                                 ref int clipped, ref int offFrame, ref int blank)
+        {
+            TMPro.TMP_LineInfo lineInfo = info.lineInfo[lineIndex];
+            Vector3 eye = cam.transform.position;
+            Transform space = label.transform;
+
+            var text = new StringBuilder();
+            var blockedText = new StringBuilder();
+            var flags = new List<bool>(32);
+            var tally = new Dictionary<string, int>();
+            int visible = 0, outside = 0, hardBlocked = 0, softBlocked = 0;
+
+            int last = Mathf.Min(lineInfo.lastCharacterIndex, info.characterCount - 1);
+            for (int c = lineInfo.firstCharacterIndex; c <= last && c < info.characterInfo.Length; c++)
+            {
+                TMPro.TMP_CharacterInfo character = info.characterInfo[c];
+                // 줄바꿈·제어문자를 그대로 흘리면 매니페스트 한 줄이 두 줄로 쪼개져
+                // 「어느 줄의 실측인가」가 사라진다. 보이는 글자만 미리보기에 남긴다.
+                if (!character.isVisible)
+                {
+                    if (text.Length < 28 && !char.IsControl(character.character)) text.Append(character.character);
+                    continue;
+                }
+
+                visible++;
+                if (text.Length < 28 && !char.IsControl(character.character)) text.Append(character.character);
+
+                bool anyOut = false;
+                Renderer hard = null;
+                bool soft = false;
+                for (int s = 0; s < CharSamples.Length; s++)
+                {
+                    Vector3 local = new Vector3(
+                        Mathf.Lerp(character.bottomLeft.x, character.topRight.x, CharSamples[s].x),
+                        Mathf.Lerp(character.bottomLeft.y, character.topRight.y, CharSamples[s].y),
+                        character.bottomLeft.z);
+                    Vector3 world = space.TransformPoint(local);
+
+                    if (!InFrame(world)) anyOut = true;
+                    if (hard == null) hard = Blocker(eye, world, _solidOccluders, _solidBounds, true);
+                    if (hard == null && !soft && Blocker(eye, world, _softOccluders, _softBounds, false) != null)
+                        soft = true;
+                }
+
+                if (anyOut) outside++;
+                if (hard != null)
+                {
+                    hardBlocked++;
+                    string name = hard.gameObject.name;
+                    tally.TryGetValue(name, out int count);
+                    tally[name] = count + 1;
+                    if (blockedText.Length < 14) blockedText.Append(character.character);
+                }
+                else if (soft) softBlocked++;
+                flags.Add(hard != null);
+            }
+
+            if (visible == 0)
+            {
+                blank++;
+                return $"· {label.name} 줄{lineIndex + 1} — 빈 줄(보이는 글자 0자). 온전에 넣지 않는다";
+            }
+
+            // 판정 우선순위: 프레임밖 > 잘림 > 가림 > 가림? > 온전.
+            string verdict;
+            if (outside == visible) { offFrame++; verdict = "프레임밖"; }
+            else if (outside > 0)   { clipped++; verdict = "잘림"; }
+            else if (hardBlocked > 0) { occluded++; verdict = "가림"; }
+            else if (softBlocked > 0) { softOnly++; verdict = "가림?"; }
+            else { whole++; verdict = "온전"; }
+
+            var report = new StringBuilder();
+            report.Append($"· {label.name} 줄{lineIndex + 1} 「{text}」 → **{verdict}** · ")
+                  .Append($"보이는 글자 {visible}자 · 프레임밖 {outside}자({Percent(outside, visible)}) · ")
+                  .Append($"가림 {hardBlocked}자({Percent(hardBlocked, visible)})");
+
+            if (hardBlocked > 0)
+            {
+                report.Append('[').Append(Side(flags, hardBlocked)).Append(']');
+                string worst = null; int worstCount = 0;
+                foreach (KeyValuePair<string, int> pair in tally)
+                    if (pair.Value > worstCount) { worst = pair.Key; worstCount = pair.Value; }
+                report.Append($" ← `{worst}` 가 {worstCount}자");
+                if (tally.Count > 1) report.Append($" 외 {tally.Count - 1}종");
+                if (blockedText.Length > 0) report.Append($" · 먹힌 글자 「{blockedText}」");
+            }
+            if (softBlocked > 0)
+                report.Append($" · 의심 가림 {softBlocked}자({Percent(softBlocked, visible)} · 입자/선 렌더러 — AABB 대리값이라 확정 아님)");
+
+            return report.ToString();
+        }
+
+        private static string Percent(int part, int total)
+            => total > 0 ? $"{part * 100f / total:F1}%" : "—%";
+
+        /// <summary>가려진 글자가 줄의 어느 쪽에 몰려 있는가. 8차가 요구한 「좌측 34%」의 좌·우다.</summary>
+        private static string Side(List<bool> flags, int blocked)
+        {
+            int lead = 0;
+            while (lead < flags.Count && flags[lead]) lead++;
+            int trail = 0;
+            while (trail < flags.Count && flags[flags.Count - 1 - trail]) trail++;
+            if (lead == blocked) return "좌측";
+            if (trail == blocked) return "우측";
+            if (lead > 0 && trail > 0) return "양끝";
+            return "중간";
+        }
+
+        /// <summary>
+        /// **재지 못한 것을 이름과 개수로 적는다.** 8차의 핵심 지적이 「측정하지 않은 항목에
+        /// 초록불을 줬다」였으므로, 무엇을 못 쟀는지가 초록불 옆에 늘 붙어 있어야 한다.
+        /// </summary>
+        private string OcclusionMethodNote()
+        {
+            var note = new StringBuilder("가림 계측 — 렌더러 월드 AABB × (카메라→글자) 선분 교차. ");
+            note.Append($"후보 {_solidOccluders.Count}개(확정) + {_softOccluders.Count}개(입자/선/궤적 — 의심만). ")
+                .Append($"글자당 표본 {CharSamples.Length}점, 한 점만 막혀도 그 글자는 가림. ")
+                .Append("콜라이더를 쓰지 않는다 — 콜라이더는 붙어 있을 수도 없을 수도 있어 거짓 그린이 난다. ");
+            note.Append("**한계(초록으로 적지 않는 것)**: ")
+                .Append("①AABB 는 회전·오목 형상에서 과대평가라 가림을 실제보다 **많이** 셀 수 있다(거짓 레드 쪽이다) ")
+                .Append($"②TMP 렌더러 {_skippedTextRenderers}개는 후보에서 뺐다(글자가 글자를 가린다고 세면 자기 자신이 걸린다) ")
+                .Append("③입자·선·궤적은 `가림?` 까지만 간다 ");
+            if (_containingBounds.Count > 0)
+            {
+                var names = new List<string>(_containingBounds);
+                names.Sort(StringComparer.Ordinal);
+                if (names.Count > 6) names.RemoveRange(6, names.Count - 6);
+                note.Append($"④AABB 가 글자를 **품어** 판정 보류한 렌더러 {_containingBounds.Count}개: ")
+                    .Append(string.Join(", ", names))
+                    .Append(_containingBounds.Count > 6 ? " …" : string.Empty)
+                    .Append(" (대개 계기판 자신의 배면·챔퍼다. 이 목록에 낯선 이름이 있으면 그 줄의 「온전」을 믿지 말 것) ");
+            }
+            else note.Append("④글자를 품은 AABB 없음 ");
+            note.Append("⑤알파가 0 인 재질도 가림으로 센다 — 그림에서 확인할 것");
+            return note.ToString();
         }
 
         /// <summary>칸에 실제로 서 있는 심볼 한 글자. 빈칸은 `·`.</summary>
@@ -1058,39 +1454,56 @@ namespace Ascend.Prototype.Run.Tests
         /// 바닥 윗면과 천장 아랫면을 씬에서 직접 읽어 실내 높이를 구하고, 뒷벽 안쪽면에서
         /// 두 면이 화면 세로 어디에 찍혔는지를 적는다. 출입구 상단은 사람 치수 기준자다 —
         /// 「방이 문보다 얼마나 높은가」가 곧 「높이가 읽히는가」의 근거이기 때문이다.
+        ///
+        /// **8차 판정 §7-5 가 이 줄의 후속 문장에서 단위 혼동을 잡았다.** 「문 위로 프레임의
+        /// 58%」라고 적혀 있었는데 0.58 은 **ndc 길이**였고 프레임 비율로는 **29%** 다
+        /// (평가자가 그림에서 잰 값 ≈34% 는 문 위 여백 쪽 수치다). 그래서 이제
+        /// **위치는 `ndc`, 길이는 `ndc` 와 `%` 를 함께** 적고 변환을 눈에 보이게 남긴다 —
+        /// 한 문장 안에서 두 단위가 이름 없이 섞이지 않게 한다.
         /// </summary>
         private string RoomHeightFacts()
         {
+            Camera cam = MeasureCamera;
             Renderer floor = ShellRenderer("Floor");
             Renderer ceiling = ShellRenderer("Ceiling");
             Renderer back = ShellRenderer("BackWall_Left");
-            if (floor == null || ceiling == null || back == null)
+            if (cam == null || floor == null || ceiling == null || back == null)
                 return "높이 실측 — **확인 못 함.** 껍데기를 찾지 못했다 " +
-                       $"(바닥={floor != null} 천장={ceiling != null} 뒷벽={back != null}). " +
+                       $"(카메라={cam != null} 바닥={floor != null} 천장={ceiling != null} 뒷벽={back != null}). " +
                        "이름이 바뀌었으면 이 줄을 고쳐야 한다";
 
             float floorTop = floor.bounds.max.y;
             float ceilingBottom = ceiling.bounds.min.y;
-            float wallZ = back.bounds.min.z;            // 뒷벽 안쪽 면
-            float x = _camera.transform.position.x;     // 카메라 정면의 세로선에서 잰다
+            float wallZ = back.bounds.min.z;          // 뒷벽 안쪽 면
+            float x = cam.transform.position.x;       // 카메라 정면의 세로선에서 잰다
 
             var low = new Vector3(x, floorTop, wallZ);
             var high = new Vector3(x, ceilingBottom, wallZ);
+            float floorNdc = ScreenY(low);
+            float ceilingNdc = ScreenY(high);
+            float wallSpanNdc = ceilingNdc - floorNdc;
 
             var text = new StringBuilder(
-                $"높이 실측 — 바닥 윗면 y={floorTop:F2} · 천장 아랫면 y={ceilingBottom:F2} → " +
-                $"실내 높이 {ceilingBottom - floorTop:F2} m. 뒷벽 안쪽면 z={wallZ:F2} 에서 " +
-                $"바닥선 화면세로 {ScreenY(low):F2}({(InFrame(low) ? "프레임 안" : "프레임 밖")}) · " +
-                $"천장선 {ScreenY(high):F2}({(InFrame(high) ? "프레임 안" : "프레임 밖")}) " +
-                "[−1 아래끝 · +1 위끝]");
+                $"높이 실측 — 바닥 윗면 y={floorTop:F2} m · 천장 아랫면 y={ceilingBottom:F2} m → " +
+                $"실내 높이 {ceilingBottom - floorTop:F2} m. 뒷벽 안쪽면 z={wallZ:F2} m 에서 " +
+                $"바닥선 {floorNdc:F2} ndc({(InFrame(low) ? "프레임 안" : "프레임 밖")}) · " +
+                $"천장선 {ceilingNdc:F2} ndc({(InFrame(high) ? "프레임 안" : "프레임 밖")}) · " +
+                $"두 선 사이 {wallSpanNdc:F2} ndc = 프레임세로의 {NdcSpanToFramePercent(wallSpanNdc):F1}%");
 
             Renderer lintel = ShellRenderer("BackWall_Lintel");
             if (lintel != null)
             {
                 float doorTop = lintel.bounds.min.y;
                 var door = new Vector3(x, doorTop, wallZ);
-                text.Append($" / 출입구 상단 y={doorTop:F2} 화면세로 {ScreenY(door):F2} — " +
-                            $"방이 문의 {(doorTop > 0f ? (ceilingBottom - floorTop) / doorTop : 0f):F2} 배 높다");
+                float doorNdc = ScreenY(door);
+                float aboveDoorNdc = 1f - doorNdc;                 // 문 상단 ~ 프레임 위끝
+                float doorToCeilingNdc = ceilingNdc - doorNdc;     // 문 상단 ~ 천장선
+                text.Append($" / 출입구 상단 y={doorTop:F2} m · {doorNdc:F2} ndc. " +
+                            $"문 위 여백 {aboveDoorNdc:F2} ndc = 프레임세로의 {NdcSpanToFramePercent(aboveDoorNdc):F1}% · " +
+                            $"문 상단~천장선 {doorToCeilingNdc:F2} ndc = 프레임세로의 {NdcSpanToFramePercent(doorToCeilingNdc):F1}% " +
+                            "[**ndc 와 % 는 다른 단위다** — ndc 길이 ×50 = 프레임 %. " +
+                            "예전 판본이 0.58 ndc 를 「58%」라 적어 실제(29%)의 두 배로 부풀렸다] " +
+                            $"— 방이 문의 {(doorTop > 0f ? (ceilingBottom - floorTop) / doorTop : 0f):F2} 배 높다(배율, 무단위)");
             }
             else text.Append(" / 출입구 상단 — **확인 못 함**(BackWall_Lintel 을 찾지 못했다)");
 
@@ -1123,9 +1536,15 @@ namespace Ascend.Prototype.Run.Tests
 
             float width = panel.BarWidth;
             float filled = pivot.localScale.x;
-            return $"게이지 실측 — 채움 {filled:F3} m / 전체 {width:F2} m " +
-                   $"({(width > 0f ? filled / width * 100f : 0f):F0}% 길이, " +
-                   $"최대 {panel.MaxRatio * 100f:F0}% 기준)";
+            // **분모가 다른 두 %를 같은 괄호에 넣지 않는다.** 예전 판본은
+            // 「(83% 길이, 최대 300% 기준)」이라 적었는데 앞은 *막대 길이* 대비이고
+            // 뒤는 *요구 전력* 대비다. 8차 §7-5 의 단위 혼동과 같은 형태다.
+            float lengthPercent = width > 0f ? filled / width * 100f : 0f;
+            float spanPercent = panel.MaxRatio * 100f;
+            return $"게이지 실측 — 채움 {filled:F3} m / 막대 전체 {width:F2} m → " +
+                   $"막대길이비 {lengthPercent:F0}% (분모: 막대 전체 길이) · " +
+                   $"게이지 상한 {spanPercent:F0}% (분모: 요구 전력) → " +
+                   $"이 채움이 나타내는 전력비 {lengthPercent * panel.MaxRatio:F0}% (분모: 요구 전력)";
         }
 
         /// <summary>
@@ -1390,17 +1809,45 @@ namespace Ascend.Prototype.Run.Tests
                 // 나머지 18장」이 호출부에 하드코딩돼 있었고, 세트가 23장으로 커진 뒤에도
                 // 그 문장이 매번 새로 찍혀 나갔다(`UP-REC-06`). 총계는 파일 끝에 있다.
                 bool atSpec = shot.width == SpecCaptureWidth && shot.height == SpecCaptureHeight;
-                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height} " +
-                    $"(게임 뷰 경로 {_screenShots}번째 · 전용 카메라 경로는 {Width}×{Height})" +
+                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height} px " +
+                    $"(게임 뷰 경로 {_screenShots}번째 · 전용 카메라 경로는 {Width}×{Height} px)" +
                     (atSpec ? string.Empty
-                            : $"  ⚠ 기준 {SpecCaptureWidth}×{SpecCaptureHeight} 가 아니다 — " +
+                            : $"  ⚠ 기준 {SpecCaptureWidth}×{SpecCaptureHeight} px 가 아니다 — " +
                               "전용 카메라 경로와 해상도가 다르므로 판독성 비교에 그대로 쓰지 말 것"));
                 _manifest.AppendLine($"{"",-26} {note}");
+
+                // **화면 캡처에도 실측을 붙인다.** 8차가 「전력 줄이 먹혔다」고 잡은 열한 장 중
+                // `22_presenting_screen` 은 이 경로인데, 예전 판본은 이 경로에 실측을 한 줄도
+                // 붙이지 않아 그 장에 대해서는 **주장도 측정도 없었다.**
+                // 재는 카메라는 플레이어 시점이다 — 전용 카메라로 재면 그림과 다른 화각을
+                // 이 장의 실측이라고 적게 된다(8차 §7-1 이 잡은 오류의 자동화된 형태다).
+                Camera view = ScreenCamera();
+                if (view == null)
+                    _manifest.AppendLine($"{"",-26} 프레임 실측 — **확인 못 함**(화면 캡처를 그린 카메라를 찾지 못했다)");
+                else
+                {
+                    _measureCamera = view;
+                    _manifest.AppendLine($"{"",-26} {GaugeFill()}");
+                    _manifest.AppendLine($"{"",-26} {FrameFacts()}");
+                    _manifest.AppendLine($"{"",-26} 실측 기준 카메라 — `{view.name}` " +
+                                         $"pos {view.transform.position:F2} m · FOV {view.fieldOfView:F1}° · " +
+                                         $"화면비 {view.aspect:F3} (캡처 {(float)shot.width / Mathf.Max(1, shot.height):F3}) " +
+                                         "— 전용 카메라 경로의 값과 섞어 쓰지 말 것");
+                    _measureCamera = null;
+                }
             }
             finally
             {
                 Destroy(shot);
             }
+        }
+
+        /// <summary>게임 뷰 화면 캡처를 실제로 그린 카메라. 못 찾으면 null 을 돌려주고 호출부가 적는다.</summary>
+        private static Camera ScreenCamera()
+        {
+            var player = FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>();
+            if (player != null && player.ViewCamera != null) return player.ViewCamera;
+            return Camera.main;
         }
 
         private static IEnumerator WaitFrames(int frames)
@@ -1464,6 +1911,19 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine("장수·해상도·프레임 내용은 **주장하지 않고 잰다** — 하드코딩된 개수 주장은 " +
                                  "세트가 커질 때마다 조용히 틀려진다(`UP-REC-06`).");
             _manifest.AppendLine("위험 단계는 연출이 아니라 실제 게임 상태다 — 무엇을 해서 도달했는지 각 줄에 적혀 있다.");
+            // ── 8차 판정이 이 두 줄을 요구했다 ─────────────────────────────────
+            _manifest.AppendLine(
+                "**가림을 잰다.** 「온전」의 정의가 바뀌었다 — 이제 **프레임 안 그리고 가리는 것이 없음**이다. " +
+                "직전 세트는 「가림은 재지 않았다」고 스스로 고지해 두고 열한 장을 「온전 3·잘림 0」으로 적었다. " +
+                "측정하지 않은 항목에 대한 초록불이었다. 방식은 콜라이더가 아니라 **렌더러 월드 AABB × " +
+                "(카메라→글자) 선분 교차**이고, 글자마다 표본 5점을 쏜다. 못 잰 축은 각 줄의 " +
+                "「가림 계측」 꼬리에 이름과 개수로 남으며 **그 줄은 온전으로 세지 않는다.**");
+            _manifest.AppendLine(
+                "**단위 규칙.** `m` 미터 · `°` 도 · `px` 픽셀 · `ndc` 정규화 좌표(−1 아래·왼끝 … +1 위·오른끝, " +
+                "화면 전체가 2.0 ndc) · `%` 프레임 또는 명시된 분모 대비 비율. " +
+                "**ndc 길이 → 프레임 % 는 ×50 이다** — 0.58 ndc 는 58% 가 아니라 **29%** 다. " +
+                "직전 세트가 그 둘을 한 문장에서 섞어 실제의 두 배를 적었다. " +
+                "이 파일이 내보내는 모든 수에는 단위가 붙는다. 단위 없는 수가 보이면 그것이 버그다.");
             _manifest.AppendLine();
         }
 

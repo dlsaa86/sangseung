@@ -82,7 +82,48 @@ namespace Ascend.Prototype.Build
         /// <summary>카메라마다 자세·크기·가시성을 다시 잡는 배치기.</summary>
         private readonly BuildLabelLayout _layout = new BuildLabelLayout();
 
+        /// <summary>
+        /// 배킹판 크기를 **아직 제대로 못 잰** 라벨들. 매 프레임 다시 시도한다.
+        ///
+        /// 예전에는 판을 만드는 시점이 하나뿐이었다 — `AddComponent&lt;TextMeshPro&gt;()` 와
+        /// **같은 프레임**. TMP 의 `ForceMeshUpdate()` 는 `OnPreRenderObject` 를 부르고
+        /// 그 함수의 첫 줄이 「아직 안 깨어났거나 비활성이면 그냥 돌아간다」이므로,
+        /// 그 한 번이 빈 경계를 주면 판은 잘못된 크기로 **영구히** 굳고 아무도 다시 재지 않았다.
+        /// 이름표는 문자열이 바뀌지 않으므로 재측정 경로 자체가 없었다.
+        /// </summary>
+        private readonly List<TMP_Text> _plateRetry = new List<TMP_Text>();
+
         private Material _plateMaterial;
+
+        /// <summary>
+        /// 직전 배치 판정이 실제로 한 일. **주장이 아니라 숫자다.**
+        /// 캡처 매니페스트가 이 한 줄을 적으면 「규칙을 넣었다」와 「규칙이 돌았다」가 갈린다.
+        /// </summary>
+        public LabelResolveStats LabelStats => _layout.LastStats;
+
+        /// <summary>
+        /// **켜져 있는데도** 아직 배킹판 크기를 못 잰 라벨 수. 0 이 아니면 그 수만큼
+        /// 이름표가 안 그려진다. 꺼져 있는 대사 라벨은 세지 않는다 — 그것은 고장이 아니다.
+        /// </summary>
+        public int LabelsAwaitingPlate
+        {
+            get
+            {
+                int n = 0;
+                for (int i = 0; i < _plateRetry.Count; i++)
+                    if (_plateRetry[i] != null && _plateRetry[i].isActiveAndEnabled) n++;
+                return n;
+            }
+        }
+
+        /// <summary>
+        /// 캡처 매니페스트가 적을 한 줄. **주장이 아니라 계측이다.**
+        ///
+        /// 8차 매니페스트는 「승객 이름표: 배킹판 + 위계 양보」라고 적었고 그림에는
+        /// 배킹판이 0장, 양보가 0건이었다. 이 줄이 있었으면 촬영 직후에 드러났다.
+        /// </summary>
+        public string LabelReport()
+            => $"월드 라벨 — {_layout.LastStats} · 판 대기 {LabelsAwaitingPlate}";
 
         /// <summary>
         /// 이번 프레임에 SRP 콜백이 배치를 끝냈는가. URP 에서는 매 프레임 참이 되므로
@@ -339,6 +380,9 @@ namespace Ascend.Prototype.Build
             for (int i = 0; i < _candidates.Count; i++)
                 if (_candidates[i] != null) _candidates[i].SetCanInteract(boarding);
 
+            // 배치보다 **먼저** 판을 세운다. 판 없는 라벨은 그려지지 않으므로,
+            // 순서가 뒤집히면 판이 붙는 프레임에 한 프레임 늦게 나타난다.
+            RetryPlates();
             FaceReader();
             ReactToRisk();
         }
@@ -515,12 +559,18 @@ namespace Ascend.Prototype.Build
             }
 
             label.text = shown;
+
+            // **켜고 나서 잰다.** 예전에는 이 두 줄이 반대 순서였는데, TMP 의
+            // `ForceMeshUpdate()` 는 `OnPreRenderObject()` 를 부르고 그 함수는
+            // `IsActive() == false` 면 첫 줄에서 돌아간다(`isActiveAndEnabled`).
+            // 꺼진 상태로 재면 문자 0개짜리 경계가 나오고, 판은 그 크기로 굳는다 —
+            // 대사가 처음 뜨는 프레임의 판은 **항상** 틀렸다.
+            if (!label.gameObject.activeSelf) label.gameObject.SetActive(true);
+
             // 배킹판을 새 문자열 길이에 맞춘다. 문자열이 바뀔 때만 도는 자리라
             // `ForceMeshUpdate` 를 여기서 한 번 부르는 비용은 매 프레임이 아니다.
-            BuildLabelPlate.Measure(label, out Vector2 center, out Vector2 half);
-            BuildLabelPlate.Attach(label, _plateMaterial, BuildLabelPlate.Find(label), center, half);
-            _layout.UpdatePlate(label.GetComponent<Renderer>(), center, half);
-            if (!label.gameObject.activeSelf) label.gameObject.SetActive(true);
+            if (TryFitPlate(label)) _plateRetry.Remove(label);
+            else if (!_plateRetry.Contains(label)) _plateRetry.Add(label);
         }
 
         /// <summary>
@@ -649,6 +699,7 @@ namespace Ascend.Prototype.Build
             _speechLabels.Clear();
             _speechShown.Clear();
             _labelRenderers.Clear();
+            _plateRetry.Clear();
             _layout.Clear();
             DestroyAll(_labelHolders);
             DestroyAll(_carFigures);
@@ -778,18 +829,65 @@ namespace Ascend.Prototype.Build
         /// <summary>
         /// 라벨 하나를 배치기에 넘긴다. 배킹판을 이 시점에 만들어 **글자 크기에 맞춘다** —
         /// 렉트(이름표 1.6m)에 맞추면 세 글자 이름 뒤에 널빤지가 선다.
+        ///
+        /// 여기서 못 재면 <see cref="_plateRetry"/> 에 넣고 다음 프레임에 다시 잰다.
+        /// 못 잰 채로 두면 배킹판 없는 5순위 라벨이 되고, 그것은 그리지 않는다.
         /// </summary>
         private void RegisterLabel(GameObject holder, TMP_Text text, Transform follow, float rise)
         {
-            _plateMaterial ??= BuildLabelPlate.CreateMaterial();
-            BuildLabelPlate.Measure(text, out Vector2 center, out Vector2 half);
+            if (_plateMaterial == null) _plateMaterial = BuildLabelPlate.CreateMaterial();
+            bool measured = BuildLabelPlate.Measure(text, out Vector2 center, out Vector2 half);
             Renderer plate = BuildLabelPlate.Attach(text, _plateMaterial, null, center, half);
             var textRenderer = text.GetComponent<Renderer>();
 
             _labelHolders.Add(holder);
             if (textRenderer != null) _labelRenderers.Add(textRenderer);
             if (plate != null) _labelRenderers.Add(plate);
-            _layout.Add(holder.transform, follow, rise, textRenderer, plate, center, half);
+
+            bool valid = measured && plate != null && plate.sharedMaterial != null;
+            _layout.Add(holder.transform, follow, rise, textRenderer, plate, center, half, valid);
+            if (!valid) _plateRetry.Add(text);
+        }
+
+        /// <summary>
+        /// 배킹판 크기를 다시 재서 맞춘다. 성공하면 true.
+        ///
+        /// **반드시 라벨이 켜져 있을 때 불러야 한다** — TMP 는 비활성 오브젝트에서
+        /// `ForceMeshUpdate()` 를 무시하므로, 꺼진 채로 재면 빈 경계가 나온다.
+        /// </summary>
+        private bool TryFitPlate(TMP_Text text)
+        {
+            if (text == null) return false;
+            if (_plateMaterial == null) _plateMaterial = BuildLabelPlate.CreateMaterial();
+
+            bool measured = BuildLabelPlate.Measure(text, out Vector2 center, out Vector2 half);
+            Renderer plate = BuildLabelPlate.Attach(
+                text, _plateMaterial, BuildLabelPlate.Find(text), center, half);
+            bool valid = measured && plate != null && plate.sharedMaterial != null;
+
+            if (plate != null && !_labelRenderers.Contains(plate))
+            {
+                _labelRenderers.Add(plate);
+                // 장애물 목록에서 내 판을 빼야 하므로 다시 모은다.
+                _layout.InvalidateObstacles();
+            }
+            _layout.UpdatePlate(text.GetComponent<Renderer>(), plate, center, half, valid);
+            return valid;
+        }
+
+        /// <summary>
+        /// 아직 판을 못 세운 라벨을 다시 시도한다. 꺼져 있는 라벨은 건너뛴다 —
+        /// TMP 가 비활성 상태에서는 메시를 짓지 않으므로 재도 같은 답이 나온다.
+        /// </summary>
+        private void RetryPlates()
+        {
+            for (int i = _plateRetry.Count - 1; i >= 0; i--)
+            {
+                TMP_Text text = _plateRetry[i];
+                if (text == null) { _plateRetry.RemoveAt(i); continue; }
+                if (!text.isActiveAndEnabled) continue;
+                if (TryFitPlate(text)) _plateRetry.RemoveAt(i);
+            }
         }
 
         /// <summary>

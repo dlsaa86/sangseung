@@ -8,6 +8,40 @@ using Ascend.Prototype.View;
 namespace Ascend.Prototype.Build
 {
     /// <summary>
+    /// 한 번의 배치 판정이 **실제로 무엇을 했는가.**
+    ///
+    /// 8차 판정에서 이 규칙들은 「넣었다」고 적혔지만 그림에서는 **한 번도 물러선 흔적이
+    /// 없었다**(`07_cargo_full` 이름표 6개 전부 표시). 규칙이 안 걸린 것인지 규칙이
+    /// 실행조차 안 된 것인지 구분할 방법이 코드에 없었던 것이 진짜 결함이다.
+    /// 숫자를 남기면 다음 라운드가 그림을 보기 전에 답을 안다.
+    /// </summary>
+    public struct LabelResolveStats
+    {
+        /// <summary>등록된 라벨 수(꺼진 홀더 포함).</summary>
+        public int Entries;
+        /// <summary>화면에 투영까지 성공한 수. 카메라 뒤·꺼진 홀더는 여기서 빠진다.</summary>
+        public int Projected;
+        /// <summary>글자 사각형이 화면 밖이라 뺀 수.</summary>
+        public int OffFrame;
+        /// <summary>배킹판이 없거나 크기를 못 재서 뺀 수.</summary>
+        public int NoPlate;
+        /// <summary>1~4순위와 겹쳐 물러선 수.</summary>
+        public int YieldedHigherRank;
+        /// <summary>더 가까운 동급에 물러선 수.</summary>
+        public int YieldedPeer;
+        /// <summary>이번 판정이 **실제로 사각형까지 만든** 상위 위계 상자 수.</summary>
+        public int Obstacles;
+        /// <summary>수집돼 있던 상위 위계 렌더러 수. 0 이면 수집 자체가 실패한 것이다.</summary>
+        public int ObstacleSources;
+        public int Visible;
+
+        public override string ToString() =>
+            $"라벨 {Entries} · 투영 {Projected} · 화면밖 {OffFrame} · 배킹판없음 {NoPlate}" +
+            $" · 위계양보 {YieldedHigherRank} · 동급양보 {YieldedPeer}" +
+            $" · 장애물 {Obstacles}/{ObstacleSources} · 표시 {Visible}";
+    }
+
+    /// <summary>
     /// 월드 라벨 배치의 **순수 기하**. Unity 오브젝트를 하나도 만들지 않으므로
     /// 헤드리스 검사가 가능하다(`BuildTests` 의 「월드 라벨 배치」 구획).
     ///
@@ -127,6 +161,113 @@ namespace Ascend.Prototype.Build
             return true;
         }
 
+        /// <summary>
+        /// 라벨이 그리는 자세. `Solve` 와 검사가 **같은 식**을 쓰게 하려고 밖으로 뺐다.
+        /// 라벨은 수평으로만 돈다 — 위아래로 꺾인 이름표는 판 위의 글자가 아니라 종잇조각으로 읽힌다.
+        /// </summary>
+        public static Quaternion FaceRotation(Vector3 placed, Vector3 camPos)
+        {
+            Vector3 toReader = placed - camPos;
+            toReader.y = 0f;
+            return toReader.sqrMagnitude > 0.0001f
+                ? Quaternion.LookRotation(toReader, Vector3.up)
+                : Quaternion.identity;
+        }
+
+        /// <summary>
+        /// 판 사각형과 **글자 사각형**을 함께 투영한다.
+        /// 겹침 판정은 판(불투명하게 덮는 면적), 화면 경계 판정은 글자로 한다.
+        ///
+        /// `Transform` 을 받지 않는 것이 요점이다 — 이 식이 씬 오브젝트에 용접돼 있어서
+        /// 8차의 판정 규칙은 **한 줄도 검사할 수 없었다.**
+        /// </summary>
+        public static bool ProjectLabelRects(Vector3 placed, Quaternion rotation, float shrink,
+                                             Vector2 plateCenter, Vector2 plateHalf,
+                                             Vector3 camPos, Vector3 right, Vector3 up, Vector3 forward,
+                                             float tanHalf, float aspect,
+                                             out Rect plate, out Rect glyphs, out float depth)
+        {
+            plate = default(Rect);
+            glyphs = default(Rect);
+            depth = float.MaxValue;
+
+            Vector2 textHalf = new Vector2(
+                Mathf.Max(plateHalf.x - BuildLabelPlate.PadX, 0.001f),
+                Mathf.Max(plateHalf.y - BuildLabelPlate.PadY, 0.001f));
+
+            float minX = float.MaxValue, maxX = float.MinValue;
+            float minY = float.MaxValue, maxY = float.MinValue;
+            float gMinX = float.MaxValue, gMaxX = float.MinValue;
+            float gMinY = float.MaxValue, gMaxY = float.MinValue;
+
+            for (int c = 0; c < 4; c++)
+            {
+                float sx = (c & 1) == 0 ? -1f : 1f;
+                float sy = (c & 2) == 0 ? -1f : 1f;
+
+                Vector3 plateLocal = new Vector3(
+                    (plateCenter.x + sx * plateHalf.x) * shrink,
+                    (plateCenter.y + sy * plateHalf.y) * shrink,
+                    0f);
+                if (!Project(placed + rotation * plateLocal, camPos, right, up, forward,
+                             tanHalf, aspect, out Vector2 ndc, out float d))
+                    return false;
+                if (ndc.x < minX) minX = ndc.x;
+                if (ndc.x > maxX) maxX = ndc.x;
+                if (ndc.y < minY) minY = ndc.y;
+                if (ndc.y > maxY) maxY = ndc.y;
+                if (d < depth) depth = d;
+
+                Vector3 textLocal = new Vector3(
+                    (plateCenter.x + sx * textHalf.x) * shrink,
+                    (plateCenter.y + sy * textHalf.y) * shrink,
+                    0f);
+                if (!Project(placed + rotation * textLocal, camPos, right, up, forward,
+                             tanHalf, aspect, out Vector2 g, out _))
+                    return false;
+                if (g.x < gMinX) gMinX = g.x;
+                if (g.x > gMaxX) gMaxX = g.x;
+                if (g.y < gMinY) gMinY = g.y;
+                if (g.y > gMaxY) gMaxY = g.y;
+            }
+
+            plate = Rect.MinMaxRect(minX, minY, maxX, maxY);
+            glyphs = Rect.MinMaxRect(gMinX, gMinY, gMaxX, gMaxY);
+            return true;
+        }
+
+        /// <summary>월드 축 정렬 상자를 화면 사각형으로. 뒤쪽 모서리는 버린다(보수적).</summary>
+        public static bool ProjectBounds(Bounds bounds, Vector3 camPos,
+                                         Vector3 right, Vector3 up, Vector3 forward,
+                                         float tanHalf, float aspect, out Rect rect)
+        {
+            rect = default(Rect);
+            Vector3 c = bounds.center, e = bounds.extents;
+            float minX = float.MaxValue, maxX = float.MinValue;
+            float minY = float.MaxValue, maxY = float.MinValue;
+            bool anyFront = false;
+
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3(
+                    c.x + ((i & 1) == 0 ? -e.x : e.x),
+                    c.y + ((i & 2) == 0 ? -e.y : e.y),
+                    c.z + ((i & 4) == 0 ? -e.z : e.z));
+                if (!Project(corner, camPos, right, up, forward, tanHalf, aspect,
+                             out Vector2 ndc, out _))
+                    continue;
+                anyFront = true;
+                if (ndc.x < minX) minX = ndc.x;
+                if (ndc.x > maxX) maxX = ndc.x;
+                if (ndc.y < minY) minY = ndc.y;
+                if (ndc.y > maxY) maxY = ndc.y;
+            }
+
+            if (!anyFront) return false;
+            rect = Rect.MinMaxRect(minX, minY, maxX, maxY);
+            return true;
+        }
+
         /// <summary>`mine` 면적 중 `other` 와 겹치는 비율.</summary>
         public static float OverlapFractionOf(Rect mine, Rect other)
         {
@@ -144,6 +285,101 @@ namespace Ascend.Prototype.Build
                rect.yMin >= -limit && rect.yMax <= limit;
 
         public static bool InsideFrame(Rect rect) => InsideFrame(rect, EdgeLimit);
+
+        /// <summary>
+        /// **표시 여부 판정 전체.** `Renderer` 도 `Camera` 도 받지 않으므로 헤드리스로 돈다.
+        ///
+        /// 이 함수가 따로 있는 이유가 8차의 교훈 그 자체다 — 판정 규칙이
+        /// `Renderer`·`Camera` 에 용접돼 있어 **한 줄도 검사할 수 없었고**, 그래서
+        /// 「규칙을 넣었다」와 「규칙이 돌았다」의 차이가 그림이 나올 때까지 드러나지 않았다.
+        /// 문턱값은 하나도 바꾸지 않았다 — 옮기기만 했다.
+        ///
+        /// 순서가 규칙이다. ① 배킹판 없는 것을 먼저 뺀다(불투명 판이 없는 5순위는
+        /// `VISUAL_SPEC` §5 상 존재해서는 안 된다) → ② 상위 위계 양보 → ③ 동급 양보.
+        /// ②를 ③보다 먼저 두는 것이 중요하다. 가까운 쪽이 위계 양보로 사라진 뒤에
+        /// 먼 쪽이 남아야, 「둘 다 사라지는」 구멍이 생기지 않는다.
+        /// </summary>
+        /// <param name="plates">라벨의 판 사각형(정규화 화면 좌표).</param>
+        /// <param name="depths">카메라 깊이. 동급 판정에서 가까운 쪽을 고른다.</param>
+        /// <param name="hasPlate">불투명 배킹판이 실제로 붙어 있고 크기가 유효한가.</param>
+        /// <param name="obstacles">1~4순위 상자들의 화면 사각형.</param>
+        /// <param name="show">들어올 때 「투영에 성공하고 화면 안」인 것이 true. 나갈 때 최종 판정.</param>
+        /// <param name="order">정렬용 스크래치. 호출자가 재사용해 할당을 없앤다.</param>
+        public static void ResolveVisibility(List<Rect> plates, List<float> depths,
+                                             List<bool> hasPlate, List<Rect> obstacles,
+                                             List<bool> show, List<int> order,
+                                             ref LabelResolveStats stats)
+        {
+            if (plates == null || depths == null || hasPlate == null || show == null || order == null) return;
+            int n = show.Count;
+            if (n > plates.Count) n = plates.Count;
+            if (n > depths.Count) n = depths.Count;
+            if (n > hasPlate.Count) n = hasPlate.Count;
+
+            // ① 배킹판 강제. 8차 판정 §9 의 「① 불투명 배킹판 강제」가 이 세 줄이다.
+            for (int i = 0; i < n; i++)
+            {
+                if (!show[i] || hasPlate[i]) continue;
+                show[i] = false;
+                stats.NoPlate++;
+            }
+
+            // ② 상위 위계 양보.
+            if (obstacles != null)
+            {
+                for (int o = 0; o < obstacles.Count; o++)
+                {
+                    Rect box = obstacles[o];
+                    bool measurable = box.width * box.height >= MinObstacleArea;
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (!show[i]) continue;
+                        if (OverlapFractionOf(plates[i], box) > YieldToHigherRank ||
+                            (measurable && OverlapFractionOf(box, plates[i]) > CoverHigherRank))
+                        {
+                            show[i] = false;
+                            stats.YieldedHigherRank++;
+                        }
+                    }
+                }
+            }
+
+            // ③ 동급 양보 — 가까운 쪽이 이긴다(배킹판이 불투명해 먼 쪽은 어차피 반쪽이다).
+            while (order.Count < n) order.Add(0);
+            int live = 0;
+            for (int i = 0; i < n; i++) if (show[i]) order[live++] = i;
+
+            for (int i = 1; i < live; i++)
+            {
+                int v = order[i];
+                int j = i - 1;
+                while (j >= 0 && (depths[order[j]] > depths[v] ||
+                                 (depths[order[j]] == depths[v] && order[j] > v)))
+                {
+                    order[j + 1] = order[j];
+                    j--;
+                }
+                order[j + 1] = v;
+            }
+
+            for (int a = 0; a < live; a++)
+            {
+                int near = order[a];
+                if (!show[near]) continue;
+                for (int b = a + 1; b < live; b++)
+                {
+                    int far = order[b];
+                    if (!show[far]) continue;
+                    if (OverlapFractionOf(plates[far], plates[near]) > YieldToNearerPeer)
+                    {
+                        show[far] = false;
+                        stats.YieldedPeer++;
+                    }
+                }
+            }
+
+            for (int i = 0; i < n; i++) if (show[i]) stats.Visible++;
+        }
     }
 
     /// <summary>
@@ -177,6 +413,8 @@ namespace Ascend.Prototype.Build
             public Renderer Plate;
             public Vector2 PlateCenter;    // 홀더 로컬
             public Vector2 PlateHalf;      // 홀더 로컬
+            /// <summary>글자 경계를 실제로 재서 판을 맞췄는가. 못 잰 판은 없는 것으로 친다.</summary>
+            public bool PlateValid;
         }
 
         private readonly List<Entry> _entries = new List<Entry>();
@@ -184,7 +422,10 @@ namespace Ascend.Prototype.Build
         private readonly List<Rect> _glyphRects = new List<Rect>();
         private readonly List<float> _depths = new List<float>();
         private readonly List<bool> _show = new List<bool>();
+        private readonly List<bool> _hasPlate = new List<bool>();
         private readonly List<int> _order = new List<int>();
+        private readonly List<Rect> _obstacleRects = new List<Rect>();
+        private LabelResolveStats _stats;
 
         private readonly List<Renderer> _obstacles = new List<Renderer>();
         private readonly List<Renderer> _scratch = new List<Renderer>();
@@ -196,15 +437,20 @@ namespace Ascend.Prototype.Build
 
         public int Count => _entries.Count;
 
+        /// <summary>직전 판정이 실제로 한 일. 캡처 매니페스트와 검사가 이 숫자를 읽는다.</summary>
+        public LabelResolveStats LastStats => _stats;
+
         public void Clear()
         {
             _entries.Clear();
             _obstaclesValid = false;
+            _stats = default(LabelResolveStats);
         }
 
         /// <summary>라벨을 등록한다. 배킹판 크기는 <see cref="BuildLabelPlate"/> 가 잰 값이다.</summary>
         public void Add(Transform holder, Transform follow, float rise,
-                        Renderer text, Renderer plate, Vector2 plateCenter, Vector2 plateHalf)
+                        Renderer text, Renderer plate, Vector2 plateCenter, Vector2 plateHalf,
+                        bool plateValid)
         {
             _entries.Add(new Entry
             {
@@ -215,19 +461,23 @@ namespace Ascend.Prototype.Build
                 Plate = plate,
                 PlateCenter = plateCenter,
                 PlateHalf = plateHalf,
+                PlateValid = plateValid,
             });
             _obstaclesValid = false;
         }
 
-        /// <summary>대사가 바뀌어 판 크기가 달라졌을 때.</summary>
-        public void UpdatePlate(Renderer text, Vector2 plateCenter, Vector2 plateHalf)
+        /// <summary>대사가 바뀌거나 글자 경계를 뒤늦게 재서 판 크기가 달라졌을 때.</summary>
+        public void UpdatePlate(Renderer text, Renderer plate,
+                                Vector2 plateCenter, Vector2 plateHalf, bool plateValid)
         {
             for (int i = 0; i < _entries.Count; i++)
             {
                 if (_entries[i].Text != text) continue;
                 Entry e = _entries[i];
+                if (plate != null) e.Plate = plate;
                 e.PlateCenter = plateCenter;
                 e.PlateHalf = plateHalf;
+                e.PlateValid = plateValid;
                 _entries[i] = e;
                 return;
             }
@@ -250,12 +500,16 @@ namespace Ascend.Prototype.Build
             bool perspective = !camera.orthographic && tanHalf > 0.0001f && aspect > 0.0001f;
 
             EnsureCapacity();
+            _stats = default(LabelResolveStats);
+            _stats.Entries = _entries.Count;
+            _stats.ObstacleSources = _obstacles.Count;
 
             // ① 자세·크기·당김
             for (int i = 0; i < _entries.Count; i++)
             {
                 Entry e = _entries[i];
                 _show[i] = false;
+                _hasPlate[i] = e.Plate != null && e.PlateValid;
                 _rects[i] = default(Rect);
                 _glyphRects[i] = default(Rect);
                 _depths[i] = float.MaxValue;
@@ -272,18 +526,21 @@ namespace Ascend.Prototype.Build
                 float shrink = BuildLabelGeometry.Shrink(
                     distance - BuildLabelGeometry.PushDistance(distance));
 
-                Vector3 toReader = placed - camPos;
-                toReader.y = 0f;
-                if (toReader.sqrMagnitude > 0.0001f)
-                    e.Holder.rotation = Quaternion.LookRotation(toReader, Vector3.up);
+                // 카메라와 수평 위치가 정확히 같은 퇴화 상황에서는 이전 자세를 유지한다
+                // (`FaceRotation` 이 항등을 주는데, 그때 항등으로 튀면 라벨이 한 프레임 뒤집힌다).
+                Vector3 flat = placed - camPos; flat.y = 0f;
+                if (flat.sqrMagnitude > 0.0001f)
+                    e.Holder.rotation = BuildLabelGeometry.FaceRotation(placed, camPos);
                 e.Holder.position = placed;
                 e.Holder.localScale = Vector3.one * shrink;
 
                 _show[i] = true;
                 if (!perspective) continue;
 
-                if (!ProjectPlate(e, shrink, camPos, right, up, forward, tanHalf, aspect,
-                                  out Rect rect, out Rect glyphs, out float depth))
+                if (!BuildLabelGeometry.ProjectLabelRects(
+                        placed, e.Holder.rotation, shrink, e.PlateCenter, e.PlateHalf,
+                        camPos, right, up, forward, tanHalf, aspect,
+                        out Rect rect, out Rect glyphs, out float depth))
                 {
                     _show[i] = false;   // 카메라 뒤
                     continue;
@@ -291,15 +548,21 @@ namespace Ascend.Prototype.Build
                 _rects[i] = rect;
                 _glyphRects[i] = glyphs;
                 _depths[i] = depth;
+                _stats.Projected++;
 
                 // ② 글자가 화면 밖으로 삐져나가면 그리지 않는다
-                if (!BuildLabelGeometry.InsideFrame(glyphs)) _show[i] = false;
+                if (!BuildLabelGeometry.InsideFrame(glyphs)) { _show[i] = false; _stats.OffFrame++; }
             }
 
             if (perspective)
             {
-                YieldToHigherRank(camPos, right, up, forward, tanHalf, aspect);
-                YieldToNearerPeers();
+                CollectObstacleRects(camPos, right, up, forward, tanHalf, aspect);
+                BuildLabelGeometry.ResolveVisibility(_rects, _depths, _hasPlate, _obstacleRects,
+                                                     _show, _order, ref _stats);
+            }
+            else
+            {
+                for (int i = 0; i < _entries.Count; i++) if (_show[i]) _stats.Visible++;
             }
 
             // ③ 적용
@@ -317,79 +580,22 @@ namespace Ascend.Prototype.Build
             while (_glyphRects.Count < _entries.Count) _glyphRects.Add(default(Rect));
             while (_depths.Count < _entries.Count) _depths.Add(0f);
             while (_show.Count < _entries.Count) _show.Add(false);
+            while (_hasPlate.Count < _entries.Count) _hasPlate.Add(false);
             while (_order.Count < _entries.Count) _order.Add(0);
         }
 
         /// <summary>
-        /// 판 사각형과 **글자 사각형**을 함께 투영한다.
-        /// 겹침 판정은 판(불투명하게 덮는 면적), 화면 경계 판정은 글자로 한다.
+        /// 1~4순위 렌더러를 **화면 사각형으로 바꾸기만 한다.** 판정은
+        /// <see cref="BuildLabelGeometry.ResolveVisibility"/> 가 한다.
+        ///
+        /// 살아 있는 라벨의 합집합과 안 겹치는 상자는 버린다 — 비용을 위한 것이고
+        /// 판정을 바꾸지 않는다(버려진 상자는 어차피 어느 라벨과도 안 겹친다).
         /// </summary>
-        private bool ProjectPlate(Entry e, float shrink, Vector3 camPos,
-                                  Vector3 right, Vector3 up, Vector3 forward,
-                                  float tanHalf, float aspect,
-                                  out Rect rect, out Rect glyphs, out float depth)
+        private void CollectObstacleRects(Vector3 camPos, Vector3 right, Vector3 up, Vector3 forward,
+                                          float tanHalf, float aspect)
         {
-            rect = default(Rect);
-            glyphs = default(Rect);
-            depth = float.MaxValue;
+            _obstacleRects.Clear();
 
-            Vector2 textHalf = new Vector2(
-                Mathf.Max(e.PlateHalf.x - BuildLabelPlate.PadX, 0.001f),
-                Mathf.Max(e.PlateHalf.y - BuildLabelPlate.PadY, 0.001f));
-
-            Quaternion rotation = e.Holder.rotation;
-            Vector3 origin = e.Holder.position;
-            float minX = float.MaxValue, maxX = float.MinValue;
-            float minY = float.MaxValue, maxY = float.MinValue;
-            float gMinX = float.MaxValue, gMaxX = float.MinValue;
-            float gMinY = float.MaxValue, gMaxY = float.MinValue;
-
-            for (int c = 0; c < 4; c++)
-            {
-                float sx = (c & 1) == 0 ? -1f : 1f;
-                float sy = (c & 2) == 0 ? -1f : 1f;
-
-                Vector3 plateLocal = new Vector3(
-                    (e.PlateCenter.x + sx * e.PlateHalf.x) * shrink,
-                    (e.PlateCenter.y + sy * e.PlateHalf.y) * shrink,
-                    0f);
-                if (!BuildLabelGeometry.Project(origin + rotation * plateLocal, camPos,
-                                                right, up, forward, tanHalf, aspect,
-                                                out Vector2 ndc, out float d))
-                    return false;
-                if (ndc.x < minX) minX = ndc.x;
-                if (ndc.x > maxX) maxX = ndc.x;
-                if (ndc.y < minY) minY = ndc.y;
-                if (ndc.y > maxY) maxY = ndc.y;
-                if (d < depth) depth = d;
-
-                Vector3 textLocal = new Vector3(
-                    (e.PlateCenter.x + sx * textHalf.x) * shrink,
-                    (e.PlateCenter.y + sy * textHalf.y) * shrink,
-                    0f);
-                if (!BuildLabelGeometry.Project(origin + rotation * textLocal, camPos,
-                                                right, up, forward, tanHalf, aspect,
-                                                out Vector2 g, out _))
-                    return false;
-                if (g.x < gMinX) gMinX = g.x;
-                if (g.x > gMaxX) gMaxX = g.x;
-                if (g.y < gMinY) gMinY = g.y;
-                if (g.y > gMaxY) gMaxY = g.y;
-            }
-
-            rect = Rect.MinMaxRect(minX, minY, maxX, maxY);
-            glyphs = Rect.MinMaxRect(gMinX, gMinY, gMaxX, gMaxY);
-            return true;
-        }
-
-        /// <summary>
-        /// 1~4순위와 겹치면 물러선다. 앞뒤를 따지지 않는 이유: 내가 앞이면 **내가 덮는**
-        /// 것이고 내가 뒤면 **내 글자가 잘리는** 것이다. 둘 다 반려 사유다.
-        /// </summary>
-        private void YieldToHigherRank(Vector3 camPos, Vector3 right, Vector3 up, Vector3 forward,
-                                       float tanHalf, float aspect)
-        {
-            // 살아 있는 라벨이 없으면 장애물을 재지 않는다.
             float unionMinX = float.MaxValue, unionMaxX = float.MinValue;
             float unionMinY = float.MaxValue, unionMaxY = float.MinValue;
             bool any = false;
@@ -418,89 +624,17 @@ namespace Ascend.Prototype.Build
                 if (!ProjectBounds(obstacle.bounds, camPos, right, up, forward, tanHalf, aspect,
                                    out Rect box)) continue;
                 if (!box.Overlaps(union)) continue;
-                bool measurable = box.width * box.height >= BuildLabelGeometry.MinObstacleArea;
-
-                for (int i = 0; i < _entries.Count; i++)
-                {
-                    if (!_show[i]) continue;
-                    // 양쪽에서 잰다. 내 판이 상위 위계 위에 크게 얹혀 있거나(앞),
-                    // 상위 위계가 내 글자를 크게 잘라내거나(뒤) — 둘 다 반려 사유다.
-                    // 그리고 상대가 화면에서 얇으면(계약 명판 한 줄) 내 3% 가 그쪽의 절반이다.
-                    if (BuildLabelGeometry.OverlapFractionOf(_rects[i], box) >
-                            BuildLabelGeometry.YieldToHigherRank ||
-                        (measurable && BuildLabelGeometry.OverlapFractionOf(box, _rects[i]) >
-                            BuildLabelGeometry.CoverHigherRank))
-                        _show[i] = false;
-                }
-            }
-        }
-
-        /// <summary>같은 위계끼리는 가까운 쪽이 이긴다 — 배킹판이 불투명해 먼 쪽은 어차피 반쪽이다.</summary>
-        private void YieldToNearerPeers()
-        {
-            int n = 0;
-            for (int i = 0; i < _entries.Count; i++) if (_show[i]) _order[n++] = i;
-            if (n < 2) return;
-
-            // 삽입 정렬 — 개수가 6~12 이고 할당이 없다. 같은 깊이면 등록 순서로 고정한다.
-            for (int i = 1; i < n; i++)
-            {
-                int v = _order[i];
-                int j = i - 1;
-                while (j >= 0 && (_depths[_order[j]] > _depths[v] ||
-                                 (_depths[_order[j]] == _depths[v] && _order[j] > v)))
-                {
-                    _order[j + 1] = _order[j];
-                    j--;
-                }
-                _order[j + 1] = v;
+                _obstacleRects.Add(box);
             }
 
-            for (int a = 0; a < n; a++)
-            {
-                int near = _order[a];
-                if (!_show[near]) continue;
-                for (int b = a + 1; b < n; b++)
-                {
-                    int far = _order[b];
-                    if (!_show[far]) continue;
-                    if (BuildLabelGeometry.OverlapFractionOf(_rects[far], _rects[near]) >
-                        BuildLabelGeometry.YieldToNearerPeer)
-                        _show[far] = false;
-                }
-            }
+            _stats.Obstacles = _obstacleRects.Count;
         }
 
         private static bool ProjectBounds(Bounds bounds, Vector3 camPos,
                                           Vector3 right, Vector3 up, Vector3 forward,
                                           float tanHalf, float aspect, out Rect rect)
-        {
-            rect = default(Rect);
-            Vector3 c = bounds.center, e = bounds.extents;
-            float minX = float.MaxValue, maxX = float.MinValue;
-            float minY = float.MaxValue, maxY = float.MinValue;
-            bool anyFront = false;
-
-            for (int i = 0; i < 8; i++)
-            {
-                var corner = new Vector3(
-                    c.x + ((i & 1) == 0 ? -e.x : e.x),
-                    c.y + ((i & 2) == 0 ? -e.y : e.y),
-                    c.z + ((i & 4) == 0 ? -e.z : e.z));
-                if (!BuildLabelGeometry.Project(corner, camPos, right, up, forward,
-                                                tanHalf, aspect, out Vector2 ndc, out _))
-                    continue;   // 뒤쪽 모서리는 버린다 — 남은 모서리로 만든 사각형은 보수적이다
-                anyFront = true;
-                if (ndc.x < minX) minX = ndc.x;
-                if (ndc.x > maxX) maxX = ndc.x;
-                if (ndc.y < minY) minY = ndc.y;
-                if (ndc.y > maxY) maxY = ndc.y;
-            }
-
-            if (!anyFront) return false;
-            rect = Rect.MinMaxRect(minX, minY, maxX, maxY);
-            return true;
-        }
+            => BuildLabelGeometry.ProjectBounds(bounds, camPos, right, up, forward,
+                                                tanHalf, aspect, out rect);
 
         // ── 장애물 수집 ──────────────────────────────────────────────────────
         //
@@ -558,6 +692,9 @@ namespace Ascend.Prototype.Build
         }
 
         public bool ObstaclesValid => _obstaclesValid;
+
+        /// <summary>다음 판정 전에 상위 위계 목록을 다시 모으게 한다.</summary>
+        public void InvalidateObstacles() => _obstaclesValid = false;
     }
 
     /// <summary>
@@ -587,19 +724,29 @@ namespace Ascend.Prototype.Build
         /// <summary>
         /// 글자 경계를 재서 판 중심·반크기를 돌려준다.
         /// `ForceMeshUpdate` 없이 읽으면 방금 넣은 문자열이 반영되지 않는다.
+        ///
+        /// **돌려주는 bool 이 이 함수의 요점이다.** 예전에는 못 잰 경우에도 렉트 기반
+        /// 대체값을 조용히 돌려줬다. 그러면 호출자는 「쟀다」와 「못 재서 찍었다」를
+        /// 구분할 수 없고, 판이 엉뚱한 크기로 한 번 굳은 뒤 아무도 다시 재지 않는다 —
+        /// 이름표의 판은 <c>AddComponent&lt;TextMeshPro&gt;()</c> 와 **같은 프레임에**
+        /// 딱 한 번 측정된다. TMP 의 <c>OnPreRenderObject</c> 는 그 시점에 정당하게
+        /// 아무 일도 하지 않을 수 있고(비활성·미각성), 그러면 <c>textBounds</c> 는
+        /// 문자 0개짜리 경계를 준다. 실패를 돌려주면 호출자가 다음 프레임에 다시 잰다.
         /// </summary>
-        public static void Measure(TMP_Text text, out Vector2 center, out Vector2 half)
+        /// <returns>실제로 그려진 글자 경계를 읽었으면 true. false 면 대체값이다.</returns>
+        public static bool Measure(TMP_Text text, out Vector2 center, out Vector2 half)
         {
             center = Vector2.zero;
             half = new Vector2(MinHalf, MinHalf);
-            if (text == null) return;
+            if (text == null) return false;
 
             text.ForceMeshUpdate();
             Bounds bounds = text.textBounds;
             float hx = bounds.extents.x;
             float hy = bounds.extents.y;
 
-            if (hx <= 0.0001f || hy <= 0.0001f || float.IsNaN(hx) || float.IsNaN(hy))
+            bool measured = hx > 0.0001f && hy > 0.0001f && !float.IsNaN(hx) && !float.IsNaN(hy);
+            if (!measured)
             {
                 // 글자가 없거나 아직 안 지어졌다 — 렉트의 절반을 보수적으로 쓴다.
                 RectTransform rect = text.rectTransform;
@@ -613,6 +760,7 @@ namespace Ascend.Prototype.Build
             }
 
             half = new Vector2(Mathf.Max(hx + PadX, MinHalf), Mathf.Max(hy + PadY, MinHalf));
+            return measured;
         }
 
         /// <summary>
@@ -662,6 +810,11 @@ namespace Ascend.Prototype.Build
                     plate.receiveShadows = false;
                 }
             }
+            else if (plate.sharedMaterial == null && material != null)
+            {
+                // 재질이 빠진 판은 그려지지 않는데 `enabled` 는 true 라 아무도 모른다.
+                plate.sharedMaterial = material;
+            }
 
             if (plate == null) return null;
             Transform t = plate.transform;
@@ -677,11 +830,23 @@ namespace Ascend.Prototype.Build
             Shader shader = Shader.Find("Universal Render Pipeline/Unlit")
                             ?? Shader.Find("Unlit/Color")
                             ?? Shader.Find("Sprites/Default");
+            if (shader == null) return null;   // 못 찾으면 null 을 돌려준다 — 조용히 자홍색 판을 세우지 않는다
+
             var material = new Material(shader) { name = "BuildLabelBacking (runtime)" };
             var color = new Color(0.030f, 0.034f, 0.029f, 1f);
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Color")) material.SetColor("_Color", color);
             material.color = color;
+
+            // **양면으로 둔다.** 판의 앞면이 어느 쪽인지가 8차 조사에서 확정되지 않았다 —
+            // 기본 사각형의 법선이 로컬 −Z 라면 지금 그대로 보이고, +Z 라면 뒷면 컬링으로
+            // **통째로 사라진다.** 8차 캡처 24장에서 배킹판이 보이는 장이 0장이었고
+            // (라벨 자리 픽셀 최소 휘도 23 · 프레임 전체 최소 5 — 검은 판이 있었다면
+            // 휘도 8 짜리 화소가 나왔어야 한다), 그 가설을 0 비용으로 닫는 방법이 이것이다.
+            // 무광 단색 판은 뒤에서 봐도 같은 그림이라 앞면이 맞았더라도 변화가 없다.
+            if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
+            if (material.HasProperty("_CullMode")) material.SetFloat("_CullMode", 0f);
+            material.doubleSidedGI = true;
             return material;
         }
     }

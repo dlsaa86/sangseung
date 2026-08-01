@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -41,6 +42,44 @@ namespace Ascend.Prototype.Build.Tests
         private static readonly Bounds TubeFrame0 =
             new Bounds(new Vector3(-0.95f, 1.60f, -0.50f), new Vector3(0.30f, 1.30f, 0.34f));
 
+        // ── `07_cargo_full` 재현 ────────────────────────────────────────────
+        //
+        // 8차 판정의 최악 프레임(판독 1/5)이다. 이름표 6개가 **전부** 그려졌고
+        // 하나도 물러서지 않았다. 아래 상수로 그 프레임을 헤드리스에서 다시 만든다.
+
+        /// <summary>`TenFloorCaptureRig` 의 `CargoBay` 시점. 매니페스트에 적힌 값 그대로.</summary>
+        private static readonly Vector3 CargoBayPos = new Vector3(0.65f, 2.35f, 1.42f);
+        private static readonly Vector3 CargoBayLook = new Vector3(-0.20f, 0.35f, -0.80f);
+
+        /// <summary>`BuildFigureView.CarSlots` 그대로. 앵커 높이는 승객 1.56 + 0.24.</summary>
+        private static readonly Vector3[] CarSlotAnchors =
+        {
+            new Vector3( 0.85f, 1.80f, -1.05f),
+            new Vector3( 0.85f, 1.80f, -0.35f),
+            new Vector3( 0.85f, 1.80f,  0.35f),
+            new Vector3( 0.15f, 1.80f, -1.15f),
+            new Vector3(-0.55f, 1.80f, -1.15f),
+            new Vector3(-0.88f, 1.80f, -0.45f),
+        };
+
+        /// <summary>
+        /// 대표 판 반크기. **`07_cargo_full.png` 에서 잰 값에서 나왔다** —
+        /// 세 글자 이름의 글자 폭이 화면 220~300px(정규화 0.23~0.31)이고,
+        /// 그 시점의 깊이·축소를 되돌리면 로컬 반폭 ≈0.23 · 반높이 ≈0.06 이다.
+        /// 거기에 <see cref="BuildLabelPlate.PadX"/>·<see cref="BuildLabelPlate.PadY"/> 를 더한 값.
+        ///
+        /// TMP 메트릭은 런타임 값이라 정적으로 못 잰다. 그래서 아래 검사들은 이 값에
+        /// **의존하지 않도록** 썼다 — 0.20~0.32 구간 전체에서 결론이 같은 것을 확인했다.
+        /// </summary>
+        private static readonly Vector2 CapturePlateHalf = new Vector2(0.285f, 0.095f);
+
+        /// <summary>
+        /// 벽 운행 기록문(`PaperTapePrinterView` 의 `TapeText`)이 `07` 에서 차지한 화면 사각형.
+        /// 그림에서 잰 값이다 — 글자가 실제로 보이는 범위이고, 코드가 쓰는 월드 AABB 투영은
+        /// 이보다 **크다**(축 정렬 상자라서). 즉 이 값은 보수적인 하한이다.
+        /// </summary>
+        private static readonly Rect TapeTextBox = Rect.MinMaxRect(-0.443f, 0.204f, -0.031f, 1.000f);
+
         public static (int passed, int failed, string report) RunAll()
         {
             int passed = 0, failed = 0;
@@ -56,6 +95,13 @@ namespace Ascend.Prototype.Build.Tests
             Run("겹침 비율이 내 면적 기준이다", TestOverlapFractionIsRelativeToMine, ref passed, ref failed, report);
             Run("위계 양보 문턱이 동급 양보보다 낮다", TestYieldThresholdsOrdered, ref passed, ref failed, report);
             Run("배킹판이 글자 뒤에 놓인다", TestPlateSitsBehindGlyphs, ref passed, ref failed, report);
+
+            // ── 8차 판정이 남긴 것 — 「규칙을 넣었다」와 「규칙이 돌았다」를 가른다 ──
+            Run("07 시점에서 여섯 자리가 프레임에 들어온다", TestCargoBayLabelsProject, ref passed, ref failed, report);
+            Run("상위 위계 상자 둘이면 07 이름표가 전부 물러선다", TestCargoBayYieldsToEverything, ref passed, ref failed, report);
+            Run("장애물이 0개면 아무것도 물러서지 않는다", TestNoObstaclesHideNothing, ref passed, ref failed, report);
+            Run("배킹판 없는 5순위 라벨은 그려지지 않는다", TestPlateIsMandatory, ref passed, ref failed, report);
+            Run("판정 통계가 모든 라벨을 설명한다", TestStatsAccountForEveryLabel, ref passed, ref failed, report);
 
             return (passed, failed, report.ToString());
         }
@@ -247,6 +293,197 @@ namespace Ascend.Prototype.Build.Tests
                 return "판 여백이 0 이하 — 글자 획이 판 밖으로 나간다";
             if (BuildLabelPlate.MinHalf <= 0f)
                 return "판 최소 크기가 0 이하";
+            return null;
+        }
+
+        // ── `07_cargo_full` 재현 검사 ───────────────────────────────────────
+        //
+        // 8차 판정문 §5-1: 「`07` 이 5차보다 나빠졌다 — 이름표가 6개로 늘었다.」
+        // 구현자 예측은 「겹침 3개 → 0개」였고 실제는 3 → 6 이었다.
+        // 아래 셋이 그 예측이 왜 빗나갔는지를 **숫자로** 고정한다.
+
+        /// <summary>여섯 자리를 실제로 투영해 판·글자 사각형을 만든다.</summary>
+        private static int BuildCargoBayRects(List<Rect> plates, List<Rect> glyphs, List<float> depths)
+        {
+            plates.Clear(); glyphs.Clear(); depths.Clear();
+            if (!Basis(CargoBayPos, CargoBayLook, out Vector3 r, out Vector3 u, out Vector3 f)) return 0;
+
+            int inFrame = 0;
+            for (int i = 0; i < CarSlotAnchors.Length; i++)
+            {
+                Vector3 anchor = CarSlotAnchors[i];
+                float distance = Vector3.Distance(anchor, CargoBayPos);
+                Vector3 placed = BuildLabelGeometry.PushTowardViewer(anchor, CargoBayPos);
+                float shrink = BuildLabelGeometry.Shrink(
+                    distance - BuildLabelGeometry.PushDistance(distance));
+                Quaternion rotation = BuildLabelGeometry.FaceRotation(placed, CargoBayPos);
+
+                if (!BuildLabelGeometry.ProjectLabelRects(
+                        placed, rotation, shrink, Vector2.zero, CapturePlateHalf,
+                        CargoBayPos, r, u, f, 0.5774f, 1.7778f,
+                        out Rect plate, out Rect glyph, out float depth))
+                    continue;
+
+                if (!BuildLabelGeometry.InsideFrame(glyph)) continue;
+                plates.Add(plate);
+                glyphs.Add(glyph);
+                depths.Add(depth);
+                inFrame++;
+            }
+            return inFrame;
+        }
+
+        /// <summary>
+        /// 그림과 대조하는 검사. 8차 캡처에서 이름표 **6개가 실제로 그려졌다.**
+        /// 모델이 다섯 이상을 프레임 안이라고 말하지 않으면 아래 두 검사의 전제가 깨진다.
+        /// (여섯 번째 「광신자」는 윗변이 프레임 경계에 걸쳐 모델·그림이 한 장 갈린다 —
+        /// 대표 판 크기가 실제보다 조금 큰 탓이고, 결론에는 영향이 없다.)
+        /// </summary>
+        private static string TestCargoBayLabelsProject()
+        {
+            var plates = new List<Rect>(); var glyphs = new List<Rect>(); var depths = new List<float>();
+            int inFrame = BuildCargoBayRects(plates, glyphs, depths);
+            if (inFrame < 5)
+                return $"07 시점에서 프레임 안 라벨이 {inFrame}개 — 그림에는 6개가 그려져 있다. 좌표나 시점이 바뀌었다";
+            return null;
+        }
+
+        /// <summary>
+        /// **이 검사가 8차의 답이다.**
+        ///
+        /// 상위 위계 상자를 **둘만** 넣어도 — 씬에서 읽은 `Tube_0` 프레임과
+        /// 그림에서 잰 벽 기록문 — `07` 의 이름표는 **하나도 남지 않는다.**
+        /// 그런데 8차 캡처에는 여섯 개가 전부 그려져 있었다.
+        ///
+        /// 즉 8차의 그림은 「문턱이 높아서 안 걸렸다」가 아니라
+        /// **「양보 단계가 채워진 장애물 목록을 상대로 돌지 않았다」**와만 양립한다.
+        /// 그래서 이번 라운드는 문턱을 한 칸도 건드리지 않는다.
+        /// </summary>
+        private static string TestCargoBayYieldsToEverything()
+        {
+            var plates = new List<Rect>(); var glyphs = new List<Rect>(); var depths = new List<float>();
+            int inFrame = BuildCargoBayRects(plates, glyphs, depths);
+            if (inFrame < 5) return $"프레임 안 라벨이 {inFrame}개 — 전제가 깨졌다";
+
+            if (!Basis(CargoBayPos, CargoBayLook, out Vector3 r, out Vector3 u, out Vector3 f))
+                return "카메라 기저를 못 만들었다";
+            if (!BuildLabelGeometry.ProjectBounds(TubeFrame0, CargoBayPos, r, u, f,
+                                                  0.5774f, 1.7778f, out Rect tube))
+                return "통관 상자가 카메라 뒤에 있다 — 시점이 바뀌었다";
+
+            var obstacles = new List<Rect> { tube, TapeTextBox };
+            var show = new List<bool>(); for (int i = 0; i < inFrame; i++) show.Add(true);
+            var hasPlate = new List<bool>(); for (int i = 0; i < inFrame; i++) hasPlate.Add(true);
+            var order = new List<int>();
+            var stats = default(LabelResolveStats);
+
+            BuildLabelGeometry.ResolveVisibility(plates, depths, hasPlate, obstacles, show, order, ref stats);
+
+            if (stats.Visible != 0)
+                return $"{inFrame}개 중 {stats.Visible}개가 통관·기록문 위에 그대로 남는다 " +
+                       $"(위계양보 {stats.YieldedHigherRank} · 동급양보 {stats.YieldedPeer})";
+            return null;
+        }
+
+        /// <summary>
+        /// 8차 그림의 **음성 대조군**. 장애물 목록이 비어 있으면 여섯 개가 전부 남는다 —
+        /// 그것이 정확히 8차 캡처의 그림이다. 이 검사가 통과하는 한, 다음 라운드에서
+        /// 이름표가 또 전부 그려져 있다면 문턱이 아니라 **목록을 의심해야 한다.**
+        /// </summary>
+        private static string TestNoObstaclesHideNothing()
+        {
+            var plates = new List<Rect>(); var glyphs = new List<Rect>(); var depths = new List<float>();
+            int inFrame = BuildCargoBayRects(plates, glyphs, depths);
+            if (inFrame < 5) return $"프레임 안 라벨이 {inFrame}개 — 전제가 깨졌다";
+
+            var show = new List<bool>(); for (int i = 0; i < inFrame; i++) show.Add(true);
+            var hasPlate = new List<bool>(); for (int i = 0; i < inFrame; i++) hasPlate.Add(true);
+            var order = new List<int>();
+            var stats = default(LabelResolveStats);
+
+            BuildLabelGeometry.ResolveVisibility(plates, depths, hasPlate, new List<Rect>(),
+                                                 show, order, ref stats);
+
+            // 이 대조군이 지키는 것은 **위계 양보가 장애물 없이 발화하지 않는다**이다.
+            // 처음에는 `Visible == inFrame` 을 걸었는데, 그것은 이름보다 넓은 단정이었다 —
+            // **동급 양보(라벨끼리 25% 초과 겹침)는 장애물과 무관하게 일어난다.**
+            // `07_cargo_full` 이 실제로 그런 배치이고(slot0 을 slot1 이 덮는다) 그래서
+            // 이 검사가 자기 이름과 다른 것을 잡아 빨간불이 됐다.
+            //
+            // 단정을 **약화하지 않고 좁혔다** — 사라진 것이 전부 동급 양보로 설명되는지 본다.
+            // 설명되지 않은 소실이 하나라도 있으면 여전히 실패한다.
+            if (stats.YieldedHigherRank != 0)
+                return $"장애물이 0개인데 위계 양보가 {stats.YieldedHigherRank}건 났다";
+            int unexplained = inFrame - stats.Visible - stats.YieldedPeer;
+            if (unexplained != 0)
+                return $"장애물이 없는데 {unexplained}개가 **설명되지 않은 이유로** 사라졌다 "
+                     + $"(보임 {stats.Visible} · 동급양보 {stats.YieldedPeer} / 전체 {inFrame})";
+            return null;
+        }
+
+        /// <summary>
+        /// 8차 판정 §9 의 「① 불투명 배킹판 강제」. 판이 없는 5순위 라벨은
+        /// `VISUAL_SPEC` §5 상 존재해서는 안 되고, 그것이 24장 중 **0장에서만**
+        /// 판이 보였던 8차의 상태다. 이제는 판이 없으면 라벨이 없다.
+        /// </summary>
+        private static string TestPlateIsMandatory()
+        {
+            var plates = new List<Rect>
+            {
+                Rect.MinMaxRect(-0.4f, -0.1f, -0.1f, 0.1f),
+                Rect.MinMaxRect( 0.1f, -0.1f,  0.4f, 0.1f),
+            };
+            var depths = new List<float> { 2f, 3f };
+            var hasPlate = new List<bool> { true, false };
+            var show = new List<bool> { true, true };
+            var order = new List<int>();
+            var stats = default(LabelResolveStats);
+
+            BuildLabelGeometry.ResolveVisibility(plates, depths, hasPlate, new List<Rect>(),
+                                                 show, order, ref stats);
+
+            if (show[1]) return "배킹판이 없는 라벨이 그려진다";
+            if (!show[0]) return "배킹판이 있는 라벨까지 지웠다";
+            if (stats.NoPlate != 1) return $"배킹판 없음 집계가 {stats.NoPlate} — 1 이어야 한다";
+            if (stats.Visible != 1) return $"표시 집계가 {stats.Visible} — 1 이어야 한다";
+            return null;
+        }
+
+        /// <summary>
+        /// 통계가 새면 다음 라운드가 또 그림만 보고 추측한다.
+        /// 들어간 라벨 수 = 표시 + 사라진 이유들의 합이어야 한다.
+        /// </summary>
+        private static string TestStatsAccountForEveryLabel()
+        {
+            var plates = new List<Rect>
+            {
+                Rect.MinMaxRect(-0.50f,  0.10f, -0.10f,  0.40f),   // 0 장애물과 크게 겹친다
+                Rect.MinMaxRect( 0.60f,  0.10f,  0.90f,  0.40f),   // 1 아무와도 안 겹친다
+                Rect.MinMaxRect( 0.10f, -0.40f,  0.40f, -0.10f),   // 2 가까운 동급
+                Rect.MinMaxRect( 0.12f, -0.38f,  0.38f, -0.12f),   // 3 2번 안에 들어간 먼 동급
+                Rect.MinMaxRect( 0.60f, -0.40f,  0.80f, -0.10f),   // 4 판이 없다
+            };
+            var depths = new List<float> { 2f, 2f, 2f, 4f, 2f };
+            var hasPlate = new List<bool> { true, true, true, true, false };
+            var show = new List<bool> { true, true, true, true, true };
+            var order = new List<int>();
+            var stats = default(LabelResolveStats);
+            stats.Entries = 5;
+
+            var obstacles = new List<Rect> { Rect.MinMaxRect(-0.60f, 0.00f, -0.20f, 0.50f) };
+            BuildLabelGeometry.ResolveVisibility(plates, depths, hasPlate, obstacles, show, order, ref stats);
+
+            int accounted = stats.Visible + stats.NoPlate + stats.YieldedHigherRank + stats.YieldedPeer;
+            if (accounted != stats.Entries)
+                return $"라벨 {stats.Entries}개인데 설명된 것이 {accounted}개 " +
+                       $"(표시 {stats.Visible} · 판없음 {stats.NoPlate} · " +
+                       $"위계 {stats.YieldedHigherRank} · 동급 {stats.YieldedPeer})";
+            if (stats.NoPlate != 1) return $"판 없음이 {stats.NoPlate}건 — 1 이어야 한다";
+            if (stats.YieldedHigherRank != 1) return $"위계 양보가 {stats.YieldedHigherRank}건 — 1 이어야 한다";
+            if (stats.YieldedPeer != 1) return $"동급 양보가 {stats.YieldedPeer}건 — 1 이어야 한다";
+            if (show[3]) return "겹친 동급 중 먼 쪽이 남았다";
+            if (!show[2]) return "겹친 동급 중 가까운 쪽이 사라졌다";
+            if (!show[1]) return "아무와도 안 겹친 라벨이 사라졌다";
             return null;
         }
 
