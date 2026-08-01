@@ -1465,23 +1465,23 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-08 — 5연쇄 이상 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
-- 상태: SKELETON · 패스: P4
-- 구현: `Assets/CaptureHarness/GifEncoder.cs`(자체 LZW), `Scripts/Run/Tests/SequenceRecorder.cs`
-- 접근: 해당 없음
-- 검증: 5연쇄 런 녹화 → GIF 파일 존재
-- 증거: `Logs/editmode_tests.txt`
+- 상태: CONNECTED · 패스: P4
+- 구현: `Assets/CaptureHarness/GifEncoder.cs`, `Scripts/Run/Tests/SequenceRecorder.cs`, `Scripts/Run/Tests/EvidenceClipRecorder.cs` + 메뉴 `Ascend/Record Evidence Clips`
+- 접근: Unity 메뉴 → `Ascend/Record Evidence Clips`
+- 검증: `Logs/evidence_clips.txt` 의 연쇄 깊이와 산출 경로
+- 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif`
 - 의존: UP-CORE-08
-- 남은 문제: 인코더는 **파이썬 이식본을 Pillow 로 되읽는 왕복 검사로 검증했다**(사전 포화·Clear 재시작 경로 포함, 480×270 5프레임 바이트 일치). 아직 **실제 런을 녹화하지 않았다**
+- 남은 문제: **실제 런에서 나왔다** — 시드 4242 · 3층 · 연쇄 깊이 5(기준 5). 플레이어 카메라(눈높이 1.620m)로 찍는다. 캡처 하네스가 자기 카메라를 따로 쓰는 바람에 눈높이 결함이 그림에 드러나지 않았던 전례가 있어서, 증거 영상만은 **플레이어가 실제로 본 것**이어야 한다. `Captures/` 는 gitignore 대상이라 파일은 기기에 남는다 — 다른 기기에서는 메뉴를 한 번 돌려 다시 만든다
 
 ### UP-TEST-09 — Critical → 과수확 → 결과 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
-- 상태: SKELETON · 패스: P4
-- 구현: `Scripts/Run/Tests/SequenceRecorder.cs`(RecordUntil 로 조건까지 녹화)
-- 접근: 해당 없음
-- 검증: Critical → 과수확 → 결과 구간 녹화 → GIF 파일 존재
-- 증거: `Logs/editmode_tests.txt`
+- 상태: CONNECTED · 패스: P4
+- 구현: `Scripts/Run/Tests/EvidenceClipRecorder.cs` (위험 단계 게이트)
+- 접근: Unity 메뉴 → `Ascend/Record Evidence Clips`
+- 검증: `Logs/evidence_clips.txt` 의 당김 시점 위험 단계
+- 증거: `Captures/evidence/overharvest_Critical_seed4242_f2.gif`
 - 의존: UP-TEST-08
-- 남은 문제: 녹화 장치만 있다. 그 구간으로 런을 몰아넣는 대본이 아직 없다
+- 남은 문제: **요구가 묻는 것은 순서다** — 「Critical → 과수확 → 결과」. 처음 두 번은 그 순서가 아니었다: ① 열리자마자 당겨 1층 `Stable` 영상을 찍었고 ② 「Critical 이 될 때까지 기다렸다 당긴다」로 바꾸자 열 층 내내 `Warning` 에 머물렀다 — **위험을 올리는 것이 바로 그 추가 스핀이라 기다림이 스스로를 막았다.** 당기는 것과 찍는 것을 분리해 열릴 때마다 당기고 위험이 닿은 당김만 녹화한다. 로그가 인과를 그대로 남긴다 — Warning → 당김 → Warning → 당김 → **Critical** → 당김(녹화). 남은 것은 `Collapse` 까지 가는 편의 확보이며, 그 단계는 지금 사고로만 도달한다
 
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3

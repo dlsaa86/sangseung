@@ -135,6 +135,35 @@ namespace Ascend.Prototype.EditorTools
             Debug.Log($"[상승] 10층 PlayMode 검증 시작 → {TenFloorAutoPilot.ReportPath}");
         }
 
+        /// <summary>
+        /// PRD §17.6 의 증거 **영상** 두 편을 실제 런에서 찍는다.
+        /// 정지 캡처로 대신할 수 없다 — 「연쇄」와 「Critical → 과수확 → 결과」는
+        /// 시간축의 사건이고 한 장으로는 순서를 보일 수 없다.
+        /// </summary>
+        [MenuItem("Ascend/Record Evidence Clips")]
+        public static void RunEvidenceClips()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            string path = Path.Combine(Directory.GetCurrentDirectory(), EvidenceClipRecorder.ReportPath);
+            if (File.Exists(path)) File.Delete(path);
+
+            EvidenceClipRecorder.Arm();
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 증거 영상 녹화 시작 → {EvidenceClipRecorder.ReportPath}");
+        }
+
         [MenuItem("Ascend/Capture Hero Slice Set")]
         public static void RunCaptureSet()
         {
