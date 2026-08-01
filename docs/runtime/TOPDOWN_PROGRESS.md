@@ -23,10 +23,10 @@
 | 상태 | 개수 | 세션 시작 |
 |---|---|---|
 | `VERIFIED` | **67** | 64 |
-| `CONNECTED` | **40** | 26 |
+| `CONNECTED` | **41** | 26 |
 | `VISIBLE` | 0 | 0 |
 | `SKELETON` | **15** | 16 |
-| `NOT_STARTED` | **7** | 23 |
+| `NOT_STARTED` | **6** | 23 |
 | **Required 합계** | **129** | 129 |
 
 `UP-TECH-03` 이 `CONNECTED` → `SKELETON` 으로 **내려갔다.** 감사가 죽은 구현임을 확인했다 —
