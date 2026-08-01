@@ -57,6 +57,9 @@ namespace Ascend.Prototype.Audio
         [Tooltip("채널 균형과 덕킹 배율. 비면 아래 슬라이더를 그대로 쓴다 — 소리 없이 죽지 않는다.")]
         [SerializeField] private Data.Profiles.AudioMixProfile _mixProfile;
 
+        [Tooltip("과수확 정적 구간의 길이와 복귀 속도. 비면 아래 슬라이더를 쓴다.")]
+        [SerializeField] private Data.Profiles.OverharvestProfile _overharvestProfile;
+
         [SerializeField, Range(0f, 1f)] private float _masterVolume = 0.8f;
         [SerializeField, Range(0f, 1f)] private float _machineVolume = 1f;
         [SerializeField, Range(0f, 1f)] private float _eventVolume = 0.85f;
@@ -91,6 +94,7 @@ namespace Ascend.Prototype.Audio
         private bool[] _bakeWarned;
         private Data.Profiles.AudioMixSnapshot _mix;
         private string _mixSource = "(미초기화)";
+        private string _overharvestSource = "(미초기화)";
         private bool _overflowWarned;
 
         private GameEventBus _bus;
@@ -102,6 +106,12 @@ namespace Ascend.Prototype.Audio
         /// <summary>지금까지 실제로 재생한 큐 수. 무영상 검증이 "정말 울렸는가"를 물을 때 쓴다.</summary>
         /// <summary>지금 쓰고 있는 믹스의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
         public string MixSource => _mixSource;
+
+        /// <summary>정적 구간 값의 출처. 같은 이유로 노출한다.</summary>
+        public string OverharvestSource => _overharvestSource;
+
+        /// <summary>실제로 쓰이는 정적 구간 길이(초). PRD §7 의 0.3~0.7 범위를 지켜야 한다.</summary>
+        public float SilenceSeconds => _silenceSeconds;
 
         public int PlayedCueCount { get; private set; }
 
@@ -157,6 +167,25 @@ namespace Ascend.Prototype.Audio
             // 「무엇을 들었는지」가 재현되지 않는다.
             _mix = Data.Profiles.AudioMixProfile.SnapshotOrDefault(_mixProfile, nameof(AudioDirector));
             _mixSource = _mixProfile != null ? _mixProfile.name : "인스펙터 슬라이더";
+
+            // 정적 구간의 길이는 **PRD §7 이 0.3~0.7초로 못박은 값**이고, 그것을 데이터로
+            // 빼 둔 것이 `OverharvestProfile` 이다. 여기서 읽지 않으면 그 에셋은
+            // 「만들어졌고 아무도 부르지 않는」 상태로 남는다.
+            var over = Data.Profiles.OverharvestProfile.SnapshotOrDefault(
+                _overharvestProfile, nameof(AudioDirector));
+            _overharvestSource = _overharvestProfile != null
+                ? _overharvestProfile.name : "인스펙터 슬라이더";
+
+            if (_overharvestProfile != null)
+            {
+                // 구간 길이는 프로파일의 최소·최대 중앙값을 쓴다. 인스펙터 값은
+                // 프로파일이 없을 때의 폴백으로 남긴다 — 둘 중 하나를 지우면
+                // 씬에서 만질 손잡이가 사라지거나 데이터가 무의미해진다.
+                _silenceSeconds = Mathf.Clamp(
+                    (over.MinSilenceSeconds + over.MaxSilenceSeconds) * 0.5f,
+                    over.MinSilenceSeconds, over.MaxSilenceSeconds);
+                _resumeSeconds = Mathf.Max(0.01f, over.ResumeFadeSeconds);
+            }
 
             _silence.DuckSeconds = _duckSeconds;
             _silence.ResumeSeconds = _resumeSeconds;

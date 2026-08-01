@@ -896,6 +896,17 @@ namespace Ascend.Prototype.Run.Tests
                   audio != null && audio.MixSource.EndsWith("Profile"),
                   audio == null ? "AudioDirector 없음" : $"출처 「{audio.MixSource}」");
 
+            Check("오디오가 OverharvestProfile 을 읽는다",
+                  audio != null && audio.OverharvestSource.EndsWith("Profile"),
+                  audio == null ? "AudioDirector 없음" : $"출처 「{audio.OverharvestSource}」");
+
+            // **값이 흘렀는지까지 본다.** 에셋을 읽었다는 것과 그 값이 규격 안에 있다는 것은
+            // 다르다. PRD §7 은 과수확 정적 구간을 0.3~0.7초로 못박는다.
+            Check($"과수확 정적 구간이 PRD §7 범위 안이다 — {(audio != null ? audio.SilenceSeconds : 0f):F2}초",
+                  audio != null && audio.SilenceSeconds >= 0.3f && audio.SilenceSeconds <= 0.7f,
+                  audio == null ? "AudioDirector 없음"
+                                : $"{audio.SilenceSeconds:F2}초 — 0.3~0.7 밖이다");
+
             Perf.RenderBudgetProbe probe = FindAnyObjectByType<Perf.RenderBudgetProbe>();
             if (probe != null)
             {

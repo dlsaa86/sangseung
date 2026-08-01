@@ -9490,6 +9490,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Audio.AudioDirector
   _run: {fileID: 998528527}
   _mixProfile: {fileID: 11400000, guid: c91f8052ebc92f747b6920660b08eb85, type: 2}
+  _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
   _masterVolume: 0.8
   _machineVolume: 1
   _eventVolume: 0.85

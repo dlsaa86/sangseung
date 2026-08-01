@@ -233,7 +233,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/render_budget.txt` 머리글의 기준·측정 조건 대조
 - 증거: `Logs/render_budget.txt`
 - 의존: 없음
-- 남은 문제: 프레임 예산이 이제 목표 FPS 에서 유도되고, **잰 조건이 기준과 같은지가 보고서에 적힌다.** 이것이 핵심이다 — 지금까지의 측정은 816×714 에서 나왔고 중앙값이 vSync 상한(8.33ms)에 못 박혀 있었는데 조건 대조 없이 실렸다. **어느 조건에서 잰 값인지 적지 않으면 그 숫자는 판정이 아니라 인상이다.** 남은 것은 기준 해상도에서 실제로 다시 재는 것(`UP-TECH-04`)과 사용자 승인
+- 남은 문제: **에셋이 기준 PC 가 아니라 개발 기기를 담고 있다.** `TargetHardwareProfile.asset` 은 `Ryzen 5 5600X` 인데 `TECH_SPEC.md` §13 과 `A-20260730-01`·`A-20260731-01` 은 기준 PC 를 **Ryzen 7 5700** 으로 지정한다. 이 대체를 승인한 `DECISION_LOG` 항목이 없다. 성능 판정 전체(`UP-TECH-04/05/07`)가 이 값 위에 서므로 기록을 바로잡거나 「측정 기기를 잠정 기준으로 삼는다」를 명시적으로 올려야 한다 → `PD-16`. 그리고 배선이 끊겨도 실패하는 단정이 없다 — 렌더 프로브는 보고 줄만 붙인다
 
 ### UP-PLAT-05 — 압축·임포트 Preset과 VisualQualityProfile
 - 분류: Required · 출처: PRD §13.3, §13.4, §17.4
@@ -289,13 +289,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-SPACE-03 — 조준 대상 하이라이트와 행동 프롬프트
 - 분류: Required · 출처: PRD §12.3 「어두운 상태에서도 발견 가능」, N08 §15.2
-- 상태: CONNECTED · 패스: P1 P2 P3
-- 구현: `Scripts/Player/CrosshairView.cs`
+- 상태: VERIFIED · 패스: P2 P3
+- 구현: `Scripts/Player/CrosshairInteractor.cs`(하이라이트 `_availableHighlight`) + `Scripts/Player/CrosshairView.cs`(프롬프트) + `TenFloorCaptureRig.AimPromptScreenShot`
 - 접근: 조준점을 상호작용물에 올린다
 - 검증: 고정 캡처 `20_aim_prompt_screen` — 조준 대상 획득 여부와 프롬프트 문구를 매니페스트에 함께 적는다
 - 증거: `Captures/TenFloor/20_aim_prompt_screen.png`
 - 의존: UP-SPACE-02
-- 남은 문제: **판정 가능한 증거가 처음 생겼다.** 하이라이트도 프롬프트도 `ScreenSpaceOverlay` 라 전용 카메라 렌더에는 안 들어가고, 무엇보다 **플레이어가 실제로 겨눠야** 나타난다 — 리그 카메라를 어디에 두든 소용없었다. 이제 플레이어를 레버 앞 0.9m 에 세워 겨누게 하고 `CrosshairInteractor.CurrentInteractable` 로 실제 획득을 확인한 뒤 화면 캡처를 찍는다. 실측: 조준 대상 **있음** · 프롬프트 「실행 레버 — 스핀 5회 남음」. 화면에 레버 하이라이트(녹색)·조준점·하단 프롬프트 「실행 레버를 당긴다」가 함께 보인다. **해상도가 게임 뷰 종속(816×714)이라 고정 비교 세트가 아니다**
+- 남은 문제: **독립 감사 통과.** 매니페스트 문구가 하드코딩이 아니라 `interactor.CurrentInteractable` 실측이고, 증거 그림에 녹색 레버·조준점·상단 라벨·하단 프롬프트가 함께 있다. 남은 부채는 해상도(816×714)이며 `UP-VIS-06` 쪽으로 넘긴다
 
 ### UP-SPACE-04 — 좁고 높은 산업용 화물 엘리베이터 내부
 - 분류: Required · 출처: PRD §4.1, §12.2, N06 §8 「엘리베이터 설계 고정 조건」
@@ -325,7 +325,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `07_cargo_full`, `08_passenger_and_device`
 - 증거: `Captures/TenFloor/07_cargo_full.png`, `Captures/TenFloor/08_passenger_and_device.png`
 - 의존: UP-BUILD-05
-- 남은 문제: 없음
+- 남은 문제: 증거가 정지 이미지 2장뿐인데 요구는 기능적이다(「이동과 장치 접근 가능」). `08_passenger_and_device.png` 에 **승객이 보이지 않는다** — 매니페스트는 「승객과 장치가 한 화면에」라고 적었다. 통로 폭·플레이어 통과를 재는 단정이 0건이고, 실플레이 최대 적재는 108/100kg 인데 캡처는 78kg 이다
 
 ### UP-SPACE-07 — 문 개폐 조작과 적재 단계 종료
 - 분류: Required · 출처: PRD §5(1~4), N02 「승차 흐름」
@@ -345,7 +345,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `TenFloorAutoPilot` 의 「연출 중에도 플레이어 조작이 살아 있다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-SPACE-01, UP-CORE-11
-- 남은 문제: 잠긴 프레임에서 `CharacterController` 활성·오브젝트 활성·`Time.timeScale > 0` 을 확인한다. **얼리는 방법 두 가지가 쓰이지 않았음**을 보는 것이지 실제로 움직여 본 것은 아니다 — 입력 시뮬레이션은 하네스가 못 한다. 결과 공개 중 플레이어를 얼어붙게 하는 것이 전형적 실패라 이 축이 필요했다
+- 남은 문제: **내 앞선 기록이 틀렸다.** 「`CharacterController` 활성을 확인한다」고 적었으나 코드는 `FirstPersonController.enabled` 를 본다. 그리고 더 큰 것: `HandleLook` 이 `IsCursorLocked` 로 막혀 있고 씬은 `_lockCursorOnStart: 0` 이라 **하네스 전 구간에서 시점 회전이 한 번도 실행된 적이 없다.** 「이동·시점 회전 허용」의 절반이 미관측이고, 지금 단정은 「얼리는 방법이 안 쓰였다」만 볼 뿐 요구 결과를 재지 않는다
 
 ### UP-SPACE-09 — 등을 돌려도 결과와 전력 변화를 알 수 있다
 - 분류: Required · 출처: PRD §11(무음 관전자 기준), N03 「등을 돌려도 사운드·점등·보조 UI로」, N08 §17
@@ -589,7 +589,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `19_cascade_deep_screen` — 15번과 같은 순간의 화면 캡처
 - 증거: `Captures/TenFloor/19_cascade_deep_screen.png`
 - 의존: UP-CORE-12
-- 남은 문제: **판정 가능한 증거가 처음 생겼다** — 이전 증거 `15_cascade_deep.png` 는 전용 카메라 렌더라 HUD 가 통째로 빠져 있었고, 그 그림으로는 「한 화면에 모든 숫자를 띄우지 않는다」를 판정할 수 없었다. **그리고 그 그림이 바로 결함을 드러냈다**: HUD 텍스트가 화면 오른쪽 끝에서 잘린다(「전력 8149 / 과…」·「스핀 2/5 판돈…」·「흡수체 1개 → 저…」). 숫자를 **적게** 띄우는 것과 띄운 숫자가 **잘리는** 것은 다른 문제다 → `UP-FIX-07`
+- 남은 문제: **증거가 요구 위반을 보인다.** HUD 우측이 잘린다(`UP-FIX-07`). 더 결정적으로, 하단 힌트가 보이는 것은 `GameHudView` 가 연출 중이면 힌트를 끄기 때문에 **캡처 순간이 연출 중이 아니었다**는 뜻이고, 같은 조건에서 연쇄 그룹도 꺼진다 — 즉 매니페스트가 「연쇄 8단계」라고 적은 그 장에 **「연쇄 N단계」 HUD 가 없다.** 판정 대상이 그림에 없다. 연출이 도는 프레임에서 찍어야 한다
 
 ### UP-CORE-14 — 가중치 합이 0이면 명시적 오류
 - 분류: Required · 출처: N08 §7.2 마지막 문장, PRD §13.5(조용한 실패 금지)
@@ -809,13 +809,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RUN-08 — 중복 입력으로 상태가 손상되지 않는다
 - 분류: Required · 출처: N08 §19.2, §24 「결과 공개가 끝나기 전에 중복 스핀 가능한 구조」 금지
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Run/RouletteInteractionBridge.cs`(연출 잠금)
 - 접근: 스핀 중 레버를 연타한다
 - 검증: `TenFloorAutoPilot` 의 「연출 중 레버를 더 눌러도 스핀이 줄지 않는다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-CORE-11
-- 남은 문제: **처음으로 잠긴 순간에 관측했다.** 이전 단정은 `WaitWhileLocked` 뒤에 상태를 찍어서 395건 중 `연출잠금=True` 가 **0회**였다 — 즉 잠금 자체를 한 번도 본 적이 없었다. 이제 레버를 당긴 직후 잠긴 프레임에서 레버를 두 번 더 누르고 남은 스핀이 변하지 않는지 본다. 「연출 잠금을 실제로 관측했다」 단정이 이 검사가 도달했음을 보증한다 — 실행되지 않은 단정은 통과가 아니다
+- 남은 문제: **독립 감사 통과.** `RouletteInteractionBridge` 가 `alive` 에 `!IsLocked` 를 넣고 핸들러에서 한 번 더 확인하는 이중 가드다. 단정이 **잠긴 프레임 안에서만** 돌고, 그 프레임에 도달했음을 「연출 잠금을 실제로 관측했다」가 따로 보증한다 — 268회 실행
 
 ### UP-RUN-09 — 돈(Money) 자원
 - 분류: Deferred · 출처: N99 「핵심 재화: 전력·돈」, N08 §5.1 — **PRD §4.1에 없다**
@@ -1019,7 +1019,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `TenFloorAutoPilot` → 「위험 연출이 DangerFeedbackProfile 을 읽는다」
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-01
-- 남은 문제: **주입됐다.** 소비자가 자기 출처 이름을 내놓고 `TenFloorAutoPilot` 의 `CheckProfileInjection` 이 그것을 읽는다 — 폴백이면 「코드 프리셋」·「인스펙터 슬라이더」로 적히므로 통과하지 않는다. **배선됐는가가 아니라 읽혔는가를 묻는 검사다.** 남은 것은 **값을 바꿨을 때 화면이 실제로 달라지는가**의 시각 확인이다. 위험 단계가 프로브 중 `Stable` 을 벗어난 적이 없어 단계별 차이는 아직 미관측이다
+- 남은 문제: 주입은 진짜다 — 12필드 전부 `LateUpdate` 에서 소비되고, 에셋이 없으면 「코드 프리셋」으로 찍혀 단정이 통과하지 않는다. **그러나 요구는 §8.4 의 9항목이고 프로파일에 없는 것이 넷이다** — 단계 임계값(`RiskEvaluator` 의 코드 필드), 승객 반응 레벨(다른 에셋), 파티클 밀도(`UP-VIS-05` 가 미착수라 존재 자체가 없다), 일회성 충격음(`AudioCueTable` 쪽)
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
@@ -1029,7 +1029,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` + 씬 배선
 - 증거: `Logs/editmode_tests.txt`, `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-07
-- 남은 문제: **셋 중 둘이 분리됐다.** 섬광은 `AllowFlickerAt`/`ClampFlickerRate` 로 끄거나 주파수를 낮추고, 흔들림은 카메라(`ScaleShake`)와 물체(`WorldSwayScale`)를 **따로** 감쇠한다 — 카메라만 끄고 싶은 사람이 대부분이고 물체까지 멈추면 위험 단계가 화면에서 사라지기 때문이다. **사이렌은 아직이다** — `AllowSiren` 을 읽는 코드가 없다(`AudioDirector` 쪽 작업)
+- 남은 문제: **셋 중 둘만 분리됐다.** 섬광(`AllowFlickerAt`/`ClampFlickerRate`)과 흔들림(카메라 `ScaleShake` · 물체 `WorldSwayScale` 을 따로)은 `RiskStateView` 가 읽는다. **사이렌은 미구현** — `AllowSiren`·`SirenVolume` 의 런타임 소비처가 0곳이고 테스트와 에디터 배선 도구에서만 언급된다
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
@@ -1085,13 +1085,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-05 — 동시 반응 제한 (우선순위·쿨다운·최대 수)
 - 분류: Required · 출처: PRD §9.4 「한 이벤트에서 모든 승객이 동시에 말하지 않는다」
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Npc/PassengerReactionDirector.cs`(우선순위·쿨다운·최대 수) + 씬 배선
 - 접근: 해당 없음
 - 검증: `TenFloorAutoPilot` 의 「동시 반응이 상한을 넘지 않았다」
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-NPC-02
-- 남은 문제: **승객 4명 > 상한 2 인 상태에서 최대동시가 2 를 넘지 않았다** — 관측 조건이 성립한 상태의 단정이다. 승객이 상한 이하면 §9.4 는 관측 불가이지 충족이 아니므로, 단정 자체에 그 조건을 걸어 공허한 통과를 막았다. **억제 130건은 증거가 아니다** — `SuppressedCount` 는 「아무도 못 했다」에서만 오르고 그 대부분은 상한이 아니라 쿨다운(4~10초)이다
+- 남은 문제: **독립 감사 통과.** `PassengerReactionDirector` 가 실제 상한을 걸고(`_selected.Count < _maxConcurrent && active < _maxConcurrent`), 씬이 `2` 로 배선돼 있으며, EditMode 3축(최대 수·쿨다운·우선순위)이 전부 PASS 다. PlayMode 단정이 **관측 조건을 스스로 요구한다** — 승객 4명 > 상한 2 인 상태에서만 성립하므로 공허하게 통과할 수 없고, 가드를 지우면 최대동시가 2를 넘어 빨간불이 된다
 
 ## 2.11 REC — 사고 기록기
 
@@ -1297,7 +1297,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `TenFloorAutoPilot` → 「오디오가 AudioMixProfile 을 읽는다」
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-AUD-01
-- 남은 문제: **주입됐다.** 소비자가 자기 출처 이름을 내놓고 `TenFloorAutoPilot` 의 `CheckProfileInjection` 이 그것을 읽는다 — 폴백이면 「코드 프리셋」·「인스펙터 슬라이더」로 적히므로 통과하지 않는다. **배선됐는가가 아니라 읽혔는가를 묻는 검사다.** **함정 하나를 명시적으로 피했다**: 채널 열거가 두 벌이고 이름은 같은데 값이 한 칸씩 밀려 있다(`AudioCueChannel.Warning=3` vs `AudioChannel.Warning=4`). 캐스트로 넘기면 컴파일되고 소리도 나므로 아무도 눈치채지 못한다 — 명시적 매핑 함수를 쓴다. 남은 것은 오디오 **압축 설정** 구분이다
+- 남은 문제: `AudioMixProfile` 주입은 검증됐다(폴백이면 「인스펙터 슬라이더」로 찍히므로 통과하지 않는다). **요구의 나머지 절반인 오디오 압축 구분이 0건이다** — `.preset` 파일 0개, `AudioImporter`/`compressionFormat`/`loadType` 참조 0건, 프로파일에 압축 필드 없음
 
 ## 2.14 TECH — 엔지니어링 목표
 
@@ -1471,7 +1471,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/evidence_clips.txt` 의 연쇄 깊이와 산출 경로
 - 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif`
 - 의존: UP-CORE-08
-- 남은 문제: **실제 런에서 나왔다** — 시드 4242 · 3층 · 연쇄 깊이 5(기준 5). 플레이어 카메라(눈높이 1.620m)로 찍는다. 캡처 하네스가 자기 카메라를 따로 쓰는 바람에 눈높이 결함이 그림에 드러나지 않았던 전례가 있어서, 증거 영상만은 **플레이어가 실제로 본 것**이어야 한다. `Captures/` 는 gitignore 대상이라 파일은 기기에 남는다 — 다른 기기에서는 메뉴를 한 번 돌려 다시 만든다
+- 남은 문제: **영상이 판정 대상을 담지 않는다 — 방금 정지 캡처에서 고친 결함을 영상에서 재발시켰다.** `SequenceRecorder` 가 `_camera.Render()` → RenderTexture 경로를 쓰는 한 `ScreenSpaceOverlay` HUD 는 **영원히 안 들어간다**. 「연쇄 N단계」를 보이려고 만든 HUD 가 정작 그것을 증명해야 할 영상에서 빠졌다. 「깊이 5」의 근거가 `evidence_clips.txt` 텍스트뿐이다. 게다가 결과판이 화면 좌측에서 잘려 3열 중 2열만 보이고 화면 절반이 바닥이다 — 플레이어를 장치 정면으로 돌려세워야 한다. `TenFloorCaptureRig.ScreenShot` 은 `ScreenCapture.CaptureScreenshotAsTexture()` 로 HUD 를 담고 있으므로(19·20번이 그 증거) 같은 경로로 프레임을 모으면 된다
 
 ### UP-TEST-09 — Critical → 과수확 → 결과 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
@@ -1481,7 +1481,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/evidence_clips.txt` 의 당김 시점 위험 단계
 - 증거: `Captures/evidence/overharvest_Critical_seed4242_f2.gif`
 - 의존: UP-TEST-08
-- 남은 문제: **요구가 묻는 것은 순서다** — 「Critical → 과수확 → 결과」. 처음 두 번은 그 순서가 아니었다: ① 열리자마자 당겨 1층 `Stable` 영상을 찍었고 ② 「Critical 이 될 때까지 기다렸다 당긴다」로 바꾸자 열 층 내내 `Warning` 에 머물렀다 — **위험을 올리는 것이 바로 그 추가 스핀이라 기다림이 스스로를 막았다.** 당기는 것과 찍는 것을 분리해 열릴 때마다 당기고 위험이 닿은 당김만 녹화한다. 로그가 인과를 그대로 남긴다 — Warning → 당김 → Warning → 당김 → **Critical** → 당김(녹화). 남은 것은 `Collapse` 까지 가는 편의 확보이며, 그 단계는 지금 사고로만 도달한다
+- 남은 문제: **「Critical → 과수확 → 결과」의 순서가 영상에 없다.** `EvidenceClipRecorder` 가 `Begin()` 직후 곧바로 `Interact()` 를 불러 **당기기 전 상태가 필름에 없다** — 추출한 프레임이 전부 「스핀 0/5 과수확 3회」로 동일하고 과수확 레버 자체도 화면에 없다. 순서는 로그에만 존재한다. 로그가 인과를 증명하는 것과 영상이 그것을 보이는 것은 다르고, 요구가 **영상**인 이유가 바로 순서다. `UP-TEST-08` 과 같은 HUD 부재 문제도 함께 있다
 
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3
@@ -1523,7 +1523,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 열거 값 불변 확인(0/1/2/3) + `RiskEvaluatorTests` 11 PASS + 재캡처 20장
 - 증거: `Logs/editmode_tests.txt`, `Captures/TenFloor/09_risk_strain.png`
 - 의존: UP-RISK-01
-- 남은 문제: **값은 그대로 두고 이름만 바꿨다** — 열거는 int 로 직렬화되므로 `Stable=0 / Strain=1 / Critical=2 / Collapse=3` 이 유지되면 에셋이 어긋나지 않는다. 실행해서 확인했다. **손대지 않은 것**: `RiskProfile.WarningColor`·`WarningPulseRate`·`WarningEmission` 은 위험 단계가 아니라 경고 **등**이고 `DangerFeedbackProfile.asset` 에 그 이름으로 직렬화돼 있다. `AudioCueChannel.Warning`·`AudioChannel.Warning` 은 오디오 채널이다. **일괄 치환했으면 에셋이 조용히 끊겼다.** 표시명은 「경고」 → 「응력」. 캡처 파일 이름도 함께 옮겼다 — 그것을 남겨 두면 이 항목이 막으려는 드리프트가 그대로 재발한다
+- 남은 문제: **코드 개명은 끝났고 문서 정합성이 남았다.** 값은 보존됐다(`Stable=0 / Strain=1 / Critical=2 / Collapse=3`, `RiskLevel.Warning` 참조 0건). 그러나 독립 감사가 셋을 찾았다 — ① `docs/CURRENT_PHASE.md` 가 아직 `Warning` 이었다(**요구 축에서 `MASTER_PRD` 보다 상위 문서다**. 고쳤다) ② `RiskEvaluatorTests` 의 **테스트 이름**이 그대로라 `editmode_tests.txt` 에 「Warning」으로 찍힌다 ③ 캡처 매니페스트가 소스 수정(16:50)보다 오래된 캡처(16:40)라 아직 「Warning — 2층」이다 — **재캡처가 필요하다**
 
 ---
 
@@ -1577,7 +1577,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-APV-11 | `Jettison`이 승객과 화물을 구분하는가 | 무게 순으로만 버림 | 같음 · `D-20260731-04` 미결 |
 | UP-APV-12 | Phase 1 레거시 스택 — 삭제 vs `Legacy/` 격리 | 씬에 비활성으로 잔존 | 같음 · 씬 삭제는 되돌리기 어렵다 |
 | UP-APV-13 | 사고 기록기를 월드 공간으로 옮길 것인가 | ScreenSpaceOverlay | 같음 · PRD §10.1은 물리 장치를 요구 |
-| UP-APV-14 | 기준 하드웨어 프로파일 확정 | Ryzen 5 5600X / RTX 3070 (`A-20260731-01`) | PRD §13.1 |
+| UP-APV-14 | 기준 하드웨어 프로파일 확정 | **불일치 — `PD-16` 참조.** 에셋은 Ryzen 5 5600X(개발 기기), `TECH_SPEC` §13·`A-20260730-01` 은 Ryzen 7 5700 | PRD §13.1 |
 
 ---
 
@@ -1618,10 +1618,10 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | 상태 | Required 중 개수 |
 |---|---|
 | `VERIFIED` | **67** |
-| `CONNECTED` | 32 |
+| `CONNECTED` | 41 |
 | `VISIBLE` | 0 |
-| `SKELETON` | 23 |
-| `NOT_STARTED` | **7** |
+| `SKELETON` | 15 |
+| `NOT_STARTED` | **6** |
 | `BLOCKED_EXTERNAL` | 0 |
 
 **Required 129건 중 67건(52%)이 코드·씬·테스트 증거를 모두 갖췄다.**

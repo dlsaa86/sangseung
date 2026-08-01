@@ -72,7 +72,7 @@
 
 ## 2.4 위험과 사고 (이번 범위)
 
-- Stable / Warning / Critical / Collapse(Accident) 네 단계
+- Stable / Strain / Critical / Collapse(Accident) 네 단계
 - 조명·음향·진동·승객 반응이 상태에 따라 변화
 - 과수확이 위험과 보상을 실제로 변경
 - 사고 기록기가 실패 원인과 런 데이터를 정확히 표시
