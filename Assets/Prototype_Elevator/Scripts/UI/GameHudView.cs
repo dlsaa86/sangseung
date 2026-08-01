@@ -256,8 +256,15 @@ namespace Ascend.Prototype.UI
             // 연출 중에는 마지막으로 지은 값을 그대로 둔다.
             if (_presenter != null && _presenter.IsPresenting) return;
 
+            // **999 에서 잘라 놓고 있었다.** 계기판은 1,415% 라고 적는데 화면 위 숫자는
+            // 999% 라고 적었다 — 같은 순간의 같은 값이 두 곳에서 다르게 나온다.
+            // 9차 독립 판정이 「19 의 999%↔1,415% 그대로」로 두 라운드 연속 지적한 것이 이것이다.
+            //
+            // 상한이 필요했던 이유는 자릿수가 늘면 글자상자를 넘기 때문이다. 그건 상한이
+            // 아니라 **글자 크기**로 풀 문제다. 화면이 자기 자신과 모순되는 것보다
+            // 숫자가 조금 작아지는 편이 낫다.
             int percent = Mathf.Clamp(
-                Mathf.RoundToInt(floor.Power / Mathf.Max(1f, floor.RequiredPower) * 100f), 0, 999);
+                Mathf.RoundToInt(floor.Power / Mathf.Max(1f, floor.RequiredPower) * 100f), 0, 99999);
             int risk = _risk != null ? (int)_risk.Level : 0;
             int phase = (int)floor.Phase;
 
@@ -414,6 +421,10 @@ namespace Ascend.Prototype.UI
                                      TextAlignmentOptions.Left,
                                      new Color(0.97f, 0.94f, 0.84f),
                                      new Vector2(18f, height - 100f), new Vector2(-18f, -12f), font);
+            // 상한을 999 에서 푼 대신 자릿수가 늘면 스스로 줄어든다. 잘리지 않는 것이 먼저다.
+            _auxRatioText.enableAutoSizing = true;
+            _auxRatioText.fontSizeMax = 62f;
+            _auxRatioText.fontSizeMin = 34f;
 
             // 가운데 20px — 위험 점등 4칸.
             var lamps = new GameObject("RiskLamps", typeof(RectTransform));
@@ -424,14 +435,24 @@ namespace Ascend.Prototype.UI
             lampRect.offsetMin = new Vector2(18f, height - 126f);
             lampRect.offsetMax = new Vector2(-18f, -106f);
 
+            // **막대로 오독됐다.** 9차 독립 평가자가 이 넷을 「전력 미니 바」로 읽고,
+            // 0%·0%·0%·1,415% 네 장에서 픽셀까지 같다며 결함으로 적었다. 배선은 옳다 —
+            // 이건 전력이 아니라 위험 단계고, 위험이 같으면 같아야 한다.
+            //
+            // 그래도 이건 **판독 결함이다.** 보는 사람이 무엇을 보는지 틀렸다면 틀린 것은
+            // 보는 사람이 아니라 화면이다. 붙어 있는 네 칸은 연속된 막대로 읽힌다.
+            // 간격을 벌려 **세는 것**으로 만들고, 무엇을 세는지 옆에 적는다.
             _auxRiskLamps = new Image[RiskLampCount];
             for (int i = 0; i < RiskLampCount; i++)
             {
                 float step = 1f / RiskLampCount;
                 _auxRiskLamps[i] = AuxImage(lamps.transform, "Lamp" + i,
                                             new Vector2(i * step, 0f), new Vector2((i + 1) * step, 1f),
-                                            new Vector2(3f, 0f), new Vector2(-3f, 0f), LampOff);
+                                            new Vector2(10f, 0f), new Vector2(-10f, 0f), LampOff);
             }
+            // 이름표는 새로 만들지 않는다 — 바로 아래 `_auxStateText` 가 이미
+            // 「요구 전력 미달 · 과부하」처럼 단계 이름을 글자로 적는다. 라벨을 하나 더
+            // 올리면 같은 정보가 두 번 나오고, 그게 이 계기판이 반복해 온 실패다.
 
             // 아래 34px — 낱말 둘. 숫자를 더 늘리지 않는다.
             _auxStateText = AuxLabel(panel.transform, "StateText", 22f,

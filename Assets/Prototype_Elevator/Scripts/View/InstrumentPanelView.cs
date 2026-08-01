@@ -191,7 +191,44 @@ namespace Ascend.Prototype.View
                 margin.x = _leftPadUnits;
                 label.margin = margin;
             }
+
+            // **좌측 여백을 준 만큼 오른쪽에서 잘려 나갔다.**
+            //
+            // 9차 판정: 앞 문장은 통과했다 — 「전」 첫 잉크가 x=977 px 로 밀려 8차가 지목한
+            // 좌측 가림 11장이 실제로 풀렸다. 그런데 같은 판정이 **새 축의 거짓 그린 7건**을
+            // 잡았다. 06·08·09·10(2줄)·12 의 줄이 x≈1274 px 에서 하드 컷되고, 잘린 것이
+            // 하필 `B-3 #10` 이 요구하는 대가 수치(−16.0 / −24.0 / −32.0)와 「판돈 329」였다.
+            //
+            // 원인은 단순하다. 글자상자의 오른쪽 끝은 그대로인데 왼쪽에서 5.20 단위를
+            // 밀어냈으니 **쓸 수 있는 폭이 그만큼 줄었다.** 가림을 고치면서 잘림을 만든 것이고,
+            // 「고쳤다」가 아니라 「옮겼다」다. 이 저장소가 다섯 라운드 연속 당한 실패
+            // (상태 패널 가장자리가 좌 → 우로 이동)와 같은 종류다.
+            //
+            // 그래서 왼쪽을 되돌리지 않는다 — 되돌리면 가림이 돌아온다. 대신 **긴 줄만**
+            // 상자 안에 들어가도록 줄인다. 잘린 숫자는 못 읽지만 작아진 숫자는 읽힌다.
+            // 짧은 줄(전력·요구·층)은 손대지 않는다 — 라벨마다 글자 크기가 달라지면
+            // 스타일 일관성이 깨지고, 그건 다른 축의 감점이다.
+            if (!ReferenceEquals(label, _statusLabel)) return;
+            if (!label.enableAutoSizing)
+            {
+                label.enableAutoSizing = true;
+                label.fontSizeMax = size;
+                label.fontSizeMin = size * StatusShrinkFloor;
+            }
+            else if (!Mathf.Approximately(label.fontSizeMax, size))
+            {
+                label.fontSizeMax = size;
+                label.fontSizeMin = size * StatusShrinkFloor;
+            }
         }
+
+        /// <summary>
+        /// 상태 줄이 줄어들 수 있는 하한. 이 아래로는 줄이지 않는다 — 상자에 넣겠다고
+        /// 끝없이 줄이면 「잘려서 못 읽는다」가 「작아서 못 읽는다」로 바뀔 뿐이다.
+        /// 하한에서도 넘치면 그건 글자 크기가 아니라 **문장 길이나 상자 폭의 문제**이고,
+        /// 매니페스트의 `잘림(글자상자)` 이 그것을 잡아 준다.
+        /// </summary>
+        private const float StatusShrinkFloor = 0.66f;
 
         /// <summary>런이 새로 시작되면 캐시 키를 푼다. 안 그러면 종료 화면이 그대로 남는다.</summary>
         private void InvalidateCache()
@@ -401,11 +438,33 @@ namespace Ascend.Prototype.View
 
             SetText(_floorLabel, run.IsFailed ? "층 실패" : "층 확정");
             var results = run.Results;
-            if (results.Count == 0) { SetBar(0f, _belowRequired); return; }
+            if (results.Count == 0)
+            {
+                SetBar(0f, _belowRequired);
+                // 종료 화면에서도 직전 층의 「요구」가 남아 있으면 안 된다 — 아래 참조.
+                if (_requiredLabel != null) SetText(_requiredLabel, string.Empty);
+                return;
+            }
 
             FloorResult last = results[results.Count - 1];
-            SetText(_powerLabel, $"전력 {last.FinalPower:F0} / 요구 {last.RequiredPower:F0}   " +
-                                 $"{last.Band.DisplayName()}");
+
+            // **9차 판정이 여기서 자기모순을 잡았다.** 「전력 933 / 요구 1508」 바로 아래
+            // 「요구 365  0 %」가 함께 떠 있었다 — 종료 경로는 옛 한 줄을 `_powerLabel` 에
+            // 쓰는데 `_requiredLabel` 에는 **직전 층의 값이 그대로 남아** 있었기 때문이다.
+            //
+            // 줄을 나눈 쪽만 고치고 종료 경로를 안 고친 내 실수다. 한 화면에 같은 항목이
+            // 두 번, 그것도 다른 값으로 나오는 것은 「기록기가 자기가 설명해야 할 사고를
+            // 부정한다」와 같은 종류의 실패다(`UP-FIX-11`).
+            if (_requiredLabel != null)
+            {
+                SetText(_powerLabel, $"전력 {last.FinalPower:F0}");
+                SetText(_requiredLabel, $"요구 {last.RequiredPower:F0}   {last.Band.DisplayName()}");
+            }
+            else
+            {
+                SetText(_powerLabel, $"전력 {last.FinalPower:F0} / 요구 {last.RequiredPower:F0}   " +
+                                     $"{last.Band.DisplayName()}");
+            }
             SetText(_statusLabel, last.ExtraSpinsTaken > 0
                 ? $"과수확 {last.ExtraSpinsTaken}회 / 판돈 {last.TotalAnte:F0} / 순손익 {last.NetProfit:+0;−0;0}"
                 : "과수확 없이 확정");

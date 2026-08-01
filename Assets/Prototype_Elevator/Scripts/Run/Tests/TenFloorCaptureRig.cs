@@ -1032,6 +1032,25 @@ namespace Ascend.Prototype.Run.Tests
         /// <summary>AABB 가 글자를 **품어 버려** 판정할 수 없었던 렌더러 이름. 초록으로 적지 않는다.</summary>
         private readonly HashSet<string> _containingBounds = new HashSet<string>();
 
+        /// <summary>
+        /// **한 렌더러가 같은 줄에서 「판정 보류」이면서 「가림」일 수 없다.**
+        ///
+        /// 9차 판정이 잡은 거짓 레드 22건이 정확히 이 자기모순이었다 — 매니페스트가
+        /// `PowerLabel` 을 「가림 100% ← `PanelBack`」으로 적어 놓고, 같은 출력의 한계 ④에
+        /// `PanelBack` 을 「AABB 가 글자를 품어 판정 보류」 목록에 올려 뒀다. 그림에서는
+        /// 라벨이 프레임 안인 14장 전부 전문 판독됐다.
+        ///
+        /// 원인은 표본점마다 `Contains` 를 따로 물은 것이다. 기울어진 얇은 판의 AABB 는
+        /// 뚱뚱해서 같은 줄의 글자 하나는 품고 옆 글자는 스치기만 한다 — 그러면 앞 글자는
+        /// 보류, 뒷 글자는 가림이 된다. 물리적으로 같은 물체인데 판정이 갈린다.
+        ///
+        /// 그래서 줄을 재기 **전에** 한 번 훑어 「이 줄의 글자를 하나라도 품는 렌더러」를
+        /// 모으고, 본 계측에서는 그것들을 후보에서 뺀다. 빼는 방향이 「가림 → 보류」이지
+        /// 「가림 → 온전」이 아니라는 점이 중요하다 — 보류는 이름과 개수가 한계 ④에 남는다.
+        /// 초록불을 늘리는 완화가 아니라, **재지 못한 것을 재지 못했다고 적는 것**이다.
+        /// </summary>
+        private readonly HashSet<Renderer> _deferredForLabel = new HashSet<Renderer>();
+
         /// <summary>글자 한 칸에서 뽑는 표본 위치(0..1 사각형 안). 가로 절단과 세로 절단을 함께 잡는다.</summary>
         private static readonly Vector2[] CharSamples =
         {
@@ -1074,8 +1093,37 @@ namespace Ascend.Prototype.Run.Tests
             solid.Sort(ByNameThenPosition);
             soft.Sort(ByNameThenPosition);
 
-            foreach (Renderer renderer in solid) { _solidOccluders.Add(renderer); _solidBounds.Add(renderer.bounds); }
-            foreach (Renderer renderer in soft)  { _softOccluders.Add(renderer);  _softBounds.Add(renderer.bounds); }
+            // **월드 AABB 가 아니라 렌더러 자기 좌표계의 상자를 쓴다.**
+            //
+            // 9차 판정이 잡은 거짓 레드 22건의 원인이 이것이다. `PowerLabel` 을 24장 중
+            // 22장에서 「가림 100% ← `PanelBack`」으로 적었는데, 라벨이 프레임 안인 14장은
+            // 그림에서 전부 전문 판독된다. `PanelBack` 은 계기판의 **기울어진 얇은 배면**이고,
+            // 기울어진 판의 월드 AABB 는 판 앞쪽 허공까지 삼키는 뚱뚱한 상자가 된다.
+            // 그러면 카메라→글자 선분이 「판 앞의 빈 공간」에서 상자에 들어가고, 실제로는
+            // 글자 **뒤에** 있는 판이 글자를 가린다고 보고된다.
+            //
+            // 직전 판본은 이 한계를 스스로 「①AABB 는 회전·오목 형상에서 과대평가라
+            // 가림을 실제보다 많이 셀 수 있다(거짓 레드 쪽이다)」로 고지해 두고, 같은 출력에서
+            // 그 과대평가를 **판정으로 썼다.** 고지는 면죄가 아니다.
+            //
+            // 로컬 상자 + 역변환한 선분으로 재면 회전이 상쇄되어 얇은 판이 얇게 남는다.
+            // 척도가 아니라 **좌표계**를 고친 것이므로 가림을 덜 세는 완화가 아니다 —
+            // 앞을 막는 물체는 로컬에서도 똑같이 막는다.
+            foreach (Renderer renderer in solid) { _solidOccluders.Add(renderer); _solidBounds.Add(LocalBox(renderer)); }
+            foreach (Renderer renderer in soft)  { _softOccluders.Add(renderer);  _softBounds.Add(LocalBox(renderer)); }
+        }
+
+        /// <summary>
+        /// 렌더러 자기 좌표계의 상자. `Renderer.localBounds` 가 곧 그것이고, 없으면(입자 등)
+        /// 월드 AABB 를 로컬로 되돌려 쓴다 — 그 경우엔 과대평가가 남지만 이름과 함께 남는다.
+        /// </summary>
+        private static Bounds LocalBox(Renderer renderer)
+        {
+            Bounds local = renderer.localBounds;
+            if (local.size.sqrMagnitude > 0f) return local;
+            Bounds world = renderer.bounds;
+            return new Bounds(renderer.transform.InverseTransformPoint(world.center),
+                              renderer.transform.InverseTransformVector(world.size));
         }
 
         /// <summary>이름 → 위치 순. 같은 이름이 여럿인 껍데기(`TubeFrame` 셋)까지 갈린다.</summary>
@@ -1135,12 +1183,16 @@ namespace Ascend.Prototype.Run.Tests
                 Renderer renderer = pool[i];
                 if (renderer == null) continue;
                 Bounds box = bounds[i];
-                if (box.Contains(target))
+                if (_deferredForLabel.Contains(renderer)) continue;
+                Transform frame = renderer.transform;
+                Vector3 localTarget = frame.InverseTransformPoint(target);
+                if (box.Contains(localTarget))
                 {
                     if (recordContaining) _containingBounds.Add(renderer.gameObject.name);
                     continue;
                 }
-                if (!SegmentEntersBounds(origin, target, in box, out float entry)) continue;
+                Vector3 localOrigin = frame.InverseTransformPoint(origin);
+                if (!SegmentEntersBounds(localOrigin, localTarget, in box, out float entry)) continue;
                 if (entry >= nearestEntry) continue;
                 nearestEntry = entry;
                 nearest = renderer;
@@ -1302,11 +1354,36 @@ namespace Ascend.Prototype.Run.Tests
 
             var text = new StringBuilder();
             var blockedText = new StringBuilder();
+            var cutText = new StringBuilder();
             var flags = new List<bool>(32);
             var tally = new Dictionary<string, int>();
-            int visible = 0, outside = 0, hardBlocked = 0, softBlocked = 0;
+            int visible = 0, outside = 0, hardBlocked = 0, softBlocked = 0, rectCut = 0;
 
             int last = Mathf.Min(lineInfo.lastCharacterIndex, info.characterCount - 1);
+
+            // 선행 훑기 — 이 줄의 글자를 하나라도 품는 렌더러는 이 줄 전체에서 판정 보류다.
+            // (자기모순 방지. `_deferredForLabel` 의 주석에 이유를 적었다.)
+            _deferredForLabel.Clear();
+            for (int c = lineInfo.firstCharacterIndex; c <= last && c < info.characterInfo.Length; c++)
+            {
+                TMPro.TMP_CharacterInfo pre = info.characterInfo[c];
+                if (!pre.isVisible) continue;
+                for (int s = 0; s < CharSamples.Length; s++)
+                {
+                    Vector3 probe = space.TransformPoint(new Vector3(
+                        Mathf.Lerp(pre.bottomLeft.x, pre.topRight.x, CharSamples[s].x),
+                        Mathf.Lerp(pre.bottomLeft.y, pre.topRight.y, CharSamples[s].y),
+                        pre.bottomLeft.z));
+                    for (int i = 0; i < _solidOccluders.Count; i++)
+                    {
+                        Renderer candidate = _solidOccluders[i];
+                        if (candidate == null) continue;
+                        if (!_solidBounds[i].Contains(candidate.transform.InverseTransformPoint(probe))) continue;
+                        _deferredForLabel.Add(candidate);
+                        _containingBounds.Add(candidate.gameObject.name);
+                    }
+                }
+            }
             for (int c = lineInfo.firstCharacterIndex; c <= last && c < info.characterInfo.Length; c++)
             {
                 TMPro.TMP_CharacterInfo character = info.characterInfo[c];
@@ -1315,6 +1392,24 @@ namespace Ascend.Prototype.Run.Tests
                 if (!character.isVisible)
                 {
                     if (text.Length < 28 && !char.IsControl(character.character)) text.Append(character.character);
+
+                    // **TMP 자신의 rect 클리핑을 재지 않고 있었다.** 9차 판정이 잡은 거짓 그린
+                    // 7건이 이것이다 — 06·08·09·10(2줄)·12 의 줄이 x≈1274 px 에서 하드 컷
+                    // 되는데 「온전」으로 적혔다. 잘린 것이 하필 `B-3 #10` 이 요구하는 대가
+                    // 수치(−16.0 / −24.0 / −32.0)와 「추락 위험」·「판돈 329」였다.
+                    //
+                    // 원인은 프레임 포함만 보고 **글자상자 밖으로 밀려난 글자**를 안 본 것이다.
+                    // TMP 는 넘친 글자를 characterInfo 에 남긴 채 `isVisible=false` 로만
+                    // 표시한다. 그것을 「안 보이니 셀 것도 없다」로 흘리면, 잘려서 사라진
+                    // 글자가 조용히 분모에서 빠지고 남은 글자만으로 100% 온전이 된다.
+                    //
+                    // 공백·제어문자는 원래 안 그려지므로 제외한다 — 그것까지 세면 모든 줄이
+                    // 항상 잘림이 되어 신호가 죽는다.
+                    if (!char.IsWhiteSpace(character.character) && !char.IsControl(character.character))
+                    {
+                        rectCut++;
+                        if (cutText.Length < 14) cutText.Append(character.character);
+                    }
                     continue;
                 }
 
@@ -1353,13 +1448,22 @@ namespace Ascend.Prototype.Run.Tests
 
             if (visible == 0)
             {
+                if (rectCut > 0)
+                {
+                    clipped++;
+                    return $"· {label.name} 줄{lineIndex + 1} — **줄 전체가 글자상자 밖이다** " +
+                           $"({rectCut}자 「{cutText}」). 빈 줄이 아니라 잘린 줄이다";
+                }
                 blank++;
                 return $"· {label.name} 줄{lineIndex + 1} — 빈 줄(보이는 글자 0자). 온전에 넣지 않는다";
             }
 
-            // 판정 우선순위: 프레임밖 > 잘림 > 가림 > 가림? > 온전.
+            // 판정 우선순위: 프레임밖 > 잘림(rect) > 잘림(프레임) > 가림 > 가림? > 온전.
+            // rect 잘림이 프레임 잘림보다 앞인 이유 — 글자가 **아예 그려지지 않은** 것이고,
+            // 카메라를 어디에 두어도 돌아오지 않는다. 배치가 아니라 글자상자의 문제다.
             string verdict;
-            if (outside == visible) { offFrame++; verdict = "프레임밖"; }
+            if (rectCut > 0)        { clipped++; verdict = "잘림(글자상자)"; }
+            else if (outside == visible) { offFrame++; verdict = "프레임밖"; }
             else if (outside > 0)   { clipped++; verdict = "잘림"; }
             else if (hardBlocked > 0) { occluded++; verdict = "가림"; }
             else if (softBlocked > 0) { softOnly++; verdict = "가림?"; }
@@ -1369,6 +1473,10 @@ namespace Ascend.Prototype.Run.Tests
             report.Append($"· {label.name} 줄{lineIndex + 1} 「{text}」 → **{verdict}** · ")
                   .Append($"보이는 글자 {visible}자 · 프레임밖 {outside}자({Percent(outside, visible)}) · ")
                   .Append($"가림 {hardBlocked}자({Percent(hardBlocked, visible)})");
+
+            if (rectCut > 0)
+                report.Append($" · **글자상자 밖으로 잘린 글자 {rectCut}자** 「{cutText}」 " +
+                              "(TMP 가 아예 안 그렸다 — 카메라를 옮겨도 돌아오지 않는다)");
 
             if (hardBlocked > 0)
             {
@@ -1413,7 +1521,8 @@ namespace Ascend.Prototype.Run.Tests
                 .Append($"글자당 표본 {CharSamples.Length}점, 한 점만 막혀도 그 글자는 가림. ")
                 .Append("콜라이더를 쓰지 않는다 — 콜라이더는 붙어 있을 수도 없을 수도 있어 거짓 그린이 난다. ");
             note.Append("**한계(초록으로 적지 않는 것)**: ")
-                .Append("①AABB 는 회전·오목 형상에서 과대평가라 가림을 실제보다 **많이** 셀 수 있다(거짓 레드 쪽이다) ")
+                .Append("①상자는 **렌더러 자기 좌표계**에서 잰다(회전 상쇄). 오목 형상은 아직 과대평가라 ")
+                .Append("가림을 실제보다 **많이** 셀 수 있다 — 거짓 레드 쪽이다 ")
                 .Append($"②TMP 렌더러 {_skippedTextRenderers}개는 후보에서 뺐다(글자가 글자를 가린다고 세면 자기 자신이 걸린다) ")
                 .Append("③입자·선·궤적은 `가림?` 까지만 간다 ");
             if (_containingBounds.Count > 0)
@@ -1424,7 +1533,8 @@ namespace Ascend.Prototype.Run.Tests
                 note.Append($"④AABB 가 글자를 **품어** 판정 보류한 렌더러 {_containingBounds.Count}개: ")
                     .Append(string.Join(", ", names))
                     .Append(_containingBounds.Count > 6 ? " …" : string.Empty)
-                    .Append(" (대개 계기판 자신의 배면·챔퍼다. 이 목록에 낯선 이름이 있으면 그 줄의 「온전」을 믿지 말 것) ");
+                    .Append(" (대개 계기판 자신의 배면·챔퍼다. 이 목록에 낯선 이름이 있으면 그 줄의 「온전」을 믿지 말 것. ")
+                    .Append("**이들은 그 줄 전체에서 가림 후보에서 빠진다** — 같은 물체를 한 글자는 보류, 옆 글자는 가림으로 적던 자기모순을 없앴다) ");
             }
             else note.Append("④글자를 품은 AABB 없음 ");
             note.Append("⑤알파가 0 인 재질도 가림으로 센다 — 그림에서 확인할 것");

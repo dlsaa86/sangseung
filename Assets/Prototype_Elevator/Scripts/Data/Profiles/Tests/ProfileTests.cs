@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Text;
 using UnityEngine;
 using Ascend.Prototype.Risk;
@@ -54,6 +55,12 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("무압축 원본이 어느 갈래의 기본값도 아니다", TestNoUncompressedAudio, ref passed, ref failed, report);
             Run("임포트 규칙 폴백이 「코드 프리셋」으로 찍힌다", TestImportRuleFallbackIsNamed, ref passed, ref failed, report);
             Run("관할 루트 밖은 규칙을 받지 않는다", TestManagedRootGuard, ref passed, ref failed, report);
+            Run("플레이스홀더 텍스처 4장이 디스크에 있고 PNG 로 읽힌다", TestPlaceholderTexturesExist, ref passed, ref failed, report);
+            Run("플레이스홀더가 관할 안에서 World 로 판정된다", TestPlaceholderClassifiesAsWorld, ref passed, ref failed, report);
+            Run("플레이스홀더 해상도가 저해상도 규격 안이다", TestPlaceholderResolution, ref passed, ref failed, report);
+            Run("팔레트가 스타일 락의 채도·명도·색상각 안이다", TestPlaceholderPaletteWithinStyleLock, ref passed, ref failed, report);
+            Run("픽셀이 선언된 팔레트만 쓰고 전부 쓴다", TestPlaceholderPixelsMatchPalette, ref passed, ref failed, report);
+            Run("같은 시드가 같은 바이트를 낸다 (골든 해시)", TestPlaceholderGoldenHash, ref passed, ref failed, report);
             Run("파티클 상한이 AmbientParticleDirector 와 같다", TestParticleCapsMatchDirector, ref passed, ref failed, report);
             Run("정지 구간이 0이 아니다", TestPresentationHoldsAreNonZero, ref passed, ref failed, report);
             Run("연쇄 압축이 하한 아래로 내려가지 않는다", TestPresentationTempoFloor, ref passed, ref failed, report);
@@ -804,6 +811,466 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             return null;
         }
 
+        // ── UP-VIS-01 / UP-PLAT-05 플레이스홀더 텍스처 ────────────────────────
+        //
+        // 이 여섯 검사는 `Assets/Editor/AscendTextureGen.cs` 를 **참조하지 않는다.**
+        // 참조할 수 없기도 하다(생성기는 `Assembly-CSharp-Editor`, 이 파일은
+        // `Assembly-CSharp` 다). 그리고 참조하지 않는 편이 옳다 — 생성기가 스스로
+        // 「내 팔레트는 내 팔레트와 같다」를 증명하면 아무것도 증명하지 않은 것이다.
+        // 여기 적힌 팔레트·해상도·해시는 **락 문서에서 독립적으로 다시 선언한 사양**이고,
+        // 검사 대상은 디스크에 실재하는 PNG 바이트다. 생성기가 사양에서 벗어나면
+        // 둘이 어긋나서 실패한다.
+        //
+        // PNG 를 zlib 없이 읽을 수 있는 이유는 생성기가 **필터 0 + 무압축 deflate** 로만
+        // 굽기 때문이다. 그 선택의 값은 여기서 회수된다.
+
+        private const string TextureFolder = Root + "Art/Textures/";
+
+        /// <summary>생성기가 쓰는 알고리즘 판. PNG 안 tEXt 청크의 주장과 대조한다.</summary>
+        private const string TextureAlgorithm = "AscendSynth-v1";
+
+        // 스타일 락 경계 — `docs/VISUAL_BIBLE.md` §2.1 「탁하고 제한된 색상」·
+        // 「바랜 산업용 색」, §3 팔레트 표, §4.2 금지 15번(적색은 위험 신호 전용).
+        // 색상각 15° 아래를 비워 두는 것이 그 마지막 항목이다 — 표면색이 적색 대역에
+        // 들어오면 위험 신호가 배경과 같은 색이 되어 신호이기를 멈춘다.
+        private const float MaxSwatchSaturation = 0.50f;
+        private const float MaxSwatchValue = 0.55f;
+        private const float MinSwatchHue = 15f;
+        private const float MaxSwatchHue = 160f;
+        private const float AchromaticSaturation = 0.10f;
+
+        private readonly struct Placeholder
+        {
+            public readonly string File;
+            public readonly int Size;
+            public readonly string Seed;
+            public readonly ulong Golden;
+            public readonly int[] Palette;
+
+            public Placeholder(string file, int size, string seed, ulong golden, int[] palette)
+            {
+                File = file;
+                Size = size;
+                Seed = seed;
+                Golden = golden;
+                Palette = palette;
+            }
+
+            public string AssetPath { get { return TextureFolder + File; } }
+        }
+
+        private static Placeholder[] Placeholders()
+        {
+            return new[]
+            {
+                new Placeholder("TEX_Iron_Rust.png", 128, "0x5A170001", 0x24AA00DCCCB201B7UL,
+                    new[] { 0x23231F, 0x33322C, 0x45443C, 0x3A3B2E, 0x4A362A, 0x5E4735 }),
+                new Placeholder("TEX_Wood_Stained.png", 128, "0x5A170002", 0x0C3F4C0C23557E42UL,
+                    new[] { 0x2A2018, 0x3D2E22, 0x52402F, 0x1E1710, 0x3A3524 }),
+                new Placeholder("TEX_Brass_Aged.png", 64, "0x5A170003", 0xAF105817D5229761UL,
+                    new[] { 0x443C28, 0x6E5F3D, 0x7F7050, 0x3E4A42, 0x2B2619 }),
+                new Placeholder("TEX_Glass_Dirty.png", 64, "0x5A170004", 0x76F63864CEDA9154UL,
+                    new[] { 0x262B27, 0x384039, 0x4C564E, 0x3A342A, 0x626E64 }),
+            };
+        }
+
+        /// <summary>
+        /// 넷이 실재하고 정상 PNG 이며, 파일 스스로가 자기 출처를 들고 있는가.
+        /// tEXt 대조가 있는 이유: 파일만 있고 어디서 왔는지 모르면 다음 세션이
+        /// 「이 PNG 를 다시 만들 수 있는가」에 답할 수 없다.
+        /// </summary>
+        private static string TestPlaceholderTexturesExist()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                DecodedPng png;
+                string failure = LoadPlaceholder(p, out png);
+                if (failure != null) return failure;
+
+                // 생성기와 같은 이유로 불변 문화권이다 — 여기가 현재 문화권을 타면
+                // 파일은 멀쩡한데 로케일이 다른 기기에서만 이 검사가 실패한다.
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                var expected = new StringBuilder(192);
+                expected.Append("algo=").Append(TextureAlgorithm);
+                expected.Append(";seed=").Append(p.Seed);
+                expected.Append(";size=").Append(p.Size.ToString(culture));
+                expected.Append('x').Append(p.Size.ToString(culture));
+                expected.Append(";palette=");
+                for (int i = 0; i < p.Palette.Length; i++)
+                {
+                    if (i > 0) expected.Append(',');
+                    expected.Append(p.Palette[i].ToString("X6", culture));
+                }
+
+                if (png.Text == null)
+                    return $"{p.File}: 출처 tEXt 청크(Ascend)가 없다";
+                if (png.Text != expected.ToString())
+                    return $"{p.File}: 출처 기록이 사양과 다르다\n        파일: {png.Text}\n        사양: {expected}";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// `UP-PLAT-05` 의 실제 쟁점. 규칙은 경로로만 카테고리를 정하므로, 넷이 어느 갈래로
+        /// 떨어지는지는 **파일을 어디에 두었는가**가 결정한다. 여기가 World 가 아니면
+        /// 벽·기계 표면에 UI 나 VFX 규칙이 걸린다.
+        /// </summary>
+        private static string TestPlaceholderClassifiesAsWorld()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                if (!AssetImportPaths.IsManaged(p.AssetPath))
+                    return $"{p.AssetPath} 가 관할 루트({AssetImportPaths.ManagedRoot}) 밖이다 — 규칙이 걸리지 않는다";
+
+                TextureAssetCategory category = AssetImportPaths.ClassifyTexture(p.AssetPath);
+                if (category != TextureAssetCategory.World)
+                    return $"{p.File} → {category}, 기대 World. 폴더나 파일명 접미사가 갈래를 바꿨다";
+            }
+
+            // World 규칙이 이 넷을 실제로 통과시키는가. 상한이 크기보다 작으면 임포터가
+            // 조용히 축소하고, 그러면 「저해상도」가 의도가 아니라 사고가 된다.
+            TextureImportRule rule = TextureImportRuleSet.Preset(TextureAssetCategory.World);
+            foreach (Placeholder p in Placeholders())
+                if (rule.MaxSize < p.Size)
+                    return $"World 상한 {rule.MaxSize}px 이 {p.File} 의 {p.Size}px 보다 작다";
+            if (!rule.SRgb) return "World 규칙이 sRGB 를 꺼 두고 있다 — 이 넷은 색이지 벡터가 아니다";
+            return null;
+        }
+
+        /// <summary>
+        /// 「저해상도 손그림 픽셀 텍스처」(§2.1). 상한만 있으면 언젠가 2048 짜리가 섞이고,
+        /// 하한만 있으면 판독이 사라진다(§4.2 금지 13번 「과도한 저해상도화」).
+        /// </summary>
+        private static string TestPlaceholderResolution()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                DecodedPng png;
+                string failure = LoadPlaceholder(p, out png);
+                if (failure != null) return failure;
+
+                if (png.Width != p.Size || png.Height != p.Size)
+                    return $"{p.File}: {png.Width}×{png.Height}, 사양 {p.Size}×{p.Size}";
+                if (p.Size < 64 || p.Size > 128)
+                    return $"{p.File}: {p.Size}px 가 64~128 밖이다 (PS1~초기 PS2 감각)";
+                if ((p.Size & (p.Size - 1)) != 0)
+                    return $"{p.File}: {p.Size}px 가 2의 거듭제곱이 아니다 — 압축 포맷이 갈린다";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 팔레트가 락의 색 범위 안인가. 「탁하고 제한된 색상」은 취향이 아니라 측정 가능한
+        /// 경계다 — 채도·명도 상한과 색상각 대역으로 적으면 회귀를 잡을 수 있다.
+        /// </summary>
+        private static string TestPlaceholderPaletteWithinStyleLock()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                if (p.Palette.Length < 4 || p.Palette.Length > 8)
+                    return $"{p.File}: 팔레트 {p.Palette.Length}색 — 4~8색이어야 「제한된 색상」이다";
+
+                for (int i = 0; i < p.Palette.Length; i++)
+                {
+                    for (int j = i + 1; j < p.Palette.Length; j++)
+                        if (p.Palette[i] == p.Palette[j])
+                            return $"{p.File}: {p.Palette[i]:X6} 이 팔레트에 두 번 있다";
+
+                    float hue, saturation, value;
+                    ToHsv(p.Palette[i], out hue, out saturation, out value);
+
+                    if (value > MaxSwatchValue)
+                        return $"{p.File} {p.Palette[i]:X6}: 명도 {value:0.000} > {MaxSwatchValue} — 「바랜 산업용 색」이 아니다";
+                    if (saturation > MaxSwatchSaturation)
+                        return $"{p.File} {p.Palette[i]:X6}: 채도 {saturation:0.000} > {MaxSwatchSaturation} — 「탁한 색」이 아니다";
+                    if (saturation > AchromaticSaturation && (hue < MinSwatchHue || hue > MaxSwatchHue))
+                        return $"{p.File} {p.Palette[i]:X6}: 색상각 {hue:0.0}° 가 {MinSwatchHue}~{MaxSwatchHue}° 밖이다 " +
+                               "— 적색은 위험 신호 전용이고 청·자 대역은 락에 없다";
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// **양방향** 대조다. ① 선언에 없는 색이 화면에 있으면 중간색이 생겼다는 뜻이고
+        /// 그러면 「손그림 저해상도」가 아니라 그라디언트다. ② 선언에 있는데 화면에 없으면
+        /// 팔레트가 실제보다 풍부해 보이는 장부일 뿐이다. 둘 다 조용히 통과하는 종류의 거짓이라
+        /// 양쪽을 다 막는다.
+        /// </summary>
+        private static string TestPlaceholderPixelsMatchPalette()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                DecodedPng png;
+                string failure = LoadPlaceholder(p, out png);
+                if (failure != null) return failure;
+
+                var seen = new bool[p.Palette.Length];
+                int pixels = png.Width * png.Height;
+                for (int i = 0; i < pixels; i++)
+                {
+                    int rgb = (png.Rgb[i * 3] << 16) | (png.Rgb[i * 3 + 1] << 8) | png.Rgb[i * 3 + 2];
+                    int found = -1;
+                    for (int k = 0; k < p.Palette.Length; k++)
+                        if (p.Palette[k] == rgb) { found = k; break; }
+                    if (found < 0)
+                        return $"{p.File} ({i % png.Width},{i / png.Width}): {rgb:X6} 이 팔레트에 없다";
+                    seen[found] = true;
+                }
+
+                for (int k = 0; k < seen.Length; k++)
+                    if (!seen[k])
+                        return $"{p.File}: {p.Palette[k]:X6} 을 선언했는데 한 픽셀도 쓰지 않는다";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 「같은 시드가 같은 PNG 를 낸다」의 고정핀. 생성기는 정수 고정소수점 노이즈와
+        /// 무압축 deflate 만 쓰므로 런타임·기기가 달라도 바이트가 같아야 한다.
+        /// 그 주장이 틀리면 여기서 깨진다 — 캡처 베이스라인이 흔들리기 **전에** 깨진다.
+        ///
+        /// 이 검사는 재생성을 하지 않는다(할 수 없다 — 생성기가 에디터 어셈블리다).
+        /// 재생성 쪽 대조는 `Ascend/Generate Placeholder Textures` 가 맡는다. 그 메뉴는
+        /// 기존 파일과 새로 만든 바이트가 다르면 「결정론 위반」을 찍는다.
+        /// </summary>
+        private static string TestPlaceholderGoldenHash()
+        {
+            foreach (Placeholder p in Placeholders())
+            {
+                string path = AbsoluteAssetPath(p.AssetPath);
+                if (!File.Exists(path)) return $"{p.AssetPath} 가 없다";
+
+                byte[] bytes = File.ReadAllBytes(path);
+                ulong hash = 14695981039346656037UL;
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    hash ^= bytes[i];
+                    hash *= 1099511628211UL;
+                }
+
+                if (hash != p.Golden)
+                    return $"{p.File}: FNV-1a64 0x{hash:X16}, 고정핀 0x{p.Golden:X16} — " +
+                           "생성기가 바뀌었거나 파일이 손으로 수정됐다";
+            }
+            return null;
+        }
+
+        // ── 위 검사들이 쓰는 도구 ─────────────────────────────────────────────
+
+        private sealed class DecodedPng
+        {
+            public int Width;
+            public int Height;
+            public byte[] Rgb;   // width*height*3, 필터 해제 완료
+            public string Text;  // "Ascend" tEXt 청크의 값. 없으면 null
+        }
+
+        private static string AbsoluteAssetPath(string assetPath)
+        {
+            DirectoryInfo projectRoot = Directory.GetParent(Application.dataPath);
+            string relative = assetPath.Replace('/', Path.DirectorySeparatorChar);
+            return projectRoot == null ? relative : Path.Combine(projectRoot.FullName, relative);
+        }
+
+        private static string LoadPlaceholder(Placeholder placeholder, out DecodedPng png)
+        {
+            png = null;
+            string path = AbsoluteAssetPath(placeholder.AssetPath);
+            if (!File.Exists(path))
+                return $"{placeholder.AssetPath} 가 없다 — `Ascend/Generate Placeholder Textures` 로 만든다";
+
+            var decoded = new DecodedPng();
+            string failure = DecodePng(File.ReadAllBytes(path), decoded);
+            if (failure != null) return $"{placeholder.File}: {failure}";
+            png = decoded;
+            return null;
+        }
+
+        /// <summary>
+        /// 최소 PNG 리더. 청크 CRC 와 zlib adler32 까지 확인하므로 「파일이 멀쩡한가」도
+        /// 같이 답한다. 무압축 deflate 만 받는다 — 압축된 PNG 를 만나면 실패하고,
+        /// 그 실패는 「누가 생성기를 안 거치고 파일을 갈아끼웠다」는 뜻이다.
+        /// </summary>
+        private static string DecodePng(byte[] file, DecodedPng result)
+        {
+            byte[] signature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+            if (file.Length < 8) return "8바이트보다 짧다";
+            for (int i = 0; i < signature.Length; i++)
+                if (file[i] != signature[i]) return "PNG 서명이 아니다";
+
+            var idat = new MemoryStream();
+            bool sawHeader = false, sawEnd = false;
+            int at = 8;
+
+            while (at + 12 <= file.Length && !sawEnd)
+            {
+                long length = ReadBigEndian(file, at);
+                if (length < 0 || at + 12 + length > file.Length)
+                    return $"청크 길이 {length} 가 파일 밖을 가리킨다";
+
+                string type = Latin1(file, at + 4, 4);
+                int data = at + 8;
+                int count = (int)length;
+
+                uint storedCrc = (uint)ReadBigEndian(file, data + count);
+                uint actualCrc = Crc32(file, at + 4, count + 4);
+                if (storedCrc != actualCrc) return $"{type} 청크 CRC 불일치";
+
+                switch (type)
+                {
+                    case "IHDR":
+                        if (count != 13) return "IHDR 길이가 13이 아니다";
+                        result.Width = (int)ReadBigEndian(file, data);
+                        result.Height = (int)ReadBigEndian(file, data + 4);
+                        if (file[data + 8] != 8) return $"비트 깊이 {file[data + 8]}, 기대 8";
+                        if (file[data + 9] != 2) return $"색상 타입 {file[data + 9]}, 기대 2(RGB)";
+                        if (file[data + 10] != 0) return "압축 방식이 deflate 가 아니다";
+                        if (file[data + 11] != 0) return "필터 방식이 0 이 아니다";
+                        if (file[data + 12] != 0) return "인터레이스가 켜져 있다";
+                        sawHeader = true;
+                        break;
+
+                    case "tEXt":
+                    {
+                        int split = -1;
+                        for (int i = 0; i < count; i++)
+                            if (file[data + i] == 0) { split = i; break; }
+                        if (split > 0 && Latin1(file, data, split) == "Ascend")
+                            result.Text = Latin1(file, data + split + 1, count - split - 1);
+                        break;
+                    }
+
+                    case "IDAT":
+                        idat.Write(file, data, count);
+                        break;
+
+                    case "IEND":
+                        sawEnd = true;
+                        break;
+                }
+
+                at = data + count + 4;
+            }
+
+            if (!sawHeader) return "IHDR 이 없다";
+            if (!sawEnd) return "IEND 가 없다";
+            if (result.Width <= 0 || result.Height <= 0) return "크기가 0 이하다";
+
+            byte[] raw;
+            string failure = InflateStored(idat.ToArray(), out raw);
+            if (failure != null) return failure;
+
+            int stride = 1 + result.Width * 3;
+            if (raw.Length != stride * result.Height)
+                return $"압축 해제 결과 {raw.Length}바이트, 기대 {stride * result.Height}";
+
+            result.Rgb = new byte[result.Width * result.Height * 3];
+            for (int y = 0; y < result.Height; y++)
+            {
+                if (raw[y * stride] != 0) return $"{y}번 줄의 필터 타입이 {raw[y * stride]} 다 — 기대 0";
+                Buffer.BlockCopy(raw, y * stride + 1, result.Rgb, y * result.Width * 3, result.Width * 3);
+            }
+            return null;
+        }
+
+        private static string InflateStored(byte[] stream, out byte[] output)
+        {
+            output = null;
+            if (stream.Length < 6) return "zlib 스트림이 너무 짧다";
+            if ((stream[0] & 0x0F) != 8) return "zlib 압축 방식이 deflate 가 아니다";
+            if ((((stream[0] << 8) | stream[1]) % 31) != 0) return "zlib 헤더 검사값이 틀렸다";
+
+            var buffer = new MemoryStream(stream.Length);
+            int at = 2;
+            while (true)
+            {
+                if (at + 5 > stream.Length) return "deflate 블록 헤더가 잘렸다";
+                int header = stream[at];
+                int type = (header >> 1) & 3;
+                if (type != 0) return $"deflate 블록 종류가 {type} 다 — 생성기는 무압축(0)만 쓴다";
+
+                int length = stream[at + 1] | (stream[at + 2] << 8);
+                int inverse = stream[at + 3] | (stream[at + 4] << 8);
+                if ((length ^ 0xFFFF) != inverse) return "deflate LEN/NLEN 이 서로 보수가 아니다";
+
+                at += 5;
+                if (at + length > stream.Length) return "deflate 블록이 스트림 밖을 가리킨다";
+                buffer.Write(stream, at, length);
+                at += length;
+                if ((header & 1) != 0) break;
+            }
+
+            output = buffer.ToArray();
+            if (at + 4 > stream.Length) return "adler32 가 없다";
+            if ((uint)ReadBigEndian(stream, at) != Adler32(output))
+                return "adler32 불일치 — 압축 해제 결과가 원본과 다르다";
+            return null;
+        }
+
+        private static long ReadBigEndian(byte[] data, int at)
+        {
+            return ((long)data[at] << 24) | ((long)data[at + 1] << 16)
+                 | ((long)data[at + 2] << 8) | data[at + 3];
+        }
+
+        private static string Latin1(byte[] data, int at, int count)
+        {
+            var text = new StringBuilder(count);
+            for (int i = 0; i < count; i++) text.Append((char)data[at + i]);
+            return text.ToString();
+        }
+
+        private static uint Adler32(byte[] data)
+        {
+            uint a = 1, b = 0;
+            for (int i = 0; i < data.Length; i++)
+            {
+                a = (a + data[i]) % 65521u;
+                b = (b + a) % 65521u;
+            }
+            return (b << 16) | a;
+        }
+
+        private static uint[] _crcTable;
+
+        private static uint Crc32(byte[] data, int at, int count)
+        {
+            if (_crcTable == null)
+            {
+                _crcTable = new uint[256];
+                for (uint n = 0; n < 256; n++)
+                {
+                    uint c = n;
+                    for (int k = 0; k < 8; k++)
+                        c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+                    _crcTable[n] = c;
+                }
+            }
+
+            uint crc = 0xFFFFFFFFu;
+            for (int i = 0; i < count; i++)
+                crc = _crcTable[(crc ^ data[at + i]) & 0xFF] ^ (crc >> 8);
+            return crc ^ 0xFFFFFFFFu;
+        }
+
+        /// <summary>0xRRGGBB → HSV. 색상각은 도(0~360), 채도·명도는 0~1.</summary>
+        private static void ToHsv(int rgb, out float hue, out float saturation, out float value)
+        {
+            int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            int max = Math.Max(r, Math.Max(g, b));
+            int min = Math.Min(r, Math.Min(g, b));
+            int delta = max - min;
+
+            value = max / 255f;
+            saturation = max == 0 ? 0f : delta / (float)max;
+
+            if (delta == 0) { hue = 0f; return; }
+            if (max == r) hue = 60f * ((((g - b) / (float)delta) % 6f + 6f) % 6f);
+            else if (max == g) hue = 60f * (((b - r) / (float)delta) + 2f);
+            else hue = 60f * (((r - g) / (float)delta) + 4f);
+        }
+
         // ── UP-TECH-09 ⑩⑪⑫ ───────────────────────────────────────────────────
 
         private static string TestParticleCapsMatchDirector()
@@ -965,6 +1432,9 @@ namespace Ascend.Prototype.Data.Profiles.Tests
 }
 
 // 씬 배선 필요: 없다. 씬 없이 도는 테스트다.
-// 러너 편입 필요: `Assets/Editor/PrototypeSelfTest.cs` 의 `RunAllToString()` 에
-//   FoldInSuite("데이터 프로파일", Ascend.Prototype.Data.Profiles.Tests.ProfileTests.RunAll());
-//   를 추가해야 커밋 게이트가 이 19건을 지킨다. 그 파일은 다른 소유 영역이라 여기서 고치지 않았다.
+// 러너 편입: **끝났다** (2026-08-02 확인). `Assets/Editor/PrototypeSelfTest.cs:82` 의
+//   FoldInSuite("데이터 프로파일", …ProfileTests.RunAll()) 과 `AscendTestMenu.cs:36` 둘 다
+//   이 스위트를 부른다. 「편입 필요」는 낡은 기록이었다.
+// 에셋 요구: 없다. 플레이스홀더 텍스처 검사는 `Assets/Prototype_Elevator/Art/Textures/` 의
+//   PNG 4장을 디스크에서 직접 읽는다. 넷은 저장소에 커밋돼 있으므로 씬도 임포트도 필요 없다.
+//   넷이 사라지면 6건이 「가 없다」로 실패한다 — 그게 맞는 동작이다.
