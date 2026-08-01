@@ -63,6 +63,39 @@ namespace Ascend.Prototype.Run.Tests
             if (_errorLogs <= 12) _report.AppendLine($"  콘솔오류  [{type}] {condition}");
         }
 
+        /// <summary>
+        /// 1인칭 시점이 사람 키에 있는가.
+        ///
+        /// **이 단정이 없어서 카메라가 천장 위로 올라간 채 394건이 전부 통과했다.**
+        /// `Head` 아래에 `CameraRig` 를 끼우자 `FirstPersonController.ApplyEyeHeight` 가
+        /// 눈높이를 두 번 더해 시점이 3.22m 가 됐는데(칸 천장 3.2m),
+        /// 어느 검사도 카메라가 어디 있는지 묻지 않았다. 캡처 하네스는 자기 카메라를
+        /// 따로 만들어 쓰므로 그림도 멀쩡히 나왔고, 트랜스폼이 엉뚱한 곳에 있는 것은
+        /// 콘솔 오류도 아니다.
+        ///
+        /// **Pass 3 의 시각 루브릭 전체가 이 시점에 의존한다.** 천장 위에서 찍은
+        /// 그림으로 "공간의 높이가 읽히는가"를 채점하면 판정 자체가 무의미하다.
+        /// 그래서 회귀선은 여기다.
+        /// </summary>
+        private void CheckEyeHeight()
+        {
+            var player = FindAnyObjectByType<Player.FirstPersonController>();
+            if (player == null)
+            {
+                Check("1인칭 카메라 눈높이", false, "FirstPersonController 없음");
+                return;
+            }
+
+            float actual = player.EyeHeightAboveRoot;
+            float expected = player.ConfiguredEyeHeight;
+            const float tolerance = 0.05f;
+
+            Check($"1인칭 카메라가 눈높이에 있다 — 실측 {actual:F3}m (설정 {expected:F2}m)",
+                  Mathf.Abs(actual - expected) <= tolerance,
+                  $"루트 대비 {actual:F3}m 로 설정값 {expected:F2}m 에서 " +
+                  $"{Mathf.Abs(actual - expected):F3}m 벗어났다 — 시점이 사람 키가 아니다");
+        }
+
         private IEnumerator Start()
         {
             _startedAt = Time.realtimeSinceStartup;
@@ -91,6 +124,7 @@ namespace Ascend.Prototype.Run.Tests
             }
             Pass("씬 배선 — 10층 런에 필요한 물체가 전부 있다");
             Check("층수 표시등이 있다", indicator != null, "FloorIndicatorView 없음");
+            CheckEyeHeight();
 
             if (run.Mode != RunMode.TenFloor)
             {

@@ -130,15 +130,54 @@ namespace Ascend.Prototype.Player
             _characterController.Move(velocity * Time.deltaTime);
         }
 
+        /// <summary>
+        /// 눈높이를 세운다. **카메라가 이 컴포넌트의 직계 자식일 때만** 카메라를 직접 올린다.
+        ///
+        /// 왜 조건이 붙었나: 원래 이 함수는 카메라의 부모가 플레이어 루트라고 가정하고
+        /// 로컬 y 를 `_eyeHeight` 로 덮었다. 그런데 `Head`(이미 눈높이에 있다) 아래에
+        /// `CameraRig` 를 끼우자 눈높이가 **두 번** 더해져 카메라가 3.22m 로 올라갔다 —
+        /// 천장이 3.2m 인 칸에서 시점이 천장 위였다.
+        ///
+        /// 그 결함이 통과한 이유가 더 중요하다. PlayMode 단정 394건 중 **카메라 위치를
+        /// 보는 것이 하나도 없었고**, 캡처 하네스는 자기 카메라를 따로 만들어 쓰므로
+        /// 그림도 멀쩡히 나왔으며, 트랜스폼이 엉뚱한 곳에 있는 것은 콘솔 오류가 아니다.
+        /// 그래서 `TenFloorAutoPilot` 에 눈높이 단정을 함께 넣었다 — 이 수정보다
+        /// 그 단정이 오래 간다.
+        ///
+        /// 계층이 눈높이를 소유하는 경우(`Player/Head/CameraRig/Camera`)에는 카메라의
+        /// 로컬 위치를 **0 으로 정리만** 한다. `HumanScaleLayout` 이 `Head` 를
+        /// `EyeHeight` 에 두므로 그것이 유일한 소유자여야 한다.
+        /// 씬에 남아 있던 (-0.088, 0.98, -0.596) 은 `EyeLevelCapture` 가 마지막 샷
+        /// 자리에 두고 간 잔재이며, 정리하지 않으면 그대로 굳는다.
+        /// </summary>
         private void ApplyEyeHeight()
         {
             if (_viewCamera == null)
                 return;
 
-            Vector3 localPosition = _viewCamera.transform.localPosition;
-            localPosition.y = _eyeHeight;
-            _viewCamera.transform.localPosition = localPosition;
+            Transform cam = _viewCamera.transform;
+
+            if (cam.parent == transform)
+            {
+                Vector3 localPosition = cam.localPosition;
+                localPosition.y = _eyeHeight;
+                cam.localPosition = localPosition;
+                return;
+            }
+
+            // 중간 리그가 있다 — 눈높이는 계층이 소유한다. 카메라는 리그 원점에 둔다.
+            if (cam.localPosition != Vector3.zero) cam.localPosition = Vector3.zero;
         }
+
+        /// <summary>
+        /// 카메라의 월드 눈높이. 검증 하네스가 "시점이 사람 키에 있는가"를 물을 때 읽는다.
+        /// 플레이어 루트를 기준으로 재므로 층이 바뀌어도 의미가 같다.
+        /// </summary>
+        public float EyeHeightAboveRoot =>
+            _viewCamera != null ? _viewCamera.transform.position.y - transform.position.y : 0f;
+
+        /// <summary>인스펙터에 설정된 목표 눈높이. 단정이 기대값으로 쓴다.</summary>
+        public float ConfiguredEyeHeight => _eyeHeight;
 
         /// <summary>Allows a scene or pause controller to explicitly capture/release the cursor.</summary>
         public void SetCursorLocked(bool locked)
