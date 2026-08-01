@@ -38,8 +38,13 @@ namespace Ascend.Prototype.Audio.Tests
             Run("§9.3 의 다섯 표현이 전부 쓰인다", TestFiveVoiceExpressions, ref passed, ref failed, report);
             Run("변형 하나가 종류와 목소리를 함께 싣는다", TestVoiceVariantEncoding, ref passed, ref failed, report);
             Run("반응 데이터의 큐 ID 가 전부 소리에 닿는다", TestVoiceCueIdsResolve, ref passed, ref failed, report);
+            Run("큐 ID 가 반응 사건보다 우선한다", TestVoiceCueOutranksReaction, ref passed, ref failed, report);
+            Run("대조 반응이 대표 반응과 다른 소리로 간다", TestContrastVoicesDiffer, ref passed, ref failed, report);
+            Run("반응 데이터만으로 다섯 표현이 전부 난다", TestDataCoversFiveExpressions, ref passed, ref failed, report);
             Run("사이렌은 §8.3 의 네 순간에만 울린다", TestSirenOnlyOnFourMoments, ref passed, ref failed, report);
             Run("사이렌 넷이 서로 다르게 들린다", TestSirenVariantsDiffer, ref passed, ref failed, report);
+            Run("응력음 변형이 위험 단계를 싣는다", TestMetalStressCarriesLevel, ref passed, ref failed, report);
+            Run("정적이 채널마다 다른 깊이로 내려간다", TestChannelDuckOrdering, ref passed, ref failed, report);
             Run("지속 위험 레이어가 단계마다 두꺼워진다", TestDangerBedRises, ref passed, ref failed, report);
             Run("안정 단계에는 응력음이 없다", TestDangerBedQuietWhenStable, ref passed, ref failed, report);
             Run("지속 레이어가 정적과 데이터를 따른다", TestDangerBedFollowsInputs, ref passed, ref failed, report);
@@ -482,32 +487,22 @@ namespace Ascend.Prototype.Audio.Tests
         /// 몸으로는 반응하는데 소리는 기본값(호흡)으로 떨어진다 — 화면만 봐서는
         /// "그 반응은 원래 조용한가"와 구분되지 않는다.
         /// </summary>
-        /// <summary>
-        /// 대조 반응(`PassengerReactionSet.DefaultContrastFor`)의 큐 ID.
-        ///
-        /// **문자열로 베껴 둔 것은 의도적이다.** 그 API 는 지금 다른 소유 영역
-        /// (`Scripts/Npc`)에서 만들어지는 중이라, 여기서 타입을 이름으로 붙들면
-        /// 그쪽이 이름을 한 번 바꿀 때 **오디오가 아니라 전체 어셈블리**가 컴파일되지
-        /// 않는다(asmdef 이 없다). 그 API 가 굳으면 이 배열을 지우고
-        /// `DefaultContrastFor` 를 순회하는 것이 맞다.
-        ///
-        /// 대조 반응의 소리가 주 반응과 같으면 §9.3 의 「같은 사건에 상반된 반응」이
-        /// 자세에만 남고 귀로는 사라진다 — 그래서 여기가 비어 있으면 안 된다.
-        /// </summary>
-        private static readonly string[] ContrastCueIds =
-        {
-            "npc_murmur_doubt", "npc_tsk", "npc_gasp", "npc_breath_hold",
-            "npc_murmur_rise", "npc_awe", "npc_whimper", "npc_murmur_urge",
-            "npc_cheer_wild", "npc_scream_long", "npc_flinch_short",
-        };
-
         private static string TestVoiceCueIdsResolve()
         {
-            foreach (string cue in ContrastCueIds)
+            // 대조 반응의 큐 ID 를 **데이터에서 직접** 읽는다. 예전에는 문자열로 베껴
+            // 두었는데(`Scripts/Npc` 가 다른 소유 영역이던 시절의 조치), 베낀 목록은
+            // 편집자가 ID 를 바꾸는 순간 조용히 옛 ID 를 검사하게 된다 — 통과하지만
+            // 아무것도 지키지 않는 검사가 된다.
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
             {
+                Npc.PassengerReactionContrast contrast =
+                    Npc.PassengerReactionSet.DefaultContrastFor(reaction);
+                if (string.IsNullOrEmpty(contrast.VoiceCue)) continue;
+
                 PassengerVoiceKind contrastKind;
-                if (!PassengerVoices.TryFromCueId(cue, out contrastKind))
-                    return $"대조 반응의 큐 ID \"{cue}\" 를 오디오가 모른다";
+                if (!PassengerVoices.TryFromCueId(contrast.VoiceCue, out contrastKind))
+                    return $"{Npc.PassengerReactionEvents.DisplayName(reaction)} 대조 반응의 " +
+                           $"큐 ID \"{contrast.VoiceCue}\" 를 오디오가 모른다";
             }
 
             // 같은 사건의 주 반응과 대조 반응이 같은 소리면 대비가 소리에서 사라진다.
@@ -539,6 +534,159 @@ namespace Ascend.Prototype.Audio.Tests
             if (unknown != PassengerVoiceKind.Breath)
                 return $"실패 경로의 기본 종류가 {unknown} 다 (기대 Breath)";
 
+            return null;
+        }
+
+        /// <summary>
+        /// 큐 ID 가 반응 사건을 **이긴다.**
+        ///
+        /// 왜 그래야 하는가: `PassengerReactionSet` 의 큐 ID 를 편집자가 바꿨는데 소리가
+        /// 그대로면 §9.4 의 「데이터로 이벤트별 교체 가능」이 소리 채널에서만 성립하지
+        /// 않는다. 반대로 모르는 ID 에서 조용히 멈추면 오타 하나가 승객을 벙어리로 만든다 —
+        /// 그래서 실패는 침묵이 아니라 사건 기반 폴백이어야 한다.
+        /// </summary>
+        private static string TestVoiceCueOutranksReaction()
+        {
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
+            {
+                PassengerVoiceKind fromEvent = PassengerVoices.FromReaction(reaction);
+
+                // 빈 ID · 모르는 ID · null 은 전부 사건으로 떨어진다.
+                if (PassengerVoices.Resolve(null, reaction) != fromEvent)
+                    return $"{Npc.PassengerReactionEvents.DisplayName(reaction)}: null 큐가 사건 폴백으로 가지 않는다";
+                if (PassengerVoices.Resolve(string.Empty, reaction) != fromEvent)
+                    return $"{Npc.PassengerReactionEvents.DisplayName(reaction)}: 빈 큐가 사건 폴백으로 가지 않는다";
+                if (PassengerVoices.Resolve("npc_없는_큐", reaction) != fromEvent)
+                    return $"{Npc.PassengerReactionEvents.DisplayName(reaction)}: 모르는 큐가 사건 폴백으로 가지 않는다";
+
+                // 아는 ID 는 사건과 **무관하게** 그 ID 의 종류로 간다.
+                for (int k = 0; k < PassengerVoices.KindCount; k++)
+                {
+                    string cue = SampleCueOf((PassengerVoiceKind)k);
+                    PassengerVoiceKind resolved = PassengerVoices.Resolve(cue, reaction);
+                    if (resolved != (PassengerVoiceKind)k)
+                        return $"{Npc.PassengerReactionEvents.DisplayName(reaction)} + \"{cue}\" " +
+                               $"→ {resolved}, 기대 {(PassengerVoiceKind)k}";
+                }
+            }
+            return null;
+        }
+
+        /// <summary>종류마다 대표 ID 하나. `TryFromCueId` 의 다섯 묶음에서 하나씩 뽑았다.</summary>
+        private static string SampleCueOf(PassengerVoiceKind kind)
+        {
+            switch (kind)
+            {
+                case PassengerVoiceKind.Sigh:   return "npc_sigh";
+                case PassengerVoiceKind.Laugh:  return "npc_laugh";
+                case PassengerVoiceKind.Prayer: return "npc_pray";
+                case PassengerVoiceKind.Blame:  return "npc_blame";
+                default:                        return "npc_breath_hold";
+            }
+        }
+
+        /// <summary>
+        /// **이 검사가 「큐 ID 를 넘겨야 하는 이유」 그 자체다.**
+        ///
+        /// 대표 반응과 대조 반응은 **같은 사건**에서 나온다. 그래서
+        /// <see cref="PassengerVoices.FromReaction"/> 만으로는 둘을 구분할 방법이
+        /// 구조적으로 없다 — 5연쇄에서 환호하는 사람과 숨을 들이켜는 사람이 반드시
+        /// 같은 소리를 낸다. 둘을 가르는 정보는 오직 `PassengerReaction.VoiceCue` 에만 있다.
+        ///
+        /// 그러므로 이 검사가 실패로 돌아서는 경로는 둘뿐이다: 데이터가 대조 반응의
+        /// 소리를 대표와 같게 바꿨거나, 배선이 큐 ID 를 다시 버리기 시작했거나.
+        /// 후자는 `PassengerReactionView` 가 4인자 대신 2인자 오버로드로 돌아가는 것이고,
+        /// 그 회귀는 화면만 봐서는 보이지 않는다.
+        /// </summary>
+        private static string TestContrastVoicesDiffer()
+        {
+            int differing = 0;
+            int comparable = 0;
+            int cueOnly = 0;
+
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
+            {
+                Npc.PassengerReaction primary = Npc.PassengerReactionSet.DefaultFor(reaction);
+                Npc.PassengerReactionContrast contrast =
+                    Npc.PassengerReactionSet.DefaultContrastFor(reaction);
+                if (string.IsNullOrEmpty(primary.VoiceCue) || string.IsNullOrEmpty(contrast.VoiceCue))
+                    continue;
+
+                comparable++;
+                PassengerVoiceKind a = PassengerVoices.Resolve(primary.VoiceCue, reaction);
+                PassengerVoiceKind b = PassengerVoices.Resolve(contrast.VoiceCue, reaction);
+                if (a == b) continue;
+
+                differing++;
+
+                // **큐 ID 만이 만들어 낼 수 있는 소리를 센다.** 사건 폴백은 사건 하나에
+                // 값 하나라, a·b 중 폴백과 다른 쪽은 큐 ID 를 넘기지 않으면 영원히 나지
+                // 않는다. 이 수가 0 이면 큐 ID 는 있어도 되고 없어도 되는 장식이다.
+                PassengerVoiceKind eventOnly = PassengerVoices.FromReaction(reaction);
+                if (eventOnly != a) cueOnly++;
+                if (eventOnly != b) cueOnly++;
+            }
+
+            if (comparable < 11)
+                return $"대표·대조 양쪽에 큐 ID 가 있는 사건이 {comparable} 건뿐이다 (기대 11)";
+
+            // 전부 갈릴 필요는 없다(같은 결의 소리로 갈라지는 사건도 있다). 그러나
+            // 과반이 같은 소리로 뭉치면 「상반된 반응」은 귀에 남지 않는다.
+            if (differing * 2 <= comparable)
+                return $"대조 반응 {comparable} 건 중 {differing} 건만 대표와 다른 소리로 간다";
+
+            if (cueOnly <= 0)
+                return "큐 ID 로만 도달하는 소리가 하나도 없다 — 사건 폴백이 데이터를 " +
+                       "전부 재현하므로 VoiceCue 를 넘기는 배선이 아무것도 바꾸지 않는다";
+
+            // 가장 크게 갈려야 하는 한 쌍을 이름으로 못박는다 — 5연쇄의 환호와 공포다.
+            Npc.PassengerReaction chainPrimary =
+                Npc.PassengerReactionSet.DefaultFor(Npc.PassengerReactionEvent.FiveChain);
+            Npc.PassengerReactionContrast chainContrast =
+                Npc.PassengerReactionSet.DefaultContrastFor(Npc.PassengerReactionEvent.FiveChain);
+            if (PassengerVoices.Resolve(chainPrimary.VoiceCue, Npc.PassengerReactionEvent.FiveChain)
+                == PassengerVoices.Resolve(chainContrast.VoiceCue, Npc.PassengerReactionEvent.FiveChain))
+                return "5연쇄의 대표 반응과 대조 반응이 같은 소리로 간다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// **데이터만으로** 다섯 표현이 전부 나는가.
+        ///
+        /// `TestFiveVoiceExpressions` 는 <see cref="PassengerVoices.FromReaction"/> 의 배분을
+        /// 본다. 그것이 다섯을 덮어도, 실제로 재생되는 것은 큐 ID 로 판정된 종류다
+        /// (배선이 4인자 오버로드를 쓰기 때문이다). 그래서 **두 경로를 각각** 세지 않으면
+        /// 「배분은 다섯인데 데이터가 셋만 쓴다」가 조용히 성립한다.
+        /// </summary>
+        private static string TestDataCoversFiveExpressions()
+        {
+            int primaryMask = 0;
+            int allMask = 0;
+
+            foreach (Npc.PassengerReactionEvent reaction in Npc.PassengerReactionEvents.All)
+            {
+                Npc.PassengerReaction primary = Npc.PassengerReactionSet.DefaultFor(reaction);
+                if (!string.IsNullOrEmpty(primary.VoiceCue))
+                {
+                    int bit = 1 << (int)PassengerVoices.Resolve(primary.VoiceCue, reaction);
+                    primaryMask |= bit;
+                    allMask |= bit;
+                }
+
+                Npc.PassengerReactionContrast contrast =
+                    Npc.PassengerReactionSet.DefaultContrastFor(reaction);
+                if (!string.IsNullOrEmpty(contrast.VoiceCue))
+                    allMask |= 1 << (int)PassengerVoices.Resolve(contrast.VoiceCue, reaction);
+            }
+
+            for (int k = 0; k < PassengerVoices.KindCount; k++)
+            {
+                if ((primaryMask & (1 << k)) == 0)
+                    return $"대표 반응 데이터가 {(PassengerVoiceKind)k} 를 한 번도 쓰지 않는다";
+                if ((allMask & (1 << k)) == 0)
+                    return $"반응 데이터 전체가 {(PassengerVoiceKind)k} 를 한 번도 쓰지 않는다";
+            }
             return null;
         }
 
@@ -722,6 +870,131 @@ namespace Ascend.Prototype.Audio.Tests
             AudioCueTable.TryMapSiren(in collapse, out high);
             if (high.Volume <= low.Volume)
                 return $"Collapse 사이렌 {high.Volume:0.###} ≤ Strain {low.Volume:0.###}";
+
+            return null;
+        }
+
+        /// <summary>
+        /// 금속 응력음의 **변형이 곧 위험 단계**여야 한다.
+        ///
+        /// 왜 이것이 따로 있어야 하나: `AudioDirector.PlayedKindsMask` 는 큐 종류당 비트
+        /// 하나라 **variant 를 버린다.** 그래서 「응력음이 한 번 울렸다」와 「네 단계가
+        /// 각각 울렸다」가 같은 값을 낸다 — 위험 단계가 소리로 구분되는가를 묻는
+        /// §8.3 에서 그 둘이 같으면 셀 것이 남지 않는다. 재생 쪽은
+        /// `AudioDirector.MetalStressCountAt(level)` 이 단계별로 세고, 그 계수가
+        /// 뜻을 가지려면 여기서 **변형에 단계가 실려 있다**는 것이 먼저 고정돼야 한다.
+        /// </summary>
+        private static string TestMetalStressCarriesLevel()
+        {
+            float previousVolume = -1f;
+            float previousPitch = float.MaxValue;
+
+            for (int level = 0; level <= 3; level++)
+            {
+                var e = new GameEvent(GameEventKind.RiskLevelChanged, 2, -1, level, 0.5f);
+                AudioCueRequest req;
+                if (!AudioCueTable.TryMap(in e, out req)) return $"단계 {level} 매핑 없음";
+                if (req.Kind != AudioCueKind.MetalStress)
+                    return $"단계 {level} → {req.Kind}, 기대 MetalStress";
+
+                if (req.Variant != level)
+                    return $"단계 {level} 의 변형이 {req.Variant} 다 — 단계가 실리지 않으면 " +
+                           "네 전이가 한 소리로 뭉친다";
+
+                // 깊을수록 크고 낮게. 같으면 Strain 과 Collapse 가 귀로 구분되지 않는다.
+                if (req.Volume <= previousVolume)
+                    return $"단계 {level} 볼륨 {req.Volume:0.###} ≤ 단계 {level - 1} {previousVolume:0.###}";
+                if (req.Pitch >= previousPitch)
+                    return $"단계 {level} 피치 {req.Pitch:0.###} ≥ 단계 {level - 1} {previousPitch:0.###}";
+
+                previousVolume = req.Volume;
+                previousPitch = req.Pitch;
+            }
+
+            // 범위 밖 단계가 새 변형을 만들면 Prewarm 밖의 파형이 되어 첫 재생이
+            // 굽는 프레임이 된다 — 하필 그 순간이 단계 전이다.
+            var wild = new GameEvent(GameEventKind.RiskLevelChanged, 2, -1, 99, 1f);
+            AudioCueRequest wildReq;
+            AudioCueTable.TryMap(in wild, out wildReq);
+            if (wildReq.Variant < 0 || wildReq.Variant > 3)
+                return $"범위 밖 단계가 변형 {wildReq.Variant} 를 만들었다";
+
+            return null;
+        }
+
+        // ── 과수확 정적의 채널별 깊이 (UP-AUD-03 · UP-AUD-05) ────────────────
+
+        /// <summary>
+        /// 정적이 **채널마다 다른 깊이로** 내려가는가.
+        ///
+        /// 그전에는 <see cref="SilenceWindow.GainAt"/> 하나를 네 채널에 똑같이 곱했다.
+        /// 그래서 `AudioMixProfile` 의 감쇠 배율 다섯 필드가 계산까지 되고 아무 소리에도
+        /// 닿지 않았다(감사 발견: `VolumeFor` 만 쓰고 `DuckedVolumeFor` 를 안 썼다).
+        /// 그 필드의 툴팁이 약속한 「승객은 완전히 지우지 않는다 — 정적 구간에 남는
+        /// 유일한 소리가 숨소리여야 한다」가 지켜지지 않았다는 뜻이다.
+        ///
+        /// 동시에 **정적 한가운데는 여전히 정확히 0** 이어야 한다. §7.3(4)가 요구하는
+        /// 것은 감쇠가 아니라 정적이고, 채널 배율이 그 약속을 흔들면 안 된다.
+        /// </summary>
+        private static string TestChannelDuckOrdering()
+        {
+            Data.Profiles.AudioMixSnapshot mix = Data.Profiles.AudioMixProfile.DefaultSnapshot;
+
+            Data.Profiles.AudioChannel[] channels =
+            {
+                Data.Profiles.AudioChannel.Machine,
+                Data.Profiles.AudioChannel.Event,
+                Data.Profiles.AudioChannel.Passenger,
+                Data.Profiles.AudioChannel.Warning,
+            };
+
+            foreach (Data.Profiles.AudioChannel channel in channels)
+            {
+                float duck = mix.DuckScaleFor(channel);
+
+                // 경계 — 평상시엔 손대지 않고, 정적 한가운데는 0이다.
+                if (!Near(SilenceWindow.ChannelGain(duck, 1f), 1f))
+                    return $"{channel}: 게인 1 에서 배수 {SilenceWindow.ChannelGain(duck, 1f):0.####}";
+                if (SilenceWindow.ChannelGain(duck, 0f) != 0f)
+                    return $"{channel}: 정적 한가운데가 0 이 아니다 " +
+                           $"({SilenceWindow.ChannelGain(duck, 0f):0.####})";
+
+                // 감쇠 배율이 실제로 무언가를 해야 한다 — 그러지 않으면 필드가 다시 죽는다.
+                if (duck < 1f && SilenceWindow.ChannelGain(duck, 0.5f) >= 0.5f)
+                    return $"{channel}: 감쇠 배율 {duck:0.##} 인데 절반 게인에서 줄지 않았다";
+
+                // 단조 — 게인이 오르는데 소리가 줄면 재개가 거꾸로 들린다.
+                float previous = -1f;
+                for (int i = 0; i <= 20; i++)
+                {
+                    float g = SilenceWindow.ChannelGain(duck, i / 20f);
+                    if (g < previous - 0.0001f)
+                        return $"{channel}: 게인 {i / 20f:0.##} 에서 배수가 내려갔다";
+                    if (g < 0f || g > 1f) return $"{channel}: 배수 {g} 가 범위 밖이다";
+                    previous = g;
+                }
+            }
+
+            // **서열이 핵심이다.** 기계음이 가장 깊게 빠지고 숨소리가 가장 오래 남는다.
+            float machine = SilenceWindow.ChannelGain(
+                mix.DuckScaleFor(Data.Profiles.AudioChannel.Machine), 0.5f);
+            float passenger = SilenceWindow.ChannelGain(
+                mix.DuckScaleFor(Data.Profiles.AudioChannel.Passenger), 0.5f);
+            if (machine >= passenger)
+                return $"정적 중간에 기계음({machine:0.####})이 승객({passenger:0.####})보다 " +
+                       "작지 않다 — 서열이 없으면 「방이 조용해졌다」가 아니라 「볼륨이 내려갔다」다";
+
+            // `DuckedVolumeFor` 자체도 살아 있어야 한다(배율을 볼륨에 곱한 값).
+            foreach (Data.Profiles.AudioChannel channel in channels)
+                if (mix.DuckedVolumeFor(channel) >= mix.VolumeFor(channel))
+                    return $"{channel}: 감쇠 볼륨 {mix.DuckedVolumeFor(channel):0.###} 이 " +
+                           $"평상시 {mix.VolumeFor(channel):0.###} 보다 작지 않다";
+
+            // 범위 밖 배율이 소리를 키우거나 음수로 만들면 안 된다.
+            if (SilenceWindow.ChannelGain(9f, 0.5f) > 0.5f + 0.0001f)
+                return "1 을 넘는 감쇠 배율이 소리를 키웠다";
+            if (SilenceWindow.ChannelGain(-3f, 0.5f) < 0f)
+                return "음수 감쇠 배율이 음수 배수를 만들었다";
 
             return null;
         }

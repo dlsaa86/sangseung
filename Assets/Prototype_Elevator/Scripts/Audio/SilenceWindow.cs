@@ -140,5 +140,34 @@ namespace Ascend.Prototype.Audio
             if (_cancelled) return now - _cancelAt < _resumeSeconds;
             return now - _begin < TotalSeconds;
         }
+
+        /// <summary>
+        /// 한 채널이 이 게인에서 내야 하는 볼륨 배수. **채널마다 다르게 줄어든다.**
+        ///
+        /// 왜 필요한가: <see cref="GainAt"/> 하나를 전 채널에 그대로 곱하면 넷이 **같은
+        /// 비율로** 사라진다. 그러면 `AudioMixProfile` 의 감쇠 배율 다섯 필드
+        /// (`_machineDuck` 0.05 · `_passengerDuck` 0.35 …)가 계산되고도 아무 소리에
+        /// 닿지 않는다 — 실제로 그 상태였다(감사 발견: `VolumeFor` 만 쓰고
+        /// `DuckedVolumeFor` 를 안 썼다). 「승객은 완전히 지우지 않는다 — 정적 구간에
+        /// 남는 유일한 소리가 숨소리여야 한다」는 그 필드의 툴팁이 지켜지지 않았다.
+        ///
+        /// **정적 한가운데(게인 0)는 여전히 정확히 0 이다.** §7.3(4)가 요구하는 것은
+        /// 감쇠가 아니라 정적이고, 그 약속을 채널 배율이 흔들면 안 된다. 배율이 바꾸는
+        /// 것은 **내려가고 올라오는 동안의 서열**뿐이다 — 기계음이 먼저 빠지고 숨소리가
+        /// 마지막까지 남는다.
+        /// </summary>
+        /// <param name="duckScale">그 채널의 감쇠 배율(0~1). 1이면 감쇠하지 않는다.</param>
+        /// <param name="gain"><see cref="GainAt"/> 가 준 값(0~1).</param>
+        public static float ChannelGain(float duckScale, float gain)
+        {
+            float g = Clamp01(gain);
+            float d = Clamp01(duckScale);
+
+            // duckAmount = 1 - g. 게인이 1이면 감쇠 없음, 0이면 최대 감쇠.
+            // 마지막에 g 를 한 번 더 곱해 완전 정적을 보존한다.
+            return (1f + (d - 1f) * (1f - g)) * g;
+        }
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 }

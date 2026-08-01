@@ -7321,6 +7321,7 @@ Transform:
   - {fileID: 75036021}
   - {fileID: 1982195086}
   - {fileID: 619745370}
+  - {fileID: 794264704}
   m_Father: {fileID: 1495901718}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &747941536
@@ -7469,6 +7470,67 @@ Transform:
   - {fileID: 325423713}
   m_Father: {fileID: 179222978}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &794264703
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 794264704}
+  - component: {fileID: 794264705}
+  m_Layer: 0
+  m_Name: OverharvestStage
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &794264704
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 794264703}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 716368239}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &794264705
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 794264703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70af9b34228e4f11b3e19dd6c9751661, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.OverharvestStageView
+  _run: {fileID: 998528527}
+  _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
+  _duckSeconds: 0.12
+  _burstOvershoot: 0.6
+  _warningChannel: {fileID: 75036022}
+  _shakeTargets:
+  - {fileID: 1395601689}
+  - {fileID: 2080261927}
+  _shakeAmplitude: 0.018
+  _shakeFrequency: 34
+  _tubeSpinners:
+  - {fileID: 179222978}
+  - {fileID: 233993075}
+  - {fileID: 309638972}
+  _tubeSpinAxis: {x: 0, y: 1, z: 0}
+  _idleSpinDegreesPerSecond: 0
+  _resumeBurstTurns: 1
 --- !u!1 &799892946
 GameObject:
   m_ObjectHideFlags: 0
@@ -9292,6 +9354,7 @@ MonoBehaviour:
   _swayTarget: {fileID: 799892947}
   _cameraTarget: {fileID: 1337836311}
   _hum: {fileID: 998528533}
+  _audio: {fileID: 0}
   _blendSpeed: 2.2
 --- !u!82 &998528533
 AudioSource:
@@ -9540,6 +9603,7 @@ MonoBehaviour:
   _duckGlobalListener: 1
   _voiceFromEvents: 1
   _voiceCooldownSeconds: 0.9
+  _voiceSpacingSeconds: 0.14
   _sirenEnabled: 1
   _sirenCooldownSeconds: 1.2
   _dangerBedEnabled: 1
@@ -9579,6 +9643,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Effects.AmbientParticleDirector
   _risk: {fileID: 0}
   _run: {fileID: 0}
+  _presentation: {fileID: 11400000, guid: d83511426388ec241b2cfc1275a0fb4b, type: 2}
   _volumeRadius: 1.35
   _volumeHeight: 2.4
 --- !u!1 &1017002491

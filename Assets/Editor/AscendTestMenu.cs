@@ -39,6 +39,8 @@ namespace Ascend.Prototype.EditorTools
             Perf.Tests.PerfTests.RunAll(),
             Diagnostics.Tests.WiringDiagnosticsTests.RunAll(),
             UI.Tests.RunSummaryBuilderTests.RunAll(),
+            Effects.Tests.PresentationBindingTests.RunAll(),
+            View.Tests.OverharvestStageTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]

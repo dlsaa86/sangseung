@@ -41,6 +41,8 @@ namespace Ascend.Prototype.Npc.Tests
             Run("표현 채널 넷이 각각 값을 낸다", TestFourChannelsProduceValues, ref passed, ref failed, report);
             Run("짧은 대사가 한 문장 이하다", TestLinesAreShort, ref passed, ref failed, report);
             Run("같은 사건에 승객마다 상반된 반응이 나온다", TestContrastSplitsPassengers, ref passed, ref failed, report);
+            Run("상반된 반응이 서로 다른 소리로 나간다", TestContrastReachesDifferentVoices, ref passed, ref failed, report);
+            Run("한 런의 반응이 다섯 음성 표현을 전부 낸다", TestVoiceKindsCoverFive, ref passed, ref failed, report);
             Run("대조 반응이 중재 규칙을 바꾸지 않는다", TestContrastKeepsArbitration, ref passed, ref failed, report);
             Run("대조 조회기가 없으면 전원이 같은 반응이다", TestNoContrastMeansUniform, ref passed, ref failed, report);
             Run("Reset 이 대조 반응 11종도 채운다", TestSetResetFillsContrasts, ref passed, ref failed, report);
@@ -538,6 +540,82 @@ namespace Ascend.Prototype.Npc.Tests
             again.Notify(PassengerReactionEvent.FiveChain, 0f);
             if (again.CurrentOf(0).Pose != a.Pose || again.CurrentOf(1).Pose != b.Pose)
                 return "같은 입력에서 대조 배정이 달라졌다 — 고정 캡처가 흔들린다";
+            return null;
+        }
+
+        /// <summary>
+        /// 대조 반응이 **소리까지** 갈리는가. `TestContrastSplitsPassengers` 는 큐 ID
+        /// 문자열이 다르다는 것까지만 본다 — 두 ID 가 같은 음성 종류로 풀리면 자세는
+        /// 갈렸는데 귀로는 한 사람이 두 번 말한 것처럼 들린다.
+        ///
+        /// 이것이 `PassengerReactionView` 가 `reaction.VoiceCue` 를 오디오에 넘겨야 하는
+        /// 이유다. 두 승객은 **같은 사건**에 반응하므로 사건만 넘기면
+        /// `PassengerVoices.FromReaction` 이 반드시 같은 값을 준다 — 대비가 소리에서
+        /// 사라지는 것이 구조적으로 보장된다. 실제로 그 상태였다(2인자 오버로드 호출).
+        /// </summary>
+        private static string TestContrastReachesDifferentVoices()
+        {
+            var director = new PassengerReactionDirector(
+                2, 2, PassengerReactionSet.DefaultFor, PassengerReactionSet.DefaultContrastFor);
+
+            if (director.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 2)
+                return "선행 조건 실패: 두 명이 반응하지 않았다";
+
+            PassengerReaction a = director.CurrentOf(0);
+            PassengerReaction b = director.CurrentOf(1);
+
+            Audio.PassengerVoiceKind voiceA =
+                Audio.PassengerVoices.Resolve(a.VoiceCue, PassengerReactionEvent.FiveChain);
+            Audio.PassengerVoiceKind voiceB =
+                Audio.PassengerVoices.Resolve(b.VoiceCue, PassengerReactionEvent.FiveChain);
+
+            if (voiceA == voiceB)
+                return $"두 승객이 같은 음성 종류({voiceA})로 간다 — 큐 ID 는 " +
+                       $"\"{a.VoiceCue}\" vs \"{b.VoiceCue}\" 로 갈렸는데 소리는 하나다";
+
+            // 사건만 넘기던 옛 경로에서는 반드시 하나로 뭉쳤다. 그 사실을 못박아 둔다 —
+            // 배선이 2인자 오버로드로 되돌아가면 이 단정이 「왜 안 되는지」를 설명한다.
+            Audio.PassengerVoiceKind eventOnly =
+                Audio.PassengerVoices.FromReaction(PassengerReactionEvent.FiveChain);
+            if (eventOnly != voiceA && eventOnly != voiceB)
+                return $"사건 폴백({eventOnly})이 대표·대조 어느 쪽과도 맞지 않는다 — " +
+                       "데이터와 배분이 서로 모르는 소리를 낸다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// 한 런에서 다섯 표현이 **전부** 나는가(`MASTER_PRD.md` §9.3).
+        ///
+        /// 총합으로는 셀 수 없다 — 「음성 110건」은 호흡만 110번 난 것과 같은 값이다.
+        /// 그래서 `PassengerReactionView.VoiceKindsMask` 가 요청한 **종류**를 세고,
+        /// 이 검사는 그 마스크가 도달할 수 있는 상한이 5 라는 것을 씬 없이 고정한다.
+        /// 상한이 3 이면 씬에서 아무리 오래 돌려도 5 는 나오지 않는다 —
+        /// 그 사실은 런타임 로그만 봐서는 알 수 없다.
+        /// </summary>
+        private static string TestVoiceKindsCoverFive()
+        {
+            int mask = 0;
+
+            foreach (PassengerReactionEvent reaction in PassengerReactionEvents.All)
+            {
+                // 승객 둘이면 대표와 대조가 한 사건에서 같이 나온다 — 뷰가 보는 것과 같은 형태다.
+                var director = new PassengerReactionDirector(
+                    2, 2, PassengerReactionSet.DefaultFor, PassengerReactionSet.DefaultContrastFor);
+                IReadOnlyList<int> reacted = director.Notify(reaction, 0f);
+
+                for (int i = 0; i < reacted.Count; i++)
+                {
+                    PassengerReaction data = director.CurrentOf(reacted[i]);
+                    if (!data.HasVoice) continue;   // 데이터가 이 반응의 소리를 껐다
+                    mask |= 1 << (int)Audio.PassengerVoices.Resolve(data.VoiceCue, reaction);
+                }
+            }
+
+            for (int k = 0; k < Audio.PassengerVoices.KindCount; k++)
+                if ((mask & (1 << k)) == 0)
+                    return $"11종을 전부 울려도 {(Audio.PassengerVoiceKind)k} 가 한 번도 나지 않는다";
+
             return null;
         }
 

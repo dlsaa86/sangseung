@@ -226,6 +226,27 @@ namespace Ascend.Prototype.Audio
         }
 
         /// <summary>
+        /// **반응 하나가 낼 소리의 최종 판정.** 큐 ID 가 이기고, 모르면 사건으로 떨어진다.
+        ///
+        /// 이 함수가 따로 있는 이유는 같은 판정을 두 곳이 필요로 하기 때문이다 —
+        /// 소리를 내는 쪽(<c>AudioDirector.PlayPassengerVoice</c>)과 「무슨 종류를
+        /// 요청했는가」를 세는 쪽(<c>PassengerReactionView</c>)이다. 세는 쪽이 자기
+        /// 판정을 따로 적으면 **로그와 실제 소리가 어긋나고**, 어긋난 줄도 모른다 —
+        /// 로그 쪽만 고쳐도 컴파일되고 소리도 그대로 나기 때문이다.
+        ///
+        /// **큐 ID 가 이기는 것이 이 항목의 핵심이다.** 대표 반응과 대조 반응은 같은
+        /// 사건에서 나오므로 <see cref="FromReaction"/> 으로는 **구분이 불가능하다** —
+        /// 5연쇄에서 환호하는 사람과 숨을 들이켜는 사람이 같은 소리를 낸다.
+        /// 둘을 가르는 정보는 오직 `PassengerReaction.VoiceCue` 에만 있다.
+        /// </summary>
+        public static PassengerVoiceKind Resolve(string cueId, PassengerReactionEvent reaction)
+        {
+            PassengerVoiceKind kind;
+            if (TryFromCueId(cueId, out kind)) return kind;
+            return FromReaction(reaction);
+        }
+
+        /// <summary>
         /// 자막과 로그가 쓰는 한국어 이름.
         ///
         /// `AccessibilityProfile.ShowSubtitles` 가 「비언어 음성·기계음에 자막을 붙인다」고

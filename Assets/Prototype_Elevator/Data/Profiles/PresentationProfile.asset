@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7494ee0f441488a44ad80af9907295b0, type: 3}
+  m_Name: PresentationProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.PresentationProfile
+  _maxParticles: 18000000300000005000000078000000
+  _columnRevealInterval: 0.32
+  _purifyPulse: 0.55
+  _unlockFlashSeconds: 0.18
+  _unlockSettleSeconds: 0.9
+  _readPause: 0.45
+  _emptyHold: 0.3
+  _refillHold: 0.4
+  _chainSpeedup: 0.86
+  _minTempoScale: 0.35
+  _surfaceColor: {r: 0.55, g: 0.56, b: 0.6, a: 1}
+  _surfaceSmoothness: 0.06
+  _surfaceMetallic: 0
+  _emissionIntensity: 3.2
+  _grimeAmount: 0

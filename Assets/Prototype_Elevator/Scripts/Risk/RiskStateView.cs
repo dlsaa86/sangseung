@@ -54,6 +54,11 @@ namespace Ascend.Prototype.Risk
         [Header("소리")]
         [SerializeField] private AudioSource _hum;
 
+        [Tooltip("험의 크기를 정하는 쪽. 비면 Awake 에서 씬에서 찾는다. " +
+                 "없으면 AudioMixProfile 의 단계별 험 배율과 과수확 정적이 험에 닿지 않고, " +
+                 "험은 DangerFeedbackProfile 값 그대로 난다(HumSource 가 어느 쪽인지 알려 준다).")]
+        [SerializeField] private Audio.AudioDirector _audio;
+
         [Header("전이")]
         [Tooltip("단계가 바뀔 때 프로파일이 섞이는 속도. 즉시 바뀌면 계단처럼 보인다.")]
         [SerializeField, Min(0.1f)] private float _blendSpeed = 2.2f;
@@ -73,6 +78,13 @@ namespace Ascend.Prototype.Risk
         private float _phase;
         private int _reasonKey = int.MinValue;
         private float _effectiveHumVolume;
+
+        // 험 배율은 **섞어서** 따라간다. `_blended` 는 프로파일 형태를 부드럽게 잇는데
+        // 그 위에 곱하는 배율만 계단으로 튀면 단계 전이가 "천천히 커지다가 툭" 이 된다.
+        private float _humVolumeScale = 1f;
+        private float _humPitchScale = 1f;
+        private float _humSilenceGain = 1f;
+        private string _humSource = "(미초기화)";
 
         /// <summary>
         /// 단계별 기계음 자막 문안. 미리 만들어 둔다 — 매 프레임 문자열을 짓지 않기 위해서다.
@@ -171,6 +183,34 @@ namespace Ascend.Prototype.Risk
         public float EffectiveHumVolume => _effectiveHumVolume;
 
         /// <summary>
+        /// 험의 크기가 어디서 왔는가. `ProfileSource`·`AccessibilitySource` 와 같은 이유로
+        /// 따로 있다 — `AudioDirector` 를 떼어내도 험은 계속 나므로, 출처를 노출하지 않으면
+        /// 「믹스 배율이 실제로 곱해졌다」를 반증할 수단이 없다.
+        /// </summary>
+        public string HumSource => _humSource;
+
+        /// <summary>
+        /// 지금 험에 곱해지고 있는 단계별 볼륨 배율(`AudioMixProfile._humVolumeScale`).
+        ///
+        /// 이 값이 없던 동안 그 8필드는 <c>AudioDirector.HumVolume</c> 까지 계산되고
+        /// **거기서 멈춰 있었다** — 험의 소유자인 이 컴포넌트가 `_blended.HumVolume` 을
+        /// 절대값으로 덮어썼기 때문이다(그 파일의 배선 메모 4번이 적어 둔 그대로).
+        /// </summary>
+        public float HumVolumeScale => _humVolumeScale;
+
+        /// <summary>같은 이유로 노출하는 단계별 피치 배율.</summary>
+        public float HumPitchScale => _humPitchScale;
+
+        /// <summary>
+        /// 험에 적용 중인 과수확 정적 게인(0~1). 1이면 정적이 아니거나 배선이 없다.
+        ///
+        /// 그전까지 험은 정적 구간에 **혼자 살아남았고**, `AudioDirector` 는 그걸
+        /// `AudioListener` 전체를 줄여 우회했다. 그 우회는 플레이어 발소리까지 지우므로
+        /// §7.3 의 정적이 「방이 조용해졌다」가 아니라 「음소거됐다」로 읽힌다.
+        /// </summary>
+        public float HumSilenceGain => _humSilenceGain;
+
+        /// <summary>
         /// 지금 나고 있는 기계음의 자막 한 줄. `ShowSubtitles` 가 꺼져 있으면 빈 문자열이다.
         ///
         /// **아직 그리는 쪽이 없다.** 자막 표시는 UI 소유자의 파일(`Scripts/UI`, `Scripts/View`)에
@@ -218,6 +258,16 @@ namespace Ascend.Prototype.Risk
             RebuildProfiles();
             _blended = _levels.For(RiskLevel.Stable);
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
+
+            // 오디오는 **없어도 된다.** 없으면 험이 프로파일 값 그대로 나고 믹스 배율과
+            // 과수확 정적만 험에 닿지 않는다 — 그 사실은 `HumSource` 로 드러난다.
+            // 씬에서 찾는 이유는 `PassengerReactionView` 와 같다: 배선 하나를 빠뜨렸다고
+            // 청각 채널이 통째로 죽는 것보다 자동으로 붙는 편이 낫다.
+            if (_audio == null) _audio = FindAnyObjectByType<Audio.AudioDirector>();
+            _humSource = _audio != null
+                ? "AudioDirector (AudioMixProfile 배율 × 정적 게인)"
+                : "DangerFeedbackProfile 값 그대로";
+
             if (_swayTarget != null) _swayHome = _swayTarget.localPosition;
             if (_cameraTarget != null) _cameraHome = _cameraTarget.localPosition;
             if (_hum != null && _hum.clip == null) _hum.clip = BuildHumClip();
@@ -392,19 +442,53 @@ namespace Ascend.Prototype.Risk
             }
         }
 
+        /// <summary>
+        /// 험을 실제로 민다. **세 출처가 여기서 곱해진다.**
+        ///
+        ///   형태 — `DangerFeedbackProfile` (단계별 <c>HumVolume</c>/<c>HumPitch</c>, `_blended`)
+        ///   크기 — `AudioMixProfile` 의 단계별 험 배율 8필드 (`AudioDirector` 가 소유)
+        ///   순간 — 과수확 정적 게인 (`AudioDirector.SilenceGain`, §7.3)
+        ///
+        /// **그전까지는 첫째만 있었다.** 이 메서드가 `_hum.volume` 을 절대값으로 덮어썼기
+        /// 때문에 나머지 둘은 `AudioDirector` 안에서 계산까지 되고 아무 소리에도 닿지
+        /// 않았다(그 파일의 배선 메모 4번이 「남은 한 줄은 RiskStateView 쪽이다」라고
+        /// 적어 둔 것이 이 자리다). 정적 구간에는 험만 살아남아 있었고, 그 컴포넌트는
+        /// 그것을 `AudioListener` 전체를 줄여 우회하고 있었다 — 플레이어 발소리까지
+        /// 지우는 우회라 정적이 연출이 아니라 음소거로 읽힌다.
+        ///
+        /// 배율을 **섞어서** 따라가는 이유: `_blended` 는 단계 사이를 부드럽게 잇는데
+        /// 그 위에 곱하는 값만 계단이면 전이가 "커지다가 툭" 이 된다.
+        /// </summary>
         private void ApplyAudio()
         {
             if (_hum == null) return;
 
+            RiskLevel level = _evaluator.Current;
+
+            // 배율의 소유자는 `AudioDirector` 다. 여기서 `AudioMixProfile` 을 직접 읽지
+            // 않는 이유는 값의 출처가 두 벌이 되기 때문이다 — 한쪽만 에셋을 꽂으면
+            // 험과 사건음이 서로 다른 믹스로 울리고, 그 상태는 귀로만 알 수 있다.
+            float targetVolumeScale = _audio != null ? _audio.HumVolumeScaleFor(level) : 1f;
+            float targetPitchScale = _audio != null ? _audio.HumPitchScaleFor(level) : 1f;
+
+            float t = Mathf.Clamp01(Time.deltaTime * _blendSpeed);
+            _humVolumeScale = Mathf.Lerp(_humVolumeScale, targetVolumeScale, t);
+            _humPitchScale = Mathf.Lerp(_humPitchScale, targetPitchScale, t);
+
+            // 정적은 섞지 않는다. `SilenceWindow` 가 이미 0.12초에 걸쳐 내려가는 곡선이고
+            // 여기서 한 번 더 뭉개면 §7.3 이 못박은 0.3~0.7초 눈금이 흐려진다.
+            _humSilenceGain = _audio != null ? _audio.SilenceGain : 1f;
+
             // 이 험은 50/100/150Hz 로 구운 **저주파** 지속음이다(BuildHumClip 참조).
             // `LowFrequencyScale` 이 말하는 「낮은 험」이 정확히 이것이라, 저주파 배율의
-            // 소비처는 다른 어디도 아니고 여기다. 지금까지는 `_blended.HumVolume` 을
-            // 그대로 썼기 때문에 그 값을 0으로 내려도 아무 일도 일어나지 않았다.
-            _hum.volume = _accessibilitySnapshot.ScaleLowFrequency(_blended.HumVolume);
+            // 소비처는 다른 어디도 아니고 여기다.
+            _hum.volume = _accessibilitySnapshot.ScaleLowFrequency(
+                _blended.HumVolume * _humVolumeScale * _humSilenceGain);
 
             // 사이렌을 끄면 남는 청각 채널은 피치뿐이다 — 프로파일이 그렇게 약속해 놓고
             // 지키는 코드가 없었다. 편차만 벌리므로 사이렌이 켜져 있으면 기존과 동일하다.
-            _hum.pitch = Mathf.Max(0.05f, _accessibilitySnapshot.CompensateHumPitch(_blended.HumPitch));
+            _hum.pitch = Mathf.Max(0.05f, _accessibilitySnapshot.CompensateHumPitch(
+                _blended.HumPitch * _humPitchScale));
 
             _effectiveHumVolume = _hum.volume;
         }

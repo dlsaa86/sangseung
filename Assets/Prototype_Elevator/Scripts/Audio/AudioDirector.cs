@@ -90,6 +90,11 @@ namespace Ascend.Prototype.Audio
         [Tooltip("승객 음성 사이의 최소 간격(초). 쉬지 않고 내는 소리는 반응이 아니라 소음이다(PRD §9.4).")]
         [SerializeField, Min(0f)] private float _voiceCooldownSeconds = 0.9f;
 
+        [Tooltip("두 승객이 같은 사건에 반응할 때 목소리 사이에 두는 최소 간격(초). " +
+                 "버리지 않고 뒤로 민다 — 버리면 §9.3 의 「같은 사건에 상반된 반응」이 " +
+                 "한쪽만 들려서 대비가 사라진다.")]
+        [SerializeField, Min(0f)] private float _voiceSpacingSeconds = 0.14f;
+
         [Header("사이렌 (UP-RISK-05 · Notion PRD §8.3)")]
         [Tooltip("끄면 사이렌만 사라진다. 험·응력음·충격음은 그대로 남는다.")]
         [SerializeField] private bool _sirenEnabled = true;
@@ -142,8 +147,27 @@ namespace Ascend.Prototype.Audio
         private bool _externalVoiceDriver;
         private float _voiceReadyAt;
 
+        // 승객 음성은 **자기 줄**을 선다. 판정 큐(`_queue`)에 섞으면 캐스케이드 20단계
+        // 뒤에 붙어 비명이 1초 넘게 늦게 나오고, 그건 놀란 소리가 아니라 회상이다.
+        // 반대로 줄을 아예 안 세우면 한 사건에 반응한 두 승객이 **같은 프레임**에
+        // 겹쳐 한 사람이 두 겹으로 말한 것처럼 들린다(`PlayPassengerVoice` 에는
+        // 쿨다운이 없고 `IsImmediate` 라 줄도 서지 않았다 — 감사 발견).
+        private const int VoiceQueueCapacity = 8;
+        private Scheduled[] _voiceQueue;
+        private int _voiceQueueHead;
+        private int _voiceQueueCount;
+        private float _voiceNextAt;
+
         // ── 사이렌 ───────────────────────────────────────────────────────────
         private float _sirenReadyAt;
+        private int _sirenVariantsMask;
+
+        // ── 금속 응력음 (§8.3 의 증거) ───────────────────────────────────────
+        // `PlayedKindsMask` 는 종류당 비트 하나라 **variant 를 버린다.** 그래서
+        // 「응력음이 한 번 울렸다」와 「네 단계가 각각 울렸다」가 같은 값을 낸다 —
+        // 위험 단계가 소리로 구분되는가를 묻는 항목에서 그 둘이 같으면 셀 것이 없다.
+        private readonly int[] _metalStressByLevel = new int[DangerBed.LevelCount];
+        private int _metalStressLevelsMask;
 
         // ── 지속 위험 레이어 ─────────────────────────────────────────────────
         // 험이 아니다. 험(고른 50/100/150Hz 톤)의 소유자는 `RiskStateView` 이고 그대로 둔다.
@@ -213,6 +237,33 @@ namespace Ascend.Prototype.Audio
         /// <summary>지금 단계에 적용 중인 험 피치 배율(`AudioMixProfile._humPitchScale`).</summary>
         public float HumPitchScale => _humPitchScale;
 
+        /// <summary>
+        /// **지정한** 단계의 험 볼륨 배율. 험의 소유자(`RiskStateView`)가 자기 단계로 묻는다.
+        ///
+        /// <see cref="HumVolumeScale"/> 를 쓰지 않는 이유: 이 컴포넌트의 단계는 사건 버스로
+        /// 들어오므로 `RiskEventBridge` 가 씬에 없으면 **영원히 Stable 이다.** 그 상태에서
+        /// 험의 주인이 <see cref="HumVolumeScale"/> 을 읽으면 배율이 단계를 따라가지 않는데,
+        /// 값은 1 근처라 「배선이 끊겼다」와 「배율이 원래 1이다」가 구분되지 않는다.
+        /// 단계를 인자로 받으면 그 함정이 구조적으로 사라진다.
+        /// </summary>
+        public float HumVolumeScaleFor(Risk.RiskLevel level) => _mix.HumVolumeScaleFor(level);
+
+        /// <summary>같은 이유로 단계를 받는 험 피치 배율.</summary>
+        public float HumPitchScaleFor(Risk.RiskLevel level) => _mix.HumPitchScaleFor(level);
+
+        /// <summary>
+        /// 지금 그 채널의 <c>AudioSource.volume</c>. 감쇠 배율이 **소스에 닿았는지**를
+        /// 묻는 유일한 반증 수단이다 — 목표값만 노출하면 「계산은 됐다」로 끝난다
+        /// (<see cref="SubBedVolume"/> 과 같은 이유).
+        /// </summary>
+        public float ChannelVolumeOf(AudioCueChannel channel)
+        {
+            int index = (int)channel;
+            if (_sources == null || index < 0 || index >= _sources.Length) return 0f;
+            AudioSource source = _sources[index];
+            return source != null ? source.volume : 0f;
+        }
+
         // ── 지속 위험 레이어 관측값 (UP-RISK-05) ─────────────────────────────
         //
         // **스피커에 실제로 나간 값을 노출한다.** 목표값(`DangerBedTargets`)이 아니라
@@ -238,6 +289,49 @@ namespace Ascend.Prototype.Audio
 
         /// <summary>지금까지 울린 사이렌 수. §8.3 이 금지하는 「지속 재생」은 이 수가 폭주하는 것으로 나타난다.</summary>
         public int SirenCueCount { get; private set; }
+
+        /// <summary>
+        /// 실제로 울린 사이렌 **변형**의 비트 집합. 비트 n 은 `AudioCueTable.SirenVariant*`.
+        /// 총합(<see cref="SirenCueCount"/>)으로는 「넷이 각각 울렸는가」를 셀 수 없다 —
+        /// 단계 상승만 열 번 울려도 10 이 나온다.
+        /// </summary>
+        public int SirenVariantsMask => _sirenVariantsMask;
+
+        /// <summary>울린 사이렌 변형 수. 넷이 목표다(단계 상승·과수확 해금·레버 결정·사고).</summary>
+        public int SirenVariantCount => CountBits(_sirenVariantsMask);
+
+        /// <summary>
+        /// 그 위험 단계에서 울린 금속 응력음 수. `MASTER_PRD.md` §8.3 이 요구하는
+        /// 「단계가 소리로 구분된다」의 증거다 — 총합으로는 셀 수 없다.
+        /// </summary>
+        public int MetalStressCountAt(Risk.RiskLevel level)
+        {
+            int index = (int)level;
+            if (index < 0 || index >= _metalStressByLevel.Length) return 0;
+            return _metalStressByLevel[index];
+        }
+
+        /// <summary>응력음이 울린 단계의 비트 집합. 비트 n 은 <c>(RiskLevel)n</c>.</summary>
+        public int MetalStressLevelsMask => _metalStressLevelsMask;
+
+        /// <summary>응력음이 울린 **서로 다른 단계** 수. 1 이면 단계 전이가 한 종류만 들린 것이다.</summary>
+        public int MetalStressLevelCount => CountBits(_metalStressLevelsMask);
+
+        /// <summary>
+        /// 간격 때문에 **뒤로 밀린** 승객 음성 수. 0 이면 두 승객이 겹친 적이 없다는 뜻이고,
+        /// 그때는 이 간격이 아무것도 하지 않은 것이다(설정이 틀렸다는 뜻은 아니다).
+        /// </summary>
+        public int VoiceDeferredCount { get; private set; }
+
+        /// <summary>지금 줄 서 있는 승객 음성 수.</summary>
+        public int PendingVoiceCount => _voiceQueueCount;
+
+        private static int CountBits(int mask)
+        {
+            int n = 0;
+            for (int m = mask; m != 0; m &= m - 1) n++;
+            return n;
+        }
 
         /// <summary>사건 버스에서 만들어 낸 승객 음성 수. 승객 반응 시스템이 붙으면 여기가 멈춘다.</summary>
         public int EventVoiceCount { get; private set; }
@@ -316,6 +410,7 @@ namespace Ascend.Prototype.Audio
         {
             _handler = OnEvent;
             _queue = new Scheduled[QueueCapacity];
+            _voiceQueue = new Scheduled[VoiceQueueCapacity];
             _bakeWarned = new bool[32];
 
             // 에셋을 한 번만 스냅샷으로 뜬다. 매 프레임 `ScriptableObject` 를 타고 들어가면
@@ -447,6 +542,9 @@ namespace Ascend.Prototype.Audio
             // 첫 경보가 조용해지면, 원인이 이 타이머라는 단서가 아무 데도 없다.
             _sirenReadyAt = Now;
             _voiceReadyAt = Now;
+            _voiceNextAt = Now;
+            _voiceQueueHead = 0;
+            _voiceQueueCount = 0;
 
             // 위험 단계도 런과 함께 처음으로 돌아간다. 남겨 두면 새 런의 첫
             // `RiskLevelChanged` 가 "하강"으로 읽혀 사이렌이 통째로 빠진다.
@@ -475,6 +573,11 @@ namespace Ascend.Prototype.Audio
             ApplyListenerDuck(now, gain);
             RefreshHumTargets(gain);
             UpdateDangerBed(Time.unscaledDeltaTime);
+
+            // 승객 줄을 판정 줄보다 **먼저** 비운다. 두 줄은 서로를 기다리지 않으므로
+            // 순서가 소리를 바꾸지는 않지만, 같은 프레임에 둘 다 나갈 때 목소리가
+            // 캐스케이드 연타 뒤로 밀려 들리는 것을 막는다.
+            DrainVoiceQueue(now, gain);
             DrainQueue(now, gain);
         }
 
@@ -610,11 +713,24 @@ namespace Ascend.Prototype.Audio
         private void ApplyChannelVolumes(float gain)
         {
             if (_sources == null) return;
-            float master = _masterVolume * gain;
-            _sources[(int)AudioCueChannel.Machine].volume = ChannelVolume(AudioCueChannel.Machine) * master;
-            _sources[(int)AudioCueChannel.Event].volume = ChannelVolume(AudioCueChannel.Event) * master;
-            _sources[(int)AudioCueChannel.Passenger].volume = ChannelVolume(AudioCueChannel.Passenger) * master;
-            _sources[(int)AudioCueChannel.Warning].volume = ChannelVolume(AudioCueChannel.Warning) * master;
+            _sources[(int)AudioCueChannel.Machine].volume = EffectiveVolume(AudioCueChannel.Machine, gain);
+            _sources[(int)AudioCueChannel.Event].volume = EffectiveVolume(AudioCueChannel.Event, gain);
+            _sources[(int)AudioCueChannel.Passenger].volume = EffectiveVolume(AudioCueChannel.Passenger, gain);
+            _sources[(int)AudioCueChannel.Warning].volume = EffectiveVolume(AudioCueChannel.Warning, gain);
+        }
+
+        /// <summary>
+        /// 그 채널이 지금 내야 하는 최종 볼륨. **채널마다 다른 속도로 줄어든다.**
+        ///
+        /// 그전까지는 <c>ChannelVolume(ch) * _masterVolume * gain</c> 이었다 — 게인 하나를
+        /// 넷에 똑같이 곱했으므로 `AudioMixProfile` 의 감쇠 배율 다섯 필드가 계산까지 되고도
+        /// 소리에 닿지 않았다(감사 발견). 서열이 없으면 정적은 「방이 조용해졌다」가 아니라
+        /// 「볼륨이 내려갔다」로 들린다.
+        /// </summary>
+        private float EffectiveVolume(AudioCueChannel channel, float gain)
+        {
+            float duck = _mix.DuckScaleFor(ToMixChannel(channel));
+            return ChannelVolume(channel) * _masterVolume * SilenceWindow.ChannelGain(duck, gain);
         }
 
         private void ApplyListenerDuck(float now, float gain)
@@ -629,7 +745,14 @@ namespace Ascend.Prototype.Audio
                     _listenerBase = AudioListener.volume;
                     _listenerDucked = true;
                 }
-                AudioListener.volume = _listenerBase * gain;
+
+                // 다섯째 감쇠 배율(`AudioMixProfile._masterDuck`)의 소비처가 여기다.
+                // 채널 넷과 달리 이 우회로는 **이 컴포넌트가 모르는 소리**(발소리·UI)까지
+                // 줄인다 — 그 필드의 툴팁이 "마스터를 줄이면 플레이어 자신의 발소리까지
+                // 사라진다"고 말하는 대상이 정확히 이것이다. 기본값 1 에서는
+                // `ChannelGain(1, g) == g` 라 그전과 완전히 같은 곡선이다.
+                AudioListener.volume =
+                    _listenerBase * SilenceWindow.ChannelGain(_mix.MasterDuck, gain);
             }
             else
             {
@@ -759,7 +882,7 @@ namespace Ascend.Prototype.Audio
             _voiceReadyAt = now + _voiceCooldownSeconds;
 
             EventVoiceCount++;
-            Submit(in req);
+            SubmitVoice(in req);
         }
 
         /// <summary>
@@ -788,11 +911,10 @@ namespace Ascend.Prototype.Audio
             _externalVoiceDriver = true;
             if (intensity <= 0f) return false;
 
-            PassengerVoiceKind voice;
-            if (!PassengerVoices.TryFromCueId(voiceCue, out voice))
-                voice = PassengerVoices.FromReaction(reaction);
-
-            PlayVoice(passengerIndex, voice, intensity);
+            // 판정은 `PassengerVoices.Resolve` 하나가 갖는다. 여기서 다시 적으면
+            // 「무슨 소리를 냈는가」를 세는 쪽(`PassengerReactionView`)과 어긋나고,
+            // 어긋나도 컴파일되고 소리도 그대로 난다.
+            PlayVoice(passengerIndex, PassengerVoices.Resolve(voiceCue, reaction), intensity);
             return true;
         }
 
@@ -821,7 +943,76 @@ namespace Ascend.Prototype.Audio
         {
             AudioCueRequest req = AudioCueTable.PassengerVoice(passengerIndex, voice, intensity);
             ExternalVoiceCount++;
-            Submit(in req);
+            SubmitVoice(in req);
+        }
+
+        /// <summary>
+        /// 승객 음성 한 건을 **자기 줄**에 넣는다.
+        ///
+        /// 쿨다운(버린다)이 아니라 간격(민다)인 이유: §9.4 의 동시 반응 상한은 2 이고,
+        /// §9.3 은 그 둘이 **상반된 반응**이기를 요구한다. 겹친다고 뒤엣것을 버리면
+        /// 환호와 비명 중 하나만 들려서 그 대비가 소리에서 사라진다 — 자세로는 남고
+        /// 귀로는 없어지는, 가장 알아채기 어려운 종류의 누락이다.
+        ///
+        /// 누가 언제 반응하는가는 여전히 중재기의 규칙이다(`PassengerReactionDirector`).
+        /// 여기서 정하는 것은 **두 목소리가 같은 순간에 겹치지 않는다**뿐이라 상한이
+        /// 몇인지는 이 코드가 바꾸지 않는다.
+        /// </summary>
+        private void SubmitVoice(in AudioCueRequest req)
+        {
+            float now = Now;
+            float spacing = _voiceSpacingSeconds > 0f ? _voiceSpacingSeconds : 0f;
+
+            if (_voiceNextAt < now) _voiceNextAt = now;
+
+            if (_voiceNextAt <= now)
+            {
+                _voiceNextAt = now + spacing;
+                Play(in req, _silence.GainAt(now));
+                return;
+            }
+
+            float at = _voiceNextAt;
+
+            // 화면이 이미 다음 층으로 갔는데 목소리만 밀려 있으면 그건 반응이 아니다.
+            if (at - now > _maxLeadSeconds || _voiceQueueCount >= VoiceQueueCapacity)
+            {
+                DroppedCueCount++;
+                if (!_overflowWarned)
+                    WarnOverflow("승객 음성이 " + _maxLeadSeconds + "초 넘게 밀렸거나 줄이 "
+                                 + VoiceQueueCapacity + "개를 넘겼다");
+                return;
+            }
+
+            int tail = (_voiceQueueHead + _voiceQueueCount) % VoiceQueueCapacity;
+            _voiceQueue[tail].Kind = req.Kind;
+            _voiceQueue[tail].Volume = req.Volume;
+            _voiceQueue[tail].Pitch = req.Pitch;
+            _voiceQueue[tail].Variant = req.Variant;
+            _voiceQueue[tail].At = at;
+            _voiceQueueCount++;
+            VoiceDeferredCount++;
+
+            _voiceNextAt = at + spacing;
+        }
+
+        /// <summary>
+        /// 승객 줄을 비운다. 넣는 시각(<c>_voiceNextAt</c>)이 단조 증가라 FIFO 순서가
+        /// 곧 시간 순서다 — 판정 줄과 같은 성질이므로 정렬이 필요 없다.
+        /// </summary>
+        private void DrainVoiceQueue(float now, float gain)
+        {
+            while (_voiceQueueCount > 0)
+            {
+                int head = _voiceQueueHead;
+                if (_voiceQueue[head].At > now) break;
+
+                var req = new AudioCueRequest(_voiceQueue[head].Kind, _voiceQueue[head].Volume,
+                                              _voiceQueue[head].Pitch, _voiceQueue[head].Variant);
+                _voiceQueueHead = (head + 1) % VoiceQueueCapacity;
+                _voiceQueueCount--;
+                Play(in req, gain);
+            }
         }
 
         private void Submit(in AudioCueRequest req)
@@ -896,7 +1087,7 @@ namespace Ascend.Prototype.Audio
 
             // PlayOneShot 은 발동 시점의 source.volume 을 고정한다. Update 를 기다리면
             // 같은 프레임에 시작된 정적이 이 한 발에만 적용되지 않는다.
-            source.volume = ChannelVolume(channel) * _masterVolume * gain;
+            source.volume = EffectiveVolume(channel, gain);
             source.PlayOneShot(clip, req.Volume);
 
             PlayedCueCount++;
@@ -907,10 +1098,34 @@ namespace Ascend.Prototype.Audio
             int bit = (int)req.Kind;
             if (bit > 0 && bit < 32) PlayedKindsMask |= 1 << bit;
 
+            // 아래 셋은 전부 같은 이유로 있다: **`PlayedKindsMask` 가 variant 를 버린다.**
+            // 종류당 비트 하나라 「한 종류가 여러 번」과 「변형이 각각」이 같은 값을 낸다.
+            // 그 구분이 사라지면 §9.3(다섯 표현) · §8.3(네 사이렌 · 네 위험 단계)이
+            // 전부 「울리기는 했다」로만 관측된다.
+
             // 승객 음성은 한 큐 종류 안에 다섯 표현이 들어 있다(`MASTER_PRD.md` §9.3).
-            // `PlayedKindsMask` 로는 그 다섯이 각각 났는지 셀 수 없다 — 비트가 하나뿐이다.
             if (req.Kind == AudioCueKind.PassengerVoice)
                 VoiceKindsMask |= 1 << (int)PassengerVoices.KindOf(req.Variant);
+
+            // 금속 응력음의 변형은 **위험 단계 그 자체**다(`AudioCueTable.TryMap` 의
+            // RiskLevelChanged 분기가 그렇게 싣는다). 단계별로 세어야 「Strain 으로
+            // 올라간 것과 Collapse 로 떨어진 것이 다르게 들렸다」를 셀 수 있다.
+            else if (req.Kind == AudioCueKind.MetalStress)
+            {
+                int level = req.Variant;
+                if (level >= 0 && level < _metalStressByLevel.Length)
+                {
+                    _metalStressByLevel[level]++;
+                    _metalStressLevelsMask |= 1 << level;
+                }
+            }
+
+            // 사이렌 넷(단계 상승·과수확 해금·레버 결정·사고)도 같은 문제를 갖는다.
+            else if (req.Kind == AudioCueKind.Siren)
+            {
+                int variant = req.Variant;
+                if (variant >= 0 && variant < 32) _sirenVariantsMask |= 1 << variant;
+            }
 
             if (_logCues) Debug.Log("[상승] 오디오 큐 " + req + " ch=" + channel);
         }
@@ -1113,30 +1328,24 @@ namespace Ascend.Prototype.Audio
 //     (그 파일들은 이 작업의 소유 범위 밖이라 손대지 않았다.)
 //  3. `RiskLevelChanged` 도 아무도 발행하지 않는다. `RiskStateView` 가 단계 전이를 이미
 //     알고 있으므로 거기서 발행하는 것이 자연스럽다.
-//  4. 위험 단계 험(`RiskStateView._hum`)은 정적 구간에 함께 줄어들지 않는다.
-//     RiskStateView 가 매 LateUpdate 마다 `_hum.volume` 을 절대값으로 덮어쓰기 때문이다
-//     (그 파일의 CabinLightMultiplier 주석이 같은 함정을 이미 적어 두었다).
-//     지금은 `_duckGlobalListener` 로 AudioListener 전체를 줄여 우회한다.
+//  4. **끝났다.** `RiskStateView.ApplyAudio` 가 `HumVolumeScaleFor(level)` ·
+//     `HumPitchScaleFor(level)` · `SilenceGain` 을 읽어 자기 `_blended` 값 위에 곱한다.
+//     그래서 `AudioMixProfile` 의 험 배율 8필드와 과수확 정적이 험에 실제로 닿는다.
+//     확인은 `RiskStateView.HumSource` / `HumVolumeScale` / `HumSilenceGain` 으로 한다.
 //
-//     **여기서 절반은 끝냈다.** `AudioDirector.HumVolume` / `HumPitch` 가 이미
-//     `AudioMixProfile` 의 단계별 배율 × `DangerFeedbackProfile` 의 형태 × 정적 게인을
-//     곱한 최종값을 매 프레임 들고 있다(`RefreshHumTargets`). 남은 한 줄은 RiskStateView
-//     쪽이다 — `ApplyHum` 에서 `_hum.volume = _blended.HumVolume` 대신 배선된
-//     AudioDirector 의 `HumVolume` 을 쓰면 된다. 그 파일은 이 작업의 소유 범위 밖이라
-//     손대지 않았다. 그때까지 이 값들은 계산되고 노출되지만 험에 닿지는 않는다.
+//     배선은 필요 없다 — RiskStateView 가 Awake 에서 `FindAnyObjectByType` 으로 찾는다.
+//     씬에 AudioDirector 가 없으면 험은 프로파일 값 그대로 나고 `HumSource` 가 그렇게 찍힌다.
+//
+//     `_duckGlobalListener` 는 그대로 둔다. 이제 험이 스스로 정적을 따라가므로 이 스위치는
+//     "이 컴포넌트가 모르는 다른 소리"(발소리·UI)까지 함께 줄이는 용도로만 남는다.
 //
 //  5. 사이렌(UP-RISK-05)은 `_accessibilityProfile` 이 비어 있으면 "전부 허용"으로 돈다.
 //     `AccessibilityProfile.asset` 을 만들어 꽂으면 `AllowSiren` 이 실제로 사이렌만
 //     끈다 — 험·응력음·충격음은 남는다. `AccessibilitySource` 가 어느 쪽인지 알려 준다.
 //
-//  6. 승객 음성(UP-AUD-04)은 지금 **사건 버스 폴백**으로 난다. 승객 반응 중재기가
-//     누구를 고를지 이 컴포넌트는 모르기 때문이다. 그 파일들은 이 작업의 소유 범위 밖이라
-//     손대지 않았고, 대신 **부를 수 있는 진입점**을 여기 만들어 두었다.
-//
-//     `Scripts/Npc/PassengerReactionView.OnReacted` 에서 한 줄이면 된다:
-//
-//         _audio.PlayPassengerVoice(passengers[i], reactionEvent,
-//                                   reaction.VoiceCue, reaction.Intensity);
+//  6. **끝났다.** `Scripts/Npc/PassengerReactionView.OnReacted` 가 반응 사건과
+//     `reaction.VoiceCue` 를 함께 넘긴다. 그래서 대표 반응과 대조 반응이 **다른 소리**로
+//     간다 — 둘은 같은 사건에서 나오므로 큐 ID 없이는 구분이 구조적으로 불가능했다.
 //
 //     시그니처:
 //         bool PlayPassengerVoice(int passengerIndex,
@@ -1145,13 +1354,19 @@ namespace Ascend.Prototype.Audio
 //         bool PlayPassengerVoice(int passengerIndex, PassengerVoiceKind voice, float intensity)
 //         void PlayPassengerVoice(int passengerIndex, float intensity)   // 호흡 고정
 //
-//     첫 호출에 폴백이 물러나고(`HasExternalVoiceDriver`) 목소리와 몸짓이 같은 승객에게
-//     붙는다. 반환값 false 는 고장이 아니라 「이 반응은 조용하다」다 —
+//     첫 호출에 사건 버스 폴백이 물러나고(`HasExternalVoiceDriver`) 목소리와 몸짓이 같은
+//     승객에게 붙는다. 반환값 false 는 고장이 아니라 「이 반응은 조용하다」다 —
 //     과수확 접근이 그 경우이며 §7.3 이 그 순간을 정적으로 규정한다.
-//     쿨다운을 여기서 걸지 않는 이유: 누가 언제 반응하는지는 중재기의 규칙이고
-//     (UP-NPC-05), 두 곳에서 조이면 상한이 실제로 몇인지 아무도 모르게 된다.
 //
-//     `AudioDirector.VoiceKindCount` 가 다섯 표현이 실제로 났는지 센다. 5 가 목표다.
+//     **쿨다운은 여전히 걸지 않는다** — 누가 언제 반응하는지는 중재기의 규칙이고
+//     (UP-NPC-05), 두 곳에서 조이면 상한이 실제로 몇인지 아무도 모르게 된다.
+//     대신 `_voiceSpacingSeconds` 로 **간격만** 둔다. 버리지 않고 뒤로 미는 것이라
+//     동시 반응 2명의 목소리가 둘 다 들리되 같은 프레임에 겹치지 않는다.
+//     밀린 수는 `VoiceDeferredCount` 가 센다.
+//
+//     세는 곳이 둘이다. `AudioDirector.VoiceKindCount` 는 **스피커에 나간** 종류,
+//     `PassengerReactionView.VoiceKindCount` 는 **요청한** 종류다. 둘 다 5 가 목표이고,
+//     둘이 다르면 굽기가 실패했거나 오디오가 없는 것이다.
 //
 //  7. 지속 위험 레이어(UP-RISK-05)는 **씬에서 할 일이 없다.** AudioSource 두 개를
 //     `AudioBed_Sub` / `AudioBed_Stress` 로 Awake 에서 자식 생성한다.

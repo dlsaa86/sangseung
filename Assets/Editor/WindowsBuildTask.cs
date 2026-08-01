@@ -26,8 +26,43 @@ namespace Ascend.Prototype.EditorTools
         public const string OutputDirectory = "Builds/Windows";
         private const string ScenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
 
+        /// <summary>
+        /// 개발 빌드 산출물. 릴리스와 **따로 둔다** — 하나를 덮어쓰면
+        /// `verify-topdown.ps1` 의 C7 이 가리키는 실행 파일이 어느 쪽인지 알 수 없다.
+        /// </summary>
+        public const string DevOutputDirectory = "Builds/WindowsDev";
+
+        public const string DevReportPath = "Logs/build_report_dev.txt";
+
         [MenuItem("Ascend/Build Windows64")]
         public static void Schedule()
+        {
+            ScheduleInternal(false);
+        }
+
+        /// <summary>
+        /// 개발 빌드. `DEVELOPMENT_BUILD` 가 정의되고 프로파일러 카운터가 살아 있다.
+        ///
+        /// **왜 별도 메뉴가 필요한가** — 세 항목이 이것 없이는 증명될 수 없다.
+        /// ① `UP-TECH-03`(필수 참조 누락 시 개발 빌드에서 즉시 오류) — 검사기의 런타임
+        ///    경로가 `#if DEVELOPMENT_BUILD || UNITY_EDITOR` 안이라, 릴리스 빌드에는
+        ///    **코드 자체가 들어가지 않는다.** 지금까지의 증거는 전부 에디터 쪽이었다.
+        /// ② `UP-TECH-04`(90 FPS) — 에디터 게임 뷰가 디스플레이에 동기돼 중앙값이
+        ///    상한에 눌린다. 산출물이 스스로 「중앙값으로는 판정할 수 없다」고 적는다.
+        ///    빌드에서 재는 것이 유일한 길이다.
+        /// ③ `UP-TECH-05`(매 프레임 0 B GC) — 플레이어에 `GC Allocated In Frame`
+        ///    카운터가 있어야 하고, 그것은 개발 빌드 옵션이 켜져야 붙는다.
+        ///
+        /// `AllowDebugging` 은 켜지 않는다 — 디버거 연결을 기다리며 멈출 수 있고,
+        /// 여기서 재려는 것은 프레임 비용이지 중단점이 아니다.
+        /// </summary>
+        [MenuItem("Ascend/Build Windows64 (Development)")]
+        public static void ScheduleDevelopment()
+        {
+            ScheduleInternal(true);
+        }
+
+        private static void ScheduleInternal(bool development)
         {
             if (EditorApplication.isPlaying)
             {
@@ -36,12 +71,12 @@ namespace Ascend.Prototype.EditorTools
             }
 
             string root = Directory.GetCurrentDirectory();
-            string report = Path.Combine(root, ReportPath);
+            string report = Path.Combine(root, development ? DevReportPath : ReportPath);
             // 직전 결과를 지운다. 남아 있으면 이번에 안 돌았는데 돈 것처럼 읽힌다.
             if (File.Exists(report)) File.Delete(report);
 
-            Debug.Log($"[상승] Windows64 빌드 시작 → {ReportPath}");
-            Run();
+            Debug.Log($"[상승] Windows64 {(development ? "개발 " : string.Empty)}빌드 시작 → {(development ? DevReportPath : ReportPath)}");
+            Run(development);
         }
 
         /// <summary>
@@ -50,18 +85,23 @@ namespace Ascend.Prototype.EditorTools
         /// 실제로 예약만 되고 빌드가 영영 돌지 않았다. 몇 분간 메인 스레드를 잡는 대신
         /// 결과가 반드시 남는 쪽을 택한다 — 호출자는 <see cref="ReportPath"/> 로 판정한다.
         /// </summary>
-        public static void Run()
+        public static void Run() => Run(false);
+
+        public static void Run(bool development)
         {
             string root = Directory.GetCurrentDirectory();
-            string outDir = Path.Combine(root, OutputDirectory);
-            string report = Path.Combine(root, ReportPath);
+            string outDir = Path.Combine(root, development ? DevOutputDirectory : OutputDirectory);
+            string report = Path.Combine(root, development ? DevReportPath : ReportPath);
             double t0 = EditorApplication.timeSinceStartup;
 
             var sb = new StringBuilder();
-            sb.AppendLine("=== Windows64 빌드 ===");
+            sb.AppendLine($"=== Windows64 {(development ? "개발" : "릴리스")} 빌드 ===");
             sb.AppendLine($"unity: {Application.unityVersion}");
             sb.AppendLine($"target: {BuildTarget.StandaloneWindows64}");
             sb.AppendLine($"scene: {ScenePath}");
+            // 이 줄이 있어야 나중에 「어느 빌드에서 잰 값인가」를 되물을 수 있다.
+            // 릴리스에는 DEVELOPMENT_BUILD 가 정의되지 않아 진단·프로파일러 경로가 통째로 빠진다.
+            sb.AppendLine($"development: {development}  (DEVELOPMENT_BUILD {(development ? "정의됨" : "없음")})");
 
             try
             {
@@ -82,7 +122,11 @@ namespace Ascend.Prototype.EditorTools
                     locationPathName = Path.Combine(outDir, "Upandup_DDD.exe"),
                     target = BuildTarget.StandaloneWindows64,
                     targetGroup = BuildTargetGroup.Standalone,
-                    options = BuildOptions.None,
+                    // `AllowDebugging` 은 일부러 빼 둔다 — 디버거를 기다리며 멈출 수 있고,
+                    // 개발 빌드로 재려는 것은 프레임 비용이지 중단점이 아니다.
+                    options = development
+                        ? (BuildOptions.Development | BuildOptions.ConnectWithProfiler)
+                        : BuildOptions.None,
                 };
 
                 BuildReport rep = BuildPipeline.BuildPlayer(options);

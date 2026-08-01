@@ -152,7 +152,7 @@ namespace Ascend.Prototype.Run.Tests
             Pass("씬 배선 — 10층 런에 필요한 물체가 전부 있다");
             Check("층수 표시등이 있다", indicator != null, "FloorIndicatorView 없음");
             CheckEyeHeight();
-            CheckProfileInjection();
+            CheckProfileInjection(run);
             CheckRequiredReferenceGuard();
             CheckParticles();
 
@@ -304,7 +304,9 @@ namespace Ascend.Prototype.Run.Tests
             if (_particles != null)
             {
                 int peak = _particles.PeakConcurrent;
-                int cap = Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Collapse) * 5;
+                // **적용 중인 값**으로 잰다. 정적 폴백으로 재면 에셋이 상한을 올려도
+                // 예산 판정은 옛 숫자를 쓰게 되고, 그 어긋남은 초과가 나기 전까지 안 보인다.
+                int cap = _particles.BudgetFor(Risk.RiskLevel.Collapse) * _particles.SystemCount;
                 _report.AppendLine($"  파티클 최대 동시 {peak} / 전 계통 상한 {cap} " +
                                    $"({_particles.SystemCount}종 × Collapse 상한)");
                 // **공허하게 참이 되지 않게 한다** — 한 번도 안 나왔으면 상한 비교는 의미가 없다.
@@ -314,7 +316,81 @@ namespace Ascend.Prototype.Run.Tests
                 Check($"파티클이 예산을 넘지 않았다 — {peak} / {cap}",
                       peak <= cap,
                       $"{peak} > {cap}. PRD §12.5 의 단계별 상한을 넘었다");
+
+                // **단계별 상한이 런에서 실제로 올라갔는가.** 위의 두 단정은 Stable 상한
+                // 안에서만 놀아도 전부 통과한다 — 그러면 「단계마다 값이 다르다」가
+                // 표에서만 참이고 화면에서는 거짓인 상태를 못 잡는다.
+                // 전 계통이 Stable 상한(5종 × 단계값) 안에 머물렀다면 위험 단계가
+                // 파티클을 한 번도 못 움직인 것이다. 실측 285 / Stable 상한 120.
+                int stableCap = _particles.BudgetFor(Risk.RiskLevel.Stable) * _particles.SystemCount;
+                Check($"파티클이 Stable 상한을 넘어섰다 — {peak} / 전 계통 Stable 상한 {stableCap}",
+                      peak > stableCap,
+                      $"최대 동시 {peak} 가 Stable 상한 {stableCap} 을 못 넘었다 — " +
+                      "위험 단계가 파티클 예산을 실제로 올린 적이 없다는 뜻이다");
             }
+
+            // ── 과수확 수치가 규칙을 움직이는가 (UP-POWER-07) ──
+            //
+            // `CheckProfileInjection` 이 「에셋을 읽었다」까지 본다. 여기서는 그 값이
+            // **판정을 만들었는가**를 본다. 둘을 나누지 않으면, 배선만 살아 있고 규칙은
+            // 코드 상수를 쓰는 상태가 초록으로 남는다.
+            _report.AppendLine($"  과수확 규칙 표본 {_overharvestSamples}회 — " +
+                               $"해금 {_overharvestUnlockedSamples} / 잠김 {_overharvestLockedSamples} · " +
+                               $"추가스핀 가능 {_extraSpinAllowedSamples} / 불가 {_extraSpinBlockedSamples} · " +
+                               $"추가상한 최대 {_extraSpinLimitPeak}(그때 남은스핀 {_spinsRemainingAtLimitPeak})" +
+                               (_zeroRequirementSamples > 0
+                                   ? $" · 요구전력 0 표본 {_zeroRequirementSamples}개 제외"
+                                   : string.Empty));
+
+            bool bandObserved = !float.IsNegativeInfinity(_maxLockedRatio) &&
+                                !float.IsPositiveInfinity(_minUnlockedRatio);
+            if (bandObserved)
+                _report.AppendLine($"  해금 경계 관측 — 잠김 최대 달성률 {_maxLockedRatio * 100f:F1}% " +
+                                   $"< 해금 최소 달성률 {_minUnlockedRatio * 100f:F1}%");
+
+            // **이 줄이 없으면 아래 전부가 「실행되지 않은 단정」이다.** 결정 단계를
+            // 한 번도 안 밟은 런에서는 모든 카운터가 0 이고, 그때 「위반 0건」은
+            // 검사가 아니라 검사할 것이 없다는 뜻이 된다.
+            Check($"과수확 규칙을 결정 단계에서 실제로 읽었다 — {_overharvestSamples}회",
+                  _overharvestSamples > 0,
+                  "FloorSession 의 해금·추가스핀 속성을 한 번도 안 읽었다 — " +
+                  "아래 단정은 통과가 아니라 미검증이다");
+
+            Check($"해금 임계가 양쪽 극을 다 만든다 — 해금 {_overharvestUnlockedSamples}회 / " +
+                  $"잠김 {_overharvestLockedSamples}회",
+                  _overharvestUnlockedSamples > 0 && _overharvestLockedSamples > 0,
+                  $"해금 {_overharvestUnlockedSamples} / 잠김 {_overharvestLockedSamples} — " +
+                  "한쪽만 나오면 임계를 0 이나 무한으로 바꿔도 이 검사가 통과한다");
+
+            Check($"추가 스핀 가능·불가가 둘 다 관측됐다 — 가능 {_extraSpinAllowedSamples}회 / " +
+                  $"불가 {_extraSpinBlockedSamples}회",
+                  _extraSpinAllowedSamples > 0 && _extraSpinBlockedSamples > 0,
+                  $"가능 {_extraSpinAllowedSamples} / 불가 {_extraSpinBlockedSamples} — " +
+                  "`CanTakeExtraSpin` 이 상수로 굳어도 한쪽만 세면 못 잡는다");
+
+            Check($"추가 스핀 상한이 실제로 열린 적이 있다 — 최대 {_extraSpinLimitPeak}",
+                  _extraSpinLimitPeak >= 1,
+                  $"`ExtraSpinLimit` 이 런 내내 최대 {_extraSpinLimitPeak} 였다 — " +
+                  "상한이 열리지 않으면 프로파일의 추가 스핀 값은 도달 불가능한 수다");
+
+            Check($"추가 스핀 상한이 남은 스핀을 넘지 않는다 — 위반 {_extraSpinLimitViolations}건 / " +
+                  $"{_overharvestSamples}표본",
+                  _extraSpinLimitViolations == 0,
+                  $"{_extraSpinLimitViolations}건에서 `ExtraSpinLimit` 이 음수이거나 " +
+                  "남은 스핀보다 컸다 — 규칙이 없는 자원을 허락했다");
+
+            Check($"추가 스핀 허용이 해금·상한과 함께 성립한다 — 모순 {_overharvestCoherenceViolations}건",
+                  _overharvestCoherenceViolations == 0,
+                  $"{_overharvestCoherenceViolations}건에서 `CanTakeExtraSpin` 이 참인데 " +
+                  "해금이 거짓이거나 상한이 0 이었다 — 세 값이 같은 프로파일에서 오지 않는다");
+
+            Check($"해금 경계가 하나다 — 잠김 최대 {(bandObserved ? _maxLockedRatio * 100f : 0f):F1}% " +
+                  $"< 해금 최소 {(bandObserved ? _minUnlockedRatio * 100f : 0f):F1}%",
+                  bandObserved && _maxLockedRatio < _minUnlockedRatio,
+                  bandObserved
+                      ? $"잠김 최대 {_maxLockedRatio * 100f:F1}% 가 해금 최소 {_minUnlockedRatio * 100f:F1}% 이상이다 " +
+                        "— 달성률이 낮은 쪽이 열리고 높은 쪽이 잠겼다는 뜻이라 임계가 하나가 아니다"
+                      : "잠김·해금 중 한쪽 표본이 없어 경계를 관측하지 못했다");
 
             Check($"칸을 끝까지 채운 적이 있다 — {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸",
                   _peakLoadSlots >= BuildLoadout.MaxSlots,
@@ -389,6 +465,9 @@ namespace Ascend.Prototype.Run.Tests
                   audioKinds >= AudioKindFloor,
                   $"{audioKinds}종 — 하한 {AudioKindFloor} 아래로 내려갔다");
 
+            CheckFrameTimeHardFloor();
+            CheckOverharvestStages();
+
             Check("치명적 콘솔 오류 없음", _errorLogs == 0, $"{_errorLogs}건");
             _report.AppendLine($"  소요 {Time.realtimeSinceStartup - _startedAt:F1}초");
             Finish();
@@ -420,10 +499,46 @@ namespace Ascend.Prototype.Run.Tests
         private int _audioKindsMask;
         private bool _sawPresentationLock;
         private bool _sawNonEmptyOwnerCheck;
+
+        // ── 과수확 규칙 관측 (UP-POWER-07, 모든 런에 걸쳐 누적) ──
+        // 한 런으로는 양쪽 극을 못 본다. 잠긴 결정은 요구 전력에 못 미친 층에서만 나오고,
+        // 추가 스핀 상한이 열린 결정은 스핀이 남은 층에서만 나온다.
+        private int _overharvestSamples;
+        private int _overharvestUnlockedSamples;
+        private int _overharvestLockedSamples;
+        private int _extraSpinAllowedSamples;
+        private int _extraSpinBlockedSamples;
+        private int _extraSpinLimitPeak = -1;
+        private int _spinsRemainingAtLimitPeak;
+        private int _extraSpinLimitViolations;
+        private int _overharvestCoherenceViolations;
+        private int _zeroRequirementSamples;
+        private float _maxLockedRatio = float.NegativeInfinity;
+        private float _minUnlockedRatio = float.PositiveInfinity;
         private Player.FirstPersonController _player;
         private CharacterController _character;
         private Npc.PassengerReactionView _reactionView;
         private Effects.AmbientParticleDirector _particles;
+
+        /// <summary>
+        /// UP-POWER-06 1단계. 하네스는 마우스가 없어 조준을 만들 수 없으므로
+        /// 브리지의 조준 상태를 흉내 낸다 — dwell 시간 자체는 그대로 흘려보낸다.
+        /// </summary>
+        private OverharvestApproachBridge _approach;
+
+        /// <summary>UP-POWER-06 5단계. 세 채널이 **동시에** 재개됐는지 본다.</summary>
+        private View.OverharvestStageView _stageView;
+
+        // 스테이지 카운터는 **런 단위**로 리셋된다 — 그것이 옳은 설계다.
+        // 넘겨받으면 「지난 런에서 한 번 떴으니 됐다」가 되어 이번 런에서 죽은 단계를 덮는다.
+        //
+        // 그래서 **하네스가 누적한다.** 처음에 런이 다 끝난 뒤 카운터를 읽었더니 전부 0 이었다 —
+        // 마지막 재현 런이 리셋한 값을 본 것이고, 같은 런 안의 층별 단정은 그때 전부 PASS 였다.
+        // 제품 결함이 아니라 **내 단정이 잘못된 시점을 본 것**이다.
+        private int _stageApproachTotal;
+        private int _stageResumeTotal;
+        private bool _stageResumeSimultaneous = true;
+        private bool _stageSampled;
         private readonly Color[] _ambientSeen = new Color[16];
         private int _ambientSeenCount;
 
@@ -799,12 +914,20 @@ namespace Ascend.Prototype.Run.Tests
                 // ── 결정 ──
                 if (floor.Phase == FloorPhase.Decision)
                 {
+                    // **규칙 쪽 값을 먼저 거둔다.** 아래 로그 줄의 `해제`·`조작`은
+                    // `InteractableOverharvestLever` 의 것이지 `FloorSession` 의 것이 아니다.
+                    // 프로파일의 해금 임계·추가 스핀 상한이 사는 곳은 후자이고,
+                    // 지금까지 하네스는 후자를 **한 번도 읽지 않았다.**
+                    SampleOverharvestRule(floor);
+
                     // 왜 과수확을 못 당겼는지는 이 한 줄이 없으면 알 수 없다.
                     // 브리지의 해제 조건은 `Decision && CanBank && SpinsRemaining > 0`인데,
                     // 탱크는 스핀 소진 시에도 눌리므로 "탱크가 눌린다"가 `CanBank`를 증명하지 않는다.
                     _report.AppendLine($"      결정: 전력 {floor.Power:F0}/{floor.RequiredPower:F0} " +
                         $"확정가능={floor.CanBank} 남은스핀={floor.SpinsRemaining} " +
                         $"과수확(해제={overharvest.IsUnlocked} 조작={overharvest.CanInteract}) " +
+                        $"규칙(해금={floor.IsOverharvestUnlocked} 추가가능={floor.CanTakeExtraSpin} " +
+                        $"추가상한={floor.ExtraSpinLimit}) " +
                         $"연출잠금={bridge.IsLocked}");
 
                     if (!floor.CanBank && floor.SpinsRemaining > 0)
@@ -833,9 +956,41 @@ namespace Ascend.Prototype.Run.Tests
                         if (overharvest.CanInteract)
                         {
                         int extraBefore = floor.ExtraSpinsTaken;
+
+                        // ── UP-POWER-06 1단계 ─────────────────────────────────
+                        // 하네스가 레버를 **겨누지 않고** 곧바로 `Interact()` 를 불러서
+                        // `CrosshairInteractor.CurrentInteractable` 이 한 번도 레버가 되지
+                        // 않았고, 그래서 접근 dwell 0.15초가 **어떤 런에서도 성립한 적이 없다.**
+                        // PRD §7.3 의 1단계(접근)가 통째로 미관측이었던 정확한 원인이다.
+                        //
+                        // dwell 을 **면제하지 않는다** — 면제하면 그 상수가 다시 아무도 안 읽는
+                        // 값이 되고, 「5단계가 다 돌았다」가 또 반증 불가능해진다. 조준만 흉내 낸다.
+                        if (_approach != null)
+                        {
+                            _approach.SimulateAim(true);
+                            float aimUntil = Time.realtimeSinceStartup + _approach.DwellThresholdSeconds + 0.1f;
+                            while (Time.realtimeSinceStartup < aimUntil) yield return null;
+                            Check($"{number}층 과수확 1단계(접근)가 발화한다",
+                                  _approach.ApproachCount > 0, _approach.LastBlockReason);
+                        }
+
                         overharvest.Interact(gameObject);
                         yield return null;
+                        if (_approach != null) _approach.SimulateAim(false);
                         yield return WaitWhileLocked(bridge);
+
+                        // 리셋되기 전에 **이 자리에서** 누적한다 (필드 주석 참조).
+                        if (_stageView != null)
+                        {
+                            _stageApproachTotal += _stageView.ApproachCount;
+                            _stageResumeTotal += _stageView.ResumeCount;
+                            if (!_stageView.ResumeIsSimultaneous) _stageResumeSimultaneous = false;
+                            if (!_stageSampled)
+                            {
+                                _stageSampled = true;
+                                _report.AppendLine($"  [과수확 단계 표본] {number}층 — {_stageView.Describe()}");
+                            }
+                        }
                         Check($"{number}층 과수확이 추가 스핀을 소비한다",
                               floor.ExtraSpinsTaken > extraBefore,
                               $"{extraBefore} → {floor.ExtraSpinsTaken}");
@@ -1012,9 +1167,56 @@ namespace Ascend.Prototype.Run.Tests
         /// 단계 상한과 대조한다. 다만 이 단정은 런이 끝난 뒤에도 다시 본다 —
         /// 여기서는 시작 시점이라 아직 0 일 수 있다.
         /// </summary>
+        /// <summary>
+        /// `UP-POWER-06` — PRD §7.3 의 5단계가 **실제로 발화했는가.**
+        ///
+        /// 총합을 세지 않는다. 단계마다 카운터가 따로 있어야 「1단계가 한 번도 안 돌았는데
+        /// 5단계만 도는」 현재 상태가 숫자로 드러난다 — 실제로 그랬고, 원인은 하네스가
+        /// 레버를 겨누지 않은 것이었다(위 `SimulateAim`).
+        ///
+        /// 채널 배선을 **따로** 묻는다. 배선이 비면 카운터는 올라가는데 화면엔 아무것도
+        /// 없다 — 그 상태를 통과시키면 「연출이 있다」가 거짓이 된다.
+        /// </summary>
+        private void CheckOverharvestStages()
+        {
+            if (_stageView == null)
+            {
+                Check("과수확 5단계 연출이 씬에 있다", false,
+                      "OverharvestStageView 가 씬에 없다 — 5단계(재개)를 관측할 수단이 없다");
+                return;
+            }
+
+            _report.AppendLine($"  [과수확 단계] 최종 {_stageView.Describe()}");
+            _report.AppendLine($"  [과수확 단계] 런 누적 — 1접근 {_stageApproachTotal} / 5재개 {_stageResumeTotal}");
+
+            // 배선과 출처는 런과 무관하므로 최종 상태를 그대로 본다.
+            Check($"과수확 5단계 채널이 전부 배선됐다 — 빠진 것 「{_stageView.MissingChannels}」",
+                  _stageView.AllChannelsBound, _stageView.MissingChannels);
+            Check($"과수확 수치가 OverharvestProfile 에서 온다 — 출처 「{_stageView.OverharvestSource}」",
+                  _stageView.OverharvestSource.EndsWith("Profile"),
+                  "폴백(코드 프리셋)이다 — 에셋을 떼어내도 값이 같아 배선을 반증할 수 없다");
+
+            // 카운터는 **당김 직후에 누적한 값**을 본다. 최종 상태를 읽으면 마지막
+            // 재현 런이 리셋한 0 을 보게 된다 (필드 주석 참조).
+            Check($"1단계(접근)가 발화했다 — 누적 {_stageApproachTotal}회",
+                  _stageApproachTotal > 0,
+                  "조준 dwell 이 성립하지 않았다 — 하네스가 레버를 겨누는지 확인할 것");
+            Check($"5단계(재개)가 발화했다 — 누적 {_stageResumeTotal}회",
+                  _stageResumeTotal > 0, "과수확을 한 번도 당기지 않았거나 사건이 버스로 안 왔다");
+            Check("5단계 세 채널이 **동시에** 재개된다",
+                  _stageResumeSimultaneous,
+                  "경고등·진동·통관 회전이 서로 다른 시각에 시작한다 — §7.3 은 「동시에」를 요구한다");
+
+            // 표본을 한 번도 못 뜬 경우를 통과로 남기지 않는다.
+            Check("과수확 단계를 실제로 표본했다",
+                  _stageSampled, "당김 직후 표본이 0회다 — 위 누적 단정이 전부 공허해진다");
+        }
+
         private void CheckParticles()
         {
             _particles = FindAnyObjectByType<Effects.AmbientParticleDirector>();
+            _approach = FindAnyObjectByType<OverharvestApproachBridge>();
+            _stageView = FindAnyObjectByType<View.OverharvestStageView>();
             Check("파티클 디렉터가 씬에 있다", _particles != null,
                   "AmbientParticleDirector 없음 — UP-VIS-05");
             if (_particles == null) return;
@@ -1022,9 +1224,52 @@ namespace Ascend.Prototype.Run.Tests
             Check($"파티클 다섯 갈래가 만들어졌다 — {_particles.SystemCount}종",
                   _particles.SystemCount == 5,
                   $"{_particles.SystemCount}종 — 먼지·녹가루·스파크·정화 파편·캐스케이드 유입 다섯이어야 한다");
-            Check($"단계 상한이 데이터에서 온다 — 현재 {_particles.CurrentBudget}",
-                  _particles.CurrentBudget > 0,
-                  "MaxParticlesFor 가 0 을 돌려준다");
+            // 여기 있던 단정은 `CurrentBudget > 0` 이었고 **어떤 값에서도 참이었다.**
+            // 상한표에 폴백 가지가 있어 인자가 무엇이든 양수가 나오고, 네 단계가 전부
+            // 같은 수여도 초록이었다. PRD §12.5 가 요구하는 것은 「상한이 있다」가 아니라
+            // **「단계마다 다르다」**이고, 같으면 위험 단계가 파티클을 못 움직인다.
+            //
+            // 단조 증가로 묻는 이유: 상한이 방금 프로파일 쪽으로 옮겨갔다. 구체적인 수
+            // (24/48/80/120)를 박으면 밀도를 조정하는 순간 거짓 실패가 난다.
+            // 순서는 데이터가 바뀌어도 유지돼야 하는 성질이다 — Collapse 가 Stable 보다
+            // 적게 뿜으면 그건 조정이 아니라 회귀다.
+            //
+            // **정적 `MaxParticlesFor` 가 아니라 인스턴스의 `BudgetFor` 를 묻는다.**
+            // 전자는 에셋이 꽂혀 있어도 코드 프리셋을 돌려주는 폴백이라고 그쪽 주석이
+            // 명시한다 — 그것으로 단정하면 「데이터가 화면까지 흘렀는가」를 영영 못 본다.
+            // 출처 이름은 **적기만 한다.** 지금 `PresentationProfile.asset` 도 씬 배선도
+            // 없어 폴백이 정상 상태이고, 여기서 단정하면 남의 미배선을 내 실패로 적게 된다.
+            int stable = _particles.BudgetFor(Risk.RiskLevel.Stable);
+            int strain = _particles.BudgetFor(Risk.RiskLevel.Strain);
+            int critical = _particles.BudgetFor(Risk.RiskLevel.Critical);
+            int collapse = _particles.BudgetFor(Risk.RiskLevel.Collapse);
+            _report.AppendLine($"  파티클 밀도 출처 「{_particles.PresentationSource}」 — " +
+                               $"적용 {stable}/{strain}/{critical}/{collapse} · 코드 프리셋 " +
+                               $"{Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Stable)}/" +
+                               $"{Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Strain)}/" +
+                               $"{Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Critical)}/" +
+                               $"{Effects.AmbientParticleDirector.MaxParticlesFor(Risk.RiskLevel.Collapse)}");
+            Check($"단계마다 상한이 다르다 — Stable {stable} < Strain {strain} < " +
+                  $"Critical {critical} < Collapse {collapse}",
+                  stable > 0 && stable < strain && strain < critical && critical < collapse,
+                  $"{stable}/{strain}/{critical}/{collapse} — 네 단계가 단조 증가하지 않는다. " +
+                  "같은 값이면 위험 단계가 파티클 밀도를 못 바꾸고, PRD §12.5 의 단계별 예산이 " +
+                  "이름만 남는다");
+
+            // 지금 적용 중인 상한이 **지금 위험 단계의** 값인가. 이것이 없으면
+            // `CurrentBudget` 이 단계표와 끊긴 채 상수를 돌려줘도 위 단정만으로는 못 잡는다.
+            //
+            // 여기서 재는 이유: 디렉터는 `LateUpdate` 에서 단계를 캐시하므로 단계가
+            // **바뀌는 프레임**에는 한 프레임 뒤진다. 이 검사는 런이 시작되기 전
+            // (양쪽 다 Stable, 아직 스핀 없음) 한 번만 돌아 그 창을 피한다.
+            Risk.RiskStateView riskNow = FindAnyObjectByType<Risk.RiskStateView>();
+            Risk.RiskLevel levelNow = riskNow != null ? riskNow.Level : Risk.RiskLevel.Stable;
+            int expectedBudget = _particles.BudgetFor(levelNow);
+            Check($"현재 상한이 현재 위험 단계의 값이다 — {levelNow} / 적용 {_particles.CurrentBudget} " +
+                  $"/ 표 {expectedBudget}",
+                  _particles.CurrentBudget == expectedBudget,
+                  $"단계 {levelNow} 의 표값은 {expectedBudget} 인데 적용된 상한은 " +
+                  $"{_particles.CurrentBudget} 이다 — 상한이 단계와 끊겨 있다");
         }
 
         /// <summary>
@@ -1104,10 +1349,24 @@ namespace Ascend.Prototype.Run.Tests
         /// 참인지 알 수 없다.** 그래서 각 소비자가 자기 출처 이름을 내놓게 하고 그것을 읽는다 —
         /// 폴백이면 "코드 프리셋"·"인스펙터 슬라이더"라고 적히므로 통과하지 않는다.
         /// </summary>
-        private void CheckProfileInjection()
+        private void CheckProfileInjection(RunSessionBehaviour run)
         {
             // 여기서 잡아 둔다 — 적재 직후의 승객 수 대조가 첫 런부터 돌아야 한다.
             _reactionView = FindAnyObjectByType<Npc.PassengerReactionView>();
+
+            // **규칙 경로도 따로 묻는다.** 지금까지 초록이던 프로파일 단정 넷은 전부
+            // `AudioDirector` 쪽이었다 — 정적 구간·믹스·위험 연출·접근성. 그런데
+            // `OverharvestProfile` 의 9개 값 중 **판돈 둘·해금 임계·추가 스핀 상한**은
+            // 오디오가 아니라 `RunSessionBehaviour → RunSession → FloorSession` 으로 흐른다.
+            // 그 경로를 아무도 안 보면, 씬에서 `_overharvestProfile` 을 떼어내도
+            // 오디오 쪽 넷은 그대로 초록이고 밸런스만 조용히 코드 기본값으로 돌아간다.
+            //
+            // 폴백이면 `OverharvestSource` 가 「코드 기본값 + 인스펙터 판돈」이 되므로
+            // `EndsWith("Profile")` 이 거짓이 되고 **실패한다.** 그것이 이 단정의 요점이다.
+            Check("규칙 경로가 OverharvestProfile 을 읽는다",
+                  run != null && run.OverharvestSource.EndsWith("Profile"),
+                  run == null ? "RunSessionBehaviour 없음"
+                              : $"출처 「{run.OverharvestSource}」 — 규칙이 에셋이 아니라 폴백을 쓰고 있다");
 
             Risk.RiskStateView risk = FindAnyObjectByType<Risk.RiskStateView>();
             Check("위험 연출이 DangerFeedbackProfile 을 읽는다",
@@ -1146,6 +1405,190 @@ namespace Ascend.Prototype.Run.Tests
                 _report.AppendLine($"  렌더 예산 측정 조건이 기준과 " +
                                    $"{(probe.MeasuredAtReference ? "같다" : "다르다")} " +
                                    $"— {Screen.width}×{Screen.height} / vSync {QualitySettings.vSyncCount}");
+            }
+        }
+
+        /// <summary>
+        /// PRD §13.1 의 **하드 플로어**를 단정한다 (`UP-TECH-07`).
+        ///
+        /// 지금까지 이 하네스는 렌더 예산에 대해 「통과를 요구하지 않는다」고 적고
+        /// 조건만 한 줄 남겼다. 목표 90 FPS 쪽은 그래도 된다 — 에디터 Play 는
+        /// vSync·표시 상한에 걸려 중앙값이 8.33ms 에 못 박히므로 목표 달성 여부를
+        /// 판정할 수 없고, 그 사실이 이미 `Logs/render_budget.txt` 에 적혀 있다.
+        ///
+        /// **하지만 하한은 다르다.** 60 FPS(16.67ms)는 목표가 아니라 바닥이고,
+        /// 바닥은 상한에 걸려도 판정할 수 있다 — 표시 상한은 프레임을 **빠르게**
+        /// 만들지 느리게 만들지 않기 때문이다. 바닥을 아무도 안 물으면 성능 회귀는
+        /// 「숫자가 로그에 있었다」로 끝나고 아무 단정도 실패하지 않는다.
+        ///
+        /// 하한 수치는 `TargetHardwareProfile` 에서 읽는다(보고서가 그 값을 싣는다).
+        /// 다만 **PRD 상수보다 느슨해지지는 못한다** — 에셋을 30 FPS 로 내려
+        /// 이 검사를 통과시키는 길을 막는다.
+        ///
+        /// 창의 한계는 그대로 적는다: 측정기는 마지막 600표본만 들고 있으므로
+        /// 이 p95 는 런 전체가 아니라 **말미 구간**의 값이다. 그것을 적지 않으면
+        /// 숫자가 실제보다 넓은 범위를 증명하는 것처럼 읽힌다.
+        /// </summary>
+        private void CheckFrameTimeHardFloor()
+        {
+            Perf.RenderBudgetProbe probe = FindAnyObjectByType<Perf.RenderBudgetProbe>();
+            if (probe == null)
+            {
+                Fail("프레임타임 하드 플로어",
+                     "RenderBudgetProbe 가 씬에 없다 — PRD §13.1 의 하한을 판정할 근거가 없다");
+                return;
+            }
+
+            // 링 버퍼 용량이 600 이다. 가득 차지 않았으면 p95 가 창 전체를 대표하지 않는다.
+            // 실측 표본은 62644개라 이 하한은 여유가 크다.
+            const int SampleFloor = 600;
+            Check($"렌더 예산 표본이 판정할 만큼 있다 — {probe.TotalSamples}개",
+                  probe.TotalSamples >= SampleFloor,
+                  $"{probe.TotalSamples}개 — 하한 {SampleFloor} 미만이면 p95 는 판정이 아니라 인상이다");
+            if (probe.TotalSamples <= 0) return;
+
+            // 조건이 기준과 다르면 이 p95 가 **무엇에 대한 수인지**가 달라진다.
+            // 해상도가 낮으면 통과가 쉬워지므로, 조건을 안 묻는 하한 검사는 스스로를 속인다.
+            Check($"프레임타임을 기준 조건에서 쟀다 — {Screen.width}×{Screen.height} / " +
+                  $"vSync {QualitySettings.vSyncCount}",
+                  probe.MeasuredAtReference,
+                  "기준 해상도·vSync 조건이 아니다 — 게임 뷰를 1920×1080 / vSync 꺼짐으로 두고 다시 잰다. " +
+                  "조건이 다르면 아래 p95 는 하한 판정의 근거가 되지 않는다");
+
+            string report = probe.Report();
+            string frameLine = ExtractLine(report, "[프레임타임]");
+            float p95;
+            if (frameLine == null || !TryParseNumberAfter(frameLine, "95%", out p95))
+            {
+                Fail("프레임타임 p95 판독",
+                     "RenderBudgetProbe 보고서에서 95% 프레임타임을 못 읽었다 — 형식이 바뀌었다: " +
+                     $"「{frameLine ?? "[프레임타임] 줄 없음"}」. 하한 단정이 실행되지 않았다");
+                return;
+            }
+
+            float profileFloorFps;
+            if (!TryParseNumberAfter(report, "하한", out profileFloorFps) || profileFloorFps <= 0f)
+            {
+                Fail("하드 플로어 판독",
+                     "TargetHardwareProfile 의 하한 FPS 를 보고서에서 못 읽었다 — " +
+                     "하한이 데이터에서 오는지 확인할 수 없다");
+                return;
+            }
+
+            const float PrdHardFloorFps = 60f;   // PRD §13.1. 목표가 아니라 바닥이다.
+            Check($"기준 프로파일의 하한이 PRD §13.1 이상이다 — {profileFloorFps:F0} FPS",
+                  profileFloorFps >= PrdHardFloorFps,
+                  $"{profileFloorFps:F0} FPS — PRD §13.1 의 60 FPS 보다 낮다. " +
+                  "에셋을 내려 검사를 통과시키는 길이므로 여기서 막는다");
+
+            float effectiveFloorFps = Mathf.Max(PrdHardFloorFps, profileFloorFps);
+            float floorMs = 1000f / effectiveFloorFps;
+
+            _report.AppendLine($"  프레임타임 p95 {p95:F2} ms — 측정기의 마지막 600표본 창이다 " +
+                               $"(런 전체가 아니다). 하한 {effectiveFloorFps:F0} FPS = {floorMs:F2} ms");
+            Check($"프레임타임 p95 가 하드 플로어 안이다 — {p95:F2} ms / 하한 {floorMs:F2} ms",
+                  p95 <= floorMs,
+                  $"p95 {p95:F2} ms 는 {1000f / Mathf.Max(0.01f, p95):F0} FPS 다 — " +
+                  $"PRD §13.1 의 하한 {effectiveFloorFps:F0} FPS 를 밑돈다. " +
+                  "목표(90 FPS)가 아니라 바닥이 뚫린 것이다");
+        }
+
+        /// <summary>
+        /// <paramref name="text"/> 안에서 <paramref name="marker"/> 로 시작하는 줄 하나를 떼어낸다.
+        /// 남의 소유(`Scripts/Perf`) 보고서를 읽어야 해서 필요한 것이고,
+        /// **형식이 바뀌면 조용히 통과하는 대신 실패한다**는 전제 위에서만 쓴다.
+        /// </summary>
+        private static string ExtractLine(string text, string marker)
+        {
+            if (string.IsNullOrEmpty(text)) return null;
+            int at = text.IndexOf(marker, StringComparison.Ordinal);
+            if (at < 0) return null;
+            int end = text.IndexOf('\n', at);
+            string line = end < 0 ? text.Substring(at) : text.Substring(at, end - at);
+            return line.TrimEnd('\r');
+        }
+
+        /// <summary>표식 뒤에 오는 첫 실수를 읽는다. 못 읽으면 false — 0 을 돌려주지 않는다.</summary>
+        private static bool TryParseNumberAfter(string text, string marker, out float value)
+        {
+            value = 0f;
+            if (string.IsNullOrEmpty(text)) return false;
+            int at = text.IndexOf(marker, StringComparison.Ordinal);
+            if (at < 0) return false;
+
+            int i = at + marker.Length;
+            while (i < text.Length && (text[i] == ' ' || text[i] == '\t')) i++;
+            int start = i;
+            if (i < text.Length && (text[i] == '-' || text[i] == '+')) i++;
+            while (i < text.Length && (char.IsDigit(text[i]) || text[i] == '.' || text[i] == ',')) i++;
+            if (i == start) return false;
+
+            string number = text.Substring(start, i - start).TrimEnd('.', ',');
+            if (number.Length == 0) return false;
+
+            // 보고서는 `ToString("0.00")` 으로 쓰므로 현재 문화권을 먼저 시도하고,
+            // 소수점이 다른 환경을 대비해 불변 문화권으로 한 번 더 본다.
+            return float.TryParse(number, System.Globalization.NumberStyles.Float,
+                                  System.Globalization.CultureInfo.CurrentCulture, out value)
+                || float.TryParse(number, System.Globalization.NumberStyles.Float,
+                                  System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>
+        /// 결정 단계마다 `FloorSession` 의 과수확 세 속성을 거둔다 (`UP-POWER-07`).
+        ///
+        /// **왜 존재만 묻지 않는가**: `OverharvestSource` 가 에셋 이름이라는 것은
+        /// 「스냅샷을 떴다」까지만 증명한다. 뜬 값이 규칙에 닿았는지는 별개고,
+        /// 이 저장소가 반복해서 당한 실패의 두 번째 층이 정확히 거기다 —
+        /// 읽기는 읽는데 값을 바꿔도 게임이 그대로인 상태.
+        ///
+        /// **왜 양쪽 극을 세는가**: 「해금됐다」만 세면 임계를 0 으로 내려 항상 열리게
+        /// 만들어도 통과한다. 「잠겼다」만 세면 반대다. 임계가 실제로 경계를 만들려면
+        /// 한 런 안에서 **둘 다** 관측돼야 하고, 한쪽이 0이면 그 사실이 실패로 남아야 한다.
+        /// 조건이 안 선 것을 통과로 적으면 그 뒤의 모든 숫자가 근거를 잃는다.
+        /// </summary>
+        private void SampleOverharvestRule(FloorSession floor)
+        {
+            if (floor == null) return;
+
+            _overharvestSamples++;
+
+            bool unlocked = floor.IsOverharvestUnlocked;
+            bool canTake = floor.CanTakeExtraSpin;
+            int limit = floor.ExtraSpinLimit;
+            int remaining = floor.SpinsRemaining;
+
+            if (unlocked) _overharvestUnlockedSamples++; else _overharvestLockedSamples++;
+            if (canTake) _extraSpinAllowedSamples++; else _extraSpinBlockedSamples++;
+
+            // 상한은 「남은 스핀」과 「프로파일 상한」의 작은 쪽이다. 남은 스핀을 넘으면
+            // 그 순간 규칙이 자기 자원보다 많은 것을 허락한 것이다.
+            if (limit < 0 || limit > remaining) _extraSpinLimitViolations++;
+            if (limit > _extraSpinLimitPeak)
+            {
+                _extraSpinLimitPeak = limit;
+                _spinsRemainingAtLimitPeak = remaining;
+            }
+
+            // 셋이 서로 무관하게 움직이면 「하나의 프로파일이 규칙을 움직인다」가 거짓이다.
+            if (canTake && (!unlocked || limit <= 0)) _overharvestCoherenceViolations++;
+
+            // 달성률 0 나눗셈을 피한다. `IsUnlocked` 도 요구 전력 0 이면 무조건 참이라
+            // 그 표본은 경계 관측에 쓸 수 없다 — 버리되 **몇 개를 버렸는지 남긴다.**
+            if (floor.RequiredPower <= 0.0001f)
+            {
+                _zeroRequirementSamples++;
+                return;
+            }
+
+            float ratio = floor.Power / floor.RequiredPower;
+            if (unlocked)
+            {
+                if (ratio < _minUnlockedRatio) _minUnlockedRatio = ratio;
+            }
+            else
+            {
+                if (ratio > _maxLockedRatio) _maxLockedRatio = ratio;
             }
         }
 

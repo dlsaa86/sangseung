@@ -162,6 +162,9 @@ if (-not (Test-Path $P.Backlog)) {
                 Title    = $Matches[2].Trim()
                 Class    = ''
                 State    = ''
+                # 이 항목의 상태 바를 **어느 패스가 요구하는가**. 백로그의 `패스:` 필드에
+                # 나열된 것 중 **가장 이른 패스**다. 0 이면 필드를 읽지 못한 것이다.
+                GatePass = 0
                 Evidence = @()
                 Problem  = ''
             }
@@ -180,7 +183,15 @@ if (-not (Test-Path $P.Backlog)) {
         }
         if ($line -match '^##\s') { $null = $Items.Add($cur); $cur = $null; continue }
         if ($line -match '^-\s+분류:\s*(Required|Deferred|Approval Required)\b') { $cur.Class = $Matches[1]; continue }
-        if ($line -match '^-\s+상태:\s*([A-Z_]+)\b')                              { $cur.State = $Matches[1]; continue }
+        if ($line -match '^-\s+상태:\s*([A-Z_]+)\b') {
+            $cur.State = $Matches[1]
+            # 같은 줄의 `· 패스: P2 P3` 에서 **가장 이른** 패스를 뽑는다.
+            # 항목마다 소유 패스가 다르다 — 비주얼 항목을 Pass 2 가 막으면
+            # 「범위를 펼치는 단계」가 다시 최종 QA 가 된다 (2026-08-02 사용자 지시).
+            $passNums = @([regex]::Matches($line, 'P([1-4])\b') | ForEach-Object { [int]$_.Groups[1].Value })
+            if ($passNums.Count -gt 0) { $cur.GatePass = ($passNums | Measure-Object -Minimum).Minimum }
+            continue
+        }
         if ($line -match '^-\s+증거:\s*(.+)$') {
             $raw = $Matches[1]
             if ($raw -notmatch '없음') {
@@ -222,10 +233,30 @@ $GatePass = [Math]::Min($CurrentPass, 4)
 $PassBarRank = @{ 1 = 1; 2 = 2; 3 = 2; 4 = 3 }
 $PassBarName = @{ 1 = 'SKELETON 또는 VISIBLE'; 2 = 'CONNECTED'; 3 = 'CONNECTED'; 4 = 'VERIFIED' }
 
+# 상태 바에 미달인 Required 항목.
+#
+# `$OwnedByPass` 를 주면 **그 패스가 소유한 항목만** 센다 — 백로그의 `패스:` 필드에서
+# 가장 이른 패스가 그 이하인 것들이다. 소유권을 안 보면 Pass 2 가 비주얼 항목까지
+# 요구하게 되고, 그것이 「범위를 펼치는 단계」를 다시 최종 QA 로 만든다.
+#
+# Pass 4 는 소유권과 무관하게 **전부** 요구한다 (게이트 4 는 모든 항목 게이트 이상이다).
 function Get-Below {
-    param([int] $BarRank)
+    param([int] $BarRank, [int] $OwnedByPass = 0)
     return @($Required | Where-Object {
         if ($OutOfLadder -contains $_.State) { return $false }
+        if ($OwnedByPass -gt 0 -and $_.GatePass -gt 0 -and $_.GatePass -gt $OwnedByPass) { return $false }
+        if (-not $StateRank.ContainsKey($_.State)) { return $true }
+        return ($StateRank[$_.State] -lt $BarRank)
+    })
+}
+
+# 미달이지만 **아직 그 패스의 소유가 아니라서** 세지 않은 것.
+# 사라진 요구가 되지 않도록 항상 함께 보고한다.
+function Get-NotYetOwned {
+    param([int] $BarRank, [int] $OwnedByPass)
+    return @($Required | Where-Object {
+        if ($OutOfLadder -contains $_.State) { return $false }
+        if ($_.GatePass -le 0 -or $_.GatePass -le $OwnedByPass) { return $false }
         if (-not $StateRank.ContainsKey($_.State)) { return $true }
         return ($StateRank[$_.State] -lt $BarRank)
     })
@@ -245,8 +276,19 @@ if ($Stats) {
     Write-Output ''
     Write-Output ("현재 패스        : {0}" -f $(if ($AllPassesComplete) { '전부 COMPLETE' } else { "Pass $CurrentPass" }))
     foreach ($k in 1..4) {
-        $below = Get-Below $PassBarRank[$k]
-        Write-Output ("  Pass {0} 바({1,-20}) 미달 : {2} 건" -f $k, $PassBarName[$k], $below.Count)
+        $owned = @(Get-Below $PassBarRank[$k] $k)
+        $later = @(Get-NotYetOwned $PassBarRank[$k] $k)
+        Write-Output ("  Pass {0} 바({1,-20}) 미달 : {2} 건  (후속 패스 소유 {3} 건 제외)" -f $k, $PassBarName[$k], $owned.Count, $later.Count)
+    }
+    Write-Output ''
+    Write-Output "=== 항목별 게이트 패스 분포 (백로그 '패스:' 필드의 가장 이른 패스) ==="
+    foreach ($k in 1..4) {
+        $n = @($Required | Where-Object { $_.GatePass -eq $k }).Count
+        Write-Output ("  P{0} 소유 : {1} 건" -f $k, $n)
+    }
+    $noGate = @($Required | Where-Object { $_.GatePass -le 0 })
+    if ($noGate.Count -gt 0) {
+        Write-Output ("  ⚠ 패스 표기를 읽지 못한 항목 : {0} 건 — {1}" -f $noGate.Count, (($noGate | ForEach-Object { $_.Id }) -join ', '))
     }
     exit 0
 }
@@ -259,7 +301,14 @@ if ($Stats) {
 #   Add-Deferred 로 항상 함께 보고한다.
 # ══════════════════════════════════════════════════════════════════════════════
 $barRank = $PassBarRank[$GatePass]
-$below   = Get-Below $barRank
+$below   = @(Get-Below $barRank $GatePass)
+$notYet  = @(Get-NotYetOwned $barRank $GatePass)
+
+$noGate = @($Required | Where-Object { $_.GatePass -le 0 })
+if ($noGate.Count -gt 0) {
+    Add-Failure 'C2c 패스 표기' "Required 항목의 '패스:' 표기를 읽지 못했다 — 소유 패스를 판정할 수 없다." `
+        (@($noGate | ForEach-Object { "  $($_.Id)  $($_.Title)" }))
+}
 
 if ($below.Count -gt 0) {
     $byState = @()
@@ -267,18 +316,28 @@ if ($below.Count -gt 0) {
         $g = @($below | Where-Object { $_.State -eq $s })
         if ($g.Count -gt 0) {
             $byState += "  [$s] $($g.Count)건"
-            foreach ($it in $g) { $byState += "      $($it.Id)  $($it.Title)" }
+            foreach ($it in $g) { $byState += "      $($it.Id)  $($it.Title)   (P$($it.GatePass) 소유)" }
         }
     }
     Add-Failure "C2 Pass $GatePass 상태 바" `
-        "Pass $GatePass 은 모든 Required 가 최소 $($PassBarName[$GatePass]) 여야 한다. $($below.Count)건 미달." $byState
+        "Pass $GatePass 이 소유한 Required 가 최소 $($PassBarName[$GatePass]) 여야 한다. $($below.Count)건 미달." $byState
 } else {
-    Add-Note "Pass $GatePass 상태 바 충족 — Required $($Required.Count)건 전부 $($PassBarName[$GatePass]) 이상"
+    Add-Note "Pass $GatePass 상태 바 충족 — 이 패스가 소유한 Required 전부 $($PassBarName[$GatePass]) 이상"
+}
+
+# 미달이지만 **후속 패스 소유**라 지금 세지 않은 것. 사라진 요구가 되지 않게 항상 적는다.
+if ($notYet.Count -gt 0) {
+    $byOwner = @()
+    foreach ($k in ($GatePass + 1)..4) {
+        $g = @($notYet | Where-Object { $_.GatePass -eq $k })
+        if ($g.Count -gt 0) { $byOwner += "P$k 소유 $($g.Count)건 (" + (($g | ForEach-Object { $_.Id }) -join ', ') + ")" }
+    }
+    Add-Deferred ("현재 바 미달이나 후속 패스 소유라 지금 막지 않음 — " + ($byOwner -join ' · '))
 }
 
 # 나중 패스가 요구할 것을 미리 보여 준다 (막지는 않는다).
 for ($k = $GatePass + 1; $k -le 4; $k++) {
-    $laterBelow = Get-Below $PassBarRank[$k]
+    $laterBelow = @(Get-Below $PassBarRank[$k] $k)
     if ($laterBelow.Count -gt 0) {
         Add-Deferred "Pass $k 바($($PassBarName[$k])) 미달 $($laterBelow.Count)건 — 지금은 막지 않는다"
     }

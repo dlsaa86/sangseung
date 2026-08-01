@@ -20,28 +20,49 @@ namespace Ascend.Prototype.Effects
     /// (`CLAUDE.md` 소유권 규칙). 코드로 만들면 배선이 한 곳이고 값이 전부 여기 보인다.
     ///
     /// **예산을 먼저 정한다**: PRD §12.5 가 「단계별 최대 동시 파티클 수와 오버드로우 예산」을
-    /// 요구한다. <see cref="MaxParticlesFor"/> 가 그 상한이고 <see cref="PeakConcurrent"/> 가
+    /// 요구한다. <see cref="BudgetFor"/> 가 그 상한이고 <see cref="PeakConcurrent"/> 가
     /// 실측이다. 상한 없이 파티클을 켜면 저사양에서 제일 먼저 무너지는 것이 이쪽이다.
+    ///
+    /// **상한은 이제 데이터에서 온다** (`UP-TECH-09` ⑩). 값이 이 파일의 switch 문에 박혀
+    /// 있었고, 같은 숫자를 담은 <see cref="Data.Profiles.PresentationProfile"/> 이 만들어졌는데도
+    /// 읽는 쪽이 없어 **에셋이 장식이었다.** 지금은 <see cref="PresentationSource"/> 가
+    /// 「코드 프리셋」이면 배선이 끊긴 것이고, 그 사실이 밖에서 보인다.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class AmbientParticleDirector : MonoBehaviour
     {
-        /// <summary>단계별 동시 파티클 상한 (PRD §12.5). 합산이 아니라 시스템 하나당이다.</summary>
+        /// <summary>에셋이 없을 때 쓰는 출처 이름. 「Profile」로 끝나지 않아야 단정이 폴백을 통과시키지 않는다.</summary>
+        public const string CodePresetSource = "코드 프리셋";
+
+        /// <summary>
+        /// 코드 프리셋 사본. **매번 새로 만들지 않는다** — <see cref="Data.Profiles.PresentationProfile.DefaultSnapshot"/>
+        /// 은 호출마다 배열을 새로 할당하는데 <see cref="MaxParticlesFor"/> 는 하네스가 반복해서 부른다.
+        /// </summary>
+        private static readonly Data.Profiles.PresentationSnapshot CodePreset =
+            Data.Profiles.PresentationProfile.DefaultSnapshot;
+
+        /// <summary>
+        /// 단계별 동시 파티클 상한의 **코드 프리셋** (PRD §12.5). 합산이 아니라 시스템 하나당이다.
+        ///
+        /// 값이 여기 박혀 있었다. 이제 원본은 <see cref="Data.Profiles.PresentationProfile"/> 이고
+        /// 이 정적 메서드는 **에셋이 없을 때의 폴백**이다 — 씬에 인스턴스가 없어도 답을 낼 수
+        /// 있어야 하는 곳(하네스의 사전 예산 계산 등)이 있어서 남긴다. 숫자를 여기에 다시
+        /// 적지 않는다: 프로파일의 기본값을 그대로 읽으므로 한쪽만 고치는 일이 생기지 않는다.
+        ///
+        /// **씬에 인스턴스가 있으면 이것을 묻지 마라** — 에셋이 꽂혀 있어도 이 메서드는
+        /// 코드 프리셋을 돌려준다. 실제로 적용 중인 값은 <see cref="BudgetFor"/> 다.
+        /// </summary>
         public static int MaxParticlesFor(RiskLevel level)
         {
-            switch (level)
-            {
-                case RiskLevel.Stable:   return 24;
-                case RiskLevel.Strain:   return 48;
-                case RiskLevel.Critical: return 80;
-                case RiskLevel.Collapse: return 120;
-                default:                 return 24;
-            }
+            return CodePreset.MaxParticlesFor(level);
         }
 
         [Tooltip("비어 있으면 FindAnyObjectByType 으로 찾는다.")]
         [SerializeField] private RiskStateView _risk;
         [SerializeField] private RunSessionBehaviour _run;
+
+        [Tooltip("파티클 밀도(PRD §14.1 ⑩)의 출처. 비우면 코드 프리셋으로 진행하고 경고를 남긴다.")]
+        [SerializeField] private Data.Profiles.PresentationProfile _presentation;
 
         [Tooltip("파티클이 떠 있을 공간의 반지름. 엘리베이터 칸 크기에 맞춘다.")]
         [SerializeField, Min(0.5f)] private float _volumeRadius = 1.35f;
@@ -58,6 +79,11 @@ namespace Ascend.Prototype.Effects
         private GameEventBus _bus;
         private RiskLevel _level = RiskLevel.Stable;
         private Material _shared;
+
+        // 값은 한 번만 읽어 struct 로 들고 있는다. `LateUpdate` 가 매 프레임 도는 경로라
+        // 여기서 ScriptableObject 를 다시 묻으면 그 자체가 프레임당 비용이 된다.
+        private Data.Profiles.PresentationSnapshot _values = CodePreset;
+        private string _valueSource = CodePresetSource;
 
         /// <summary>런 전체에서 관측된 최대 동시 파티클 수. 예산 판정에 쓴다.</summary>
         public int PeakConcurrent { get; private set; }
@@ -80,10 +106,53 @@ namespace Ascend.Prototype.Effects
         public int SystemCount => _all.Count;
 
         /// <summary>지금 적용 중인 단계 상한. 데이터가 실제로 읽혔는지 확인용.</summary>
-        public int CurrentBudget => MaxParticlesFor(_level);
+        public int CurrentBudget => _values.MaxParticlesFor(_level);
+
+        /// <summary>
+        /// 지금 이 인스턴스가 적용 중인 단계 상한. 정적 <see cref="MaxParticlesFor"/> 와 **다를 수 있다** —
+        /// 다를 수 있다는 것이 곧 「에셋 값이 실제로 화면까지 흐른다」는 뜻이다.
+        /// </summary>
+        public int BudgetFor(RiskLevel level) => _values.MaxParticlesFor(level);
+
+        /// <summary>
+        /// 지금 쓰고 있는 파티클 밀도의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.
+        ///
+        /// 값 대조로는 못 잡는다 — 에셋 기본값과 코드 프리셋이 같아서, 배선을 떼어내도
+        /// 숫자는 그대로다. 출처가 유일한 반증 수단이다(`RiskStateView.AccessibilitySource`
+        /// 가 같은 이유로 따로 있다).
+        /// </summary>
+        public string PresentationSource => _valueSource;
+
+        /// <summary>
+        /// 연출 프로파일을 런타임에 갈아 끼운다. 프리셋 비교 캡처를 같은 조건에서 뽑기 위한
+        /// 통로이자, 씬을 열지 않고 배선을 검증하는 진입점이다
+        /// (<see cref="Risk.RiskStateView.SetIntensity"/> 와 같은 역할).
+        /// </summary>
+        public void SetPresentationProfile(Data.Profiles.PresentationProfile profile)
+        {
+            _presentation = profile;
+            ResolvePresentation();
+            ApplyLevel();
+        }
+
+        /// <summary>
+        /// 값의 출처를 정한다. 에셋 → 코드 프리셋 순.
+        ///
+        /// 이 한 줄이 없어서 `PresentationProfile.cs` 가 만들어지고도 소비처가 0곳이었다
+        /// (`UP-TECH-09` ⑩). 값을 바꿔도 화면에서 아무 일이 일어나지 않으면
+        /// PRD §14.2 「교체 가능한 프리셋」은 성립하지 않는다.
+        /// </summary>
+        private void ResolvePresentation()
+        {
+            _values = Data.Profiles.PresentationProfile.SnapshotOrDefault(
+                _presentation, nameof(AmbientParticleDirector));
+            _valueSource = _presentation != null ? _presentation.name : CodePresetSource;
+        }
 
         private void Awake()
         {
+            ResolvePresentation();
+
             if (_risk == null) _risk = FindAnyObjectByType<RiskStateView>();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
 
@@ -175,7 +244,7 @@ namespace Ascend.Prototype.Effects
         /// </summary>
         private void ApplyLevel()
         {
-            int budget = MaxParticlesFor(_level);
+            int budget = _values.MaxParticlesFor(_level);
             float t = _level == RiskLevel.Stable ? 0f
                     : _level == RiskLevel.Strain ? 0.34f
                     : _level == RiskLevel.Critical ? 0.7f : 1f;
@@ -216,7 +285,7 @@ namespace Ascend.Prototype.Effects
             main.startSize = size;
             main.startSpeed = speed;
             main.startLifetime = lifetime;
-            main.maxParticles = MaxParticlesFor(RiskLevel.Stable);
+            main.maxParticles = _values.MaxParticlesFor(RiskLevel.Stable);
             main.simulationSpace = worldSpace
                 ? ParticleSystemSimulationSpace.World
                 : ParticleSystemSimulationSpace.Local;

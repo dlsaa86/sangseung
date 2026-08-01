@@ -84,8 +84,8 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 <!-- verify-topdown.ps1 이 아래 네 줄과 PASS3_GATED 줄을 파싱한다. 형식을 바꾸지 말 것. -->
 
 - PASS_1: COMPLETE
-- PASS_2: IN_PROGRESS
-- PASS_3: NOT_STARTED
+- PASS_2: COMPLETE
+- PASS_3: IN_PROGRESS
 - PASS_4: NOT_STARTED
 
 ## 1.0 패스별 완료 기준 — 게이트는 **현재 패스에만** 적용된다
@@ -103,6 +103,26 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | **Pass 4** | 모든 Required 가 `VERIFIED` + 전체 테스트·빌드·캡처·성능·독립 평가 |
 
 **모든 Required 의 `VERIFIED` 요구는 Pass 4 에서만 적용한다.**
+
+### 1.0.1 항목마다 **소유 패스**가 다르다 (2026-08-02 2차 교정)
+
+위 표의 「모든 Required」는 **그 패스가 소유한 Required** 를 뜻한다.
+소유 패스는 각 항목의 `- 상태: … · 패스: P2 P3` 필드에서 **가장 이른 패스**이고,
+`verify-topdown.ps1` 이 그 줄을 직접 파싱한다.
+
+이 교정이 없으면 비주얼·성능 항목이 Pass 2 를 막고, 그러면 「연결하는 단계」가
+다시 최종 QA 가 된다 — 1.0 이 고친 것과 같은 병이 한 층 아래에서 재발한다.
+
+| 소유 | 건수 | 예 |
+|---|---|---|
+| P1 | 53 | 코어 판정·기반 |
+| P2 | 45 | 플레이 흐름 연결 — `UP-POWER-06` |
+| P3 | 17 | 경험·비주얼 — `UP-PLAT-05` · `UP-VIS-01` · `UP-VIS-04` |
+| P4 | 14 | 검증·성능·정리 — `UP-TECH-04` · `UP-TECH-05` · `UP-TECH-09` · `UP-TEST-11` |
+
+**Pass 4 는 소유권과 무관하게 전부 요구한다** (게이트 4 는 모든 항목 게이트 이상이다).
+따라서 후속 패스로 미룬 것이 사라지지 않는다. 검증기는 미달이지만 **아직 그 패스 소유가
+아닌 것**을 「지금은 막지 않는다」 절에 **ID 까지 적어** 출력한다.
 
 패스와 무관하게 **항상** 막는 것은 셋뿐이다 — ① 컴파일이 통과했는가(asmdef 이 없어
 스크립트 하나가 전체를 막는다) ② 분류가 모순되지 않는가 ③ 진행 문서와 브랜치가 살아 있는가.
@@ -744,13 +764,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-POWER-06 — 과수확 상호작용 연출 5단계
 - 분류: Required · 출처: PRD §7.3 (접근 → 감음 → 승객 시선 → 0.3~0.7초 정적 → 재개)
-- 상태: VISIBLE · 패스: P2 P3
+- 상태: CONNECTED · 패스: P2 P3
 - 구현: `Scripts/Run/OverharvestApproachBridge.cs`(접근 판정), `Scripts/Audio/SilenceWindow.cs`(정적), `Scripts/Npc/`(승객 응시 반응)
 - 접근: 과수확 레버에 손을 올린다
 - 검증: 접근 순간 고정 캡처 + 정적 구간 측정
 - 증거: `Captures/TenFloor/12_overharvest_unlocked.png`
 - 의존: UP-DEVICE-03, UP-NPC-02, UP-AUD-03
-- 남은 문제: 5단계의 부품이 전부 생겼으나 **씬에서 서로 이어지지 않았다.** 접근 다리·오디오·승객 반응이 한 오브젝트 트리에 붙어야 한다
+- 남은 문제: **5단계(재개)를 만들고 1단계가 왜 한 번도 안 돌았는지 찾았다 (2026-08-02).** 1단계 미발화의 원인은 브리지가 아니라 **하네스**였다 — `TenFloorAutoPilot` 이 레버를 겨누지 않고 곧바로 `Interact()` 를 불러 `CrosshairInteractor.CurrentInteractable` 이 한 번도 레버가 되지 않았고, 그래서 dwell 0.15초가 **성립할 수 없었다.** dwell 을 면제하지 않고 조준만 흉내 냈다(면제하면 그 상수가 다시 아무도 안 읽는 값이 된다). 5단계는 `OverharvestStageTimeline`(순수 C#) + `OverharvestStageView`(사건 버스 구독)로 신설했고, **「동시에」를 구조로 보장했다** — 세 채널이 각자 타이머를 갖지 않고 `Pull()` 이 3칸 배열에 같은 시각을 한 번에 쓴다. 씬에 `OverharvestStage` 를 만들고 6필드를 배선해 `AllChannelsBound=True`. 실측 **런 누적 1접근 3 / 5재개 3 · 동시 예**. **통관을 돌리는 코드가 이 저장소에 한 줄도 없었다**(전수 grep) — 이번 것이 최초이고, 상시 회전 기본값은 0 이다(켜면 고정 캡처의 각도가 시간에 따라 달라져 베이스라인이 흔들린다). 재개는 정수 바퀴 버스트라 끝나면 각도가 제자리다. **아직 관측되지 않은 것 둘**: 표본 시점에 `3응시 0 / 4정적 0` 이다. 이것이 **관측 시점 문제인지 미구현인지 확정하지 못했다** — 표본을 당김 직후 한 번만 뜨는데 응시 지연·정적 창은 그보다 뒤일 수 있다. 다음에 시간축으로 표본을 늘려 갈라야 한다. 그리고 **내 단정 설계 오류를 하나 겪었다** — 스테이지 카운터는 런 단위로 리셋되는데(그 설계가 옳다) 모든 런이 끝난 뒤 읽어 전부 0 을 봤다. 마지막 재현 런이 리셋한 값이었고, 같은 런의 층별 단정은 그때 전부 PASS 였다. 하네스가 당김 직후 누적하도록 고쳤다
 
 ### UP-POWER-07 — OverharvestProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §7.4
@@ -1420,13 +1440,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-TECH-09 — 가변 요소의 데이터 분리 (PRD §14.1 12항목)
 - 분류: Required · 출처: PRD §14.1, §14.3
-- 상태: SKELETON · 패스: P2 P3
+- 상태: SKELETON · 패스: P4
 - 구현: `Data/PrototypeConfig.asset`, `Scripts/Spin/SpinRuleSet.cs`, **`Scripts/Data/Profiles/` 7종**(TargetHardware · Overharvest · DangerFeedback · VisualQuality · AudioMix · Accessibility · RunSummaryTemplate), `Scripts/Npc/PassengerReactionSet.cs`
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건 (기본 스냅샷 값 대조)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: **이 항목이 여덟 세션 동안 부풀려 있던 이유가 드러났다 (2026-08-02).** 직전 판본은 「주입까지 끝난 것은 위험 연출·접근성·오디오 믹스·기준 하드웨어·품질 등급 **다섯**」이라 적었으나, **그중 §14.1 의 12항목에 해당하는 것은 「위험 연출」 하나뿐**이다 — 접근성·기준 하드웨어·품질 등급·오디오 믹스는 §14.1 목록에 **없고** §14.3 「권장 데이터 자산 13종」 쪽이다. **「프로파일 에셋 7종을 배선했다」와 「§14.1 12항목을 데이터화했다」를 같은 문장에 넣은 것**이 원인이다. 12행 대조표를 만들어 이제 셀 수 있다. **실측 — 12 중 충족 2, 부분 1, 미충족 9.** ⑥ 과수확 손실·보상 ✔(`OverharvestProfile.asset` → `RunSessionBehaviour` → `FloorSession`/`AudioDirector`, 폴백이면 `OverharvestSource` 가 다르게 찍힌다) · ⑧ 조명·사이렌·진동·카메라 충격 ✔(`DangerFeedbackProfile` → `RiskStateView`) · ⑤ 과적 무게 **△ 두 벌이 갈라져 있다** — `PrototypeConfig.asset` 은 구 경로(`Core/FloorMath`+`RunController`)만 읽고 **라이브 10층 경로는 `FloorSession.cs:18-22` 의 동명 `const` 를 읽는다**(에셋을 바꿔도 게임이 안 바뀐다). 나머지 아홉(①심볼 가중치 ②계약 출현률 ③패턴 배수 ④층별 요구 전력 ⑦위험 임계값 ⑨승객 대사 ⑩파티클 밀도 ⑪애니메이션 속도 ⑫재질 색·발광)은 전부 코드 상수·정적 배열이다. ⑫ 는 프로파일 자체가 없다. **다음**: ⑤ 의 이중 출처를 하나로 합치는 것이 가장 싸고(값이 이미 양쪽에 같다) 가장 위험하다(지금은 우연히 같을 뿐이다). ⑩⑪ 은 이번에 만든 `PresentationProfile` 이 담을 자리다 — `AmbientParticleDirector.cs:30-40` 의 하드코딩 switch(24/48/80/120)를 교체하면 된다
+- 남은 문제: **이 항목이 여덟 세션 동안 부풀려 있던 이유가 드러났다 (2026-08-02).** 직전 판본은 「주입까지 끝난 것은 위험 연출·접근성·오디오 믹스·기준 하드웨어·품질 등급 **다섯**」이라 적었으나, **그중 §14.1 의 12항목에 해당하는 것은 「위험 연출」 하나뿐**이다 — 접근성·기준 하드웨어·품질 등급·오디오 믹스는 §14.1 목록에 **없고** §14.3 「권장 데이터 자산 13종」 쪽이다. **「프로파일 에셋 7종을 배선했다」와 「§14.1 12항목을 데이터화했다」를 같은 문장에 넣은 것**이 원인이다. 12행 대조표를 만들어 이제 셀 수 있다. **실측 — 12 중 충족 2, 부분 1, 미충족 9.** ⑥ 과수확 손실·보상 ✔(`OverharvestProfile.asset` → `RunSessionBehaviour` → `FloorSession`/`AudioDirector`, 폴백이면 `OverharvestSource` 가 다르게 찍힌다) · ⑧ 조명·사이렌·진동·카메라 충격 ✔(`DangerFeedbackProfile` → `RiskStateView`) · ⑤ 과적 무게 **△ 두 벌이 갈라져 있다** — `PrototypeConfig.asset` 은 구 경로(`Core/FloorMath`+`RunController`)만 읽고 **라이브 10층 경로는 `FloorSession.cs:18-22` 의 동명 `const` 를 읽는다**(에셋을 바꿔도 게임이 안 바뀐다). 나머지 아홉(①심볼 가중치 ②계약 출현률 ③패턴 배수 ④층별 요구 전력 ⑦위험 임계값 ⑨승객 대사 ⑩파티클 밀도 ⑪애니메이션 속도 ⑫재질 색·발광)은 전부 코드 상수·정적 배열이다. ⑫ 는 프로파일 자체가 없다. **⑩ 이 부분 완료됐다 (2026-08-02)** — `AmbientParticleDirector` 의 하드코딩 switch(24/48/80/120)가 사라지고 `PresentationProfile` 스냅샷에서 읽는다. 값 대조가 아니라 **반증 가능성**으로 걸었다: 에셋 기본값이 코드 프리셋과 같아서 값만 보면 배선을 떼어내도 숫자가 그대로다 — 그래서 `PresentationSource` 공개 프로퍼티(폴백이면 「코드 프리셋」)와 에셋 배열을 `[7,9,11,13]` 으로 덮어써 네 단계가 따라 움직이는지 보는 테스트를 넣었다. **다만 ⑩ 중 「상한」만 데이터화됐다** — 배출률 램프·단계별 보간계수·파티클 5종의 색·크기·속도·수명은 여전히 코드에 있고 프로파일에 필드가 없다. **다음**: ⑤ 의 이중 출처를 하나로 합치는 것이 가장 싸고(값이 이미 양쪽에 같다) 가장 위험하다(지금은 우연히 같을 뿐이다). ⑩⑪ 은 이번에 만든 `PresentationProfile` 이 담을 자리다 — `AmbientParticleDirector.cs:30-40` 의 하드코딩 switch(24/48/80/120)를 교체하면 된다
 
 ## 2.15 TEST — 테스트·텔레메트리·증거
 
@@ -1538,7 +1558,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: 삭제 또는 `Legacy/` 격리 후 컴파일·테스트 통과
 - 증거: `docs/runtime/LEGACY_DELETION_PLAN.md`
 - 의존: UP-TEST-01
-- 남은 문제: **웨이브 0 을 끝냈다 (2026-08-02) — 삭제 순서의 지뢰가 제거됐다.** `PrototypeSelfTest.cs:39-44` 의 조기 반환은 레거시 `.asset` 셋이 없으면 `fail=1` 로 끝내 **신 스택 스위트 10종을 통째로 건너뛰고 모든 커밋을 막는** 구조였다. **계획과 다르게 처리했다** — 계획은 「Test1~9 호출과 본문 제거」였으나, 그 셋을 지금 지우면 **아직 빌드에 남아 있는 옛 스택의 커버리지가 웨이브 7 전까지 비어 버린다.** 대신 조기 반환을 `if (legacyAssetsPresent)` 분기로 바꿨다: 에셋이 있는 **지금은 9건이 그대로 돌아 관측 가능한 변화가 0**이고, 에셋이 사라지는 웨이브 8 이후에는 실패가 아니라 `SKIP` 한 줄로 보고서에 **남는다**(합계만 보면 사라진 9건이 안 보이므로 조용히 넘기지 않는다). 삭제는 그것들이 지키는 코드가 사라지는 웨이브 7 과 **같은 커밋**에서 한다 — 그때는 숨기는 것이 아니라 함께 가는 것이다. **A묶음도 시작했다**: `Scripts/Effects/IEffect.cs` 삭제(구현체 0개·GUID 씬/에셋 0건을 **삭제 직전에 재확인**). 남은 A묶음 둘은 다른 작업자가 `Scripts/Perf/`·`Scripts/Player/` 를 소유 중이라 **이번 배치에서 손대지 않았다** — 병렬 소유 규칙이 우선한다. 덧붙여 `ComponentPool.cs` 는 계획 자신이 「레거시가 아니라 아직 안 쓰이는 신규 인프라 · 보류 권장」이라고 적었고 `UP-TECH-06` 이 지금 그것을 쓰게 만드는 중이라 **삭제 대상에서 뺀다.** **목록이 확정됐다. 나머지 삭제는 아직이다.** 독립 조사자가 `Scripts/` 146 + `Assets/Editor/` 17 파일을 GUID 역검색 + 씬 YAML 파싱 + **주석 제거 후** 참조 그래프로 전수 조사했다 (주석만 뒤진 1차는 `PlayerSetupValidator`·`PrototypeUI`·`ComponentPool`·`RunOutcome` 을 「살아 있음」으로 오판했다). 결과 — **삭제 대상 46파일 4,571줄 + `.asset` 23개**, 보존 52파일 약 19,500줄. **규모 정정**: `GapAnalysis.md:205-207` 과 `WINDOWS_SETUP.md:168` 의 「약 5,000줄」은 `Scripts/Sim/` 899줄을 잘못 포함한 값이다 — `Sim/` 은 신 스택 밸런스 시뮬레이터라 남는다. **순서가 중요하다**: 레거시 `.asset` 을 먼저 지우면 `PrototypeSelfTest.cs:38-43` 의 조기 반환이 걸려 신 스택 스위트 10종이 통째로 안 돌고 `1 FAIL` 이 되며, 커밋 게이트가 **모든 커밋을 막는다.** 웨이브 0(자체 검사 편집)이 반드시 먼저다. **전제 하나**: 웨이브 1에서 `PlayerSetupValidator` 를 지우기 전에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여야 검사 손실이 없다 — 현재 이 셋에 속성이 하나도 없다. 되돌릴 수 없는 지점은 웨이브 3(씬)·8(`.asset`) 둘뿐이고 `PD-13` 승인이 전제다
+- 남은 문제: **웨이브 1 도 끝냈다 (2026-08-02).** `Scripts/Player/PlayerSetupValidator.cs`(대체자 `Diagnostics/SceneWiringValidator.cs`)와 `Scripts/Player/InteractablePassenger.cs` 를 지웠다. **전제를 삭제 직전에 직접 재확인했다** — 세 컴포넌트의 `[RequiredReference]` 실재(줄 번호까지), 공개 프로퍼티 외부 호출자 0곳, GUID 가 씬·프리팹·에셋 전체에서 자기 `.meta` 외 0건. 게다가 `WiringDiagnosticsTests.TestPlayerComponentsStayMarked` 가 표시 소실을 감시하는 말뚝으로 서 있다. **소실된 검사가 하나 있다** — 지워진 파일이 `CrosshairInteractor._viewCamera` 에 대해 내던 **경고 1건**. 오류가 아니라 경고였고 `Camera.main` 자동 대체가 검사기보다 늦게 도는 구조라 `[RequiredReference]` 를 붙이면 정상 구성을 결함으로 보고한다 — 되살리려면 씬에서 그 필드가 채워져 있는지 확인이 먼저다. **웨이브 3(씬)·8(`.asset` 23개)은 `PD-13` 승인 전이라 손대지 않았다.** **웨이브 0 도 앞서 끝냈다 (2026-08-02) — 삭제 순서의 지뢰가 제거됐다.** `PrototypeSelfTest.cs:39-44` 의 조기 반환은 레거시 `.asset` 셋이 없으면 `fail=1` 로 끝내 **신 스택 스위트 10종을 통째로 건너뛰고 모든 커밋을 막는** 구조였다. **계획과 다르게 처리했다** — 계획은 「Test1~9 호출과 본문 제거」였으나, 그 셋을 지금 지우면 **아직 빌드에 남아 있는 옛 스택의 커버리지가 웨이브 7 전까지 비어 버린다.** 대신 조기 반환을 `if (legacyAssetsPresent)` 분기로 바꿨다: 에셋이 있는 **지금은 9건이 그대로 돌아 관측 가능한 변화가 0**이고, 에셋이 사라지는 웨이브 8 이후에는 실패가 아니라 `SKIP` 한 줄로 보고서에 **남는다**(합계만 보면 사라진 9건이 안 보이므로 조용히 넘기지 않는다). 삭제는 그것들이 지키는 코드가 사라지는 웨이브 7 과 **같은 커밋**에서 한다 — 그때는 숨기는 것이 아니라 함께 가는 것이다. **A묶음도 시작했다**: `Scripts/Effects/IEffect.cs` 삭제(구현체 0개·GUID 씬/에셋 0건을 **삭제 직전에 재확인**). 남은 A묶음 둘은 다른 작업자가 `Scripts/Perf/`·`Scripts/Player/` 를 소유 중이라 **이번 배치에서 손대지 않았다** — 병렬 소유 규칙이 우선한다. 덧붙여 `ComponentPool.cs` 는 계획 자신이 「레거시가 아니라 아직 안 쓰이는 신규 인프라 · 보류 권장」이라고 적었고 `UP-TECH-06` 이 지금 그것을 쓰게 만드는 중이라 **삭제 대상에서 뺀다.** **목록이 확정됐다. 나머지 삭제는 아직이다.** 독립 조사자가 `Scripts/` 146 + `Assets/Editor/` 17 파일을 GUID 역검색 + 씬 YAML 파싱 + **주석 제거 후** 참조 그래프로 전수 조사했다 (주석만 뒤진 1차는 `PlayerSetupValidator`·`PrototypeUI`·`ComponentPool`·`RunOutcome` 을 「살아 있음」으로 오판했다). 결과 — **삭제 대상 46파일 4,571줄 + `.asset` 23개**, 보존 52파일 약 19,500줄. **규모 정정**: `GapAnalysis.md:205-207` 과 `WINDOWS_SETUP.md:168` 의 「약 5,000줄」은 `Scripts/Sim/` 899줄을 잘못 포함한 값이다 — `Sim/` 은 신 스택 밸런스 시뮬레이터라 남는다. **순서가 중요하다**: 레거시 `.asset` 을 먼저 지우면 `PrototypeSelfTest.cs:38-43` 의 조기 반환이 걸려 신 스택 스위트 10종이 통째로 안 돌고 `1 FAIL` 이 되며, 커밋 게이트가 **모든 커밋을 막는다.** 웨이브 0(자체 검사 편집)이 반드시 먼저다. **전제 하나**: 웨이브 1에서 `PlayerSetupValidator` 를 지우기 전에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여야 검사 손실이 없다 — 현재 이 셋에 속성이 하나도 없다. 되돌릴 수 없는 지점은 웨이브 3(씬)·8(`.asset`) 둘뿐이고 `PD-13` 승인이 전제다
 
 ## 2.16 DOC — 문서 정합성
 
@@ -1632,7 +1652,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 | UP-FIX-05 | Critical과 Collapse가 캡처에서 구분되지 않는다 | UP-RISK-03, UP-RISK-06 | 열림 |
 | UP-FIX-06 | 17번 캡처만 해상도·방식이 다르다 | UP-REC-05 | 열림 |
 | UP-FIX-07 | HUD 텍스트가 화면 오른쪽 끝에서 잘린다 | UP-CORE-13, UP-VIS-09 | 열림 |
-| UP-FIX-08 | 계기와 3×3 판이 한 화면에 안 들어온다 (금지 `B-5 #15`) | UP-VIS-07, UP-CORE-13, UP-SPACE-09 | 열림 |
+| UP-FIX-08 | 계기와 3×3 판이 한 화면에 안 들어온다 (금지 `B-5 #15`) | UP-VIS-07, UP-CORE-13, UP-SPACE-09 | **진단 정정 — 가림이 아니다.** ↓ |
 | UP-FIX-09 | `14_contract_select` 재설계 — 판독성 1/5 | UP-CONTRACT-05, UP-VIS-07 | 열림 |
 | UP-FIX-10 | 게이지가 위험 단계를 읽는다 — Critical 0.55 / Collapse 0.85 로 위급색에 끌린다 | UP-RISK-03, UP-VIS-07 | **코드 완료 · 시각 판정 대기** |
 | UP-FIX-11 | 모순 2건 중 1건 해결(위험도). **남은 1건: `Loadout` 은 확정 시점 스냅샷인데 `CarriedWeight`·`Overloaded` 는 캡처 시점 라이브 값** | UP-REC-02, UP-REC-03 | 열림 |
@@ -1665,6 +1685,32 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 | UP-VIS-13 | `MAT_Ascend_*`·`MAT_Sym_*` **6종과 셰이더가 씬·코드·프리팹 참조 0건**. 게다가 머티리얼 6개가 `_AmbientFloor: 0.18` 을 직렬화로 덮어써 **「0.35 로 올렸다」가 채택 대상에 적용돼 있지 않다** | 다음 채택 시도가 **고치기 전 값으로** 다시 실패한다 | UP-VIS-04 |
 | UP-REC-06 | `TenFloorCaptureRig.cs:718-720` 하드코딩 문구 「이 한 장만 방식이 다르다 / 나머지 **18장**」 — 실제 23장·화면 캡처 4장 | 매니페스트가 **스스로 틀린 숫자**를 매번 새로 찍는다 | UP-VIS-06, UP-REC-05 |
 
+
+## `UP-FIX-08` / `B-5 #15` — 4라운드 동안 **틀린 진단**을 고치고 있었다 (2026-08-02)
+
+독립 설계자가 씬 YAML 을 직접 파싱하고 **카메라 → 라벨 광선을 모든 후보와 교차**시킨 결과,
+「문틀 기하에 가림」은 **사실이 아니다.** 가리는 물체가 하나도 없다 —
+`TubeFrame` 은 빗나가고, `DoorControl/Plate`·`Handrail_B` 는 아래에 있고,
+`PanelBack`·`WallL` 은 타깃보다 뒤에 있다.
+
+**실제 원인은 둘이고 둘 다 카메라로 못 푼다.**
+
+1. **스침각 19.1°** — 결과판 법선(+X)과 계기 라벨 법선(−Z)이 **정확히 90° 벌어져 있어**
+   어떤 단일 시선도 둘 중 하나를 반드시 스쳐 본다. 계기판 겉보기 폭이 **0.327배**로 압축된다.
+2. **라벨의 글자축이 카메라의 깊이축과 같다** — rect 가 월드 +X(= 카메라 쪽)로 자라고,
+   프레임 우측 경계 조건상 **한 줄의 30.7% 가 구조적으로 프레임 밖**이다.
+   카메라를 옮기면 비율만 달라지고 사라지지 않는다 — `UP-FIX-22`(네 시점에서 반복)와 같은 뿌리다.
+
+프레임 실측: 결과판 27.3% · 좌측 벽 23.5% · **우측 31.6% 가 `BackWall_Left` 를 19° 로
+스쳐본 무정보 평면**이고 계기판이 그 안에 묻혀 있다.
+
+**평가자가 지목한 「x ≈ −1.0 의 문틀 기둥」은 그런 이름의 오브젝트가 없다** (`m_Name` 263개
+전수 확인). 실제 대상은 `BackWall_Left` 이고, 그것은 계기를 **가리는** 것이 아니라
+계기를 **삼키는 배경**이다. 지목은 맞았고 기구가 틀렸다.
+
+구조적으로 다른 세 안(코너 챔퍼 / 문설주 축소 / 세 번째)과 각각의 좌표·되돌리기·깨질 수
+있는 것·판정 기준이 **`docs/runtime/PASS3_STRUCTURAL_PLAN.md`** 에 있다.
+`UP-SPACE-06`(최대 적재 동선)을 깨지 않는지까지 검산돼 있다.
 
 **`UP-FIX-19` 프레임 조정은 3회로 멈춘다 (`visual-verify` §6).**
 ① 계기판·결과판의 **중점**을 겨눔 → 중점이 눈높이 아래라 **바닥**을 봤다. 순손실.

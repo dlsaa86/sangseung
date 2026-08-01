@@ -50,6 +50,7 @@ namespace Ascend.Prototype.Npc
         private int _gazeKindsMask;
         private int _lineCount;
         private int _voiceCueCount;
+        private int _voiceKindsMask;
         private int _contrastCount;
 
         /// <summary>지금 반응 중인 승객 수. 검증 하네스가 §9.4 상한을 확인할 때 읽는다.</summary>
@@ -135,6 +136,21 @@ namespace Ascend.Prototype.Npc
         public int VoiceCueCount => _voiceCueCount;
 
         /// <summary>
+        /// 요청한 음성 **종류**의 비트 집합. 비트 n 은 <c>(Audio.PassengerVoiceKind)n</c>.
+        ///
+        /// <see cref="VoiceCueCount"/> 와 따로 있어야 한다 — 「음성 110건」은 호흡만
+        /// 110번 난 것과 구분되지 않는다. `MASTER_PRD.md` §9.3 이 세는 것은 건수가
+        /// 아니라 다섯 표현이고, 그 다섯이 실제로 갈렸는지는 이 값으로만 반증된다.
+        ///
+        /// `AudioDirector.VoiceKindsMask` 와 짝을 이룬다. 그쪽은 **스피커에 나간** 종류,
+        /// 이쪽은 **요청한** 종류다. 둘이 다르면 굽기가 실패했거나 오디오가 없는 것이다.
+        /// </summary>
+        public int VoiceKindsMask => _voiceKindsMask;
+
+        /// <summary>요청한 음성 종류 수. 다섯이 목표다(§9.3).</summary>
+        public int VoiceKindCount => CountBits(_voiceKindsMask);
+
+        /// <summary>
         /// 대표 반응 대신 상반된 반응이 걸린 횟수(§9.3 마지막 줄).
         /// 다른 누적 카운터와 같은 이유로 <see cref="Rebuild"/>를 견딘다.
         /// </summary>
@@ -201,6 +217,7 @@ namespace Ascend.Prototype.Npc
             _gazeKindsMask = 0;
             _lineCount = 0;
             _voiceCueCount = 0;
+            _voiceKindsMask = 0;
             _contrastCount = 0;
             LastLine = null;
             LastLinePassenger = -1;
@@ -277,15 +294,25 @@ namespace Ascend.Prototype.Npc
                 // 4 채널 — 비언어 음성. 큐 ID 가 비어 있으면 데이터가 이 반응의 소리를
                 // 끈 것이므로 부르지 않는다(`PassengerReaction.VoiceCue` 주석).
                 //
-                // 큐 ID 자체는 아직 오디오에 전달되지 않는다 — `PlayPassengerVoice` 가
-                // (승객 번호, 강도)만 받고 클립은 절차적으로 굽기 때문이다. 그래도
-                // **여기서 불러야** 목소리가 실제로 반응한 승객에게 붙고,
-                // `AudioDirector` 의 사건 버스 폴백이 물러나 한 사건에 목소리가 두 번
-                // 나는 상태가 사라진다(그 파일의 배선 메모 6번).
+                // **큐 ID 를 함께 넘긴다.** 그전까지는 (승객 번호, 강도)만 넘겼고,
+                // 그러면 종류는 `AudioDirector` 가 호흡으로 고정하거나 잘해야 사건에서
+                // 되짚는 수밖에 없었다 — 그런데 대표 반응과 대조 반응은 **같은 사건**에서
+                // 나온다. 5연쇄에서 환호하는 사람(`npc_awe` → 웃음)과 숨을 들이켜는 사람
+                // (`npc_gasp` → 호흡)을 가르는 정보는 오직 이 큐 ID 에만 있으므로,
+                // 넘기지 않으면 §9.3 의 「같은 사건에 상반된 반응」이 자세에만 남고
+                // 귀로는 사라진다. 데이터가 22종의 ID 를 들고 있는데 소리가 한 종류였다.
                 if (_audio != null && reaction.HasVoice)
                 {
-                    _audio.PlayPassengerVoice(passenger, reaction.Intensity);
+                    _audio.PlayPassengerVoice(passenger, reactionEvent,
+                                              reaction.VoiceCue, reaction.Intensity);
                     _voiceCueCount++;
+
+                    // **요청한 종류**를 센다. 총합(`VoiceCueCount`)으로는 22종의 ID 가
+                    // 실제로 다섯 표현으로 갈렸는지 셀 수 없다 — 호흡만 110번 나도
+                    // 같은 값이 나온다. 판정은 오디오와 같은 함수를 쓴다(두 벌이 되면
+                    // 로그와 실제 소리가 어긋나고 어긋난 줄도 모른다).
+                    int kind = (int)Audio.PassengerVoices.Resolve(reaction.VoiceCue, reactionEvent);
+                    if (kind >= 0 && kind < 32) _voiceKindsMask |= 1 << kind;
                 }
 
                 if (reaction.HasLine)

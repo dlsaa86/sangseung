@@ -89,6 +89,8 @@ public static class PrototypeSelfTest
         // 그 스위트들에 대해 아무 말도 하지 않고 있었다.
         FoldInSuite("배선 진단", Ascend.Prototype.Diagnostics.Tests.WiringDiagnosticsTests.RunAll());
         FoldInSuite("런 요약 9종", Ascend.Prototype.UI.Tests.RunSummaryBuilderTests.RunAll());
+        FoldInSuite("연출 프로파일 배선", Ascend.Prototype.Effects.Tests.PresentationBindingTests.RunAll());
+        FoldInSuite("과수확 5단계 연출", Ascend.Prototype.View.Tests.OverharvestStageTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

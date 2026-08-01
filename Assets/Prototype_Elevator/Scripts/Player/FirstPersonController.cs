@@ -19,8 +19,9 @@ namespace Ascend.Prototype.Player
         // **대체 경로까지 실패했다**는 뜻이지 「인스펙터를 안 물렸다」가 아니다.
         // 그 상태의 증상이 조용하다는 것이 표시하는 이유다 — 컨트롤러가 없으면 걷지
         // 못하고 카메라가 없으면 시점이 돌지 않는데, 어느 쪽도 오류를 내지 않는다.
-        // (`PlayerSetupValidator` 의 에디터 메뉴가 보던 것이 정확히 이 둘이다.
-        //  `UP-TEST-11` 웨이브 1이 그 파일을 지울 때 검사가 손실되지 않도록 옮겨 둔다.)
+        // (옛 `PlayerSetupValidator` 의 에디터 메뉴가 보던 것이 정확히 이 둘이었다.
+        //  `UP-TEST-11` 웨이브 1에서 그 파일을 지웠고, 검사는 여기로 옮겨져 살아 있다 —
+        //  `WiringDiagnosticsTests.TestPlayerComponentsStayMarked` 가 그 말뚝이다.)
         [Header("References")]
         [RequiredReference("CharacterController 가 없으면 이동 입력이 통째로 무시된다 — 걸을 수 없다")]
         [SerializeField] private CharacterController _characterController;

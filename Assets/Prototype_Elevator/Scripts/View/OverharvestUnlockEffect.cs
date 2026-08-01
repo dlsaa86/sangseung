@@ -66,6 +66,11 @@ namespace Ascend.Prototype.View
         private Coroutine _playing;
         private bool _armed;
 
+        /// <summary>이 컴포넌트가 정한 스팟 목표 밝기. 경고 배수는 여기에 **곱해진다**.</summary>
+        private float _spotTarget;
+
+        private float _warningScale = 1f;
+
         /// <summary>검증 하네스용 — 해제 연출이 실제로 재생됐는가.</summary>
         public bool HasPlayed { get; private set; }
 
@@ -75,6 +80,40 @@ namespace Ascend.Prototype.View
         /// <summary>해제 연출이 재생 중인가.</summary>
         public bool IsPlaying => _playing != null;
 
+        /// <summary>경고등을 실제로 밀 대상이 하나라도 배선돼 있는가. 없으면 이 채널은 화면에 없다.</summary>
+        public bool HasWarningChannel
+        {
+            get
+            {
+                if (_spotLight != null) return true;
+                for (int i = 0; i < _warningStripes.Length; i++)
+                    if (_warningStripes[i] != null) return true;
+                return false;
+            }
+        }
+
+        /// <summary>지금 걸려 있는 경고 배수. 1 이 평소다.</summary>
+        public float WarningScale => _warningScale;
+
+        /// <summary>
+        /// 경고등 채널을 **빌려준다.** §7.3 5단계의 「경고등 재개」는 해금 연출과 다른 사건인데,
+        /// 경고 띠와 스팟의 소유자는 여기다 — 두 컴포넌트가 같은 렌더러에
+        /// <see cref="MaterialPropertyBlock"/> 을 쓰면 나중에 쓴 쪽이 이기고, 어느 쪽이
+        /// 나중인지는 스크립트 실행 순서에 달린다. 그런 고장은 "어떤 날은 되고 어떤 날은
+        /// 안 된다"로 나타나 원인을 찾는 데 가장 오래 걸린다.
+        ///
+        /// 그래서 소유권을 옮기지 않고 배수만 받는다. 1 이면 그 전과 **완전히 같은 그림**이다.
+        /// </summary>
+        /// <param name="scale">0 = 꺼짐, 1 = 평소, 1 초과 = 과증폭.</param>
+        public void SetWarningScale(float scale)
+        {
+            float clamped = scale < 0f ? 0f : (scale > 4f ? 4f : scale);
+            if (Mathf.Approximately(_warningScale, clamped)) return;
+            _warningScale = clamped;
+            ApplySpot();
+            ApplyStripeVisual();
+        }
+
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
@@ -82,7 +121,7 @@ namespace Ascend.Prototype.View
             if (_riskView == null) _riskView = FindAnyObjectByType<RiskStateView>();
             if (_shakeTarget != null) _shakeHome = _shakeTarget.localPosition;
             if (_audio != null && _audio.clip == null) _audio.clip = BuildUnlockClip();
-            if (_spotLight != null) _spotLight.intensity = 0f;
+            SetSpot(0f);
 
             ApplyStripes(false);
             if (_lever != null) _lever.Unlocked += OnUnlocked;
@@ -104,6 +143,9 @@ namespace Ascend.Prototype.View
             if (_playing != null) { StopCoroutine(_playing); _playing = null; }
             DipCabin(1f);
             Shake(0f);
+
+            // 빌려준 경고 배수도 돌려받는다. 재개 버스트 도중에 꺼지면 띠가 과증폭인 채로 굳는다.
+            SetWarningScale(1f);
         }
 
         private void Update()
@@ -113,7 +155,7 @@ namespace Ascend.Prototype.View
             if (!unlocked && _armed)
             {
                 ApplyStripes(false);
-                if (_spotLight != null) _spotLight.intensity = 0f;
+                SetSpot(0f);
             }
         }
 
@@ -141,11 +183,8 @@ namespace Ascend.Prototype.View
                 elapsed += Time.deltaTime;
                 float t = Mathf.Clamp01(elapsed / _flashDuration);
 
-                if (_spotLight != null)
-                {
-                    _spotLight.color = _flashColor;
-                    _spotLight.intensity = Mathf.Lerp(0f, _flashIntensity, t);
-                }
+                if (_spotLight != null) _spotLight.color = _flashColor;
+                SetSpot(Mathf.Lerp(0f, _flashIntensity, t));
                 DipCabin(Mathf.Lerp(1f, 1f - _cabinDip, t));
                 Shake(1f - t * 0.3f);
                 yield return null;
@@ -159,8 +198,7 @@ namespace Ascend.Prototype.View
                 float t = Mathf.Clamp01(elapsed / _settleDuration);
                 float eased = t * t * (3f - 2f * t);
 
-                if (_spotLight != null)
-                    _spotLight.intensity = Mathf.Lerp(_flashIntensity, _armedIntensity, eased);
+                SetSpot(Mathf.Lerp(_flashIntensity, _armedIntensity, eased));
                 DipCabin(Mathf.Lerp(1f - _cabinDip, 1f, eased));
                 Shake((1f - eased) * 0.7f);
                 yield return null;
@@ -168,7 +206,7 @@ namespace Ascend.Prototype.View
 
             DipCabin(1f);
             Shake(0f);
-            if (_spotLight != null) _spotLight.intensity = _armedIntensity;
+            SetSpot(_armedIntensity);
             _playing = null;
         }
 
@@ -205,14 +243,41 @@ namespace Ascend.Prototype.View
         private void ApplyStripes(bool armed)
         {
             _armed = armed;
+            ApplyStripeVisual();
+        }
+
+        /// <summary>
+        /// 무장 상태와 경고 배수를 합쳐 실제 색을 쓴다. 배수가 1 이면 예전과 같은 값이다.
+        /// 잠김일 때는 배수를 곱하지 않는다 — 꺼진 램프가 재개 버스트에 반짝이면
+        /// 「잠겨 있다」가 거짓말이 된다.
+        /// </summary>
+        private void ApplyStripeVisual()
+        {
+            if (_block == null) _block = new MaterialPropertyBlock();
+
+            Color baseColor = _armed ? _stripeArmed : _stripeLocked;
+            Color emission = _armed ? _stripeArmed * (_stripeEmission * _warningScale) : Color.black;
+
             foreach (Renderer stripe in _warningStripes)
             {
                 if (stripe == null) continue;
                 stripe.GetPropertyBlock(_block);
-                _block.SetColor(BaseColorId, armed ? _stripeArmed : _stripeLocked);
-                _block.SetColor(EmissionColorId, armed ? _stripeArmed * _stripeEmission : Color.black);
+                _block.SetColor(BaseColorId, baseColor);
+                _block.SetColor(EmissionColorId, emission);
                 stripe.SetPropertyBlock(_block);
             }
+        }
+
+        /// <summary>스팟 목표 밝기를 정하고 경고 배수를 곱해 실제로 쓴다.</summary>
+        private void SetSpot(float intensity)
+        {
+            _spotTarget = intensity;
+            ApplySpot();
+        }
+
+        private void ApplySpot()
+        {
+            if (_spotLight != null) _spotLight.intensity = _spotTarget * _warningScale;
         }
 
         /// <summary>

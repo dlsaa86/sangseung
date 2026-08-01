@@ -120,10 +120,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1 -St
 
 | 패스 | 완료 기준 | 이 패스가 막는 것 |
 |---|---|---|
-| **Pass 1** | 모든 Required 가 최소 `SKELETON`·`VISIBLE` | 상태 바뿐 |
-| **Pass 2** | 모든 Required 가 최소 `CONNECTED` | 상태 바 + 끊긴 증거 경로 |
+| **Pass 1** | **그 패스가 소유한** Required 가 최소 `SKELETON`·`VISIBLE` | 상태 바뿐 |
+| **Pass 2** | 소유 Required 가 최소 `CONNECTED` | 상태 바 + 끊긴 증거 경로 |
 | **Pass 3** | 백로그 §1 `PASS3_GATED` 28항목 `VERIFIED` + 시각 `ACCEPT` | + 캡처 세트·독립 평가·콘솔 오류 |
-| **Pass 4** | 모든 Required `VERIFIED` | + 전체 테스트·빌드·10층 증거·미커밋 0 |
+| **Pass 4** | **모든** Required `VERIFIED` | + 전체 테스트·빌드·10층 증거·미커밋 0 |
+
+**소유 패스**는 각 백로그 항목의 `· 패스: P2 P3` 에서 **가장 이른 패스**이고 검증기가
+그 줄을 직접 읽는다. 비주얼 항목이 Pass 2 를 막으면 「연결하는 단계」가 다시 최종 QA 가 된다.
+Pass 4 는 소유권과 무관하게 전부 요구하므로 **미룬 것이 사라지지 않는다** —
+검증기가 후속 패스 소유 미달 항목을 ID 까지 찍어 준다.
 
 **모든 Required의 `VERIFIED` 요구는 Pass 4에서만 적용한다.** 직전 판본은 패스와 무관하게
 항상 최종 증거를 요구해 **Pass 1이 사실상 최종 QA처럼 작동했다** (2026-08-02 사용자 지시로 변경).
