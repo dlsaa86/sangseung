@@ -22,6 +22,14 @@ Shader "Ascend/Stylized"
         _FalloffPower   ("감쇠 가파름", Range(1, 6)) = 2.5
         _AmbientFloor   ("주변광 바닥", Range(0, 0.6)) = 0.18
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
+
+        // **이 프로퍼티가 없으면 이 셰이더는 어디에도 채택할 수 없다.**
+        // `SpinBoardView`(정화 점등) · `InstrumentPanelView`(계기 발광) ·
+        // `OverharvestUnlockEffect`(덮개 레일) 셋이 `MaterialPropertyBlock` 으로
+        // `_EmissionColor` 를 쓴다. 이름이 없으면 블록이 조용히 무시되고
+        // **점등이 사라진 채 아무 오류도 안 난다** — `UP-CORE-12` 가 GIF 로 확인된
+        // 바로 그 연출이 그렇게 죽는다.
+        [HDR] _EmissionColor ("발광 (MaterialPropertyBlock 이 쓴다)", Color) = (0, 0, 0, 1)
     }
 
     SubShader
@@ -56,6 +64,7 @@ Shader "Ascend/Stylized"
                 float  _FalloffPower;
                 float  _AmbientFloor;
                 float  _RimStrength;
+                float4 _EmissionColor;
             CBUFFER_END
 
             struct Attributes
@@ -129,6 +138,10 @@ Shader "Ascend/Stylized"
                 float3 viewDir = normalize(GetWorldSpaceViewDir(input.positionWS));
                 float rim = pow(1.0 - saturate(dot(normalWS, viewDir)), 3.0);
                 color += rim * _RimStrength * _ShadowTint.rgb;
+
+                // 발광은 조명과 무관하게 **더한다**. 정화 점등은 어두운 칸에서도
+                // 보여야 하고, 곱하면 그림자 쪽에서 사라진다.
+                color += _EmissionColor.rgb;
 
                 color = MixFog(color, input.fogCoord);
                 return half4(color, 1.0);
