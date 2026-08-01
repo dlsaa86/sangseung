@@ -96,8 +96,14 @@ namespace Ascend.Prototype.Effects
                 _shared = new Material(shader) { name = "AscendParticleShared" };
             }
 
-            _dust    = Build("Dust",    new Color(0.72f, 0.68f, 0.58f, 0.16f), 0.020f, 0.9f,  6.0f, false);
-            _rust    = Build("Rust",    new Color(0.55f, 0.28f, 0.13f, 0.40f), 0.016f, 1.6f,  2.6f, true);
+            // **먼지 크기·밀도를 올렸다.** 독립 평가가 「3~5px 사각형 2~4개뿐이라
+            // 먼지가 아니라 **죽은 픽셀로 읽힌다**」고 지적했다 — 배경이 어두워져
+            // 이득을 볼 수 있었는데 크기·밀도가 그 이득을 못 받았다.
+            // 0.020 → 0.045, 배출률 하한도 6 → 14 로 올린다(아래 ApplyLevel).
+            // `UP-VIS-10`(안개·먼지가 결과판을 가리지 않는다)이 상한이라 알파는 그대로 둔다 —
+            // 개수와 크기로 존재감을 만들고 불투명도로 만들지 않는다.
+            _dust    = Build("Dust",    new Color(0.72f, 0.68f, 0.58f, 0.16f), 0.045f, 0.9f,  6.0f, false);
+            _rust    = Build("Rust",    new Color(0.55f, 0.28f, 0.13f, 0.40f), 0.030f, 1.6f,  2.6f, true);
             _spark   = Build("Spark",   new Color(1.00f, 0.72f, 0.32f, 0.85f), 0.012f, 2.4f,  0.9f, true);
             _purify  = Build("Purify",  new Color(0.72f, 0.92f, 1.00f, 0.75f), 0.022f, 1.1f,  1.4f, true);
             _cascade = Build("Cascade", new Color(0.85f, 0.78f, 0.45f, 0.70f), 0.018f, 1.8f,  1.1f, true);
@@ -174,8 +180,8 @@ namespace Ascend.Prototype.Effects
                     : _level == RiskLevel.Strain ? 0.34f
                     : _level == RiskLevel.Critical ? 0.7f : 1f;
 
-            SetEmission(_dust,  Mathf.Lerp(6f, 22f, t), budget);
-            SetEmission(_rust,  Mathf.Lerp(0f, 14f, t), budget);
+            SetEmission(_dust,  Mathf.Lerp(14f, 34f, t), budget);
+            SetEmission(_rust,  Mathf.Lerp(0f, 20f, t), budget);
             // 스파크는 지속 배출이 아니라 사건에만 — 상시로 켜면 「고장난 기계」가 아니라
             // 「용접 중」으로 보인다. 배출률 0 이되 버스트는 살아 있다.
             SetEmission(_spark, 0f, budget);
