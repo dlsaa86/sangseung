@@ -311,3 +311,72 @@
   각각 2층(직선)과 3층(연결)이 가르치므로 1층이 가르칠 몫이 없다.
   정화율이 내려가 헛스핀이 늘어난다. `SpinRuleSet`의 두 스위치는 그대로 되돌릴 수 있다.
 - 갱신된 문서: `MASTER_PRD.md` §6·§4, `SYMBOL_DESIGN_SPEC.md`, `CURRENT_PHASE.md` §2.1
+
+## D-20260801-04 — 감각 채널은 공용 사건 버스 하나를 구독한다
+
+- 상태: Accepted
+- 결정일: 2026-08-01
+- 결정자: 구현 에이전트 (되돌릴 수 있는 구조 결정)
+- 관련 문서/파일: `Scripts/Events/GameEventKind.cs`, `Scripts/Events/GameEvent.cs`,
+  `Run/RunSession.cs`, `Run/FloorSession.cs`, `docs/MASTER_PRD.md` §9
+- 결정: 텔레메트리 · 사운드 · 승객 반응 · 위험 연출이 각자 판정 코드를 다시 읽지 않고
+  `RunSession.Events`(`GameEventBus`) 하나를 구독한다. 사건 목록은 `GameEventKind` 한 벌이다.
+- 이유: 넷 다 같은 사건에 반응해야 하는데 서로 다른 층위에 산다(순수 C# 판정 / MonoBehaviour 연출).
+  각자 `SpinResolution`을 다시 해석하면 "정화가 일어났다"의 정의가 네 벌 생기고,
+  그중 하나만 고쳐도 채널 사이가 어긋난다. `MASTER_PRD.md` §9 마지막 문장이 금지하는 상태다 —
+  "각 상태는 조명, 사운드, 기계 진동, 파티클, 계기판, 승객 행동에서 **동기화**되어야 한다."
+  없던 동안 실제로 소리 채널이 hum 하나뿐이었고 승객 반응은 10종 중 1종뿐이었다.
+- 대안:
+  (1) 각 컴포넌트가 `RunSessionBehaviour`를 직접 폴링한다 — 지금 방식이며, 정확히 그래서
+      "무엇이 방금 일어났는가"를 아무도 모른다. 상태만 있고 사건이 없다. 기각.
+  (2) 정적 싱글턴 버스 — 런을 재시작하면 옛 구독자가 살아남아 두 런의 사건이
+      한 텔레메트리 파일에 섞인다. 기각. 버스는 런이 소유하고 런과 함께 죽는다.
+- 영향: `FloorSession`·`RunSession`이 `Events`에 발행한다. 버스가 null 이면 아무 데도
+  보내지 않으므로 기존 헤드리스 테스트는 그대로 돈다. 구독자 하나가 던진 예외가
+  다른 채널을 죽이지 않도록 `Publish`가 각 구독자를 개별로 감싸고 `ErrorCount`에 센다
+  (조용히 삼키지 않는다 — `TECH_SPEC.md` §2).
+- 회귀 방지: `TelemetryTests`(사건 흐름으로 20필드 레코드가 쌓이는가),
+  `PassengerReactionTests`(사건 → 반응 매핑), `AudioTests`(사건 → 큐 매핑).
+- 후속 작업: `OverharvestApproached`·`RiskLevelChanged`는 순수 층 판정에서 나오지 않으므로
+  `OverharvestApproachBridge`·`RiskEventBridge`가 씬 쪽에서 발행한다.
+
+## D-20260801-05 — 위험 2단계의 이름은 `Strain` 이다 (`Warning` 아님)
+
+- 상태: Accepted
+- 결정일: 2026-08-01
+- 결정자: 구현 에이전트 (PRD 우선순위 규칙의 기계적 적용 — 되돌릴 수 있다)
+- 관련 문서/파일: Notion MASTER PRD §8.1·§8.2, `docs/MASTER_PRD.md` §9,
+  `Scripts/Risk/RiskLevel.cs`, `UP-DOC-02`
+- 확인된 사실: **Notion 원문 §8.1 은 `Stable → Strain → Critical → Collapse` 다.**
+  §8.2 에도 `### Strain` 절이 따로 있다. 코드는 `Warning` 이고, 저장소의 동결 스냅샷
+  `docs/MASTER_PRD.md` §9 도 `Warning` 으로 적혀 있다 — **스냅샷을 옮겨 적을 때 생긴
+  표기 이탈이지 Notion 이 낡은 것이 아니다.**
+- 결정: 코드와 동결 스냅샷을 **Notion 에 맞춘다.** `RiskLevel.Warning` → `RiskLevel.Strain`.
+- 이유: PRD §1.1 이 MASTER PRD 를 최상위로 두고, `CLAUDE.md` 의 충돌 순서도 같다.
+  이름이 어긋난 채로 두면 사용자가 PRD 를 읽고 "Strain 단계 연출"을 지시했을 때
+  코드에서 찾을 수 없다. 백로그 `UP-DOC-02` 도 기본값을 "코드를 PRD에 맞춤"으로 적어 뒀다.
+- 대안: Notion 을 `Warning` 으로 고친다 — 최상위 문서를 구현 편의로 고치는 것이고,
+  §8.2 의 단계별 표현 절 제목까지 따라 바꿔야 한다. 기각.
+- 영향: 열거형 멤버 · 프리셋 · 테스트 · HUD 표시 · **고정 캡처 이름**
+  (`09_risk_warning.png` → `09_risk_strain.png`)이 함께 바뀐다.
+  캡처 이름 변경은 그 각도의 비교 이력을 한 번 끊는다(하네스 README 의 경고).
+  Pass 3 에서 어차피 전량 재촬영하므로 지금 끊는 것이 가장 싸다.
+- 회귀 방지: `RiskEvaluatorTests` 가 단계 전이를 그대로 검사한다. 이름만 바뀐다.
+
+## D-20260801-06 — 텔레메트리는 Notion §16.2 의 11항목을 모두 담는다
+
+- 상태: Accepted
+- 결정일: 2026-08-01
+- 결정자: 구현 에이전트
+- 관련 문서/파일: Notion MASTER PRD §16.2·§10.2, `Scripts/Telemetry/`, `UP-TEST-05`
+- 확인된 사실: `docs/runtime/NEXT_TOPDOWN_PLAN.md` 는 "PRD §16.2 가 20개 필드를 지정한다"고
+  적었지만 **Notion §16.2 「플레이 로그」의 항목은 11개다.** 20이라는 숫자는 그 계획 문서의
+  해석이지 PRD 원문이 아니다.
+- 결정: 필드 수를 목표로 삼지 않고 **§16.2 의 11항목을 빠짐없이 덮는다.**
+  스핀 단위로 분해하면 20개 남짓이 되지만, 검증 기준은 개수가 아니라 **11항목 대조표**다.
+- 이유: 개수를 기준으로 삼으면 "20개를 채웠으니 완료"가 되어, 실제로 빠진
+  「캐스케이드별 보드」·「현재 위험 단계」·「승객·부품 발동」·「프레임 타임과 GC Alloc」·
+  「런 종료 원인」이 통과해 버린다. 첫 구현이 정확히 그 다섯을 빠뜨렸다.
+- 영향: 스핀 레코드에 위험 단계·잔류 개수·적재 요약·캐스케이드 단계별 보드·
+  프레임 타임·GC 샘플이 추가되고, **런 단위 레코드**가 따로 생긴다(종료 원인은 스핀 속성이 아니다).
+- 회귀 방지: `TelemetryTests` 가 11항목 대조표를 코드로 검사한다.

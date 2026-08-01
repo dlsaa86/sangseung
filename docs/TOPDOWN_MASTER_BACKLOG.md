@@ -227,23 +227,23 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-04 — TargetHardwareProfile 데이터화
 - 분류: Required · 출처: PRD §13.1 「기준 하드웨어는 `TargetHardwareProfile`에 기록한다」
-- 상태: NOT_STARTED · 패스: P2
-- 구현: 없음
+- 상태: SKELETON · 패스: P2
+- 구현: `Scripts/Data/Profiles/TargetHardwareProfile.cs`(기준 해상도·목표 90 FPS·하드 플로어 60 · vSync 취급)
 - 접근: 해당 없음 (개발 전용 데이터)
-- 검증: 에셋 존재 + 성능 산출물이 이 프로파일을 인용
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 기본 스냅샷 값 대조
+- 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: `A-20260730-01`이 미완성으로 기록. PRD §13.1은 미지정 상태에서 성능 완료 선언을 금지한다
+- 남은 문제: 클래스만 있고 `.asset` 이 없다. **성능 산출물이 아직 이 프로파일을 인용하지 않는다** — PRD §13.1 이 미지정 상태에서 성능 완료 선언을 금지하므로 Pass 4 의 선행 조건이다
 
 ### UP-PLAT-05 — 압축·임포트 Preset과 VisualQualityProfile
 - 분류: Required · 출처: PRD §13.3, §13.4, §17.4
-- 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P3
+- 구현: `Scripts/Data/Profiles/VisualQualityProfile.cs`(광원 수·그림자 거리·파티클 상한·오버드로우 예산·렌더 스케일)
 - 접근: 해당 없음
-- 검증: Preset 에셋 존재 + 빌드 리포트의 상위 용량 기록
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 프리셋 값 대조
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-PLAT-03
-- 남은 문제: 광원 수·그림자 거리·파티클 수·포스트프로세싱 조정 지점이 코드에 흩어져 있다
+- 남은 문제: `.asset` 이 없고 **텍스처·오디오 임포트 Preset 은 아직 하나도 없다**. 빌드 리포트의 상위 용량 기록도 미착수
 
 ### UP-PLAT-06 — 결정론적 캡처 하네스
 - 분류: Required · 출처: PRD §15.1 「동일한 해상도·FOV·카메라 위치·시간대·품질 프리셋」
@@ -593,13 +593,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-CORE-14 — 가중치 합이 0이면 명시적 오류
 - 분류: Required · 출처: N08 §7.2 마지막 문장, PRD §13.5(조용한 실패 금지)
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Spin/SpinRuleSet.cs`
+- 상태: VERIFIED · 패스: P1 P2
+- 구현: `Scripts/Spin/SpinEngine.cs`(방어), `Scripts/Spin/Tests/SpinRuleSetTests.cs`(검증)
 - 접근: 해당 없음
-- 검증: 전용 EditMode 테스트
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 「가중치 전부 0 → InvalidOperationException」
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-CORE-02
-- 남은 문제: 방어 코드는 있으나 "명시적 오류를 낸다"를 검증하는 테스트가 없다
+- 남은 문제: 없음
 
 ## 2.5 CONTRACT — 저항 계약
 
@@ -708,22 +708,22 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-POWER-06 — 과수확 상호작용 연출 5단계
 - 분류: Required · 출처: PRD §7.3 (접근 → 감음 → 승객 시선 → 0.3~0.7초 정적 → 재개)
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/View/OverharvestUnlockEffect.cs`(해금 연출만)
+- 구현: `Scripts/Run/OverharvestApproachBridge.cs`(접근 판정), `Scripts/Audio/SilenceWindow.cs`(정적), `Scripts/Npc/`(승객 응시 반응)
 - 접근: 과수확 레버에 손을 올린다
 - 검증: 접근 순간 고정 캡처 + 정적 구간 측정
-- 증거: 없음
+- 증거: `Captures/TenFloor/12_overharvest_unlocked.png`
 - 의존: UP-DEVICE-03, UP-NPC-02, UP-AUD-03
-- 남은 문제: 5단계 중 「주변 기계음 감소」·「승객 응시」·「정적」이 구현되지 않았다
+- 남은 문제: 5단계의 부품이 전부 생겼으나 **씬에서 서로 이어지지 않았다.** 접근 다리·오디오·승객 반응이 한 오브젝트 트리에 붙어야 한다
 
 ### UP-POWER-07 — OverharvestProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §7.4
-- 상태: NOT_STARTED · 패스: P2
-- 구현: 없음 (수치가 `FloorSession`/`OverchargeOption`에 분산)
+- 상태: SKELETON · 패스: P2
+- 구현: `Scripts/Data/Profiles/OverharvestProfile.cs`(PRD §7.4 의 9항목)
 - 접근: 해당 없음
-- 검증: 프로파일 에셋 존재 + 값 교체가 코드 수정 없이 반영
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 정적 구간 범위 조임 등
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-POWER-05
-- 남은 문제: PRD §14.1이 요구하는 「가변 요소는 데이터로 분리」 위반 상태
+- 남은 문제: 클래스만 있다. `.asset` 을 만들고 **`FloorSession`·`OverchargeOption` 의 흩어진 수치가 실제로 이 프로파일을 읽게** 해야 데이터화가 성립한다
 
 ### UP-POWER-08 — 초과 전력이 다층 상승·보상으로 이어진다
 - 분류: Required · 출처: PRD §4.1, N03 「부분 실패」, N08 §11.3
@@ -921,13 +921,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-BUILD-09 — 발동 순서가 고정되고 로그로 추적된다
 - 분류: Required · 출처: N02 「발동 순서」, N08 §8.1 「절대 변경하지 않는다」, §24 금지 구현
-- 상태: CONNECTED · 패스: P2
-- 구현: `Scripts/Spin/SpinEngine.cs`, `SpinResolution.cs`
+- 상태: VERIFIED · 패스: P2
+- 구현: `Scripts/Spin/SpinEngine.cs`, `SpinResolution.cs`, `Scripts/Spin/Tests/SpinRuleSetTests.cs`
 - 접근: 해당 없음
-- 검증: `Ascend/Run Self Tests`
+- 검증: `Ascend/Run All EditMode Tests` → 발동 순서 전용 단정(순서를 뒤집으면 값이 달라짐을 실제 숫자로 보인다)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-BUILD-02
-- 남은 문제: 순서 자체는 고정됐으나 **순서를 검증하는 전용 테스트가 없다**
+- 남은 문제: 없음
 
 ### UP-BUILD-10 — 무게가 클수록 강한 효과 (충돌하는 교환)
 - 분류: Required · 출처: PRD §3(가설 7), N02 「이 빌드를 끝까지 감당할 수 있는가」
@@ -1004,32 +1004,32 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-RISK-06 — Collapse 단계 (암전 → 파열음 → 급강하 → 재점등)
 - 분류: Required · 출처: PRD §8.2 Collapse
 - 상태: SKELETON · 패스: P2 P3
-- 구현: `Scripts/Risk/RiskLevel.cs`(상태값), `Run/FloorResult.cs`
+- 구현: `Scripts/Risk/CollapseSequence.cs`(암전 → 급강하 → 불규칙 재점등, `CollapseBegan` 사건 구독)
 - 접근: 층을 실패한다
-- 검증: 고정 캡처 `16_risk_collapse`
+- 검증: 고정 캡처 `16_risk_collapse` + 시퀀스 진행 중 캡처
 - 증거: `Captures/TenFloor/16_risk_collapse.png`
 - 의존: UP-RISK-01, UP-AUD-01
-- 남은 문제: 상태는 도달하지만 PRD §8.2의 6개 연출 요소가 없다. 캡처 16은 실제 Collapse 도달 조합을 탐색해 찍도록 고쳤다
+- 남은 문제: 연출 코드는 생겼으나 **씬에 붙지 않아 여전히 Critical 과 구분되지 않는다.** 낙하 대상·카메라 리그 배선이 필요하다
 
 ### UP-RISK-07 — DangerFeedbackProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §8.4, §14.1
 - 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Risk/RiskProfile.cs` (코드 내 하드코딩 기본값)
+- 구현: `Scripts/Risk/RiskProfile.cs`(구조체), `Scripts/Data/Profiles/DangerFeedbackProfile.cs`(ScriptableObject)
 - 접근: 해당 없음
-- 검증: ScriptableObject 에셋 존재 + 인스펙터 교체 가능
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RISK-01
-- 남은 문제: 구조체는 있으나 에셋이 아니다. PRD §14.2 「프리셋 비교 가능」을 아직 만족하지 않는다
+- 남은 문제: ScriptableObject 껍데기는 생겼다. `.asset` 을 만들고 `RiskStateView` 가 코드 프리셋 대신 이것을 읽게 해야 §14.2 「프리셋 비교 가능」이 성립한다
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
-- 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P3
+- 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs`(셰이크 배율·섬광 허용·사이렌·저주파 감쇠·자막)
 - 접근: 옵션 메뉴 (없음)
-- 검증: `AccessibilityProfile` 에셋 + 값 변경이 연출에 반영
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 셰이크 0 배율이 실제 0을 낸다
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RISK-07
-- 남은 문제: PRD §14.3 권장 자산 목록의 `AccessibilityProfile`이 없다
+- 남은 문제: `.asset` 이 없고 `RiskStateView`·`CollapseSequence` 가 아직 이 값을 읽지 않는다
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
@@ -1065,13 +1065,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
-- 상태: NOT_STARTED · 패스: P2
-- 구현: 없음
+- 상태: SKELETON · 패스: P2
+- 구현: `Scripts/Npc/PassengerReactionSet.cs`(ScriptableObject · 11종 기본값 · 폴백)
 - 접근: 해당 없음
-- 검증: 에셋 존재 + 교체가 코드 수정 없이 반영
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 승객 반응 14건
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-02
-- 남은 문제: 없음
+- 남은 문제: 클래스는 있으나 **`.asset` 인스턴스가 없다.** 씬 오너가 만들어 배선해야 데이터 교체가 실제로 가능해진다
 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
@@ -1085,13 +1085,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-05 — 동시 반응 제한 (우선순위·쿨다운·최대 수)
 - 분류: Required · 출처: PRD §9.4 「한 이벤트에서 모든 승객이 동시에 말하지 않는다」
-- 상태: NOT_STARTED · 패스: P2
-- 구현: 없음
+- 상태: SKELETON · 패스: P2
+- 구현: `Scripts/Npc/PassengerReactionDirector.cs`(우선순위·쿨다운·최대 동시 수·결정론적 라운드 로빈)
 - 접근: 해당 없음
-- 검증: 동시 반응 수 로그
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 동시 반응 상한·쿨다운·우선순위 덮어쓰기·승객 0명
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-02
-- 남은 문제: 없음
+- 남은 문제: 중재기는 완성됐으나 **승객 오브젝트에 붙지 않았다.** `BuildFigureView`가 반응을 실제 자세·시선으로 옮겨야 한다
 
 ## 2.11 REC — 사고 기록기
 
@@ -1128,12 +1128,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-REC-04 — 기계식 프린터·종이 테이프 형태의 물리적 출력
 - 분류: Required · 출처: PRD §10.1 「단순 결과창 대신 엘리베이터 내부의 기계식 프린터, 종이 테이프 또는 펀치카드」
 - 상태: SKELETON · 패스: P3
-- 구현: `Scripts/UI/GameHudView.cs` (ScreenSpaceOverlay 텍스트)
+- 구현: `Scripts/View/PaperTapePrinterView.cs`(월드 공간 기계식 프린터 · 줄 단위 인쇄)
 - 접근: 층이 끝나면 화면에 뜬다
 - 검증: 고정 캡처 `17_accident_recorder`
 - 증거: `Captures/TenFloor/17_accident_recorder.png`
 - 의존: UP-REC-02
-- 남은 문제: 화면 오버레이다. 월드 공간 장치로 옮길지가 승인 대기 → UP-APV-13
+- 남은 문제: 프린터 컴포넌트는 생겼고 `FloorRecord` 를 그대로 읽는다(§10.3). **씬에 장치가 없다** — 벽면 위치와 테이프 슬롯 배치가 필요하다
 
 ### UP-REC-05 — 기록과 사고 후 상태가 한 장에 함께 보인다
 - 분류: Required · 출처: PRD §10.3 마지막
@@ -1261,43 +1261,43 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-AUD-02 — 룰렛 사운드 10종
 - 분류: Required · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
-- 상태: NOT_STARTED · 패스: P2 P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P2 P3
+- 구현: `Scripts/Audio/AudioCueKind.cs`(10종+4), `AudioCueTable.cs`(사건→큐 매핑), `ProceduralClipFactory.cs`(절차 생성), `AudioDirector.cs`
 - 접근: 스핀을 돌린다
-- 검증: 사운드 이벤트 발동 로그
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 사운드 매핑 13건 (10종 전부 매핑·깊이별 피치 단조 증가)
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-CORE-11
-- 남은 문제: 없음
+- 남은 문제: `AudioDirector`가 **씬에 없어 소리가 나지 않는다.** 매핑과 합성은 테스트로 증명됐다
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
 - 분류: Required · 출처: PRD §7.3(4)
-- 상태: NOT_STARTED · 패스: P2 P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P2 P3
+- 구현: `Scripts/Audio/SilenceWindow.cs`(0.3~0.7초 조임 · 게인 타임라인), `Scripts/Run/OverharvestApproachBridge.cs`(접근 사건)
 - 접근: 과수확 레버에 손을 올린다
-- 검증: 오디오 게인 타임라인 측정
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 정적 구간 경계·단조성·범위 조임
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-POWER-06, UP-AUD-01
-- 남은 문제: 없음
+- 남은 문제: 게인 곡선은 검증됐으나 **씬에 붙지 않아 실제로 음량이 줄지 않는다**
 
 ### UP-AUD-04 — 승객 비언어 음성
 - 분류: Required · 출처: PRD §9.3
-- 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P3
+- 구현: `Scripts/Audio/ProceduralClipFactory.cs`(PassengerVoice — 포먼트 2개, 승객 인덱스로 피치 변화)
 - 접근: 승객이 반응할 때
-- 검증: 오디오 채널 존재
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 큐 종류 분기
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-04
-- 남은 문제: 없음
+- 남은 문제: 합성기는 있으나 승객 반응과 이어지지 않았다 (`UP-NPC-04` 선행)
 
 ### UP-AUD-05 — AudioMixProfile / 오디오 압축 구분
 - 분류: Required · 출처: PRD §13.4, §14.3
-- 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
+- 상태: SKELETON · 패스: P3
+- 구현: `Scripts/Data/Profiles/AudioMixProfile.cs`(채널 5종 · 덕킹 배율 · 위험 단계별 험)
 - 접근: 해당 없음
-- 검증: 믹서 에셋 + 임포트 Preset
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-AUD-01
-- 남은 문제: 없음
+- 남은 문제: 클래스만 있고 `.asset` 인스턴스가 없다. 오디오 임포트 Preset 도 아직 없다
 
 ## 2.14 TECH — 엔지니어링 목표
 
@@ -1353,33 +1353,33 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TECH-06 — 오브젝트 풀링 (파티클·심볼·사운드)
 - 분류: Required · 출처: PRD §13.2, §17.4
-- 상태: NOT_STARTED · 패스: P4
-- 구현: 없음
+- 상태: SKELETON · 패스: P4
+- 구현: `Scripts/Perf/ObjectPool.cs`(이중 반환 감지 포함), `ComponentPool.cs`
 - 접근: 해당 없음
-- 검증: 풀 구현 + Alloc 감소 측정
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 풀링 20건 (prewarm·재사용·이중 반환·maxSize 초과)
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-TECH-05
-- 남은 문제: 없음
+- 남은 문제: 풀은 있으나 **파티클·심볼·사운드가 아직 쓰지 않는다.** Alloc 감소 측정도 없다
 
 ### UP-TECH-07 — 렌더링 예산 측정 (드로우콜·SetPass·오버드로우)
 - 분류: Required · 출처: PRD §13.3
-- 상태: NOT_STARTED · 패스: P4
-- 구현: 없음
+- 상태: SKELETON · 패스: P4
+- 구현: `Scripts/Perf/RenderBudgetProbe.cs`(드로우콜·SetPass·삼각형 샘플링, 측정 불가 시 명시)
 - 접근: 해당 없음
-- 검증: 최악 시점 프레임 디버거 산출물
-- 증거: 없음
+- 검증: 프로브 실행 → `Logs/render_budget.txt`
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-TECH-04
-- 남은 문제: 없음
+- 남은 문제: 프로브는 있으나 **아직 한 번도 돌리지 않았다.** 최악 시점 기준도 정하지 않았다
 
 ### UP-TECH-08 — 10층 연속 플레이에서 메모리 누적 없음
 - 분류: Required · 출처: PRD §17.4
-- 상태: NOT_STARTED · 패스: P4
-- 구현: 없음
+- 상태: SKELETON · 패스: P4
+- 구현: `Scripts/Perf/MemoryTrendProbe.cs`(층 경계 샘플링), `MemoryTrend.Analyze`
 - 접근: 해당 없음
-- 검증: 10층 런 전후 메모리 스냅샷
-- 증거: 없음
+- 검증: 10층 런 전후 스냅샷 → `Logs/memory_trend.txt`
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RUN-10
-- 남은 문제: 없음
+- 남은 문제: 추세 판정 로직만 검증됐다. **10층 런을 실제로 재지 않았다**
 
 ### UP-TECH-09 — 가변 요소의 데이터 분리 (PRD §14.1 12항목)
 - 분류: Required · 출처: PRD §14.1, §14.3
@@ -1435,13 +1435,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-05 — 텔레메트리 (스핀별 JSON/CSV 20항목)
 - 분류: Required · 출처: PRD §4.1(텔레메트리), §16.2, N08 §18
-- 상태: NOT_STARTED · 패스: P2
-- 구현: 없음
+- 상태: SKELETON · 패스: P2
+- 구현: `Scripts/Telemetry/`(SpinTelemetryRecord 20필드 · TelemetryRecorder · TelemetryFileSink · ITelemetrySink)
 - 접근: 해당 없음
-- 검증: 런 1회 후 텔레메트리 파일 존재 + 항목 대조
-- 증거: 없음
+- 검증: `Ascend/Run All EditMode Tests` → 텔레메트리 17건 (결정론·CSV 열 일치·JSONL 이스케이프)
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RUN-01
-- 남은 문제: **PRD §4.1의 명시적 필수 항목인데 코드에 존재하지 않는다.** `Sim/SimRecords.cs`는 시뮬레이터 전용이라 인게임 런을 기록하지 않는다
+- 남은 문제: 두 가지가 남았다. ① **씬에 붙지 않아 실제 인게임 런이 파일을 만들지 않는다** — 헤드리스 테스트만 기록한다. ② Notion §16.2 11항목 중 **다섯이 빠져 있다** — 캐스케이드별 보드 · 정화/발동 순서 · 현재 위험 단계 · 승객·부품 발동 · 프레임 타임과 GC Alloc. 런 종료 원인은 스핀 속성이 아니라 런 단위 레코드가 따로 필요하다 (`D-20260801-06`)
 
 ### UP-TEST-06 — 디버그 패널
 - 분류: Required · 출처: PRD §4.1, N08 §17 「개발 빌드에서만 기본 활성화」
@@ -1465,23 +1465,23 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-08 — 5연쇄 이상 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
-- 상태: NOT_STARTED · 패스: P4
-- 구현: 없음 (정지 캡처 `15_cascade_deep`만)
+- 상태: SKELETON · 패스: P4
+- 구현: `Assets/CaptureHarness/GifEncoder.cs`(자체 LZW), `Scripts/Run/Tests/SequenceRecorder.cs`
 - 접근: 해당 없음
-- 검증: 영상 파일 존재
-- 증거: 없음
+- 검증: 5연쇄 런 녹화 → GIF 파일 존재
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-CORE-08
-- 남은 문제: 하네스가 영상을 만들지 않는다
+- 남은 문제: 인코더는 **파이썬 이식본을 Pillow 로 되읽는 왕복 검사로 검증했다**(사전 포화·Clear 재시작 경로 포함, 480×270 5프레임 바이트 일치). 아직 **실제 런을 녹화하지 않았다**
 
 ### UP-TEST-09 — Critical → 과수확 → 결과 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
-- 상태: NOT_STARTED · 패스: P4
-- 구현: 없음
+- 상태: SKELETON · 패스: P4
+- 구현: `Scripts/Run/Tests/SequenceRecorder.cs`(RecordUntil 로 조건까지 녹화)
 - 접근: 해당 없음
-- 검증: 영상 파일 존재
-- 증거: 없음
+- 검증: Critical → 과수확 → 결과 구간 녹화 → GIF 파일 존재
+- 증거: `Logs/editmode_tests.txt`
 - 의존: UP-TEST-08
-- 남은 문제: 없음
+- 남은 문제: 녹화 장치만 있다. 그 구간으로 런을 몰아넣는 대본이 아직 없다
 
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3
@@ -1616,15 +1616,21 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 | 상태 | Required 중 개수 |
 |---|---|
-| `VERIFIED` | **64** |
-| `CONNECTED` | 26 |
+| `VERIFIED` | **66** |
+| `CONNECTED` | 25 |
 | `VISIBLE` | 0 |
-| `SKELETON` | 16 |
-| `NOT_STARTED` | 23 |
+| `SKELETON` | 31 |
+| `NOT_STARTED` | **7** |
 | `BLOCKED_EXTERNAL` | 0 |
 
-**Required 129건 중 64건(50%)이 코드·씬·테스트 증거를 모두 갖췄다.**
+**Required 129건 중 66건(51%)이 코드·씬·테스트 증거를 모두 갖췄다.**
 직전 판본의 "VERIFIED 0"은 판정 기준이 달랐기 때문이지 구현이 없어서가 아니었다 (§0.4).
+
+> **2026-08-01 Pass 1 Wave A.** `NOT_STARTED` 가 23 → 7 로 내려갔다. 옮겨간 16건은
+> 대부분 `SKELETON` 이다 — **코드와 테스트는 생겼지만 씬에 붙지 않아 게임 안에서는
+> 아직 아무 일도 일어나지 않는다.** 이 구분을 흐리면 "구현했다"가 "동작한다"로
+> 읽히고, 그것이 이 백로그가 막으려는 바로 그 착시다.
+> EditMode 91 → **188 PASS / 0 FAIL**, 자체 검증 110 → **207 PASS / 0 FAIL**.
 
 `VISIBLE`이 0건인 것은 후보가 없어서가 아니라, 가장 유력한 두 후보가 Required 항목이
 아니라 **레거시 정리 대상**이기 때문이다 — 상세는

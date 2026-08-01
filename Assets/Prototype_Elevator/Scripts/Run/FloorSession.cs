@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Ascend.Prototype.Build;
+using Ascend.Prototype.Events;
 using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Run
@@ -121,6 +122,19 @@ namespace Ascend.Prototype.Run
         public float CarriedWeight => _carriedWeight;
 
         /// <summary>
+        /// 사건을 내보낼 곳. 런이 넣어 준다. null이면 아무 데도 보내지 않는다 —
+        /// 헤드리스 단위 테스트는 버스 없이 층 하나만 돌릴 수 있어야 한다.
+        /// </summary>
+        public GameEventBus Events { get; set; }
+
+        /// <summary>
+        /// 이미 알린 임계점(%). 같은 층에서 100%를 두 번 알리지 않는다.
+        /// 잔류 피해로 전력이 내려갔다 다시 올라가는 일이 실제로 있기 때문에
+        /// "지금 넘었는가"가 아니라 "한 번이라도 넘었는가"로 판정한다.
+        /// </summary>
+        private int _announcedThreshold;
+
+        /// <summary>
         /// 기본 허용 중량 + 짐꾼 보너스. 이 값을 넘으면 과적이다.
         ///
         /// **확정 뒤에는 확정 시점 값으로 얼어붙는다.** 계산 프로퍼티였을 때 무슨 일이
@@ -168,6 +182,8 @@ namespace Ascend.Prototype.Run
             _offers = remaining.ToArray();
 
             RecomputeLoad();
+            Events?.Publish(GameEventKind.ItemBoarded, Plan.Floor, -1,
+                _loadout.Count, item.Weight, item.Label);
             return true;
         }
 
@@ -183,6 +199,10 @@ namespace Ascend.Prototype.Run
 
             if (Phase == FloorPhase.Spinning)
                 BuildRules(_contract);
+
+            Events?.Publish(GameEventKind.BoardingFinished, Plan.Floor, -1,
+                _loadout != null ? _loadout.Count : 0, _carriedWeight,
+                IsOverloaded ? "과적" : null);
             return true;
         }
 
@@ -242,6 +262,8 @@ namespace Ascend.Prototype.Run
             _contract = Plan.ContractChoices[choiceIndex];
             BuildRules(_contract);
             Phase = FloorPhase.Spinning;
+            Events?.Publish(GameEventKind.ContractSelected, Plan.Floor, -1,
+                choiceIndex, 0f, _contract.Label);
             return true;
         }
 
@@ -263,6 +285,10 @@ namespace Ascend.Prototype.Run
             ExtraSpinsTaken++;
             _activeSpinIsExtra = true;
             Phase = FloorPhase.Spinning;
+            Events?.Publish(GameEventKind.OverharvestPulled, Plan.Floor, SpinsUsed,
+                ExtraSpinsTaken, ante);
+            Events?.Publish(GameEventKind.ExtraSpinTaken, Plan.Floor, SpinsUsed,
+                ExtraSpinsTaken, Power);
             return true;
         }
 
@@ -279,6 +305,9 @@ namespace Ascend.Prototype.Run
             // 그래야 "이 층 이 스핀"을 앞선 진행과 무관하게 단독 재현할 수 있다 —
             // TECH_SPEC §7, 파생 규칙의 단일 출처는 SpinSeed다.
             int spinSeed = SpinSeed.Derive(_engine.RunSeed, Plan.Floor, SpinsUsed);
+            Events?.Publish(GameEventKind.SpinStarted, Plan.Floor, SpinsUsed,
+                SpinsRemaining, Power, _activeSpinIsExtra ? "추가 스핀" : null);
+
             SpinResolution resolution = _engine.SpinWithSeed(
                 spinSeed, _rules, in _contract, in _residual, Plan.Floor, SpinsUsed);
             _history.Add(resolution);
@@ -291,10 +320,97 @@ namespace Ascend.Prototype.Run
             }
             SpinsUsed++;
 
+            PublishSpinDetail(in resolution);
+
             if (CanBank || SpinsRemaining == 0)
                 Phase = FloorPhase.Decision;
             return resolution;
         }
+
+        /// <summary>
+        /// 스핀 하나를 사건으로 쪼갠다. 사운드·승객 반응·텔레메트리가 이 흐름만 보고
+        /// 각자 반응하며, 아무도 <see cref="SpinResolution"/>을 다시 해석하지 않는다.
+        ///
+        /// 순서가 곧 연출 순서다 — 열 공개 → 단계별(영혼·정화) → 잔류 → 임계점 → 종합.
+        /// `MASTER_PRD.md` §6이 "시각적으로 생략하지 않는다"를 요구하므로 단계를 접지 않는다.
+        /// </summary>
+        private void PublishSpinDetail(in SpinResolution resolution)
+        {
+            GameEventBus bus = Events;
+            if (bus == null) return;
+
+            int floor = Plan.Floor;
+            int idx = resolution.SpinIndex;
+
+            for (int column = 0; column < SpinBoard.Columns; column++)
+                bus.Publish(GameEventKind.ColumnRevealed, floor, idx, column);
+
+            if (resolution.Steps != null)
+            {
+                foreach (CascadeStep step in resolution.Steps)
+                {
+                    if (step.NormalSoulsHarvested > 0)
+                        bus.Publish(GameEventKind.NormalSoulHarvested, floor, idx,
+                            step.NormalSoulsHarvested, step.NormalSoulPower);
+
+                    if (step.Purifies != null)
+                    {
+                        foreach (PurifyEvent p in step.Purifies)
+                        {
+                            GameEventKind kind;
+                            switch (p.Pattern)
+                            {
+                                case PatternKind.Line:      kind = GameEventKind.PurifyLine; break;
+                                case PatternKind.Cluster:
+                                case PatternKind.FullBoard: kind = GameEventKind.PurifyCluster; break;
+                                default:                    kind = GameEventKind.PurifyScattered; break;
+                            }
+                            bus.Publish(kind, floor, idx,
+                                p.Cells != null ? p.Cells.Length : 0, p.Power, p.Kind.DisplayName());
+                        }
+                    }
+
+                    bus.Publish(GameEventKind.CascadeStep, floor, idx, step.Depth, step.StepPower);
+                }
+            }
+
+            if (resolution.CascadeCapReached)
+                bus.Publish(GameEventKind.CascadeCapReached, floor, idx, resolution.ChainDepth);
+
+            if (resolution.Residual.StoredPowerLoss > 0f)
+                bus.Publish(GameEventKind.ResidualDamage, floor, idx,
+                    resolution.Residual.AbsorberCount, resolution.Residual.StoredPowerLoss,
+                    resolution.Residual.Describe());
+
+            AnnounceThresholds();
+
+            bus.Publish(GameEventKind.SpinResolved, floor, idx,
+                resolution.ChainDepth, resolution.NetPower, null, resolution);
+        }
+
+        /// <summary>
+        /// 임계점 100 · 170 · 300%를 처음 넘는 순간에만 알린다.
+        /// `MASTER_PRD.md` §7이 요구하는 과수확 잠금 해제도 100% 통과와 같은 사건이다.
+        /// </summary>
+        private void AnnounceThresholds()
+        {
+            if (RequiredPower <= 0f) return;
+            int percent = (int)(Power / RequiredPower * 100f);
+
+            foreach (int gate in ThresholdGates)
+            {
+                if (percent < gate || _announcedThreshold >= gate) continue;
+                _announcedThreshold = gate;
+                Events?.Publish(GameEventKind.PowerThresholdCrossed, Plan.Floor, SpinsUsed - 1,
+                    gate, Power);
+                if (gate == 100)
+                    Events?.Publish(GameEventKind.OverharvestUnlocked, Plan.Floor, SpinsUsed - 1,
+                        100, Power);
+            }
+        }
+
+        /// <summary>승객이 반응하는 임계점(`MASTER_PRD.md` §9.2 목록의 세 지점).</summary>
+        private static readonly int[] ThresholdGates = { 100, 170, 300 };
 
         private float AnteRatioForNextSpin =>
             AnteRatio * (1f + AnteEscalation * ExtraSpinsTaken);
@@ -339,6 +455,14 @@ namespace Ascend.Prototype.Run
             _result = new FloorResult(ascent, _totalAnte, ExtraSpinsTaken,
                 _extraSpinNetPower, NetProfit);
             Phase = FloorPhase.Resolved;
+
+            Events?.Publish(GameEventKind.PowerBanked, Plan.Floor, SpinsUsed - 1,
+                (int)_result.Band, Power, _result.Band.DisplayName());
+            if (!_result.Succeeded)
+                Events?.Publish(GameEventKind.CollapseBegan, Plan.Floor, SpinsUsed - 1,
+                    (int)_result.Band, Power, _result.FailureReason);
+            Events?.Publish(GameEventKind.FloorResolved, Plan.Floor, SpinsUsed - 1,
+                _result.FloorsAscended, Power, _result.ToString());
             return _result;
         }
 

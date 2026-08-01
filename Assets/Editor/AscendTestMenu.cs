@@ -20,21 +20,66 @@ namespace Ascend.Prototype.EditorTools
     /// </summary>
     public static class AscendTestMenu
     {
+        /// <summary>
+        /// 이 목록이 곧 "EditMode 그린"의 정의다. 스위트를 새로 만들고 여기에 넣지 않으면
+        /// 깨져도 아무도 모른다 — `PrototypeSelfTest`가 같은 이유로 뒤늦게 네 스위트를
+        /// 편입한 전례가 있다(그 파일의 주석).
+        /// </summary>
+        private static (int passed, int failed, string report)[] AllSuites() => new[]
+        {
+            SpinEngineTests.RunAll(),
+            SpinRuleSetTests.RunAll(),
+            RunTests.RunAll(),
+            RiskEvaluatorTests.RunAll(),
+            BuildTests.RunAll(),
+            Telemetry.Tests.TelemetryTests.RunAll(),
+            Data.Profiles.Tests.ProfileTests.RunAll(),
+            Npc.Tests.PassengerReactionTests.RunAll(),
+            Audio.Tests.AudioTests.RunAll(),
+            Perf.Tests.PerfTests.RunAll(),
+        };
+
         [MenuItem("Ascend/Run All EditMode Tests %#t")]
         public static void RunAll()
         {
-            var spin = SpinEngineTests.RunAll();
-            var run = RunTests.RunAll();
-            var risk = RiskEvaluatorTests.RunAll();
-            var build = BuildTests.RunAll();
-            int passed = spin.passed + run.passed + risk.passed + build.passed;
-            int failed = spin.failed + run.failed + risk.failed + build.failed;
+            var suites = AllSuites();
+            int passed = 0, failed = 0;
+            var sb = new System.Text.StringBuilder(4096);
+            foreach (var s in suites)
+            {
+                passed += s.passed;
+                failed += s.failed;
+                sb.Append(s.report).Append("\n\n");
+            }
+            sb.Append($"합계: {passed} PASS / {failed} FAIL");
+            string report = sb.ToString();
 
-            string report = $"{spin.report}\n\n{run.report}\n\n{risk.report}\n\n{build.report}\n\n" +
-                            $"[상승] 합계: {passed} PASS / {failed} FAIL";
+            // **산출물을 손으로 유지하지 않는다.** `tools/verify-topdown.ps1`이 이 파일의
+            // "합계:" 줄을 읽어 완료를 판정하는데, 지금까지 이 파일은 아무도 쓰지 않아
+            // 스위트가 늘어도 옛 숫자가 그대로 남아 있었다. 판정 근거가 되는 파일은
+            // 판정 대상을 실제로 돌린 쪽이 써야 한다.
+            WriteArtifact("editmode_tests.txt", report);
 
-            if (failed > 0) Debug.LogError(report);
-            else Debug.Log(report);
+            if (failed > 0) Debug.LogError($"[상승]\n{report}");
+            else Debug.Log($"[상승]\n{report}");
+        }
+
+        /// <summary>
+        /// `Logs/` 아래에 산출물을 쓴다. 실패해도 테스트 결과를 삼키지 않는다 —
+        /// 쓰기 실패는 경고이지 테스트 실패가 아니다.
+        /// </summary>
+        private static void WriteArtifact(string fileName, string body)
+        {
+            try
+            {
+                string dir = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, fileName), body + "\n");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[상승] {fileName} 을 쓰지 못했다: {e.GetType().Name}: {e.Message}");
+            }
         }
 
         [MenuItem("Ascend/Run PlayMode Hero Slice Check")]

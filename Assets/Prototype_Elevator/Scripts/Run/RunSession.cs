@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Ascend.Prototype.Build;
+using Ascend.Prototype.Events;
 using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Run
@@ -107,6 +108,14 @@ namespace Ascend.Prototype.Run
             /// <summary>기본 1층을 넘어 추가로 산 층 수.</summary>
             public int ExtraFloors => Math.Max(0, FloorsAscended - 1);
         }
+
+        /// <summary>
+        /// 이 런에서 일어난 일이 흐르는 곳. **런이 소유한다** — 런을 다시 시작하면
+        /// 버스도 새로 태어나므로 옛 구독자가 두 런의 사건을 한 파일에 섞지 못한다.
+        ///
+        /// 텔레메트리·사운드·승객 반응·위험 연출이 전부 여기를 구독한다.
+        /// </summary>
+        public GameEventBus Events { get; } = new GameEventBus();
 
         /// <summary>이 런의 층 구성. HUD가 "1층 중 1층"인지 "10층 중 3층"인지 표시할 때 쓴다.</summary>
         public IFloorPlanSource Floors => _floors;
@@ -222,6 +231,8 @@ namespace Ascend.Prototype.Run
             {
                 IsComplete = true;
                 _current = null;
+                Events.Publish(GameEventKind.RunEnded, HighestFloorReached, -1,
+                    HighestFloorReached, Money, "완주");
                 return;
             }
 
@@ -229,7 +240,12 @@ namespace Ascend.Prototype.Run
             // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
             // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                _baseWeight, _residual, _anteRatio, _anteEscalation, _loadout);
+                _baseWeight, _residual, _anteRatio, _anteEscalation, _loadout)
+            {
+                Events = Events,
+            };
+            Events.Publish(GameEventKind.FloorStarted, CurrentFloor, -1,
+                _current.Plan.Spins, _current.RequiredPower, _current.Plan.CoreQuestion);
         }
 
         /// <summary>
@@ -258,11 +274,18 @@ namespace Ascend.Prototype.Run
                 IsFailed = true;
                 FailureReason = result.FailureReason;
                 _current = null;
+                Events.Publish(GameEventKind.RunEnded, HighestFloorReached, -1,
+                    HighestFloorReached, Money, FailureReason);
                 return;
             }
 
             // 70~89% 는 오르되 대가를 치른다. 무엇을 잃었는지 기록에 남긴다.
-            if (result.RequiresJettison) LastJettison = PayJettisonCost();
+            if (result.RequiresJettison)
+            {
+                LastJettison = PayJettisonCost();
+                Events.Publish(GameEventKind.JettisonPaid, CurrentFloor, -1,
+                    _loadout.Count, _loadout.TotalWeight, LastJettison);
+            }
             else LastJettison = null;
 
             int from = CurrentFloor;

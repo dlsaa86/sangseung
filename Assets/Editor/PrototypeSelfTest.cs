@@ -65,6 +65,16 @@ public static class PrototypeSelfTest
         FoldInSuite("위험 상태", Ascend.Prototype.Risk.Tests.RiskEvaluatorTests.RunAll());
         FoldInSuite("적재·빌드·10층 진행", Ascend.Prototype.Build.Tests.BuildTests.RunAll());
 
+        // Pass 1 에서 들어온 스위트들. 여기 편입하지 않으면 커밋 게이트가 지키는 숫자에
+        // 잡히지 않고, 그러면 "자체 검증 통과"가 새 코드에 대해 아무 말도 하지 않는다 —
+        // 바로 위 두 줄이 같은 이유로 뒤늦게 편입됐다.
+        FoldInSuite("가중치 방어·발동 순서", Ascend.Prototype.Spin.Tests.SpinRuleSetTests.RunAll());
+        FoldInSuite("텔레메트리", Ascend.Prototype.Telemetry.Tests.TelemetryTests.RunAll());
+        FoldInSuite("데이터 프로파일", Ascend.Prototype.Data.Profiles.Tests.ProfileTests.RunAll());
+        FoldInSuite("승객 반응", Ascend.Prototype.Npc.Tests.PassengerReactionTests.RunAll());
+        FoldInSuite("사운드 매핑·정적 구간", Ascend.Prototype.Audio.Tests.AudioTests.RunAll());
+        FoldInSuite("풀링·메모리 추세", Ascend.Prototype.Perf.Tests.PerfTests.RunAll());
+
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
         WriteMarker();
