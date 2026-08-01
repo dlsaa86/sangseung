@@ -345,7 +345,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `TenFloorAutoPilot` 의 「연출 중에도 플레이어 조작이 살아 있다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-SPACE-01, UP-CORE-11
-- 남은 문제: **내 앞선 기록이 틀렸다.** 「`CharacterController` 활성을 확인한다」고 적었으나 코드는 `FirstPersonController.enabled` 를 본다. 그리고 더 큰 것: `HandleLook` 이 `IsCursorLocked` 로 막혀 있고 씬은 `_lockCursorOnStart: 0` 이라 **하네스 전 구간에서 시점 회전이 한 번도 실행된 적이 없다.** 「이동·시점 회전 허용」의 절반이 미관측이고, 지금 단정은 「얼리는 방법이 안 쓰였다」만 볼 뿐 요구 결과를 재지 않는다
+- 남은 문제: **내 단정이 공허하게 참이었다 — 독립 감사가 짚었고 고쳤다.** 직전 판본은 `root.Rotate(25°)` 로 직접 쓰고 다음 프레임에 읽는 것뿐이었는데, 루트 회전을 되돌릴 주체가 **존재하지 않는다** — `HandleLook` 은 커서 잠금을 요구하고 씬은 `_lockCursorOnStart: 0` 이다. 그래서 268회 전부 정확히 `25.0°` 였다. 실측이 아니라 **항등식**이다. 게다가 그 커밋 메시지는 「컨트롤러를 끄든 `timeScale` 을 0 으로 두든 여기서 걸린다」고 적었는데 **둘 다 걸리지 않는다** — `Transform.Rotate` 와 `CharacterController.Move` 는 시간 배율과 무관하고, 검사 대상 `_character` 는 `CharacterController` 이지 `FirstPersonController` 가 아니다. **즉 반증력이 있던 옛 검사(`enabled && activeInHierarchy && timeScale > 0`)를 반증력이 없는 것으로 갈아 끼우고 반대로 적었다.** → 떨어질 수 있는 조건 둘(조작 컴포넌트 활성 · `timeScale > 0`)을 되살려 함께 걸었고, 결과 측정 두 건은 「연출이 되돌리지 않는다」로 이름을 바꿔 **충족 근거로 단독 인용하지 말라고 코드에 적었다.** 남은 것: `FirstPersonController.SetCursorLocked(true)`(public)로 게이트를 열어 실제 look 경로를 태우는 것 — 코드 주석의 「하네스가 흉내 낼 수 없다」는 과장이었다
 
 ### UP-SPACE-09 — 등을 돌려도 결과와 전력 변화를 알 수 있다
 - 분류: Required · 출처: PRD §11(무음 관전자 기준), N03 「등을 돌려도 사운드·점등·보조 UI로」, N08 §17
@@ -417,7 +417,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `02_device_front`, `14_contract_select`
 - 증거: `Captures/TenFloor/14_contract_select.png`
 - 의존: UP-CONTRACT-01
-- 남은 문제: 계기판에 빈 띠가 없어 숫자 라벨을 넣을 자리가 없다 (배치 결정 필요)
+- 남은 문제: **계기판의 계약 표시는 죽은 경로다.** 씬 `Prototype_Elevator.unity:17722` 가 `_contractLabel: {fileID: 0}` 이고 `InstrumentPanelView.cs:199` 가 `if (_contractLabel == null) return;` 로 즉시 반환한다 — **`ApplyContractPreview` 가 한 번도 실행되지 않는다.** 계약 문구는 `_plaqueLabels`(계약 패널 = `UP-DEVICE-07` 의 물건)에만 뜬다. 즉 이 항목 제목의 「계약 저항」 절반이 계기판에서는 미구현이다. **증거도 틀렸다** — 걸려 있는 `14_contract_select.png` 에는 **계기판이 프레임에 없다**(계약 명판 3장·과수확 라벨·층수 표시뿐). 계기판이 실제로 읽히는 장은 `03_device_side.png`(「스핀 5/5 · 잔류 없음」)와 `08_passenger_and_device.png`(「흡수체 1개 → 저장 전력 −8.0」 = 잔류 오염 실측)인데 **둘 다 증거로 걸려 있지 않다.** 게다가 `14_contract_select` 는 시각 판정에서 **판독성 2/5 세트 최저점**이라 `UP-FIX-09`(재설계)로 이미 전환됐다. **다음**: ① `_contractLabel` 을 씬에서 배선하거나 「계기판은 잔류만 표시한다」로 요구를 줄이는 결정 ② 증거를 `08_passenger_and_device.png` 로 교체. ①을 배선하면 `[RequiredReference]` 를 붙여 재발을 막는다 — 지금 붙이면 `SceneWiringValidator` 가 즉시 결함으로 잡는다(그것이 이 항목의 실상이다)
 
 ### UP-DEVICE-07 — 계약 패널 (물리적 인터페이스)
 - 분류: Required · 출처: PRD §4.1, N01 「계약은 벽면 계약 패널, 인쇄된 계약서, 봉인된 표식 등」
@@ -447,7 +447,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `04_symbols`
 - 증거: `Captures/TenFloor/04_symbols.png`
 - 의존: UP-DEVICE-01
-- 남은 문제: 흑백 변환 대조 검사를 아직 하지 않았다
+- 남은 문제: **제목이 요구를 1/3 로 줄여 적고 있다 — 충족처럼 보이는 것이 가장 위험하다.** `VISUAL_SPEC.md` §4 와 `SYMBOL_DESIGN_SPEC.md` §4 는 「색상 하나에만 의존하지 않고 **6축 중 최소 세 가지**가 달라야 한다」를 요구하고, `SYMBOL_DESIGN_SPEC.md:112-115` 가 그 3축의 구체 형상까지 확정해 뒀다(①매끈/오목/볼록 ②코어 1개/공백/다수 ④느린 회전/미세 진동/간헐 팽창 ⑤균일/방사형/불규칙). **구현은 ① 실루엣 1축뿐이다** — `HumanScaleLayout.cs:377-379` 의 Sphere/Cube/Capsule 이고 `MakeSymbol`(:403-421)은 **머티리얼조차 배정하지 않아** 셋이 같은 기본 머티리얼이다. ②·⑤ 없음, ④ 심볼별 움직임 없음, ⑥ 심볼별 공개 사운드 없음(`ColumnReveal` 한 종류). `SYMBOL_DESIGN_SPEC.md:150` 이 스스로 「실제 형상이 이 사양을 따르는지 미검증」이라 적었고 감사가 확인한 결과 **따르지 않는다.** 남은 것: 3축 중 2축 추가 + 흑백 변환 대조 검사
 
 ### UP-DEVICE-10 — 장치가 평면 UI가 아니라 물리적 조작부를 가진다
 - 분류: Required · 출처: PRD §12.2, N06 §8 「손잡이, 스위치, 봉인, 계기 바늘」, N08 §17
@@ -569,7 +569,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `15_cascade_deep` + 연출 프리셋 3종
 - 증거: `Captures/TenFloor/15_cascade_deep.png`
 - 의존: UP-CORE-02
-- 남은 문제: 없음
+- 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **진짜 증거는 이미 저장소에 있다** — `Captures/evidence/cascade_depth5_seed4242_f3.gif` 142프레임에 순차 공개가 찍혀 있다(f0~f6 1열 · f8~f12 1+2열 · f14~ 3열). `EvidenceClipRecorder.cs:209-213` 이 `lever.Interact()` 로 실제 경로를 돌린 필름이다. 증거를 그 GIF 로 옮기고, `SYMBOL_DESIGN_SPEC.md` §7 「총 공개 1.5~2.5초」를 재는 검사를 붙여야 한다 — 씬 Standard 값 계산은 0.32×3+0.45 = **1.41초**로 하한 밖인데 재는 코드가 0건이다
 
 ### UP-CORE-12 — 판정 원인 시각화 (정화·직선·연결 점등)
 - 분류: Required · 출처: PRD §6.2, §15.2, N07 「패턴 시각화」, N08 §16.2
@@ -579,7 +579,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `15_cascade_deep`
 - 증거: `Captures/TenFloor/15_cascade_deep.png`
 - 의존: UP-CORE-08
-- 남은 문제: 개수 정화 / 직선 / 연결의 연출 강도 차이가 아직 대비 검사되지 않았다
+- 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **진짜 증거도 같은 GIF 에 있다** — f30 「흡수체 연결 정화 4칸 ×3」+ㄱ자 표식, f62 8칸, f86 지그재그, f118 「흡수체 직선 3칸 ×2」+대각 막대. 연결과 직선이 형상으로 갈린다. 남은 것: 「개수 정화(Scattered)」가 필름에 한 번도 없어 3종 대비가 2/3 이다
 
 ### UP-CORE-13 — 한 화면에 모든 숫자를 띄우지 않는다
 - 분류: Required · 출처: PRD §6.2 마지막 문단
@@ -589,7 +589,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 고정 캡처 `19_cascade_deep_screen` — 15번과 같은 순간의 화면 캡처
 - 증거: `Captures/TenFloor/19_cascade_deep_screen.png`
 - 의존: UP-CORE-12
-- 남은 문제: **증거가 요구 위반을 보인다.** HUD 우측이 잘린다(`UP-FIX-07`). 더 결정적으로, 하단 힌트가 보이는 것은 `GameHudView` 가 연출 중이면 힌트를 끄기 때문에 **캡처 순간이 연출 중이 아니었다**는 뜻이고, 같은 조건에서 연쇄 그룹도 꺼진다 — 즉 매니페스트가 「연쇄 8단계」라고 적은 그 장에 **「연쇄 N단계」 HUD 가 없다.** 판정 대상이 그림에 없다. 연출이 도는 프레임에서 찍어야 한다
+- 남은 문제: **증거가 그 코드의 산물이 아니다 — `UP-TECH-03` 과 같은 실패다.** 백로그가 건 `15_cascade_deep.png` 는 `SpinPresenter` 를 **거치지 않은** 그림이다: `TenFloorCaptureRig.cs:565` 가 `run.Spin()` 을 직접 부르고 :577·:587 이 판과 표식을 손으로 밀어 넣는다. 리그 자신의 주석(:402-404)이 「재생을 거치지 않고 판을 직접 밀어 넣었을 때 `SpinPresenter` 가 하던 일을 **대신한다**」고 적어 두었다. 강조 세기도 :419 에서 0.46/0.22/0.34/0.16 으로 손으로 넣어 실제 연출(사인파 최대 1.0)과 값이 다르다. **그래서 판정 대상이 그림에서 구조적으로 빠진다.** `19_cascade_deep_screen` 하단에 「전력 탱크로 확정하거나…」 힌트가 또렷한데, `GameHudView.cs:152` 는 연출 중이면 그 힌트를 0 으로 페이드한다 → 셔터 순간이 **연출 중이 아니었다**(`IsPresenting` 이 영원히 false). 그런데 매니페스트는 「연쇄 8단계 / HUD 를 포함한다」고 적는다 — 「주장과 그림이 다르다」의 재발이다. 고칠 길은 이미 있다: 리그가 `run.Spin()` 대신 **레버를 당기게** 하면 `UP-CORE-11`·`12`·`13` 이 한 번에 오른다
 
 ### UP-CORE-14 — 가중치 합이 0이면 명시적 오류
 - 분류: Required · 출처: N08 §7.2 마지막 문장, PRD §13.5(조용한 실패 금지)
@@ -1045,13 +1045,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-NPC-01 — 승객이 위험 상태에 반응한다
 - 분류: Required · 출처: PRD §4.1(승객 상황 반응), §8.2, §9.3
-- 상태: CONNECTED · 패스: P1 P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Build/BuildFigureView.cs`(`ReactToRisk`)
 - 접근: 위험이 오르면 승객 자세가 바뀐다
 - 검증: 고정 캡처 `09_risk_strain`, `10_risk_critical`
 - 증거: `Captures/TenFloor/09_risk_strain.png`, `Captures/TenFloor/10_risk_critical.png`
 - 의존: UP-BUILD-05, UP-RISK-01
-- 남은 문제: 반응 진폭은 `A-20260731-04`대로 임시값
+- 남은 문제: **독립 감사 통과 (2026-08-01).** 감사자가 세 조건을 전부 직접 확인했다 — 코드 `BuildFigureView.cs:246` 이 `LateUpdate` 에서 `ReactToRisk()` 를 부르고 :279-285 가 단계별 기울기(Strain 3.5° / Critical 8.0° / Collapse 11.0°)를, :315-318 이 `_carIsPassenger[i]` 인 인물에만 적용한다. 씬 `:4726-4744` 활성 배선. **증거는 픽셀 대조다** — 승객이 선 좌하단 560×800 영역에서 06→09 는 90,620px, 06→10 은 184,865px 가 다르고 인물이 수직→약간→뚜렷하게 **단조로** 기운다. 조명이 아니라 기하 변화다. 감사자가 함정 둘도 배제했다: ① 세 장의 적재가 같다(`ForceCritical` 은 스핀만 하고 적재를 안 건드린다, HUD 가 셋 다 「요구 1187」) ② 인물이 실제 승객이다(10번에 「광신자」=`PSG_ZEALOT` 이름표). 남은 것(승격을 막지 않음): Collapse 단계의 승객 반응은 미관측 — `16_risk_collapse` 는 승객 없는 별도 런(시드 555555)이다
 
 ### UP-NPC-02 — 프로토타입 반응 이벤트 10종
 - 분류: Required · 출처: PRD §9.2 (계약 선택 / 기본 정화 / 5연쇄 / 임계점 3개 / 과수확 해금 / 과수확 접근 / 추가 스핀 / Critical 진입 / Collapse 직전 / 사고·성공)
@@ -1061,7 +1061,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `TenFloorAutoPilot` 의 「승객 반응 종류가 줄지 않았다」 + `Ascend/Run All EditMode Tests`
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-NPC-01
-- 남은 문제: **11종 중 8종이 실제로 울렸다**(총 110건). 이제 총합이 아니라 종류를 센다 — 「반응 110건」은 한 종류가 110번 울려도 나오는 숫자였다. **안 울린 3종을 특정해야 한다** — 하네스가 과수확을 안 당기는 적재 런에서는 `OverharvestUnlocked`·`OverharvestApproach`·`ExtraSpin` 이 안 나올 수 있다(추정). 요구는 10종이고 하한 8 은 회귀 방지선이지 충족이 아니다
+- 남은 문제: **안 울린 3종이 이제 산출물에 이름으로 적힌다** — `Threshold170`, `OverharvestApproach`, `ExtraSpin`(`Logs/tenfloor_playmode.txt`). 이전에는 `BitCount` 만 찍어서 감사자가 「8종」만 보고는 무엇이 빠졌는지 **끝내 특정하지 못했다.** 셋의 성격이 서로 다르다. ① **`OverharvestApproach` 는 구조적으로 도달 불가**다 — `OverharvestApproachBridge.cs:71-73` 이 **크로스헤어가 레버를 겨눌 때만** 발행하는데 하네스는 `TenFloorAutoPilot.cs:734` 에서 `overharvest.Interact(gameObject)` 를 직접 부른다. 조준하지 않는다. 하네스가 겨누도록 바꾸지 않으면 영원히 안 나온다. ② **`ExtraSpin` 은 사건이 실제로 발행된다** — `FloorSession.cs:290` 이 `GameEventKind.ExtraSpinTaken` 을 publish 하고 이번 런에서 과수확이 실제로 일어났다(오디오 `OverharvestPull` 이 울렸다). 그런데 반응은 안 울렸다. **원인 후보가 둘이고 지금 산출물로는 못 가른다** — 매핑이 안 걸렸는가, 아니면 발행됐지만 **매번 억제됐는가**(이번 런의 억제 130건 &gt; 시작 110건). `FiredKindsMask` 는 **실제로 시작된 것**만 센다. ③ `Threshold170` 도 같은 모호성 아래 있다. **다음**: 억제된 종류의 마스크를 따로 찍으면 ②·③ 의 원인이 한 줄로 갈린다
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
@@ -1233,7 +1233,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 구현: `Captures/TenFloor/scaled25/` 생성기 (원본 21장 → 480×270, LANCZOS)
 - 접근: 해당 없음
 - 검증: 캡처를 25% 축소해 독립 평가
-- 증거: `Captures/TenFloor/scaled25/` 21장 + `scaled25/manifest.txt`
+- 증거: `Captures/TenFloor/scaled25/manifest.txt` (21장 + 대응표)
 - 의존: UP-VIS-07
 - 남은 문제: 축소 세트를 **만들었다** — 원본 1920×1080 21장을 25%(480×270)로 줄여 `Captures/TenFloor/scaled25/` 에 두고 독립 평가를 요청했다. 리샘플은 LANCZOS 로 **축소에 유리한 쪽**을 골랐다 — 더 거친 BOX/NEAREST 면 리샘플 탓인지 디자인 탓인지 갈리지 않기 때문이다. **판정은 아직이다.** 그리고 이 항목은 `UP-VIS-07`(시각 루브릭 평균 4.0)에 의존하는데 그쪽이 현재 REJECT 이므로, 축소 판정이 좋게 나와도 **이 항목만 먼저 VERIFIED 로 갈 수 없다**
 
@@ -1267,7 +1267,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` 13건 + `WaveBRuntimeProbe` 재생 카운터
 - 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-CORE-11
-- 남은 문제: **16종 중 14종이 실제로 재생됐다.** `AudioDirector.PlayedKindsMask` 가 종류를 센다 — 이전에는 「재생 3건」만 있어서 한 종류가 세 번 난 것과 세 종류가 한 번씩 난 것이 구분되지 않았다. 남은 것은 ① 안 난 2종의 특정 ② 10종이 서로 **다른 소리로 들리는가**의 청취 확인(PRD §13, 사람이 필요하다)
+- 남은 문제: **백로그가 자기 성과를 과소 보고하고 있었다 — 룰렛 10종은 전부 울렸다.** 독립 감사의 도달성 논증: `AudioCueKind` 는 열거자 16개 중 `None=0` 을 빼면 15종이고 `AudioDirector.cs:445-446` 이 `bit > 0` 이라 15종만 기록된다. 그중 `PassengerVoice`(23)는 `AudioCueTable.TryMap` 이 절대 만들지 않고 `PlayPassengerVoice`(:359)의 **호출자가 0곳**이라 도달 불가다. 즉 **도달 가능한 최대치가 14** 인데 실측이 14종이다 → **도달 가능한 전부가 울렸고 룰렛 10종(kind 1~10)이 필연적으로 포함된다.** 안 난 것은 「2종」이 아니라 1종이고, 그것은 「아직 안 났다」가 아니라 구조적 미구현이다. **그럼에도 VERIFIED 로 올리지 않는 이유 둘:** ① 그 결론은 감사자가 열거형과 호출자를 따로 훑어 증명한 것이지 **산출물이 말해 주는 것이 아니었다** — 하네스가 `BitCount` 만 찍었다. → **고쳤다**: 이제 울린/안 울린 종류 **이름**을 함께 찍는다. ② 요구의 나머지 절반 「10종이 서로 **다른 소리로 들리는가**」는 여전히 미검증이다 — `AudioTests.cs:133-149` 는 큐 종류 매핑 검사이지 구운 클립의 청각 차이 검사가 아니다
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
 - 분류: Required · 출처: PRD §7.3(4)
@@ -1496,12 +1496,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-TEST-11 — 미사용 레거시 코드 정리
 - 분류: Required · 출처: PRD §4.2(9종 등급 체계 제외), N08 §22 「임시 에셋은 명확히 `Prototype` 폴더에」, Pass 4
 - 상태: NOT_STARTED · 패스: P4
-- 구현: 정리 대상 — `Scripts/Data/Ball*.cs`, `CombinationConfig.cs`, `PassengerDefinition.cs`, `Scripts/Roulette/`, `Scripts/Effects/`, `Scripts/Sim/`(일부), `Core/PassengerManager.cs`, `Data/Balls/`, `Data/Effects/`, `Data/Passengers/`
+- 구현: `docs/runtime/LEGACY_DELETION_PLAN.md` — 전수 조사 목록과 웨이브 0~9 삭제 순서
 - 접근: 해당 없음
 - 검증: 삭제 또는 `Legacy/` 격리 후 컴파일·테스트 통과
-- 증거: 없음
+- 증거: `docs/runtime/LEGACY_DELETION_PLAN.md`
 - 의존: UP-TEST-01
-- 남은 문제: `BallGrade`는 PRD §4.2가 제외한 **9종 등급 체계의 잔재**다. 새 `Spin`/`Run`/`Build`/`Risk` 코드는 이 스택을 참조하지 않는다. 씬 잔존 여부는 UP-APV-12
+- 남은 문제: **목록이 확정됐다. 삭제는 아직이다.** 독립 조사자가 `Scripts/` 146 + `Assets/Editor/` 17 파일을 GUID 역검색 + 씬 YAML 파싱 + **주석 제거 후** 참조 그래프로 전수 조사했다 (주석만 뒤진 1차는 `PlayerSetupValidator`·`PrototypeUI`·`ComponentPool`·`RunOutcome` 을 「살아 있음」으로 오판했다). 결과 — **삭제 대상 46파일 4,571줄 + `.asset` 23개**, 보존 52파일 약 19,500줄. **규모 정정**: `GapAnalysis.md:205-207` 과 `WINDOWS_SETUP.md:168` 의 「약 5,000줄」은 `Scripts/Sim/` 899줄을 잘못 포함한 값이다 — `Sim/` 은 신 스택 밸런스 시뮬레이터라 남는다. **순서가 중요하다**: 레거시 `.asset` 을 먼저 지우면 `PrototypeSelfTest.cs:38-43` 의 조기 반환이 걸려 신 스택 스위트 10종이 통째로 안 돌고 `1 FAIL` 이 되며, 커밋 게이트가 **모든 커밋을 막는다.** 웨이브 0(자체 검사 편집)이 반드시 먼저다. **전제 하나**: 웨이브 1에서 `PlayerSetupValidator` 를 지우기 전에 `FirstPersonController`·`CrosshairInteractor`·`CrosshairView` 에 `[RequiredReference]` 를 붙여야 검사 손실이 없다 — 현재 이 셋에 속성이 하나도 없다. 되돌릴 수 없는 지점은 웨이브 3(씬)·8(`.asset`) 둘뿐이고 `PD-13` 승인이 전제다
 
 ## 2.16 DOC — 문서 정합성
 
@@ -1523,7 +1523,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 열거 값 불변 확인(0/1/2/3) + `RiskEvaluatorTests` 11 PASS + 재캡처 20장
 - 증거: `Logs/editmode_tests.txt`, `Captures/TenFloor/09_risk_strain.png`
 - 의존: UP-RISK-01
-- 남은 문제: **코드 개명은 끝났고 문서 정합성이 남았다.** 값은 보존됐다(`Stable=0 / Strain=1 / Critical=2 / Collapse=3`, `RiskLevel.Warning` 참조 0건). 그러나 독립 감사가 셋을 찾았다 — ① `docs/CURRENT_PHASE.md` 가 아직 `Warning` 이었다(**요구 축에서 `MASTER_PRD` 보다 상위 문서다**. 고쳤다) ② `RiskEvaluatorTests` 의 **테스트 이름**이 그대로라 `editmode_tests.txt` 에 「Warning」으로 찍힌다 ③ 캡처 매니페스트가 소스 수정(16:50)보다 오래된 캡처(16:40)라 아직 「Warning — 2층」이다 — **재캡처가 필요하다**
+- 남은 문제: **코드 개명은 끝났다. 잔재가 내가 센 것보다 많다.** 독립 감사가 확인한 것 — `RiskLevel.cs` 는 `Stable=0 / Strain=1 / Critical=2 / Collapse=3` 로 값이 보존됐고 `RiskLevel.Warning` 참조는 **0건**이며, 남은 `Warning*` 은 전부 `RiskProfile.WarningColor` 류 (경고**등**)와 `AudioChannel.Warning` 이라 **끊지 않은 판단이 옳다.** 동결 문서 넷(PRD·TECH_SPEC·CURRENT_PHASE·VISUAL_SPEC)도 전부 `Strain` 이고 `09_risk_strain.png` 재캡처도 끝났다. **그러나 아직 다섯 곳이 남았다:** ① `Risk/Tests/RiskEvaluatorTests.cs:19` 테스트 이름 「잔류 저항이 쌓이면 Warning」 — 이 항목이 증거로 건 `Logs/editmode_tests.txt:70` 에 그대로 찍힌다 ② `Run/Tests/TenFloorCaptureRig.cs:269` 하드코딩 문구가 `manifest.txt:36` 에 「Warning 의 정의라」로 출력된다 — 재캡처했는데도 매니페스트에 Warning 이 남았다 ③ `docs/VISUAL_BIBLE.md:294-295` 가 「저장소 명칭(`Warning`)을 따른다」고 `D-20260801-05`(Accepted)와 **정면으로 반대되는 지시**를 하고 있었다 → **철회 기록 완료** ④ `docs/ASSUMPTION_LOG.md:119` 의 불변식이 **없는 필드 이름** `WarningEnter` 를 가리킨다 (현재 `StrainEnter`) ⑤ `docs/AUTONOMOUS_PROTOTYPE_GOAL.md` 209·379·529·542·593 — **이번 실행의 완료 판정 기준 문서**가 `Warning` 을 다섯 번 적고 있고, 209·529 는 **필수 고정 캡처 이름 목록**이라 캡처 세트 대조가 이름부터 어긋난다. **⑤ 는 고의로 고치지 않았다** — 사용자의 완료 기준 문서를 구현자가 말없이 고치는 것은 범위를 바꾸는 일이다. 여기에 적어 보이게 두고 사용자 판단을 기다린다. 출처 표기 `PRD §8.1` 도 틀렸다 — 동결 PRD 의 위험 단계는 **§9**(`:179`)다
 
 ---
 

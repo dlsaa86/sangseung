@@ -55,6 +55,7 @@ namespace Ascend.Prototype.Risk
         private Data.Profiles.DangerFeedbackSnapshot _levels;
         private Data.Profiles.AccessibilitySnapshot _accessibilitySnapshot;
         private string _profileSource = "(미초기화)";
+        private string _accessibilitySource = "(미초기화)";
         private RiskProfile _blended;
         private MaterialPropertyBlock _block;
         private Vector3 _swayHome;
@@ -116,10 +117,25 @@ namespace Ascend.Prototype.Risk
             }
             _accessibilitySnapshot =
                 Data.Profiles.AccessibilityProfile.SnapshotOrDefault(_accessibility);
+            _accessibilitySource = _accessibility != null
+                ? _accessibility.name
+                : "코드 기본값";
         }
 
         /// <summary>지금 쓰고 있는 연출 값의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
         public string ProfileSource => _profileSource;
+
+        /// <summary>
+        /// 접근성 값의 출처. **`ProfileSource` 와 따로 있어야 한다.**
+        ///
+        /// 독립 감사가 짚은 것: `AccessibilityProfile.asset` 의 8개 값이 코드 기본값
+        /// (`DefaultSnapshot`)과 **전부 동일**하고, `SnapshotOrDefault` 는 null 에서 경고도
+        /// 남기지 않으며, `ProfileSource` 는 `_feedbackProfile` 만 반영한다. 그래서 씬에서
+        /// `_accessibility` 를 떼어내도 **화면·로그·테스트가 전부 그대로였다** —
+        /// 「주입했다」를 반증할 수단이 없었다. 다른 프로파일 셋에는 출처 단정을 붙여 놓고
+        /// 이 하나에만 없었던 것이라 일관성 문제이기도 하다.
+        /// </summary>
+        public string AccessibilitySource => _accessibilitySource;
 
         /// <summary>단계별 연출 값. 에셋이 배선됐으면 에셋 것이다.</summary>
         public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);

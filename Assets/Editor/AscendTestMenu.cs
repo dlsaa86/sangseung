@@ -198,6 +198,21 @@ namespace Ascend.Prototype.EditorTools
                 return;
             }
 
+            // 화면 경로로 찍는 3장(`17`·`19`·`20`)은 게임 뷰 크기로 나온다.
+            // 고정하지 않으면 나머지 18장(RenderTexture, 1920×1080)과 해상도가 갈리고,
+            // 실제로 816×714 로 나와 그 세 장만 판독성 평가에서 불리하게 채점됐다.
+            // **실패를 조용히 넘기지 않는다** — 못 맞추면 캡처를 시작하지 않는다.
+            // 틀린 해상도로 찍힌 증거는 없느니만 못하다.
+            if (!Ascend.CaptureHarness.EditorTools.GameViewResolution.TrySetFixed(
+                    Ascend.CaptureHarness.EditorTools.GameViewResolution.SpecWidth,
+                    Ascend.CaptureHarness.EditorTools.GameViewResolution.SpecHeight))
+            {
+                Debug.LogError("[상승] 게임 뷰를 1920×1080 으로 고정하지 못했다 — " +
+                               Ascend.CaptureHarness.EditorTools.GameViewResolution.LastError +
+                               ". 화면 캡처 3장이 다른 해상도로 나오므로 캡처를 중단한다.");
+                return;
+            }
+
             const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
             if (EditorSceneManager.GetActiveScene().path != scenePath)
             {

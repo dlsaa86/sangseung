@@ -30,6 +30,15 @@ namespace Ascend.Prototype.Run.Tests
     {
         public const string OutputDirectory = "Captures/TenFloor";
         public const string ManifestPath = "Captures/TenFloor/manifest.txt";
+
+        /// <summary>
+        /// 화면 캡처가 나와야 할 해상도. `VISUAL_SPEC.md:107` 의 기준 해상도이고,
+        /// RenderTexture 경로로 찍는 18장이 이미 이 크기다. 게임 뷰가 이보다 작으면
+        /// 화면 경로 3장만 작아지므로 <see cref="ScreenShot"/> 이 매니페스트에 경고를 적는다.
+        /// 고정은 에디터 쪽(`Ascend/Capture Ten Floor Set`)이 캡처 시작 전에 한다.
+        /// </summary>
+        public const int SpecCaptureWidth = 1920;
+        public const int SpecCaptureHeight = 1080;
         private const string PrefKey = "Ascend.TenFloorCaptureRig.Armed";
 
         private const int Width = 1920;
@@ -600,7 +609,7 @@ namespace Ascend.Prototype.Run.Tests
                         yield return ScreenShot("19_cascade_deep_screen",
                             $"15번과 같은 순간의 **화면 캡처** — 연쇄 {depth}단계 / " +
                             "HUD 를 포함한다. `UP-CORE-13`(한 화면에 모든 숫자를 띄우지 않는다)은 " +
-                            "이 장으로 판정한다. 해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
+                            "이 장으로 판정한다. 게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -706,7 +715,7 @@ namespace Ascend.Prototype.Run.Tests
                 $"{record} / 기록 {(recorder != null ? recorder.Records.Count : 0)}건 / " +
                 $"시드 {run.Session.Seed} / 도달 {run.Session.HighestFloorReached}층 / " +
                 "**화면 캡처** — 전용 카메라 렌더에는 화면 UI가 들어가지 않아 이 한 장만 방식이 다르다. " +
-                "해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
+                "게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
 
             // 완주 직전 — 10층에 **실제로 서 있는** 런을 찾는다. 시드 하나로 몰다가
             // 중간에 사고가 나면 "도달 8층"이 찍히고, 그건 §12가 요구한 그림이 아니다.
@@ -881,7 +890,7 @@ namespace Ascend.Prototype.Run.Tests
                 $"조준 대상 {(aimed ? "있음" : "**없음**")} / 프롬프트 「{target}」. " +
                 "`UP-SPACE-03`(조준 하이라이트와 행동 프롬프트)은 이 장으로 판정한다 — " +
                 "전용 카메라 렌더에는 ScreenSpaceOverlay 가 들어가지 않는다. " +
-                "해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
+                "게임 뷰를 캡처 전에 1920×1080 으로 고정하므로 나머지 18장과 같은 해상도다 (예전에는 816×714 로 나왔다)");
 
             root.position = savedPosition;
             root.rotation = savedRotation;
@@ -899,7 +908,15 @@ namespace Ascend.Prototype.Run.Tests
                 Directory.CreateDirectory(directory);
                 File.WriteAllBytes(Path.Combine(directory, $"{name}.png"), shot.EncodeToPNG());
                 _shots++;
-                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height}");
+                // 기준 해상도와 다르면 **매니페스트에 크게 적는다.** 화면 캡처는 게임 뷰
+                // 크기로 나오므로, 뷰가 작으면 이 장들만 조용히 저해상도가 된다 —
+                // 실제로 3장이 816×714 로 나가 판독성 평가에서 그 세 장만 불리하게 채점됐고,
+                // 평가자가 「816px 게임 뷰 종속일 수 있다」는 단서를 달아야 했다.
+                bool atSpec = shot.width == SpecCaptureWidth && shot.height == SpecCaptureHeight;
+                _manifest.AppendLine($"{name,-26} 화면 캡처 {shot.width}×{shot.height}" +
+                    (atSpec ? string.Empty
+                            : $"  ⚠ 기준 {SpecCaptureWidth}×{SpecCaptureHeight} 가 아니다 — " +
+                              "다른 18장과 해상도가 다르므로 판독성 비교에 그대로 쓰지 말 것"));
                 _manifest.AppendLine($"{"",-26} {note}");
             }
             finally

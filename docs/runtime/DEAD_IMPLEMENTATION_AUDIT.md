@@ -49,6 +49,8 @@
 유지」가 이 상태에서는 성립하지 않는다. 값을 바꿔도 화면에서 아무 일도 일어나지 않기 때문이다.
 그리고 서술이 낡은 채로 두면 다음 세션이 `.asset` 을 **다시 만들고** 완료로 표시한다.
 
+> **이 표는 낡았다 (2026-08-01 정정).** 두 독립 감사가 씬 GUID 를 다시 세어 `AccessibilityProfile`·`AudioMixProfile`·`DangerFeedbackProfile`·`OverharvestProfile`·`TargetHardwareProfile`·`VisualQualityProfile`·`PassengerReactionSet` 이 **각 1건씩 씬에 배선돼 있음**을 확인했다(`RunSummaryTemplate` 만 0). 위 「런타임 소비처 없음」은 주입 작업 이전 상태다. **다만 배선이 곧 충족은 아니다** — `AccessibilityProfile` 은 8개 값이 코드 기본값과 전부 같고 출처 단정이 없어 떼어내도 아무것도 실패하지 않았다(→ `AccessibilitySource` 추가로 고침), `AudioMixProfile` 은 18필드 중 13개가 소비처 0곳, `PassengerReactionSet` 은 11항목이 `DefaultFor()` 와 값이 동일하다. 「읽혔는가」와 「데이터를 바꾸면 달라지는가」는 다른 질문이다.
+
 여는 항목: `UP-PLAT-04` `UP-POWER-07` `UP-RISK-07` `UP-RISK-08` `UP-AUD-05` `UP-TECH-09` `UP-TECH-07`
 (부분: `UP-PLAT-05` 예산 쪽만 · `UP-REC-02` 요약 템플릿)
 

@@ -284,7 +284,15 @@ namespace Ascend.Prototype.Run.Tests
             _report.AppendLine($"  승객반응 시작 {_reactionsStarted} · 억제 {_reactionsSuppressed} · " +
                                $"최대동시 {_peakConcurrentReactions}(상한 {_maxConcurrentSeen}) · " +
                                $"울린 종류 {BitCount(_reactionKindsMask)}");
+            // **개수만 찍으면 어느 종류가 빠졌는지 산출물로 알 수 없다.**
+            // `UP-NPC-02`·`UP-AUD-02` 는 둘 다 「10종」을 요구하는데, 감사자가
+            // 「8종」·「14종」만 보고는 무엇이 빠졌는지 특정하지 못해 열거형과 호출자를
+            // 직접 훑어야 했다. 이름 한 줄이면 그 비용이 사라진다.
+            _report.AppendLine($"    울린 것: {KindNames<Npc.PassengerReactionEvent>(_reactionKindsMask)}");
+            _report.AppendLine($"    안 울린 것: {MissingKindNames<Npc.PassengerReactionEvent>(_reactionKindsMask)}");
             _report.AppendLine($"  오디오 큐 울린 종류 {BitCount(_audioKindsMask)}");
+            _report.AppendLine($"    울린 것: {KindNames<Audio.AudioCueKind>(_audioKindsMask)}");
+            _report.AppendLine($"    안 울린 것: {MissingKindNames<Audio.AudioCueKind>(_audioKindsMask)}");
 
             Check($"칸을 끝까지 채운 적이 있다 — {_peakLoadSlots}/{BuildLoadout.MaxSlots}칸",
                   _peakLoadSlots >= BuildLoadout.MaxSlots,
@@ -395,6 +403,36 @@ namespace Ascend.Prototype.Run.Tests
             int n = 0;
             for (int m = mask; m != 0; m &= m - 1) n++;
             return n;
+        }
+
+        /// <summary>
+        /// 마스크에 켜진 열거 멤버 이름. 값 0 은 「없음」을 뜻하는 관례라 건너뛴다 —
+        /// 마스크는 <c>1 &lt;&lt; (int)kind</c> 로 쌓이므로 0 번은 비트 0 을 쓰지만
+        /// 두 열거 모두 0 이 `None` 이고 기록 쪽이 <c>bit &gt; 0</c> 으로 막고 있다.
+        /// </summary>
+        private static string KindNames<TEnum>(int mask) where TEnum : struct, Enum
+        {
+            var names = new List<string>();
+            foreach (TEnum value in Enum.GetValues(typeof(TEnum)))
+            {
+                int index = Convert.ToInt32(value);
+                if (index <= 0 || index >= 31) continue;
+                if ((mask & (1 << index)) != 0) names.Add(value.ToString());
+            }
+            return names.Count > 0 ? string.Join(", ", names) : "(없음)";
+        }
+
+        /// <summary>마스크에 없는 열거 멤버 이름. **이쪽이 판정에 쓰인다** — 무엇이 빠졌는가.</summary>
+        private static string MissingKindNames<TEnum>(int mask) where TEnum : struct, Enum
+        {
+            var names = new List<string>();
+            foreach (TEnum value in Enum.GetValues(typeof(TEnum)))
+            {
+                int index = Convert.ToInt32(value);
+                if (index <= 0 || index >= 31) continue;
+                if ((mask & (1 << index)) == 0) names.Add(value.ToString());
+            }
+            return names.Count > 0 ? string.Join(", ", names) : "(없음 — 전부 울렸다)";
         }
 
         /// <summary>
@@ -653,12 +691,35 @@ namespace Ascend.Prototype.Run.Tests
                         //    `CharacterController` 를 본다고 적혀 있었는데 코드는
                         //    `FirstPersonController.enabled` 를 보고 있었다(거짓 기록).
                         //
-                        //    마우스 입력은 하네스가 흉내 낼 수 없다(`HandleLook` 은 커서 잠금을
-                        //    요구하고 씬은 `_lockCursorOnStart: 0` 이다). 그래서 **결과**를 잰다 —
-                        //    돌리고 움직인 뒤 그것이 남아 있는지. 연출이 플레이어를 붙잡으면
-                        //    (트랜스폼을 되돌리거나 컨트롤러를 끄면) 여기서 걸린다.
+                        //    **이 검사는 한 번 반증력을 잃었다 — 그 이력을 남긴다.**
+                        //    직전 판본은 `Rotate` 로 직접 쓰고 다음 프레임에 읽는 것만 했다.
+                        //    그런데 루트 회전을 되돌릴 주체가 존재하지 않는다 —
+                        //    `FirstPersonController.HandleLook` 은 커서 잠금을 요구하는데
+                        //    씬이 `_lockCursorOnStart: 0` 이다. 그래서 268회 전부 정확히 25.0° 가
+                        //    나왔다. 실측이 아니라 **항등식**이었다.
+                        //    게다가 그 판본의 커밋 메시지는 「컨트롤러를 끄든 timeScale 을 0 으로
+                        //    두든 여기서 걸린다」고 적었는데 **둘 다 걸리지 않는다** —
+                        //    `Transform.Rotate` 와 `CharacterController.Move` 는 시간 배율과 무관하고,
+                        //    검사 대상 `_character` 는 `CharacterController` 이지
+                        //    `FirstPersonController` 가 아니다.
+                        //
+                        //    그래서 **떨어질 수 있는 조건 셋을 함께 건다.** 결과 측정은 남기되
+                        //    그것만으로 요구가 충족됐다고 적지 않는다.
                         if (_player != null && _character != null)
                         {
+                            // 조작 경로가 살아 있는가 — 이 셋은 연출이 실제로 플레이어를
+                            // 붙잡으면 떨어진다. 아래 결과 측정과 달리 항등식이 아니다.
+                            Check($"{number}층 연출 중 조작 컴포넌트가 살아 있다",
+                                  _player.enabled && _player.gameObject.activeInHierarchy &&
+                                  _character.enabled,
+                                  $"player.enabled={_player.enabled} " +
+                                  $"active={_player.gameObject.activeInHierarchy} " +
+                                  $"controller.enabled={_character.enabled}");
+                            Check($"{number}층 연출 중 시간이 멈추지 않았다 — timeScale {Time.timeScale:F2}",
+                                  Time.timeScale > 0f,
+                                  "연출이 timeScale 을 0 으로 두면 이동·회전이 코드로는 되지만 " +
+                                  "플레이어 입력으로는 죽는다");
+
                             Transform root = _player.transform;
                             Quaternion beforeRotation = root.rotation;
                             Vector3 beforePosition = root.position;
@@ -670,10 +731,13 @@ namespace Ascend.Prototype.Run.Tests
                             float turned = Quaternion.Angle(beforeRotation, root.rotation);
                             float moved = Vector3.Distance(beforePosition, root.position);
 
-                            Check($"{number}층 연출 중 시점 회전이 유지된다 — {turned:F1}°",
+                            // 이 둘은 「연출이 트랜스폼을 되돌리는가」만 잡는다.
+                            // 커서가 잠겨 있지 않은 한 되돌릴 주체가 없어 거의 항상 참이다 —
+                            // **충족 근거로 단독 인용하지 말 것.**
+                            Check($"{number}층 연출이 시점을 되돌리지 않는다 — {turned:F1}°",
                                   turned > 20f,
                                   $"25° 돌렸는데 {turned:F1}° 남았다 — 연출이 시점을 되돌린다");
-                            Check($"{number}층 연출 중 이동이 반영된다 — {moved * 100f:F1}cm",
+                            Check($"{number}층 연출이 이동을 되돌리지 않는다 — {moved * 100f:F1}cm",
                                   moved > 0.005f,
                                   $"움직였는데 {moved * 100f:F1}cm — 연출이 플레이어를 붙잡는다 " +
                                   $"(controller={_character.enabled} timeScale={Time.timeScale})");
@@ -973,6 +1037,13 @@ namespace Ascend.Prototype.Run.Tests
             Check("위험 연출이 DangerFeedbackProfile 을 읽는다",
                   risk != null && risk.ProfileSource.EndsWith("Profile"),
                   risk == null ? "RiskStateView 없음" : $"출처 「{risk.ProfileSource}」");
+
+            // 접근성은 **따로 묻는다.** 에셋 값이 코드 기본값과 전부 같아서,
+            // 이 단정이 없으면 씬에서 `_accessibility` 를 떼어내도 아무것도 실패하지 않는다.
+            Check("접근성 옵션이 AccessibilityProfile 을 읽는다",
+                  risk != null && risk.AccessibilitySource.EndsWith("Profile"),
+                  risk == null ? "RiskStateView 없음"
+                               : $"출처 「{risk.AccessibilitySource}」 — 에셋이 배선되지 않았다");
 
             Audio.AudioDirector audio = FindAnyObjectByType<Audio.AudioDirector>();
             Check("오디오가 AudioMixProfile 을 읽는다",
