@@ -1205,17 +1205,17 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 캡처 실행 → `Captures/TenFloor/manifest.txt`
 - 증거: `Captures/TenFloor/manifest.txt`
 - 의존: UP-PLAT-06
-- 남은 문제: PRD §15.1 9종과의 1:1 대조표는 **이미 있다** — `docs/runtime/NOTION_GAP_MATRIX.md` §6 (7종 충족 / 2종 조건부). 남은 것은 조건부 2종이고, 그중 하나는 캡처가 `ScreenSpaceOverlay` HUD 를 담지 않는 문제다(`DEAD_IMPLEMENTATION_AUDIT.md` §3)
+- 남은 문제: 20장이 실재하고 매니페스트가 각 장의 주장을 적는다. **그러나 독립 평가가 주장과 그림이 다른 장 9건을 찾았다**(`UP-FIX-13`) — 예: `01_entry` 는 「전체 내부」를 주장하나 실제로는 벽 모서리 하나이고, `09_risk_strain` 은 「과적 218/130」이라 적었으나 화면에 무게·적재 표시가 하나도 없으며, `15`·`19` 는 「연쇄 8단계」라 적었으나 단계 표시가 어떤 형태로도 없다. **매니페스트가 그림이 보이지 않는 것을 주장하면 그 세트는 증거가 아니라 목록이다**
 
 ### UP-VIS-07 — 시각 루브릭 통과 (판독성·스타일 평균 4.0 이상)
 - 분류: Required · 출처: PRD §15.2 통과 조건
 - 상태: NOT_STARTED · 패스: P3 P4
 - 구현: `.claude/visual-criteria.md`, `.claude/skills/visual-verify/SKILL.md`
 - 접근: 해당 없음
-- 검증: 독립 평가자 → `docs/runtime/VISUAL_VERDICT.md`에 `VERDICT: ACCEPT`
-- 증거: 없음
+- 검증: `docs/runtime/VISUAL_VERDICT.md` 의 독립 판정
+- 증거: `docs/runtime/VISUAL_VERDICT.md`, `Captures/TenFloor/manifest.txt`
 - 의존: UP-VIS-06
-- 남은 문제: **직전 평가 결과는 REJECT.** 지적 4건이 §5 수정 백로그에 있다
+- 남은 문제: **2026-08-01 2회차 판정 REJECT — 판독성 2.6 / 스타일 2.45 (요구 4.0).** 20장 전부를 독립 평가자가 직접 열어 채점했다. 결정적 사유는 금지 항목 **`B-5 #15`** — 3×3 결과판과 전력/요구 계기가 **어느 캡처에서도 동시에 읽히지 않는다.** 판을 보면 계기가 잘리고 계기를 보면 판이 잘린다. 지적은 `UP-FIX-07`~`UP-FIX-13` 으로 옮겼다. **가장 먼저 고칠 것**: 과수확 3장(11·12·13)의 잘린 HUD 좌측 — 같은 크롭이 02·04·15·17·19 에도 있어 프레이밍 규칙 하나로 **20장 중 8장이 동시에 오르고**, 그것이 `B-5 #15` 를 푸는 경로다. 최고점은 `12_overharvest_unlocked`(덮개·레일·조명·계기·문구 네 채널이 동시에 같은 상태를 말한다), 최저점은 `14_contract_select`(판독성 1/5)
 
 ### UP-VIS-08 — 카지노 슬롯머신·장식적 스팀펑크로 보이지 않는다
 - 분류: Required · 출처: PRD §12.1 금지, §15.2 루브릭
@@ -1465,13 +1465,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-08 — 5연쇄 이상 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
-- 상태: CONNECTED · 패스: P4
+- 상태: VERIFIED · 패스: P4
 - 구현: `Assets/CaptureHarness/GifEncoder.cs`, `Scripts/Run/Tests/SequenceRecorder.cs`, `Scripts/Run/Tests/EvidenceClipRecorder.cs` + 메뉴 `Ascend/Record Evidence Clips`
 - 접근: Unity 메뉴 → `Ascend/Record Evidence Clips`
 - 검증: `Logs/evidence_clips.txt` 의 연쇄 깊이와 산출 경로
 - 증거: `Captures/evidence/cascade_depth5_seed4242_f3.gif`
 - 의존: UP-CORE-08
-- 남은 문제: **반려 사유를 고치고 다시 찍었다.** `SequenceRecorder` 에 화면 캡처 모드를 넣어(`ScreenCapture.CaptureScreenshotAsTexture` + `WaitForEndOfFrame`) `ScreenSpaceOverlay` HUD 가 프레임에 들어온다. 프레임을 꺼내 눈으로 확인했다 — 결과판 3열과 **「연쇄 1단계」 HUD**, 정화 표식이 한 화면에 있다(142프레임). 프레이밍도 고쳤다: 앞선 영상은 화면 절반이 바닥이고 결과판이 좌측에서 잘렸는데, `AimAtBoard` 가 결과판 정면에 세운다. **로그를 근거로 삼지 않고 GIF 를 열어 봤다** — 감사의 요지가 「로그가 적은 것과 영상이 보이는 것은 다르다」였다. 남은 것은 독립 감사의 재판정이다
+- 남은 문제: **독립 재판정 통과.** 감사자가 142프레임을 직접 꺼내 확인했다 — f0~f135 **전 프레임**에 「연쇄 N단계」 HUD 가 있고 0→1→2→3→4→**5단계**로 **단조 증가**하며 되돌아가는 구간이 없다(이어붙인 필름이 아니라는 뜻). f120 에서 「연쇄 5단계 / 흡수체 직선 3칸 ×2」 판독. 결과판 3열 × 3행 아홉 칸이 전부 프레임 안이다. **내 앞선 기록이 「연쇄 1단계」라고 적었는데 틀렸다** — 프레임 두 장만 보고 필름 전체를 단정했다. 증거가 기록보다 강한, 방향만 반대인 부정확 기록이었다. `Captures/` 는 gitignore 대상이라 이 GIF 는 **기기 종속 산출물**이다 — 다른 기기에서는 `Ascend/Record Evidence Clips` 를 한 번 돌린다
 
 ### UP-TEST-09 — Critical → 과수확 → 결과 영상
 - 분류: Required · 출처: PRD §17.6 증거 산출물
@@ -1481,7 +1481,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Logs/evidence_clips.txt` 의 당김 시점 위험 단계
 - 증거: `Captures/evidence/overharvest_Critical_seed4242_f2.gif`
 - 의존: UP-TEST-08
-- 남은 문제: **순서가 필름에 들어왔다.** `Begin()` 직후 곧바로 `Interact()` 를 부르던 것을 약 1.2초 흘린 뒤 당기도록 고쳤고, 결과 뒤에도 여운을 남긴다. 프레임을 꺼내 확인했다 — 0번 **빈 판** → 당김 → 60번 **채워진 판 + 연쇄 HUD**(102프레임). 「Critical → 과수확 → 결과」가 로그가 아니라 영상에 있다. 당긴 순간의 위험 단계가 `Critical` 임은 로그와 파일 이름이 함께 적는다. 남은 것은 독립 감사의 재판정이다
+- 남은 문제: **반려 사유 둘은 고쳐졌으나 요구 세 항 중 둘이 여전히 필름에 없다.** 고쳐진 것: HUD 가 들어왔고(f0~23 하단 힌트, f24~ 「연쇄 N단계」), 세 국면이 서로 다른 프레임으로 분리됐다(이웃 프레임 평균차 > 0.05 가 101/101 쌍 — 지난번의 「전부 동일」이 아니다). f24 에서 당김이 일어나는 것이 코드의 24프레임 대기와 맞는다. **그러나 `Critical` 이 어느 프레임에도 없다** — 당기기 전 f0~23 이 R=G=B 완전 중립(89.51/89.51/89.51)이고 24프레임 동안 휘도 변화가 1/255 미만, 즉 틴트도 점멸도 0 이다. 위험 문자열은 `InstrumentPanelView` 의 **월드 공간 벽면 계기판**에만 있고 화면 HUD 는 위험을 출력하지 않는데, `AimAtBoard` 가 결과판만 겨냥해 계기판이 화각 밖으로 나갔다. **과수확 레버도 한 프레임도 안 나온다** — 당기는 행위 자체가 필름에 없고 앞뒤 힌트로부터의 추론일 뿐이다. `Critical` 의 근거가 여전히 로그와 파일 이름뿐이며, **그것이 지난번 반려가 지목한 바로 그 종류의 증거다.** 다시 찍을 때 필요한 것 셋 — ① 당기기 전 구간에 위험 단계가 읽히는 화소(계기판이나 경고등을 화각에) ② 당김 순간 레버가 화면 안에서 움직이는 것 ③ 빈 판 구간 축소(102 중 42프레임이 빈 판)
 
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3
@@ -1595,6 +1595,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-FIX-05 | Critical과 Collapse가 캡처에서 구분되지 않는다 | UP-RISK-03, UP-RISK-06 | 열림 |
 | UP-FIX-06 | 17번 캡처만 해상도·방식이 다르다 | UP-REC-05 | 열림 |
 | UP-FIX-07 | HUD 텍스트가 화면 오른쪽 끝에서 잘린다 | UP-CORE-13, UP-VIS-09 | 열림 |
+| UP-FIX-08 | 계기와 3×3 판이 한 화면에 안 들어온다 (금지 `B-5 #15`) | UP-VIS-07, UP-CORE-13, UP-SPACE-09 | 열림 |
+| UP-FIX-09 | `14_contract_select` 재설계 — 판독성 1/5 | UP-CONTRACT-05, UP-VIS-07 | 열림 |
+| UP-FIX-10 | Critical/Collapse 게이지가 Strain 보다 창백하다 (위급도 역전) | UP-RISK-03, UP-VIS-07 | 열림 |
+| UP-FIX-11 | 사고 기록기가 자기 자신과 모순한다 (3건) | UP-REC-02, UP-REC-03 | 열림 |
+| UP-FIX-12 | 승객 이름 라벨이 근거리에서 폭주하고 통관을 관통한다 | UP-NPC-04, UP-VIS-10 | 열림 |
+| UP-FIX-13 | 매니페스트 주장과 그림이 다른 장 9건 | UP-VIS-06 | 열림 |
 
 **UP-FIX-02는 3회 반복에 실패했다.** `visual-verify` §6의 반복 상한 규칙에 따라 같은
 층위에서 네 번째를 시도하지 않는다. 필요한 것은 미세 조정이 아니라 **배치 결정**이다 —
