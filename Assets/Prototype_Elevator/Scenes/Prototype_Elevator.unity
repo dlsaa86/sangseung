@@ -9248,6 +9248,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Risk.RiskStateView
   _run: {fileID: 998528527}
   _intensity: 1
+  _feedbackProfile: {fileID: 11400000, guid: 59fe4646137260e40b5e518a582a068d, type: 2}
+  _accessibility: {fileID: 11400000, guid: 2a8ae36728c81d444b724821347a3221, type: 2}
   _cabinLight: {fileID: 684782632}
   _lampRenderer: {fileID: 799892948}
   _baseLightIntensity: 1.6
@@ -9383,6 +9385,8 @@ MonoBehaviour:
   _autoSample: 1
   _sampleEveryNFrames: 1
   _warmupFrames: 60
+  _targetHardware: {fileID: 11400000, guid: f59bfabc69af48e47866976e3005c6bb, type: 2}
+  _quality: {fileID: 11400000, guid: 86cb967fb1b778c4788d2c4a9dc519e5, type: 2}
   _drawCallBudget: 0
   _setPassBudget: 0
   _triangleBudget: 0
@@ -9485,6 +9489,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Audio.AudioDirector
   _run: {fileID: 998528527}
+  _mixProfile: {fileID: 11400000, guid: c91f8052ebc92f747b6920660b08eb85, type: 2}
   _masterVolume: 0.8
   _machineVolume: 1
   _eventVolume: 0.85

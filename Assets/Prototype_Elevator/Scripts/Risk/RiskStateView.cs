@@ -21,6 +21,12 @@ namespace Ascend.Prototype.Risk
         [Header("강도 프리셋 — 승인 대기 항목이라 하나로 잠그지 않는다")]
         [SerializeField] private RiskIntensity _intensity = RiskIntensity.Standard;
 
+        [Tooltip("단계별 연출 값. 비면 코드 프리셋으로 폴백한다 — 소리 없이 죽지 않는다.")]
+        [SerializeField] private Data.Profiles.DangerFeedbackProfile _feedbackProfile;
+
+        [Tooltip("셰이크·섬광 접근성 배율. 비면 기본값(감쇠 없음).")]
+        [SerializeField] private Data.Profiles.AccessibilityProfile _accessibility;
+
         [Header("조명")]
         [SerializeField] private Light _cabinLight;
         [SerializeField] private Renderer _lampRenderer;
@@ -46,7 +52,9 @@ namespace Ascend.Prototype.Risk
         private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
         private readonly RiskEvaluator _evaluator = new RiskEvaluator();
-        private RiskProfile[] _profiles;
+        private Data.Profiles.DangerFeedbackSnapshot _levels;
+        private Data.Profiles.AccessibilitySnapshot _accessibilitySnapshot;
+        private string _profileSource = "(미초기화)";
         private RiskProfile _blended;
         private MaterialPropertyBlock _block;
         private Vector3 _swayHome;
@@ -74,18 +82,53 @@ namespace Ascend.Prototype.Risk
         /// </summary>
         public float CabinLightMultiplier { get; set; } = 1f;
 
-        /// <summary>런타임에 강도 프리셋을 바꾼다. 승인 비교용 캡처를 같은 조건에서 뽑기 위한 통로다.</summary>
+        /// <summary>
+        /// 런타임에 강도 프리셋을 바꾼다. 승인 비교용 캡처를 같은 조건에서 뽑기 위한 통로다.
+        ///
+        /// **에셋이 배선돼 있으면 그쪽이 이긴다.** 에셋은 자기 `SourcePreset` 을 갖고 있으므로
+        /// 여기서 강도를 바꿔도 에셋 값은 그대로다 — 그래야 「데이터가 실제로 화면을 바꾼다」가
+        /// 성립한다. 에셋을 무시하고 코드 프리셋을 다시 읽으면 배선이 장식이 된다.
+        /// </summary>
         public void SetIntensity(RiskIntensity intensity)
         {
             _intensity = intensity;
-            _profiles = RiskProfile.Preset(_intensity);
+            RebuildProfiles();
         }
+
+        /// <summary>
+        /// 단계별 연출 값의 출처를 정한다. 에셋 → 코드 프리셋 순.
+        ///
+        /// 이 한 줄이 없어서 `DangerFeedbackProfile.asset` 이 만들어지고도 아무 데도 흐르지
+        /// 않았다(`DEAD_IMPLEMENTATION_AUDIT.md` §1). 값을 바꿔도 화면에서 아무 일이
+        /// 일어나지 않으면 PRD §14.2 「교체 가능한 프리셋」은 성립하지 않는다.
+        /// </summary>
+        private void RebuildProfiles()
+        {
+            if (_feedbackProfile != null)
+            {
+                _levels = _feedbackProfile.Snapshot();
+                _profileSource = _feedbackProfile.name;
+            }
+            else
+            {
+                _levels = Data.Profiles.DangerFeedbackProfile.SnapshotOf(_intensity);
+                _profileSource = "코드 프리셋 " + _intensity;
+            }
+            _accessibilitySnapshot =
+                Data.Profiles.AccessibilityProfile.SnapshotOrDefault(_accessibility);
+        }
+
+        /// <summary>지금 쓰고 있는 연출 값의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
+        public string ProfileSource => _profileSource;
+
+        /// <summary>단계별 연출 값. 에셋이 배선됐으면 에셋 것이다.</summary>
+        public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);
 
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
-            _profiles = RiskProfile.Preset(_intensity);
-            _blended = _profiles[0];
+            RebuildProfiles();
+            _blended = _levels.For(RiskLevel.Stable);
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             if (_swayTarget != null) _swayHome = _swayTarget.localPosition;
             if (_cameraTarget != null) _cameraHome = _cameraTarget.localPosition;
@@ -112,7 +155,7 @@ namespace Ascend.Prototype.Risk
                 Reason = _evaluator.Explain(in inputs);
             }
 
-            RiskProfile target = _profiles[Mathf.Clamp((int)level, 0, _profiles.Length - 1)];
+            RiskProfile target = _levels.For(level);
             _blended = Blend(_blended, target, Time.deltaTime * _blendSpeed);
             _phase += Time.deltaTime;
 
@@ -143,14 +186,21 @@ namespace Ascend.Prototype.Risk
 
         private void ApplyLighting()
         {
+            // 접근성이 섬광을 끄거나 주파수를 낮춘다. **광과민성 발작은 되돌릴 수 없는
+            // 피해**라 이 분기는 연출보다 앞선다 (`UP-RISK-08`, PRD §8.5).
+            float rate = _accessibilitySnapshot.ClampFlickerRate(_blended.FlickerRate);
+            float depth = _accessibilitySnapshot.AllowFlickerAt(_blended.FlickerRate)
+                ? _blended.FlickerDepth * _accessibilitySnapshot.FlickerDepthScale
+                : 0f;
+
             float flicker = 1f;
-            if (_blended.FlickerRate > 0f && _blended.FlickerDepth > 0f)
+            if (rate > 0f && depth > 0f)
             {
                 // 규칙적인 사인이 아니라 두 주파수를 섞는다. 하나만 쓰면 기계적으로 깜빡여
                 // "고장난 형광등"이 아니라 "애니메이션"으로 보인다.
-                float wave = Mathf.Sin(_phase * _blended.FlickerRate * Mathf.PI * 2f) * 0.6f
-                           + Mathf.Sin(_phase * _blended.FlickerRate * 3.7f) * 0.4f;
-                flicker = 1f - _blended.FlickerDepth * Mathf.InverseLerp(-1f, 1f, wave);
+                float wave = Mathf.Sin(_phase * rate * Mathf.PI * 2f) * 0.6f
+                           + Mathf.Sin(_phase * rate * 3.7f) * 0.4f;
+                flicker = 1f - depth * Mathf.InverseLerp(-1f, 1f, wave);
             }
 
             if (_cabinLight != null)
@@ -189,8 +239,12 @@ namespace Ascend.Prototype.Risk
         {
             if (_swayTarget != null)
             {
-                float sway = Mathf.Sin(_phase * _blended.SwayRate * Mathf.PI * 2f) * _blended.SwayAmplitude;
-                float bob = Mathf.Sin(_phase * _blended.SwayRate * 1.61f) * _blended.SwayAmplitude * 0.5f;
+                // 물체 흔들림과 카메라 흔들림을 **따로** 감쇠한다. 카메라만 끄고 싶은 사람이
+                // 대부분이고, 물체까지 멈추면 위험 단계가 화면에서 사라진다 — 접근성 옵션이
+                // 정보를 지우면 안 된다 (`UP-RISK-08`).
+                float amplitude = _blended.SwayAmplitude * _accessibilitySnapshot.WorldSwayScale;
+                float sway = Mathf.Sin(_phase * _blended.SwayRate * Mathf.PI * 2f) * amplitude;
+                float bob = Mathf.Sin(_phase * _blended.SwayRate * 1.61f) * amplitude * 0.5f;
                 _swayTarget.localPosition = _swayHome + new Vector3(sway, bob, sway * 0.6f);
             }
 
@@ -198,7 +252,7 @@ namespace Ascend.Prototype.Risk
             {
                 // 무작위 노이즈가 아니라 결정된 파형이다. 무작위 전체 화면 흔들림은
                 // VISUAL_SPEC §6이 금지한다 — 멀미만 나고 정보는 주지 않는다.
-                float shake = _blended.CameraShake;
+                float shake = _accessibilitySnapshot.ScaleShake(_blended.CameraShake);
                 _cameraTarget.localPosition = _cameraHome + new Vector3(
                     Mathf.Sin(_phase * 13.1f) * shake,
                     Mathf.Sin(_phase * 17.7f) * shake,

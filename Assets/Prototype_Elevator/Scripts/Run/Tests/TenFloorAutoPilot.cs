@@ -150,6 +150,7 @@ namespace Ascend.Prototype.Run.Tests
             Pass("씬 배선 — 10층 런에 필요한 물체가 전부 있다");
             Check("층수 표시등이 있다", indicator != null, "FloorIndicatorView 없음");
             CheckEyeHeight();
+            CheckProfileInjection();
 
             if (run.Mode != RunMode.TenFloor)
             {
@@ -770,6 +771,39 @@ namespace Ascend.Prototype.Run.Tests
         {
             _failed++;
             _report.AppendLine($"  FAIL  {name} — {detail}");
+        }
+
+        /// <summary>
+        /// 프로파일 에셋이 **실제로 읽혔는가**를 본다. 배선됐는가가 아니다.
+        ///
+        /// 이 검사가 필요한 이유: `.asset` 7종이 만들어지고도 런타임 소비처가 0곳이라
+        /// 아무 데도 흐르지 않았다(`DEAD_IMPLEMENTATION_AUDIT.md` §1). 인스펙터에 물려 있는
+        /// 것과 코드가 그 값을 읽는 것은 다르고, **둘을 구분하지 않으면 「데이터화했다」가
+        /// 참인지 알 수 없다.** 그래서 각 소비자가 자기 출처 이름을 내놓게 하고 그것을 읽는다 —
+        /// 폴백이면 "코드 프리셋"·"인스펙터 슬라이더"라고 적히므로 통과하지 않는다.
+        /// </summary>
+        private void CheckProfileInjection()
+        {
+            Risk.RiskStateView risk = FindAnyObjectByType<Risk.RiskStateView>();
+            Check("위험 연출이 DangerFeedbackProfile 을 읽는다",
+                  risk != null && risk.ProfileSource.EndsWith("Profile"),
+                  risk == null ? "RiskStateView 없음" : $"출처 「{risk.ProfileSource}」");
+
+            Audio.AudioDirector audio = FindAnyObjectByType<Audio.AudioDirector>();
+            Check("오디오가 AudioMixProfile 을 읽는다",
+                  audio != null && audio.MixSource.EndsWith("Profile"),
+                  audio == null ? "AudioDirector 없음" : $"출처 「{audio.MixSource}」");
+
+            Perf.RenderBudgetProbe probe = FindAnyObjectByType<Perf.RenderBudgetProbe>();
+            if (probe != null)
+            {
+                // **통과를 요구하지 않는다.** 지금 측정은 816×714 이고 기준은 1920×1080 이다.
+                // 조건이 다르다는 사실이 로그에 남는 것이 이번 목표다 — 그것 없이는
+                // 「90 FPS 목표를 만족한다」가 무엇에 대한 문장인지 알 수 없다.
+                _report.AppendLine($"  렌더 예산 측정 조건이 기준과 " +
+                                   $"{(probe.MeasuredAtReference ? "같다" : "다르다")} " +
+                                   $"— {Screen.width}×{Screen.height} / vSync {QualitySettings.vSyncCount}");
+            }
         }
 
         /// <summary>

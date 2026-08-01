@@ -227,13 +227,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-PLAT-04 — TargetHardwareProfile 데이터화
 - 분류: Required · 출처: PRD §13.1 「기준 하드웨어는 `TargetHardwareProfile`에 기록한다」
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Data/Profiles/TargetHardwareProfile.cs`(기준 해상도·목표 90 FPS·하드 플로어 60 · vSync 취급)
+- 상태: CONNECTED · 패스: P2 P4
+- 구현: `Scripts/Data/Profiles/TargetHardwareProfile.cs` + `.asset` + `Scripts/Perf/RenderBudgetProbe.cs` 의 `ApplyTargetProfile`
 - 접근: 해당 없음 (개발 전용 데이터)
-- 검증: `Ascend/Run All EditMode Tests` → 기본 스냅샷 값 대조
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `Logs/render_budget.txt` 머리글의 기준·측정 조건 대조
+- 증거: `Logs/render_budget.txt`
 - 의존: 없음
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RenderBudgetProbe`, 품질 설정 진입점
+- 남은 문제: 프레임 예산이 이제 목표 FPS 에서 유도되고, **잰 조건이 기준과 같은지가 보고서에 적힌다.** 이것이 핵심이다 — 지금까지의 측정은 816×714 에서 나왔고 중앙값이 vSync 상한(8.33ms)에 못 박혀 있었는데 조건 대조 없이 실렸다. **어느 조건에서 잰 값인지 적지 않으면 그 숫자는 판정이 아니라 인상이다.** 남은 것은 기준 해상도에서 실제로 다시 재는 것(`UP-TECH-04`)과 사용자 승인
 
 ### UP-PLAT-05 — 압축·임포트 Preset과 VisualQualityProfile
 - 분류: Required · 출처: PRD §13.3, §13.4, §17.4
@@ -243,7 +243,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 프리셋 값 대조
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-PLAT-03
-- 남은 문제: `VisualQualityProfile` 은 `Perf/RenderBudgetProbe.cs` 에 필드가 있으나 **씬이 물리지 않아** `Logs/render_budget.txt` 마지막 줄이 스스로 적는다 — 「예산이 주입되지 않았다. 값만 기록했고 판정은 하지 않았다」. 텍스처·오디오 임포트 Preset 은 여전히 0건이고 빌드 리포트의 상위 용량 기록도 미착수
+- 남은 문제: `VisualQualityProfile` 이 `RenderBudgetProbe` 에 배선돼 보고서에 품질 등급이 함께 적힌다 — 「어느 설정에서 잰 값인가」가 남는다. **텍스처·오디오 임포트 Preset 은 여전히 0건**이고 빌드 리포트의 상위 용량 기록도 미착수다
 
 ### UP-PLAT-06 — 결정론적 캡처 하네스
 - 분류: Required · 출처: PRD §15.1 「동일한 해상도·FOV·카메라 위치·시간대·품질 프리셋」
@@ -1013,23 +1013,23 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-RISK-07 — DangerFeedbackProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §8.4, §14.1
-- 상태: SKELETON · 패스: P2
-- 구현: `Scripts/Risk/RiskProfile.cs`(구조체), `Scripts/Data/Profiles/DangerFeedbackProfile.cs`(ScriptableObject)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Data/Profiles/DangerFeedbackProfile.cs` + `Data/Profiles/DangerFeedbackProfile.asset` + `Scripts/Risk/RiskStateView.cs` 의 `RebuildProfiles()`
 - 접근: 해당 없음
-- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `TenFloorAutoPilot` → 「위험 연출이 DangerFeedbackProfile 을 읽는다」
+- 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-01
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RiskStateView` — 지금은 `RiskProfile.Preset(RiskIntensity)` 라는 **코드 상수 표**를 읽는다
+- 남은 문제: **주입됐다.** 소비자가 자기 출처 이름을 내놓고 `TenFloorAutoPilot` 의 `CheckProfileInjection` 이 그것을 읽는다 — 폴백이면 「코드 프리셋」·「인스펙터 슬라이더」로 적히므로 통과하지 않는다. **배선됐는가가 아니라 읽혔는가를 묻는 검사다.** 남은 것은 **값을 바꿨을 때 화면이 실제로 달라지는가**의 시각 확인이다. 위험 단계가 프로브 중 `Stable` 을 벗어난 적이 없어 단계별 차이는 아직 미관측이다
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
-- 상태: SKELETON · 패스: P3
-- 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs`(셰이크 배율·섬광 허용·사이렌·저주파 감쇠·자막)
+- 상태: CONNECTED · 패스: P2 P3
+- 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs` + `.asset` + `RiskStateView` 의 `ApplyLighting`(섬광)·`ApplySway`(셰이크)
 - 접근: 옵션 메뉴 (없음)
-- 검증: `Ascend/Run All EditMode Tests` → 셰이크 0 배율이 실제 0을 낸다
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `Ascend/Run All EditMode Tests` + 씬 배선
+- 증거: `Logs/editmode_tests.txt`, `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-07
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `RiskStateView`(셰이크·섬광), `AudioDirector`(사이렌)
+- 남은 문제: **셋 중 둘이 분리됐다.** 섬광은 `AllowFlickerAt`/`ClampFlickerRate` 로 끄거나 주파수를 낮추고, 흔들림은 카메라(`ScaleShake`)와 물체(`WorldSwayScale`)를 **따로** 감쇠한다 — 카메라만 끄고 싶은 사람이 대부분이고 물체까지 멈추면 위험 단계가 화면에서 사라지기 때문이다. **사이렌은 아직이다** — `AllowSiren` 을 읽는 코드가 없다(`AudioDirector` 쪽 작업)
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
@@ -1291,13 +1291,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-AUD-05 — AudioMixProfile / 오디오 압축 구분
 - 분류: Required · 출처: PRD §13.4, §14.3
-- 상태: SKELETON · 패스: P3
-- 구현: `Scripts/Data/Profiles/AudioMixProfile.cs`(채널 5종 · 덕킹 배율 · 위험 단계별 험)
+- 상태: CONNECTED · 패스: P2
+- 구현: `Scripts/Data/Profiles/AudioMixProfile.cs` + `.asset` + `Scripts/Audio/AudioDirector.cs` 의 `ChannelVolume`·`ToMixChannel`
 - 접근: 해당 없음
-- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `TenFloorAutoPilot` → 「오디오가 AudioMixProfile 을 읽는다」
+- 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-AUD-01
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `AudioDirector` — 지금은 자기 `[SerializeField] _masterVolume` 등을 직접 갖는다
+- 남은 문제: **주입됐다.** 소비자가 자기 출처 이름을 내놓고 `TenFloorAutoPilot` 의 `CheckProfileInjection` 이 그것을 읽는다 — 폴백이면 「코드 프리셋」·「인스펙터 슬라이더」로 적히므로 통과하지 않는다. **배선됐는가가 아니라 읽혔는가를 묻는 검사다.** **함정 하나를 명시적으로 피했다**: 채널 열거가 두 벌이고 이름은 같은데 값이 한 칸씩 밀려 있다(`AudioCueChannel.Warning=3` vs `AudioChannel.Warning=4`). 캐스트로 넘기면 컴파일되고 소리도 나므로 아무도 눈치채지 못한다 — 명시적 매핑 함수를 쓴다. 남은 것은 오디오 **압축 설정** 구분이다
 
 ## 2.14 TECH — 엔지니어링 목표
 
@@ -1364,12 +1364,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-TECH-07 — 렌더링 예산 측정 (드로우콜·SetPass·오버드로우)
 - 분류: Required · 출처: PRD §13.3
 - 상태: CONNECTED · 패스: P4
-- 구현: `Scripts/Perf/RenderBudgetProbe.cs` + 씬 배선
+- 구현: `Scripts/Perf/RenderBudgetProbe.cs` + 씬 배선 + `TargetHardwareProfile`·`VisualQualityProfile` 주입
 - 접근: 해당 없음
 - 검증: PlayMode 런 중 자동 수집 → `Logs/render_budget.txt`
 - 증거: `Logs/render_budget.txt`
 - 의존: UP-TECH-04
-- 남은 문제: 예산이 주입되지 않아 **판정이 없다** — 프로브가 값만 기록한다. 최신 `Logs/render_budget.txt` 는 드로우콜 최악 464 / SetPass 162 / 프레임타임 최악 153.81ms 다(이전 판본의 900·280·147.28 은 낡은 수치였다). 게다가 해상도가 **816×714** 로 `TECH_SPEC.md` §13 의 기준 1920×1080 이 아니다 — 화소 수 기준 약 28%. 이 값으로는 예산 판정을 해도 의미가 없다
+- 남은 문제: 프레임 예산이 주입됐고 측정 조건 대조가 보고서에 들어갔다. **드로우콜·SetPass·삼각형 예산은 여전히 어느 프로파일에도 없다** — 인스펙터로 넣어야 하고 그 값이 확정되지 않았다(승인 대기). 그리고 지금 측정은 기준 해상도가 아니므로 판정에 쓸 수 없다
 
 ### UP-TECH-08 — 10층 연속 플레이에서 메모리 누적 없음
 - 분류: Required · 출처: PRD §17.4
@@ -1389,7 +1389,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 19건 (기본 스냅샷 값 대조)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: 없음
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. §14.1 12항목의 데이터 **분리**는 됐고 **주입**이 안 됐다
+- 남은 문제: 12항목 중 **주입까지 끝난 것은 위험 연출·접근성·오디오 믹스·기준 하드웨어·품질 등급 다섯이다.** `OverharvestProfile` 과 `RunSummaryTemplate` 은 아직 소비처가 없다 — 전자는 과수확 연출, 후자는 런 요약 산출기가 있어야 한다
 
 ## 2.15 TEST — 테스트·텔레메트리·증거
 

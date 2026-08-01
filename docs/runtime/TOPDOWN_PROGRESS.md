@@ -9,12 +9,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 패스 | **Pass 1 → Pass 2 (Wave B 배선 + 적재 정책)** |
+| 현재 패스 | **Pass 1 → Pass 2 (적재 정책 + 프로파일 주입)** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `99682e3` — 눈높이 회귀 수정과 그 단정 |
+| 마지막 정상 커밋 | `9031996` — 적재 정책 (승객이 처음으로 탄다) |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` |
-| 갱신 시각 | 2026-08-01 (Wave B 실측 반영) |
+| 갱신 시각 | 2026-08-01 (Wave D 프로파일 주입 반영) |
 
 ## Required 상태 분포
 
@@ -23,14 +23,15 @@
 | 상태 | 개수 | 세션 시작 |
 |---|---|---|
 | `VERIFIED` | **67** | 64 |
-| `CONNECTED` | **32** | 26 |
+| `CONNECTED` | **36** | 26 |
 | `VISIBLE` | 0 | 0 |
-| `SKELETON` | **23** | 16 |
+| `SKELETON` | **19** | 16 |
 | `NOT_STARTED` | **7** | 23 |
 | **Required 합계** | **129** | 129 |
 
 `UP-TECH-03` 이 `CONNECTED` → `SKELETON` 으로 **내려갔다.** 감사가 죽은 구현임을 확인했다 —
 상태가 올라가기만 하는 백로그는 진행 기록이 아니라 홍보물이다.
+Wave D 로 `UP-RISK-07·08`·`UP-AUD-05`·`UP-PLAT-04` 넷이 `SKELETON` → `CONNECTED` 로 올라갔다.
 
 ## Wave B 로 실제로 측정된 것
 
@@ -44,7 +45,7 @@
 | 오디오 | 큐 **3건 재생 / 0건 버림** |
 | 프린터 | **2줄 인쇄** |
 | 텔레메트리 | 인게임 8런 · 20필드 · **재현 런 30레코드 불일치 0** |
-| 렌더 예산 | 표본 88,310개 (판정 없음 — 예산 미주입) |
+| 렌더 예산 | 표본 88,310개 (판정 없음 — 예산 미주입. **Wave D 에서 주입됐다**) |
 | 메모리 | **+38.40 MB / 8층 · 7/7 단조 증가 → 요구사항 위반** |
 
 ## 발견된 결함 3건 (1건 해결)
@@ -110,10 +111,10 @@ Unity 를 띄우지 않으므로 에디터가 켜져 있어도 안전하다.
 |---|---|---|
 | `Logs/editmode_tests.txt` | **194 PASS / 0 FAIL** | 91 |
 | `.claude/state/last-selftest.txt` | **213 PASS / 0 FAIL** | 110 |
-| `Logs/tenfloor_playmode.txt` | **494 PASS / 0 FAIL / 콘솔오류 0** | 394 |
+| `Logs/tenfloor_playmode.txt` | **496 PASS / 0 FAIL / 콘솔오류 0** | 394 |
 | 컴파일 오류 | 0 | 0 |
 
-PlayMode 394 → 395 는 **눈높이 단정 하나**가, 395 → 494 는 **적재 정책 두 런**이 는 것이다.
+PlayMode 394 → 395 는 **눈높이 단정 하나**가, 395 → 494 는 **적재 정책 두 런**이, 494 → 496 은 **프로파일 주입 단정 둘**이 는 것이다.
 기능이 그만큼 늘어서가 아니다 — 런이 늘면 층별 단정이 통째로 따라 는다.
 
 ## 적재 관측 — 여섯 항목이 관측 가능해졌다
@@ -156,6 +157,31 @@ PlayMode 394 → 395 는 **눈높이 단정 하나**가, 395 → 494 는 **적�
 
 **고치지 않고 기록한 것**: 승객 반응은 시계 의존이라 재현되지 않는다(`A-20260801-07`).
 `MaxSlots` 와 `CarSlots.Length` 의 일치를 아무도 강제하지 않는다.
+
+## Wave D — 프로파일이 처음으로 **읽힌다**
+
+만들어져 있던 `SnapshotOrDefault(profile, caller)` 를 부르는 마지막 한 걸음이 빠져 있었다.
+
+| 소비자 | 읽는 것 | 무엇이 실제로 달라졌나 |
+|---|---|---|
+| `RiskStateView` | `DangerFeedbackProfile` | 단계별 값의 출처가 코드 상수 표(`RiskProfile.Preset`)에서 에셋으로 |
+| `RiskStateView` | `AccessibilityProfile` | 섬광은 `AllowFlickerAt`/`ClampFlickerRate`, 흔들림은 카메라와 물체를 **따로** 감쇠 |
+| `AudioDirector` | `AudioMixProfile` | 채널 균형이 에셋에서. 인스펙터 마스터는 그 위의 전체 크기로 남는다 |
+| `RenderBudgetProbe` | `TargetHardwareProfile` | 프레임 예산을 목표 FPS 에서 유도하고 **잰 조건이 기준과 같은지 보고서에 적는다** |
+| `RenderBudgetProbe` | `VisualQualityProfile` | 「어느 품질 설정에서 잰 값인가」가 남는다 |
+
+**검사가 묻는 것은 「배선됐는가」가 아니라 「읽혔는가」다.** 각 소비자가 자기 출처 이름을
+내놓고 하네스가 그것을 읽는다 — 폴백이면 「코드 프리셋」·「인스펙터 슬라이더」로 적히므로
+통과하지 않는다. 인스펙터에 물려 있는 것과 코드가 그 값을 쓰는 것은 다르고,
+그 구분을 흐린 것이 이 항목들이 여덟 세션 동안 「`.asset` 이 없다」로 잘못 적혀 있던 이유다.
+
+**함정 하나를 명시적으로 피했다**: 채널 열거가 두 벌이고 이름은 같은데 값이 한 칸씩
+밀려 있다(`AudioCueChannel.Warning=3` vs `AudioChannel.Warning=4`). 캐스트로 넘기면
+컴파일되고 소리도 나므로 아무도 눈치채지 못한다.
+
+**남은 것**: `OverharvestProfile` 과 `RunSummaryTemplate` 은 아직 소비처가 없다.
+`AccessibilityProfile.AllowSiren` 을 읽는 코드도 없다.
+드로우콜·SetPass·삼각형 예산은 **어느 프로파일에도 없다** — 인스펙터 값이고 미확정이다.
 
 `Logs/editmode_tests.txt`는 이제 **`AscendTestMenu.RunAll()`이 직접 쓴다.** 지금까지는
 아무도 쓰지 않아 스위트가 늘어도 옛 숫자가 남아 있었고, 검증기는 그 옛 숫자를 읽고 있었다.

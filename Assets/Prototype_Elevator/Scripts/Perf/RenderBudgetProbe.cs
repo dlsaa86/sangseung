@@ -46,10 +46,20 @@ namespace Ascend.Prototype.Perf
         [Tooltip("처음 이만큼의 프레임은 버린다. 워밍업을 최악값으로 오해하지 않기 위해서다.")]
         [SerializeField] private int _warmupFrames = 60;
 
+        [Header("기준")]
+        [Tooltip("목표 FPS·기준 해상도·vSync 조건. 프레임 예산이 여기서 나온다.")]
+        [SerializeField] private Data.Profiles.TargetHardwareProfile _targetHardware;
+
+        [Tooltip("품질 등급. 보고서에 함께 적어 「어느 설정에서 잰 값인가」를 남긴다.")]
+        [SerializeField] private Data.Profiles.VisualQualityProfile _quality;
+
         [Header("예산 (0 이면 대조하지 않는다)")]
+        [Tooltip("드로우콜·SetPass·삼각형은 아직 어느 프로파일에도 없다. 인스펙터로 넣는다.")]
         [SerializeField] private float _drawCallBudget;
         [SerializeField] private float _setPassBudget;
         [SerializeField] private float _triangleBudget;
+
+        [Tooltip("비워 두면 TargetHardwareProfile 의 목표 FPS 에서 유도한다.")]
         [SerializeField] private float _frameMsBudget;
 
         [Header("보고")]
@@ -110,8 +120,52 @@ namespace Ascend.Prototype.Perf
             _frameMsBudget = frameMs;
         }
 
+        /// <summary>
+        /// 프레임 예산을 기준 프로파일에서 유도하고, **잰 조건이 그 기준과 같은지** 기록한다.
+        ///
+        /// 이 두 번째 부분이 핵심이다. 지금까지의 측정은 `816×714 / vSync 0` 에서 나왔고
+        /// 중앙값이 정확히 8.33ms 에 못 박혀 있었다 — 상한에 걸린 값으로는 90 FPS 목표를
+        /// 판정할 수 없다. 기준 해상도(1920×1080)의 화소 수 대비 약 28% 이기도 하다.
+        /// **어느 조건에서 잰 값인지 적지 않으면 그 숫자는 판정이 아니라 인상이다.**
+        /// </summary>
+        private void ApplyTargetProfile()
+        {
+            var target = Data.Profiles.TargetHardwareProfile.SnapshotOrDefault(
+                _targetHardware, nameof(RenderBudgetProbe));
+
+            _targetSource = _targetHardware != null ? _targetHardware.name : "코드 기본값";
+            _targetFps = target.TargetFps;
+            _hardFloorFps = target.HardFloorFps;
+            _referenceWidth = target.ReferenceWidth;
+            _referenceHeight = target.ReferenceHeight;
+            _requiresVSyncOff = target.MeasureWithVSyncOff;
+
+            // 인스펙터가 명시했으면 그것이 이긴다. 0 이면 목표 FPS 에서 유도한다.
+            if (_frameMsBudget <= 0f && _targetFps > 0f) _frameMsBudget = 1000f / _targetFps;
+
+            _qualitySource = _quality != null ? _quality.name : "코드 기본값";
+            _qualityTier = Data.Profiles.VisualQualityProfile
+                .SnapshotOrDefault(_quality, nameof(RenderBudgetProbe)).Tier.ToString();
+        }
+
+        /// <summary>측정 조건이 기준과 같은가. 다르면 예산 판정을 신뢰할 수 없다.</summary>
+        public bool MeasuredAtReference =>
+            Screen.width == _referenceWidth && Screen.height == _referenceHeight &&
+            (!_requiresVSyncOff || QualitySettings.vSyncCount == 0);
+
+        private string _targetSource = "(미초기화)";
+        private string _qualitySource = "(미초기화)";
+        private string _qualityTier = "(미초기화)";
+        private float _targetFps;
+        private float _hardFloorFps;
+        private int _referenceWidth;
+        private int _referenceHeight;
+        private bool _requiresVSyncOff;
+
         private void OnEnable()
         {
+            ApplyTargetProfile();
+
             // 이름은 Unity 내장 렌더 프로파일러 카운터의 것이다. 틀리면 예외가 아니라
             // Valid == false 로 돌아온다 — 그 경우를 "측정 불가"로 기록한다.
             _drawCallRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Draw Calls Count");
@@ -207,6 +261,33 @@ namespace Ascend.Prototype.Perf
             if (_editorFallbackUsed)
                 sb.AppendLine("일부 값은 UnityStats(에디터 전용)로 보정했다. 빌드에는 이 경로가 없다.");
 #endif
+            sb.AppendLine("기준 " + _targetSource + " — 목표 " + _targetFps.ToString("F0") + " FPS(" +
+                          (_targetFps > 0f ? (1000f / _targetFps).ToString("F2") : "?") + "ms) / 하한 " +
+                          _hardFloorFps.ToString("F0") + " FPS / 기준 해상도 " +
+                          _referenceWidth + "×" + _referenceHeight +
+                          (_requiresVSyncOff ? " / vSync 꺼짐 요구" : ""));
+            sb.AppendLine("품질 " + _qualitySource + " (" + _qualityTier + ")");
+
+            // **어느 조건에서 잰 값인지 적지 않으면 그 숫자는 판정이 아니라 인상이다.**
+            // 지금까지 이 보고서는 816×714 에서 나온 값을 조건 대조 없이 실었고,
+            // 중앙값이 vSync 상한(8.33ms)에 못 박힌 것도 그대로 통과했다.
+            if (MeasuredAtReference)
+            {
+                sb.AppendLine("측정 조건이 기준과 같다 — 이 값으로 예산을 판정할 수 있다.");
+            }
+            else
+            {
+                sb.AppendLine("⚠ 측정 조건이 기준과 다르다 — " +
+                              Screen.width + "×" + Screen.height + " / vSync " +
+                              QualitySettings.vSyncCount + ". **이 값으로 목표 FPS 를 판정하지 않는다.**");
+                if (_referenceWidth > 0 && _referenceHeight > 0)
+                    sb.AppendLine("  화소 수 기준 " +
+                                  (100f * Screen.width * Screen.height /
+                                   (_referenceWidth * (float)_referenceHeight)).ToString("F0") + "%.");
+                if (_requiresVSyncOff && QualitySettings.vSyncCount != 0)
+                    sb.AppendLine("  vSync 가 켜져 있으면 중앙값이 상한에 달라붙어 목표를 넘었는지 알 수 없다.");
+            }
+
             sb.AppendLine("기준 하드웨어가 확정되지 않았으므로(`ASSUMPTION_LOG` A-20260730-01)");
             sb.AppendLine("이 수치로 성능 완료를 선언하지 않는다. `TECH_SPEC.md` §13 대조는 Pass 4 다.");
             sb.AppendLine();

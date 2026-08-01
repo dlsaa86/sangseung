@@ -54,6 +54,9 @@ namespace Ascend.Prototype.Audio
         [SerializeField] private RunSessionBehaviour _run;
 
         [Header("볼륨")]
+        [Tooltip("채널 균형과 덕킹 배율. 비면 아래 슬라이더를 그대로 쓴다 — 소리 없이 죽지 않는다.")]
+        [SerializeField] private Data.Profiles.AudioMixProfile _mixProfile;
+
         [SerializeField, Range(0f, 1f)] private float _masterVolume = 0.8f;
         [SerializeField, Range(0f, 1f)] private float _machineVolume = 1f;
         [SerializeField, Range(0f, 1f)] private float _eventVolume = 0.85f;
@@ -86,6 +89,8 @@ namespace Ascend.Prototype.Audio
         private int _queueCount;
         private float _nextFree;
         private bool[] _bakeWarned;
+        private Data.Profiles.AudioMixSnapshot _mix;
+        private string _mixSource = "(미초기화)";
         private bool _overflowWarned;
 
         private GameEventBus _bus;
@@ -95,6 +100,9 @@ namespace Ascend.Prototype.Audio
         private float _listenerBase = 1f;
 
         /// <summary>지금까지 실제로 재생한 큐 수. 무영상 검증이 "정말 울렸는가"를 물을 때 쓴다.</summary>
+        /// <summary>지금 쓰고 있는 믹스의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
+        public string MixSource => _mixSource;
+
         public int PlayedCueCount { get; private set; }
 
         /// <summary>대기열이 넘치거나 너무 밀려 버린 큐 수. 0이 아니면 간격 설정이 틀린 것이다.</summary>
@@ -126,6 +134,12 @@ namespace Ascend.Prototype.Audio
             _handler = OnEvent;
             _queue = new Scheduled[QueueCapacity];
             _bakeWarned = new bool[32];
+
+            // 에셋을 한 번만 스냅샷으로 뜬다. 매 프레임 `ScriptableObject` 를 타고 들어가면
+            // 채널 넷 × 60fps 만큼의 간접 참조가 생기고, 런 중에 값이 바뀌면 오히려
+            // 「무엇을 들었는지」가 재현되지 않는다.
+            _mix = Data.Profiles.AudioMixProfile.SnapshotOrDefault(_mixProfile, nameof(AudioDirector));
+            _mixSource = _mixProfile != null ? _mixProfile.name : "인스펙터 슬라이더";
 
             _silence.DuckSeconds = _duckSeconds;
             _silence.ResumeSeconds = _resumeSeconds;
@@ -220,10 +234,10 @@ namespace Ascend.Prototype.Audio
         {
             if (_sources == null) return;
             float master = _masterVolume * gain;
-            _sources[(int)AudioCueChannel.Machine].volume = _machineVolume * master;
-            _sources[(int)AudioCueChannel.Event].volume = _eventVolume * master;
-            _sources[(int)AudioCueChannel.Passenger].volume = _passengerVolume * master;
-            _sources[(int)AudioCueChannel.Warning].volume = _warningVolume * master;
+            _sources[(int)AudioCueChannel.Machine].volume = ChannelVolume(AudioCueChannel.Machine) * master;
+            _sources[(int)AudioCueChannel.Event].volume = ChannelVolume(AudioCueChannel.Event) * master;
+            _sources[(int)AudioCueChannel.Passenger].volume = ChannelVolume(AudioCueChannel.Passenger) * master;
+            _sources[(int)AudioCueChannel.Warning].volume = ChannelVolume(AudioCueChannel.Warning) * master;
         }
 
         private void ApplyListenerDuck(float now, float gain)
@@ -447,6 +461,8 @@ namespace Ascend.Prototype.Audio
 
         private float ChannelVolume(AudioCueChannel channel)
         {
+            if (_mixProfile != null) return _mix.VolumeFor(ToMixChannel(channel)) * MixMaster;
+
             switch (channel)
             {
                 case AudioCueChannel.Machine:   return _machineVolume;
@@ -455,6 +471,37 @@ namespace Ascend.Prototype.Audio
                 default:                        return _eventVolume;
             }
         }
+
+        /// <summary>
+        /// 두 채널 열거를 잇는다. **캐스트로 넘기면 안 된다** — 이름이 같아서 컴파일되지만
+        /// 값이 한 칸씩 밀려 있다.
+        ///
+        /// <code>
+        ///   AudioCueChannel   Machine=0 Event=1 Passenger=2 Warning=3
+        ///   AudioChannel      Machine=1 Event=2 Passenger=3 Warning=4
+        /// </code>
+        ///
+        /// `(AudioChannel)cueChannel` 은 전 채널이 옆 채널의 볼륨을 받게 만든다.
+        /// 컴파일도 되고 소리도 나므로 **아무도 눈치채지 못한다.**
+        /// </summary>
+        private static Data.Profiles.AudioChannel ToMixChannel(AudioCueChannel channel)
+        {
+            switch (channel)
+            {
+                case AudioCueChannel.Machine:   return Data.Profiles.AudioChannel.Machine;
+                case AudioCueChannel.Event:     return Data.Profiles.AudioChannel.Event;
+                case AudioCueChannel.Passenger: return Data.Profiles.AudioChannel.Passenger;
+                case AudioCueChannel.Warning:   return Data.Profiles.AudioChannel.Warning;
+                default:                        return Data.Profiles.AudioChannel.Master;
+            }
+        }
+
+        /// <summary>
+        /// 에셋의 마스터를 인스펙터 마스터에 곱한다. 에셋이 채널 균형을 정하고
+        /// 인스펙터 슬라이더는 그 위의 전체 크기로 남는다 — 둘 중 하나를 지우면
+        /// 씬에서 소리를 끄는 손잡이가 사라지거나 데이터가 무의미해진다.
+        /// </summary>
+        private float MixMaster => _mix.MasterVolume;
 
         // ── 부품 ─────────────────────────────────────────────────────────────
 
