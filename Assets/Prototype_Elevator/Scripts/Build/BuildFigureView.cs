@@ -64,6 +64,16 @@ namespace Ascend.Prototype.Build
             new List<InteractableBuildCandidate>();
         private readonly List<TMP_Text> _labels = new List<TMP_Text>();
 
+        /// <summary>
+        /// 이 거리(m) 밖에서는 라벨 크기를 손대지 않는다. 안쪽에서만 거리에 비례해 줄여
+        /// **화면 크기의 상한**을 만든다 — 1.8m 에서 보이는 크기가 그 상한이다.
+        /// 조작 거리(0.9m)에서는 절반이 된다.
+        /// </summary>
+        private const float LabelReferenceDistance = 1.8f;
+
+        /// <summary>축소 하한. 코앞이어도 이보다 작아지지 않는다 — 읽을 수는 있어야 한다.</summary>
+        private const float LabelMinScale = 0.35f;
+
         private static readonly int CullModeId = Shader.PropertyToID("_CullMode");
         private static readonly Dictionary<Material, Material> _singleSided =
             new Dictionary<Material, Material>();
@@ -430,6 +440,19 @@ namespace Ascend.Prototype.Build
                 toReader.y = 0f;
                 if (toReader.sqrMagnitude > 0.0001f)
                     label.transform.rotation = Quaternion.LookRotation(toReader, Vector3.up);
+
+                // **가까울수록 줄인다.** 고정 월드 크기 텍스트는 다가갈수록 화면에서
+                // 무한히 커진다 — 인쇄된 표지판이라면 옳지만 이름표에는 파국이다.
+                // 3차 감사가 증거 영상에서 「문상객」 라벨이 **프레임의 54%** 에서
+                // 대표 오브젝트를 덮는다고 지적했고, 시각 평가도 같은 것을 봤다
+                // (`10_risk_critical` 에서 「광신자」가 프레임 좌측 22% 를 차지하며
+                // 결과판 첫 열의 획 위를 지나간다).
+                //
+                // 기준 거리 밖에서는 손대지 않는다 — 멀리서 작아 보이는 것은 옳다.
+                // 안쪽에서만 거리에 비례해 줄여 **화면 크기의 상한**을 만든다.
+                float distance = Vector3.Distance(label.transform.position, _head.position);
+                float shrink = Mathf.Clamp(distance / LabelReferenceDistance, LabelMinScale, 1f);
+                label.transform.localScale = Vector3.one * shrink;
             }
         }
 
