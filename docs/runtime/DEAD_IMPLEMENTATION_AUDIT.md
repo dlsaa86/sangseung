@@ -144,15 +144,42 @@
 `static` 클래스에 `MenuItem` 하나다. **호출자 0곳**이고 빌드에 들어가지 않는다.
 그런데 상태는 `CONNECTED`, 남은 문제는 「없음」이다. 증거로 걸린
 `tenfloor_playmode.txt` 「씬 배선」 줄은 `TenFloorAutoPilot` **자신이** 찍는 것이지
-이 코드의 산물이 아니다. PRD §13.5 「개발 빌드에서 원인과 경로를 출력」을 만족하는
-런타임 경로가 없다.
+이 코드의 산물이 아니다.
+
+**출처 정정 —** 이 항목이 백로그와 이 문서에서 「PRD §13.5」로 인용돼 왔으나
+동결된 `docs/MASTER_PRD.md` §13.5 는 **「증거 산출물」**(완료 보고에 무엇을 넣는가)이고
+필수 참조와 무관하다. 함께 적힌 「N08 §3.3」은 `NOTION_GAP_MATRIX.md` 에 없어
+로컬에서 확인되지 않는다. 로컬에서 검증 가능한 실제 출처는
+**`docs/TECH_SPEC.md:35`** 다 — 「null 상태에서 조용히 실패하지 않는다.
+개발 빌드와 에디터에서는 원인과 경로를 명확히 출력한다.」
+**틀린 인용을 내가 이 문서로 옮겨 적었다** — 원문을 열지 않고 백로그의 출처 표기를
+그대로 베낀 결과다. 구현은 위 TECH_SPEC 문장을 기준으로 했다.
 
 같은 방식으로 다시 확인해야 할 것들:
 
-- **`UP-POWER-02`** — `PowerBand.Damaged` → `AscendResult.DeviceDamaged` → `FloorResult.DeviceDamaged`
-  까지 흐르고 **거기서 끝난다.** `DeviceDamaged` 를 읽는 코드가 0곳
-- **`UP-TEST-06`** — `DebugPanelView` 에 `#if UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild`
-  가 **하나도 없다.** 릴리스 빌드에서 F1 이 그대로 열린다
+- **`UP-POWER-02`** — 재확인 완료(2026-08-01). **8구간 중 죽은 것은 정확히 하나다** —
+  앞서 이 줄이 항목 전체를 의심하게 적혀 있었으나, 전수 확인하면 일곱은 살아 있다.
+  - `Crash` → `RunEnded` → `FloorResult.CanContinueRun` — **산다**
+  - `Jettison` → `RequiresJettison` → `RunSession.cs:283`, `FloorRecord.cs:115` — **산다**
+  - `MultiFloor`·`Overharvest`·`Runaway` → `AscendResult.cs:72` 층 보너스 — **산다**
+  - `Normal`·`Rewarded` → 기본 보상 경로 — **산다**
+  - `Damaged` → `AscendResult.DeviceDamaged` → `FloorResult.DeviceDamaged` → **읽는 곳 0곳.**
+    대입 2곳(`AscendResult.cs:62`, `FloorResult.cs:40`)과 선언 2곳이 전부다
+
+  즉 요구 전력의 **90~100% 구간에 들어가면 아무 일도 일어나지 않는다.** 게임은
+  그 구간을 `Normal` 과 구별해 분류해 놓고 그 분류를 쓰지 않는다.
+
+  **더 중요한 것: 이 구간이 무엇을 해야 하는지 동결 PRD에 없다.** `MASTER_PRD.md`
+  전문에서 「손상」·「Damaged」·「파손」이 **0건**이다. 구간 이름과 경계값
+  (`DamagedCeiling = 1.00f`)은 코드에만 있다. 따라서 이것은 「구현이 빠졌다」가 아니라
+  **「사양이 없는 채로 분류만 만들어졌다」**이고, 효과를 지금 정하면 그것은 구현이
+  아니라 **설계 결정**이다. `PENDING_DECISIONS.md` 로 올린다 — 다만 되돌릴 수 있으므로
+  기본 프리셋(효과 없음 = 현 상태)으로 계속 진행하고 막지 않는다
+- **`UP-TEST-06`** — 재확인 완료(2026-08-01). **주장이 맞다.**
+  `Assets/Prototype_Elevator/Scripts/UI/DebugPanelView.cs` 전문에
+  `UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild` 가 **0건**이다.
+  릴리스 빌드에서 F1 이 그대로 디버그 패널을 연다 — 시드 재시작(R), 시드 입력(T),
+  스핀 로그(L)까지 전부 노출된다. 고치는 비용은 작다(조건부 컴파일 한 겹)
 - **`UP-REC-03`** — 반대 방향. 실제로는 충족으로 보인다(`GameHudView` 와 `PaperTapePrinterView`
   가 둘 다 `AccidentRecorder.FloorRecord` 를 읽는다). 판정만 남았다
 

@@ -147,6 +147,25 @@ namespace Ascend.Prototype.Perf
             _floors[_count] = floor;
             _atFloorStart[_count] = atFloorStart;
             _count++;
+
+            // **기준선도 수집 후로 잡는다.** 이전 판본은 판정에서
+            // `GC.GetTotalMemory(true)`(런 종료·수집 후)에서
+            // `GC.GetTotalMemory(false)`(첫 층 종료·수집 전)를 뺐다. 서로 다른 측정이라
+            // 그 차는 보유량이 아니다 — 첫 층에 아직 안 치워진 쓰레기가 기준선 쪽에
+            // 통째로 얹혀 있어 **보유 증가를 감소로 보이게 만든다.**
+            // 그것은 이 프로브가 앞서 지적한 바로 그 오류이고, 판정식 한쪽에 남아 있었다.
+            //
+            // 여기서 한 번 강제 수집하는 것은 프레임 스파이크지만, 첫 층 경계라는
+            // 알려진 한 지점이고 이후 표본은 평소대로 비강제로 잰다.
+            if (!atFloorStart && !_hasSettledBaseline)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                _settledBaselineBytes = GC.GetTotalMemory(true);
+                _settledBaselineFloor = floor;
+                _hasSettledBaseline = true;
+            }
         }
 
         /// <summary>표본을 버리고 처음부터 다시 잰다.</summary>
@@ -186,8 +205,28 @@ namespace Ascend.Prototype.Perf
         private long _beforeSettleBytes;
         private long _settledBytes;
 
+        private bool _hasSettledBaseline;
+        private long _settledBaselineBytes;
+        private int _settledBaselineFloor;
+
         /// <summary>강제 수집 뒤의 힙. 재지 않았으면 -1.</summary>
         public long SettledBytes { get { return _settled ? _settledBytes : -1L; } }
+
+        /// <summary>첫 층 종료 시점의 **수집 후** 기준선. 재지 않았으면 -1.</summary>
+        public long SettledBaselineBytes { get { return _hasSettledBaseline ? _settledBaselineBytes : -1L; } }
+
+        /// <summary>
+        /// 같은 측정끼리 뺀 보유 증가량. 둘 중 하나라도 없으면 <see cref="long.MinValue"/>.
+        /// 하네스가 이것으로 단정한다 — 값을 보고서에만 적으면 누적돼도 아무것도 실패하지 않는다.
+        /// </summary>
+        public long RetainedBytes
+        {
+            get
+            {
+                if (!_settled || !_hasSettledBaseline) return long.MinValue;
+                return _settledBytes - _settledBaselineBytes;
+            }
+        }
 
         private void AppendSettledVerdict(StringBuilder sb)
         {

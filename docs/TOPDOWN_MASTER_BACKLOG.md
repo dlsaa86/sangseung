@@ -1123,7 +1123,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run Self Tests`
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-REC-01
-- 남은 문제: 없음
+- 남은 문제: **단일 원본은 진짜다 — 그러나 증거가 그것을 담고 있지 않다.** 코드 구조는 확인됐다: `AccidentRecorder.cs:65-67` 이 `FloorRecord` 하나를 만들고, `GameHudView.cs:220-227` 과 `PaperTapePrinterView.cs:154-183` 이 **씬에서 같은 fileID 998528534** 를 가리킨다 — 서로 다른 기록기를 볼 여지가 없다. **그런데** 증거로 건 `Logs/editmode_tests.txt` 226줄·10스위트·194 PASS 에 `AccidentRecorder`·`FloorRecord`·HUD·프린터 스위트가 **하나도 없다.** 「인게임 출력과 디버그가 같은 값을 말한다」를 확인하는 단정은 저장소에 0건이다. 게다가 프린터 쪽 유일한 디스크 관측(`Logs/waveb_runtime.txt`)의 「인쇄된 줄 2」는 `PaperTapePrinterView.cs:112-113` 의 **머리글**이지 `FeedRecord` 산물이 아니다 — 테이프는 층 기록을 한 줄도 찍은 적이 없다. `DEAD_IMPLEMENTATION_AUDIT` §7 의 「판정만 남았다」가 틀렸다. 남은 것은 판정이 아니라 **증거**다. 출처 `PRD §10.3` 도 동결 PRD 에 없다
 
 ### UP-REC-04 — 기계식 프린터·종이 테이프 형태의 물리적 출력
 - 분류: Required · 출처: PRD §10.1 「단순 결과창 대신 엘리베이터 내부의 기계식 프린터, 종이 테이프 또는 펀치카드」
@@ -1230,12 +1230,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-VIS-09 — 축소 화면에서도 상태가 읽힌다
 - 분류: Required · 출처: PRD §11, §15.2 마지막 항목
 - 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
+- 구현: `Captures/TenFloor/scaled25/` 생성기 (원본 21장 → 480×270, LANCZOS)
 - 접근: 해당 없음
 - 검증: 캡처를 25% 축소해 독립 평가
-- 증거: 없음
+- 증거: `Captures/TenFloor/scaled25/` 21장 + `scaled25/manifest.txt`
 - 의존: UP-VIS-07
-- 남은 문제: 축소 대조 검사를 한 번도 하지 않았다
+- 남은 문제: 축소 세트를 **만들었다** — 원본 1920×1080 21장을 25%(480×270)로 줄여 `Captures/TenFloor/scaled25/` 에 두고 독립 평가를 요청했다. 리샘플은 LANCZOS 로 **축소에 유리한 쪽**을 골랐다 — 더 거친 BOX/NEAREST 면 리샘플 탓인지 디자인 탓인지 갈리지 않기 때문이다. **판정은 아직이다.** 그리고 이 항목은 `UP-VIS-07`(시각 루브릭 평균 4.0)에 의존하는데 그쪽이 현재 REJECT 이므로, 축소 판정이 좋게 나와도 **이 항목만 먼저 VERIFIED 로 갈 수 없다**
 
 ### UP-VIS-10 — 안개·먼지·빛줄기가 결과판을 가리지 않는다
 - 분류: Required · 출처: PRD §12.3
@@ -1349,7 +1349,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 프로브의 GC/프레임 항목
 - 증거: `Logs/loaded_critical_perf.txt`
 - 의존: UP-TECH-04
-- 남은 문제: **9,000~11,000 B/프레임.** 목표 0 B와 큰 격차. 원인 분해가 없다
+- 남은 문제: **숫자가 틀렸다 — 격차는 10 KB 가 아니라 약 1.6 KB 다.** 같은 기기·같은 카운터로 잰 대조군(`heroslice_perf.txt` 「게임 코드 전부 끄고 60초」)의 바닥이 **8,805 B/프레임(중앙)**이고, `loaded_critical_perf.txt` 네 조건 중 **둘(9,128·9,127)은 그 바닥보다 낮다.** 실제로 남는 게임 코드 할당은 **1,638 B/프레임**(#1 10,443 − #3 8,805)이며 범위는 `HeroSlicePerfProbe.cs:100-113` 이 한 덩어리로 끄는 8개 컴포넌트다 — **어느 것인지는 아직 모른다.** 그리고 이 1,638 B 는 **게임 코드 전체가 아니라 그 8개의 비용**이다 — 「대조군 = 게임 코드 전부 끔」이 실은 `Disable<>()` **12번의 손 열거**라 `AudioDirector`·`PaperTapePrinterView`·`FloorIndicatorView`·`PassengerReactionView`·`TubeController`×3·`RenderBudgetProbe`·`MemoryTrendProbe` 등 14개가 바닥 안에서 계속 돌았다. **상한은 미측정이다 — 「1.6 KB 만 고치면 된다」로 읽으면 안 된다.** 게다가 보고서의 최대 할당 두 개(205,437 B·402,053 B)는 **하네스 자신의 표본 버퍼**다 (`List<FrameSample>` 4096×48 B / 8192×48 B + 바닥, 오차 24·32 B = 객체·배열 헤더). `ProfilerRecorder.StartNew` 다음 줄에서 버퍼를 만든다(`HeroSlicePerfProbe.cs:357-358`). **측정을 고치기 전에는 위반 여부를 확정하지 않는다.** 전체 분해는 `docs/runtime/GC_ALLOC_ANALYSIS.md`. 다음: ① 버퍼를 recorder 앞으로 + 대조군 arm 추가 + A/B arm 층 단계 정렬 ② 8개를 하나씩 끄는 측정 ③ 빌드에서 1920×1080 재측정
 
 ### UP-TECH-06 — 오브젝트 풀링 (파티클·심볼·사운드)
 - 분류: Required · 출처: PRD §13.2, §17.4
@@ -1359,7 +1359,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: `Ascend/Run All EditMode Tests` → 풀링 20건 (prewarm·재사용·이중 반환·maxSize 초과)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-TECH-05
-- 남은 문제: 풀은 있으나 **파티클·심볼·사운드가 아직 쓰지 않는다.** Alloc 감소 측정도 없다
+- 남은 문제: **풀이 답인 지점은 하나뿐이다.** `ObjectPool`/`ComponentPool` 은 완성돼 있고 소비처가 0곳인데, GC 분해 결과 풀로 해결되는 후보는 `CrosshairInteractor.ApplyHighlight`(조준 대상 전환당 렌더러마다 `MaterialPropertyBlock` **2개** + `RendererState` 1개, ≈500 B 추정) **하나**다. 나머지 할당 후보는 전부 문자열·서식(`InstrumentPanelView` 의 `AppendFormat` 박싱, `SpinPresenter.DescribeStep`, `PaperTapePrinterView`)이라 **풀이 답이 아니다.** 파티클·심볼·사운드에 풀을 넣는다고 프레임당 0 B 가 되지 않는다 — `UP-TECH-05` 의 1,638 B 는 그쪽에서 나오는 게 아니다. 근거: `docs/runtime/GC_ALLOC_ANALYSIS.md` §4·§7
 
 ### UP-TECH-07 — 렌더링 예산 측정 (드로우콜·SetPass·오버드로우)
 - 분류: Required · 출처: PRD §13.3
@@ -1379,7 +1379,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 검증: 10층 런 중 층 경계 샘플링 → `Logs/memory_trend.txt`
 - 증거: `Logs/memory_trend.txt`
 - 의존: UP-RUN-10
-- 남은 문제: **이전 판정이 틀렸다 — 누수가 아니라 미수거 쓰레기였다.** 프로브가 「+160 MB 단조 증가 → 요구사항 위반」이라고 적어 왔으나, 그 값은 `GC.GetTotalMemory(false)` 즉 **수집을 강제하지 않은** 값이라 「붙잡혀 있음」과 「아직 안 치웠음」을 구분하지 못한다. 같은 표에서 **Unity 총 할당은 +5.97 MB(0.5%)로 안정**이었고 두 숫자가 서로 다른 이야기를 하고 있었다. 런 종료 후 강제 수집(`GC.Collect` ×2 + `WaitForPendingFinalizers`)을 추가해 재측정한 결과 — **수집 전 1.043 GB → 수집 후 1014.52 MB(회수 53.73 MB), 첫 층 종료 대비 −2.17 MB.** 기준선 아래로 돌아온다. 측정 중 강제 수집을 피한 판단은 옳았다(그 자체가 프레임 스파이크다) — 빠진 것은 **런이 끝난 뒤**의 한 번이었고, 그때는 스파이크가 잴 대상을 망치지 않는다. **구현자가 스스로 VERIFIED 로 올리지 않는다** — 독립 판정을 기다린다
+- 남은 문제: **내가 적었던 숫자와 판정이 둘 다 틀렸다.** 독립 감사가 셋을 짚었다. ① 인용한 값(수집 전 1.043 GB → 1014.52 MB, −2.17 MB)이 **디스크에 없다** — `Logs/memory_trend.txt` 는 1.059 GB → 1020.96 MB(회수 63.22 MB), −2.79 MB 다. 덮어써진 앞선 런의 값을 적어 두었다. ② **판정식이 서로 다른 측정을 뺐다** — 기준선 `firstEnd` 는 `_gcBytes[]` 즉 `GC.GetTotalMemory(false)`(수집 전)인데 비교값 `_settledBytes` 는 `GC.GetTotalMemory(true)`(수집 후)다. 첫 층에 아직 안 치워진 쓰레기가 기준선 쪽에 얹혀 **보유 증가를 감소로 보이게 만든다.** 내가 지적한 바로 그 오류를 판정식 한쪽에 남겨 뒀다. ③ **빨간불이 될 단정이 0건이다** — EditMode 「Perf」 21건은 합성 배열로 `MemoryTrend.Analyze` 산수만 검사한다. 실제로 누적돼도 아무것도 실패하지 않는다. **조치**: `MemoryTrendProbe` 에 첫 층 종료에서도 강제 수집한 `SettledBaselineBytes` 를 잡고 `RetainedBytes`(같은 측정끼리 뺀 값)를 노출하도록 고쳤다. 남은 것은 그 값으로 **실패할 수 있는 단정**을 하네스에 붙이는 것. 또 `_settled` 가 런 사이 초기화되지 않아 중단된 런의 판정 줄이 다음 보고서에 붙을 수 있다. 출처 표기 `PRD §17.4` 도 틀렸다 — 동결 PRD 는 **§15 에서 끝나고** 「메모리」가 0건이다
 
 ### UP-TECH-09 — 가변 요소의 데이터 분리 (PRD §14.1 12항목)
 - 분류: Required · 출처: PRD §14.1, §14.3
@@ -1435,13 +1435,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-TEST-05 — 텔레메트리 (스핀별 JSON/CSV 20항목)
 - 분류: Required · 출처: PRD §4.1(텔레메트리), §16.2, N08 §18
-- 상태: SKELETON · 패스: P2
+- 상태: CONNECTED · 패스: P2
 - 구현: `Scripts/Telemetry/`(SpinTelemetryRecord 20필드 · TelemetryRecorder · TelemetryFileSink · ITelemetrySink)
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 텔레메트리 17건 (결정론·CSV 열 일치·JSONL 이스케이프)
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-RUN-01
-- 남은 문제: 두 가지가 남았다. ① **씬에 붙지 않아 실제 인게임 런이 파일을 만들지 않는다** — 헤드리스 테스트만 기록한다. ② Notion §16.2 11항목 중 **다섯이 빠져 있다** — 캐스케이드별 보드 · 정화/발동 순서 · 현재 위험 단계 · 승객·부품 발동 · 프레임 타임과 GC Alloc. 런 종료 원인은 스핀 속성이 아니라 런 단위 레코드가 따로 필요하다 (`D-20260801-06`)
+- 남은 문제: **① 은 거짓이었다 — 정정한다.** 「씬에 붙지 않아 실제 인게임 런이 파일을 만들지 않는다」고 적혀 있었으나, 독립 확인 결과 씬 `Prototype_Elevator.unity:9506-9520` 에 `TelemetryRecorderBehaviour`(`m_Enabled: 1`, `_writeFiles: 1`)가 활성 `AscendRun` 아래 배선돼 있고, `Logs/telemetry/` 의 376개 파일이 **전부 PlayMode 산물**이다 (테스트는 `Path.GetTempPath()` 로 쓰므로 섞이지 않는다). 시드도 하네스의 1337/4242/7/271828/12321 과 일치한다. **이 거짓 서술이 실재하는 구현을 지우고 있었다** — 그대로 뒀으면 이미 있는 것을 다시 만들 위험이 컸다. 그래서 SKELETON → CONNECTED. **② 는 사실이다.** 실제 20열과 대조해 다섯이 없음을 확인했다 — 캐스케이드별 보드 · 정화/발동 순서 · 현재 위험 단계 · 승객·부품 발동 · 프레임 타임과 GC Alloc. 추가로 `D-20260801-06`(Accepted)이 약속한 **11항목 대조 테스트가 없다** — 있는 것은 `PASS 필드가 정확히 20개다` 인데, 같은 결정이 **「필드 수를 목표로 삼지 않는다」**고 명시 기각한 기준이다. 제목의 「20항목」도 그 결정과 충돌한다
 
 ### UP-TEST-06 — 디버그 패널
 - 분류: Required · 출처: PRD §4.1, N08 §17 「개발 빌드에서만 기본 활성화」
@@ -1599,10 +1599,24 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-FIX-09 | `14_contract_select` 재설계 — 판독성 1/5 | UP-CONTRACT-05, UP-VIS-07 | 열림 |
 | UP-FIX-10 | Critical/Collapse 게이지가 Strain 보다 창백하다 (위급도 역전) | UP-RISK-03, UP-VIS-07 | 열림 |
 | UP-FIX-11 | 사고 기록기가 자기 자신과 모순한다 (3건) | UP-REC-02, UP-REC-03 | 열림 |
-| UP-FIX-12 | 승객 이름 라벨이 근거리에서 폭주하고 통관을 관통한다 | UP-NPC-04, UP-VIS-10 | 열림 |
+| UP-FIX-12 | 월드 라벨이 통관 지오메트리에 **절단**된다 — 축이 크기가 아니라 깊이·가림이다 | UP-NPC-04, UP-VIS-10 | 열림 |
 | UP-FIX-13 | 매니페스트 주장과 그림이 다른 장 9건 | UP-VIS-06 | 열림 |
-| UP-FIX-14 | 거대한 「문 상…」 월드 라벨이 대표 오브젝트를 덮는다 (프레임의 54%) | UP-VIS-08, UP-VIS-10, UP-TEST-09 | 열림 |
+| UP-FIX-14 | 라벨 거리 축소는 **틀린 축이었다** — 가림은 스케일 불변이다 (0.35 를 더 낮추지 말 것) | UP-VIS-08, UP-VIS-10, UP-TEST-09 | 열림 |
 | UP-FIX-15 | 결과 숫자가 연출보다 30프레임 먼저 나와 스핀을 스포일한다 | UP-CORE-11 | 열림 |
+| UP-FIX-16 | 화면 캡처 3장(`17`·`19`·`20`)이 **816×714** 다 — 나머지 18장은 1920×1080 | UP-VIS-06, UP-TECH-04 | 열림 |
+| UP-FIX-17 | `17_accident_recorder` 에 **「□」 두부 글자**가 렌더된다 (폰트 폴백 실패) | UP-REC-02, UP-VIS-07 | 열림 |
+| UP-FIX-18 | 위험 단계 구분이 **색에만** 의존한다 — 회색조에서 Strain↔Critical 이 같아진다 | UP-RISK-03, UP-VIS-09 | 열림 |
+
+**라벨 두 건(`UP-FIX-12`·`UP-FIX-14`)에 대해 — 내 수정은 축이 틀렸다.**
+거리 기반 축소(하한 0.35)를 넣고 「22% → 13% 로 줄었다」고 적었으나, 독립 평가 **둘이
+따로** 같은 결론을 냈다: **가림은 스케일 불변이다.** 캡처를 25%로 줄여도 라벨이 차지하는
+화면 폭 비율은 그대로였고(~11%), 실패의 원인은 크기가 아니라 **라벨이 유리 통관 안쪽
+깊이에 놓여 선반 슬래브에 가로로 절단되는 것**이다. `06`·`09`·`18` 은 글자 상·하반부가
+분리됐고 `08` 은 「ㅇ ㄴ ㅣ」 획 파편만 남는다. **축소는 이 실패를 악화시켰다** —
+작아질수록 절단선 하나가 파괴하는 글자 면적 비율이 커진다.
+**하한 0.35 를 더 낮추지 않는다.** 이미 판독 한계선 아래이고, 더 내리면
+「가리는 면적은 그대로인 채 의미만 없는 얼룩」이 된다. 고칠 축은 **배경과 앵커**다 —
+불투명 배킹판을 깔거나 앵커를 어두운 벽 쪽으로 민다. 축소 자체는 유지한다(시선 분산은 줄었다).
 
 **UP-FIX-02는 3회 반복에 실패했다.** `visual-verify` §6의 반복 상한 규칙에 따라 같은
 층위에서 네 번째를 시도하지 않는다. 필요한 것은 미세 조정이 아니라 **배치 결정**이다 —

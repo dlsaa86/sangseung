@@ -596,5 +596,6 @@ Wave A가 만든 컴포넌트를 씬에 붙이고 `.asset` 7종을 만든다. �
 2026-08-01 · 99682e3 · Pass 1 · 눈높이 회귀 수정(3.22m → 1.620m)과 그 회귀 단정 · PlayMode 394 → 395 PASS / 0 FAIL / 콘솔오류 0
 2026-08-01 · 9031996 · Pass 2 · 적재 정책(`BuildLoadPolicy`) — 승객이 처음으로 탄다. 6/6칸 · 승객 4명 · 108/100kg 과적 · 반응 110건. 구조 감사 지적 8건 반영 · EditMode 188 → 194 PASS / 0 FAIL, PlayMode 395 → 494 PASS / 0 FAIL
 2026-08-01 · d22c04c · Pass 2 · 프로파일 5종을 소비 지점에 주입 — 「배선됐는가」가 아니라 「읽혔는가」를 묻는 검사 · PlayMode 494 → 496 PASS / 0 FAIL
-2026-08-01 ·  (이번) · Pass 2 · 종류별 카운터(반응 8/11 · 오디오 14/16)와 연출 잠금 단정 536건 · PlayMode 496 → 1065 PASS / 0 FAIL, 자체 검증 213 PASS / 0 FAIL
+2026-08-01 ·  d3e52fa · Pass 2 · 종류별 카운터(반응 8/11 · 오디오 14/16)와 연출 잠금 단정 536건 · PlayMode 496 → 1065 PASS / 0 FAIL, 자체 검증 213 PASS / 0 FAIL
+2026-08-01 ·  (이번) · Pass 2 · UP-TECH-03 런타임 배선 검사(음성 대조 포함 5단정) · UP-TEST-06 릴리스 빌드 가드 · GC 측정 결함 F-1/F-2 수정 · UP-TECH-08 판정식 like-for-like 정정 · UP-VIS-09 축소 세트 21장 · PlayMode 1335 → 1340 PASS / 0 FAIL / 콘솔오류 0
 ```

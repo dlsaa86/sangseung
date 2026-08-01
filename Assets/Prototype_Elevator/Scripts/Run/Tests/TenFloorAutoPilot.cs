@@ -153,6 +153,7 @@ namespace Ascend.Prototype.Run.Tests
             Check("층수 표시등이 있다", indicator != null, "FloorIndicatorView 없음");
             CheckEyeHeight();
             CheckProfileInjection();
+            CheckRequiredReferenceGuard();
 
             if (run.Mode != RunMode.TenFloor)
             {
@@ -899,6 +900,59 @@ namespace Ascend.Prototype.Run.Tests
         {
             _failed++;
             _report.AppendLine($"  FAIL  {name} — {detail}");
+        }
+
+        /// <summary>
+        /// 필수 참조 검사기가 **돌았고, 비어 있지 않고, 실제로 잡는가**를 본다.
+        ///
+        /// 셋을 따로 확인하는 이유: 「결함 0건」은 검사기가 건강할 때도, 아무것도 안 볼 때도
+        /// 똑같이 나온다. 표시된 필드가 0개면 0건은 아무 뜻이 없고, 자동 실행이 안 돌았다면
+        /// 요구는 「개발 빌드에서 즉시」였으므로 수동 호출로는 만족되지 않는다.
+        /// 그래서 마지막에 **일부러 빈 참조를 심어** 잡히는지까지 본다 —
+        /// 검사기가 고장 나면 이 음성 대조가 먼저 실패한다.
+        /// </summary>
+        private void CheckRequiredReferenceGuard()
+        {
+            Check("필수 참조 검사기가 씬 로드 직후 자동으로 돌았다",
+                  Diagnostics.SceneWiringValidator.HasRun,
+                  "RuntimeInitializeOnLoadMethod 가 실행되지 않았다");
+
+            Diagnostics.WiringValidationResult auto = Diagnostics.SceneWiringValidator.Validate(false);
+            Check($"필수로 표시된 참조가 존재한다 — {auto.RequiredFieldsChecked}필드 / {auto.BehavioursScanned}컴포넌트",
+                  auto.RequiredFieldsChecked > 0,
+                  "표시된 필드가 0개다 — 결함 0건이 공허하게 참이 된다");
+
+            string firstDefect = auto.Defects.Count > 0 ? auto.Defects[0].Describe() : string.Empty;
+            Check($"씬에 빈 필수 참조가 없다 — 결함 {auto.Defects.Count}건",
+                  auto.Defects.Count == 0,
+                  firstDefect);
+
+            // 음성 대조. 비활성으로 만든 뒤 컴포넌트를 붙여야 Awake 가 돌지 않아
+            // 이벤트 구독이 생기지 않는다 — 검사만 하고 흔적을 남기지 않는다.
+            GameObject probe = new GameObject("__WiringProbe__");
+            probe.SetActive(false);
+            probe.AddComponent<RouletteInteractionBridge>();
+            Diagnostics.WiringValidationResult seeded = Diagnostics.SceneWiringValidator.Validate(false);
+            Destroy(probe);
+
+            int caught = seeded.Defects.Count - auto.Defects.Count;
+            Check($"빈 참조를 심으면 검사기가 잡는다 — 새로 {caught}건",
+                  caught > 0,
+                  "빈 참조 4개를 심었는데 결함 수가 늘지 않았다 — 검사기가 훑지 못하고 있다");
+
+            bool hasPathAndCause = false;
+            for (int i = 0; i < seeded.Defects.Count; i++)
+            {
+                if (seeded.Defects[i].HierarchyPath.Contains("__WiringProbe__") &&
+                    seeded.Defects[i].Consequence.Length > 0)
+                {
+                    hasPathAndCause = true;
+                    break;
+                }
+            }
+            Check("보고가 원인과 경로를 함께 낸다",
+                  hasPathAndCause,
+                  "TECH_SPEC §2 는 「원인과 경로를 명확히 출력」을 요구한다");
         }
 
         /// <summary>

@@ -215,9 +215,11 @@ namespace Ascend.Prototype.Run.Tests
 
         private IEnumerator MeasureFrames(string label, int frames)
         {
-            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            // 버퍼를 recorder **앞에서** 잡는다. 뒤에서 잡으면 이 배열들의 할당이
+            // 첫 프레임의 GC Alloc 으로 잡혀 「측정 도구가 자기를 잰 값」이 최악값이 된다.
             var samples = new float[frames];
             var alloc = new long[frames];
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
 
             for (int i = 0; i < frames; i++)
             {
@@ -354,8 +356,11 @@ namespace Ascend.Prototype.Run.Tests
                                               SpinPresenter presenter, InteractableLever lever,
                                               InteractableOverharvestLever overharvest)
         {
-            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            // **recorder 보다 먼저 잡는다.** 뒤에서 잡으면 4096×48 B = 196,608 B 가
+            // 측정 창 안에 들어간다 — 이전 보고서의 「스핀·캐스케이드 재생 중 최대
+            // 205,437 B」가 정확히 이것이었다(계산값과 24 B 차이 = List 헤더 + 배열 헤더).
             var frames = new List<FrameSample>(4096);
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
             int maxDepth = 0;
             int spins = 0;
             int index = 0;
@@ -500,9 +505,11 @@ namespace Ascend.Prototype.Run.Tests
             yield return null;
             for (int i = 0; i < 30; i++) yield return null;
 
-            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            // recorder 앞에서 잡는다 — 아래 두 리스트는 합쳐 약 49 KB 이고,
+            // 뒤에서 잡으면 그 49 KB 가 arm 의 첫 프레임 할당으로 기록된다.
             var times = new List<float>(4096);
             var allocs = new List<long>(4096);
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
 
             // 수거가 몇 번 일어났는지 함께 남긴다. 스파이크가 수거와 같이 움직이면
             // 그건 "그 컴포넌트를 그리는 비용"이 아니라 "그때 힙이 찼다"는 뜻이다.
@@ -578,30 +585,41 @@ namespace Ascend.Prototype.Run.Tests
         /// </summary>
         private IEnumerator MeasureIdleSpikes(float seconds)
         {
+            // **전수 비활성이다 — 손으로 열거하지 않는다.**
+            //
+            // 이전 판본은 `Disable<T>()` 를 12번 부르는 열거였고, 그래서 `AudioDirector`·
+            // `PaperTapePrinterView`·`FloorIndicatorView`·`PassengerReactionView`·
+            // `TubeController`×3·`OverharvestApproachBridge`·`RiskEventBridge`·
+            // `OverharvestUnlockEffect`·`InteractableOverharvestLever`·
+            // `TelemetryRecorderBehaviour`·`RenderBudgetProbe`·`MemoryTrendProbe`·
+            // `RunSessionBehaviour` 가 「게임 코드 전부 끔」 구간에서 계속 돌았다.
+            // 즉 8,805 B/프레임 바닥 **안에 게임 코드가 섞여 있었고**, 그 위에서 잰
+            // 1,638 B 차이가 「게임 코드 전체 비용」으로 읽혔다.
+            //
+            // 열거는 새 컴포넌트를 계속 놓친다 — `BuildFigureView` 누락 때와 같은 맹점이다.
+            // 자기 자신만 빼고 전부 끈다. 카메라·라이트는 `MonoBehaviour` 가 아니므로
+            // 렌더 파이프라인은 그대로 돌고, 그것이 재려는 바닥이다.
             var suspects = new List<MonoBehaviour>();
-            void Disable<T>() where T : MonoBehaviour
+            MonoBehaviour[] all = FindObjectsByType<MonoBehaviour>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int i = 0; i < all.Length; i++)
             {
-                T found = FindAnyObjectByType<T>();
-                if (found != null && found.enabled) { found.enabled = false; suspects.Add(found); }
+                MonoBehaviour mb = all[i];
+                if (mb == null || !mb.enabled) continue;
+                if (ReferenceEquals(mb, this)) continue;   // 이 코루틴을 돌리는 주체다
+                mb.enabled = false;
+                suspects.Add(mb);
             }
-
-            Disable<UI.GameHudView>();
-            Disable<UI.DebugPanelView>();
-            Disable<Risk.RiskStateView>();
-            Disable<InstrumentPanelView>();
-            Disable<PurifyMarkerView>();
-            Disable<SpinBoardView>();
-            Disable<Ascend.Prototype.Build.BuildFigureView>();
-            Disable<SpinPresenter>();
-            Disable<RouletteInteractionBridge>();
-            Disable<AccidentRecorder>();
-            Disable<CrosshairInteractor>();
-            Disable<FirstPersonController>();
+            _report.AppendLine($"  [대조군] 비활성화한 MonoBehaviour {suspects.Count}개 " +
+                               $"(이전 판본은 손 열거 12개였다)");
 
             for (int i = 0; i < 120; i++) yield return null;
 
+            // recorder 앞에서 잡는다. 대조군은 60초를 도는 동안 리스트가 4096→8192 로
+            // 성장하는데, 그 성장(8192×48 = 393,216 B)이 「대조군 최대 402,053 B」로
+            // 기록돼 있었다 — 게임 코드를 전부 껐다는 구간의 최악값이 측정 도구였다.
+            var frames = new List<FrameSample>(16384);
             var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
-            var frames = new List<FrameSample>(4096);
             int index = 0;
             float deadline = Time.realtimeSinceStartup + seconds;
 

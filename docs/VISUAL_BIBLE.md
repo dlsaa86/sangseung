@@ -291,9 +291,17 @@ not photorealistic and not pixel art.
 - 카메라 셰이크 강도·사이렌 음량·섬광 강도는 **접근성 옵션으로 분리**
 - **기본 상태가 충분히 안정적이어야 위험 변화가 읽힌다**
 
-> ⚠️ **단계 명칭**: Notion은 `Stable → Strain → Critical → Collapse`, 저장소는
-> `Stable → Warning → Critical → Collapse`다. **저장소 명칭(`Warning`)을 따른다**
-> (`NotionSyncReport.md` C-1). 단계별 연출 내용은 충돌하지 않으므로 그대로 채택한다.
+> ⚠️ **단계 명칭 — 이 지시는 철회됐다 (2026-08-01).**
+> 이 문단은 「저장소 명칭(`Warning`)을 따른다」고 지시하고 있었으나,
+> `D-20260801-05`(Accepted)가 **`Strain` 으로 확정**했고 코드도 이미
+> `RiskLevel.Strain`(값 1 보존, 표시명 「응력」)으로 개명됐다.
+> 동결 문서 넷(`MASTER_PRD`·`TECH_SPEC`·`CURRENT_PHASE`·`VISUAL_SPEC`)도 전부 `Strain` 이다.
+>
+> **확정 명칭: `Stable → Strain → Critical → Collapse`.**
+>
+> 이 문단을 지우지 않고 남겨 두는 이유: 철회 사실 자체가 기록이다. 지우면 다음 세션이
+> 같은 근거(`NotionSyncReport.md` C-1)를 다시 발견하고 `Warning` 으로 되돌릴 수 있다.
+> 단계별 연출 내용은 충돌하지 않으므로 그대로 채택한다.
 
 ---
 

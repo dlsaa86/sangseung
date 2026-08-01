@@ -1,4 +1,5 @@
 using UnityEngine;
+using Ascend.Prototype.Diagnostics;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Spin;
 
@@ -23,10 +24,21 @@ namespace Ascend.Prototype.Run
     /// </summary>
     public sealed class RouletteInteractionBridge : MonoBehaviour
     {
+        // `_run` 은 필수로 표시하지 않는다 — `Awake` 에 GetComponent → FindAnyObjectByType
+        // 대체 경로가 있어서 비어 있어도 스스로 채운다. 아래 넷은 대체 경로가 없고,
+        // 비면 `if (x != null) 구독` 이 통째로 건너뛰어 **조용히 아무 일도 일어나지 않는다.**
         [SerializeField] private RunSessionBehaviour _run;
+
+        [RequiredReference("실행 레버가 없으면 스핀을 돌릴 수 없어 층이 진행되지 않는다")]
         [SerializeField] private InteractableLever _lever;
+
+        [RequiredReference("계약 패널이 없으면 계약을 고를 수 없다")]
         [SerializeField] private InteractableContractPanel _contractPanel;
+
+        [RequiredReference("전력 탱크가 없으면 전력을 저장할 수 없다")]
         [SerializeField] private InteractablePowerTank _powerTank;
+
+        [RequiredReference("과수확 레버가 없으면 추가 스핀 경로가 사라진다")]
         [SerializeField] private InteractableOverharvestLever _overharvestLever;
 
         [Tooltip("스핀 결과 연출자. 비어 있으면 결과가 즉시 반영된다(연출 없이도 게임은 돈다).")]

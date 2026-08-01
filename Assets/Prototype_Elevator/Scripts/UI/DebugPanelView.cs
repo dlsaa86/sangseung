@@ -65,6 +65,17 @@ namespace Ascend.Prototype.UI
             if (keyboard != null) keyboard.onTextInput -= OnTextInput;
         }
 
+        /// <summary>
+        /// 릴리스 빌드에서는 **켜진 채로 시작하지 않는다.** `Awake` 가 씬에 직렬화된
+        /// `_visible` 을 그대로 쓰기 때문에, 누가 인스펙터에서 체크해 둔 채 빌드하면
+        /// 입력을 막아도 패널이 처음부터 떠 있다. 「기본 활성화」를 막는 것이 요구다.
+        /// </summary>
+        private void Start()
+        {
+            if (DebugToolsAllowed) return;
+            SetVisible(false);
+        }
+
         /// <summary>시드 편집 중에만 글자를 받는다. 평소에는 게임 단축키를 가로채지 않는다.</summary>
         private void OnTextInput(char character)
         {
@@ -75,8 +86,26 @@ namespace Ascend.Prototype.UI
                 _seedField += character;
         }
 
+        /// <summary>
+        /// 개발 빌드와 에디터에서만 참. 릴리스 빌드에서는 F1·R·T·L 이 죽는다.
+        ///
+        /// N08 §17 이 요구하는 것은 「**개발 빌드에서만** 기본 활성화」인데
+        /// 이 파일에는 `UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild` 가
+        /// **하나도 없었다** — 릴리스에서 F1 이 시드 재시작(R)·시드 입력(T)·
+        /// 스핀 로그(L)까지 그대로 열었다.
+        ///
+        /// 조건부 컴파일(`#if`)이 아니라 런타임 조건을 쓰는 이유: 컴포넌트 자체는
+        /// 남아야 한다. `HeroSliceAutoPilot` 과 `HeroSlicePerfProbe` 가
+        /// `FindAnyObjectByType&lt;DebugPanelView&gt;()` / `Disable&lt;DebugPanelView&gt;()` 로
+        /// 이 타입을 참조하므로, 타입이 사라지면 하네스가 깨진다.
+        /// `Debug.isDebugBuild` 는 에디터에서 참이라 하네스는 그대로 돈다.
+        /// </summary>
+        public static bool DebugToolsAllowed => Debug.isDebugBuild;
+
         private void Update()
         {
+            if (!DebugToolsAllowed) return;
+
             Keyboard k = Keyboard.current;
             if (k == null || _run == null) return;
 

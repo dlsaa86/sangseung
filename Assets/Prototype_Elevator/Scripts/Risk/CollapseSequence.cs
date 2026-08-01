@@ -1,4 +1,5 @@
 using UnityEngine;
+using Ascend.Prototype.Diagnostics;
 using Ascend.Prototype.Events;
 using Ascend.Prototype.Run;
 
@@ -31,6 +32,10 @@ namespace Ascend.Prototype.Risk
 
         [Header("흔들 대상")]
         [Tooltip("급강하 때 아래로 떨어졌다가 튀는 것들. 매달린 등·탱크·승객 루트를 넣는다.")]
+        // 비면 **급강하가 통째로 일어나지 않는다** — `UP-RISK-06` 이 이름으로 지정한
+        // 네 단계(암전 → 파열음 → 급강하 → 재점등) 중 하나가 조용히 빠진다.
+        // 위의 `_run`·`_risk` 와 달리 폴백 검색 경로가 없다. 길이 0 도 비어 있는 것으로 친다.
+        [RequiredReference("급강하 단계가 통째로 일어나지 않는다 (UP-RISK-06 4단계 중 하나)")]
         [SerializeField] private Transform[] _dropTargets;
 
         [Tooltip("카메라 **리그**(카메라 자체가 아니다). RiskStateView 가 카메라 로컬 위치를 " +
