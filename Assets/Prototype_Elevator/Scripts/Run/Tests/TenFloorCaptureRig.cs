@@ -961,6 +961,66 @@ namespace Ascend.Prototype.Run.Tests
             // 잠긴 상태 한가운데. 너무 이르면 첫 열도 안 열렸고, 끝나면 잠금이 풀린다.
             for (int i = 0; i < 12 && bridge.IsLocked; i++) yield return null;
 
+            // **계기판을 프레임에 넣는다.** 첫 판본은 플레이어가 서 있던 방향 그대로 찍었고,
+            // 그 결과 상태 패널의 **상단 두 줄(층·위험도·전력·요구·%)이 프레임 위로 잘렸다** —
+            // 독립 평가가 이 장에 세트 최저 판독(1/5)을 주며 「결과를 보는 그 순간에
+            // 판단 근거가 화면에 없다」고 적었다. 연출 중임을 증명하려던 장이
+            // 정작 판정에 필요한 숫자를 빼먹은 것이다.
+            //
+            // **첫 수정은 순손실이었다 — 그 사실을 남긴다.**
+            // 계기판과 결과판의 *중점*을 겨눴더니 그 중점이 눈높이보다 아래라
+            // 카메라가 **바닥을 봤다.** 잘린 두 줄을 되찾으려다 전부 잃었다.
+            // 「직전보다 나빠지면 채택하지 않는다」(CLAUDE.md)에 걸린다.
+            //
+            // **두 번째 수정도 실패했고, 원인은 겨눈 대상이었다.**
+            // `InstrumentPanelView.transform` 은 `(0,0,0)` 이다 — 컴포넌트가 붙은 루트일 뿐
+            // 글자가 있는 곳이 아니다. 그래서 두 번 다 원점(=바닥)을 봤다.
+            // 실제 라벨은 `(-1.04, 1.50~1.76, 1.38)` 에 있다.
+            //
+            // 그리고 눈높이가 **2.60m** 였다 — 앞 장이 남긴 부감 자세를 그대로 물려받았다.
+            // 회전만 고쳐서는 이 둘 다 못 고친다. **세워 놓고 겨눈다.**
+            var panel = FindAnyObjectByType<InstrumentPanelView>();
+            var view = FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>();
+            if (panel != null && view != null && view.ViewCamera != null)
+            {
+                // 라벨들의 중심. 루트가 아니라 **글자가 실제로 있는 곳**이다.
+                TMPro.TMP_Text[] labels = panel.GetComponentsInChildren<TMPro.TMP_Text>(true);
+                Vector3 center = Vector3.zero;
+                int counted = 0;
+                for (int i = 0; i < labels.Length; i++)
+                {
+                    // 계약 명판은 반대편 벽이라 뺀다 — 섞으면 또 중점이 엉뚱한 데로 간다.
+                    if (labels[i] == null || labels[i].name.StartsWith("ContractPlaque")) continue;
+                    center += labels[i].transform.position;
+                    counted++;
+                }
+
+                if (counted > 0)
+                {
+                    center /= counted;
+
+                    // 라벨에서 방 안쪽으로 물러선 자리에 선다. 눈높이는 컨트롤러 설정값을 쓴다 —
+                    // 앞 장의 부감(2.60m)을 물려받으면 계기판을 내려다보게 된다.
+                    Vector3 inward = new Vector3(-center.x, 0f, -center.z);
+                    if (inward.sqrMagnitude < 0.0001f) inward = Vector3.back;
+                    Vector3 stand = center + inward.normalized * 1.45f;
+
+                    Transform root = view.transform;
+                    root.position = new Vector3(stand.x, root.position.y, stand.z);
+                    yield return WaitFrames(1);
+
+                    Vector3 eye = view.ViewCamera.transform.position;
+                    Vector3 toLabels = center - eye;
+                    if (toLabels.sqrMagnitude > 0.0001f)
+                    {
+                        root.rotation = Quaternion.LookRotation(
+                            new Vector3(toLabels.x, 0f, toLabels.z), Vector3.up);
+                        view.ViewCamera.transform.rotation = Quaternion.LookRotation(toLabels);
+                    }
+                    yield return WaitFrames(1);
+                }
+            }
+
             bool stillLocked = bridge.IsLocked;
             yield return ScreenShot("22_presenting_screen",
                 $"**연출이 도는 중**의 화면 캡처 (촬영 순간 잠금 {stillLocked}) — " +
