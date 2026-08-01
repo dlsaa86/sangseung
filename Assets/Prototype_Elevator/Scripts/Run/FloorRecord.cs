@@ -5,6 +5,17 @@ using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Run
 {
+    /// <summary>
+    /// 사고 기록기. 층이 끝난 뒤 "왜 이렇게 됐는가"를 플레이어가 되짚을 수 있게 만든다.
+    ///
+    /// `MASTER_PRD.md` §10이 요구하는 것은 결과 요약이 아니라 **설명 가능성**이다.
+    /// 그래서 최종 숫자만이 아니라 시드·계약·단계별 발동·잔류·위험 변화를 전부 들고 있다.
+    /// 시드가 들어 있으므로 이 기록 하나로 같은 층을 다시 돌려볼 수 있다.
+    ///
+    /// 순수 C#이다 — Unity 없이 만들고 검증할 수 있어야 텔레메트리로도 쓸 수 있다.
+    /// </summary>
+    public sealed class FloorRecord
+    {
         /// <summary>
         /// 과적 표시. **기호를 쓰지 않는다.**
         ///
@@ -18,17 +29,6 @@ namespace Ascend.Prototype.Run
         /// </summary>
         private const string OverloadMarker = "  [과적]";
 
-    /// <summary>
-    /// 사고 기록기. 층이 끝난 뒤 "왜 이렇게 됐는가"를 플레이어가 되짚을 수 있게 만든다.
-    ///
-    /// `MASTER_PRD.md` §10이 요구하는 것은 결과 요약이 아니라 **설명 가능성**이다.
-    /// 그래서 최종 숫자만이 아니라 시드·계약·단계별 발동·잔류·위험 변화를 전부 들고 있다.
-    /// 시드가 들어 있으므로 이 기록 하나로 같은 층을 다시 돌려볼 수 있다.
-    ///
-    /// 순수 C#이다 — Unity 없이 만들고 검증할 수 있어야 텔레메트리로도 쓸 수 있다.
-    /// </summary>
-    public sealed class FloorRecord
-    {
         public int RunSeed { get; private set; }
         public int Floor { get; private set; }
         public string CoreQuestion { get; private set; }
