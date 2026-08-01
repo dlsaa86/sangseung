@@ -11,7 +11,7 @@
 |---|---|
 | 현재 패스 | **Pass 1 → Pass 2 (적재 정책 + 프로파일 주입)** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `1f5b51f` — 종류별 카운터와 연출 잠금 단정 |
+| 마지막 정상 커밋 | `4b15344` — 독립 감사 반영 (승격 3 · 반려 12) |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` |
 | 갱신 시각 | 2026-08-01 (Wave D 프로파일 주입 반영) |
@@ -143,10 +143,15 @@ PlayMode 394 → 395 는 **눈높이 단정 하나**가, 395 → 494 는 **적�
 `GifEncoder` 와 `SequenceRecorder` 는 왕복 검증까지 끝나 있었고 **부르는 코드가
 자기 파일 말고 0곳**이었다. 저장소의 `.gif` 는 0개였다.
 
-| 항목 | 산출물 | 실측 |
+> **⚠ 이 절은 이후 독립 감사에서 반려됐다.** 아래 표는 「로그가 무엇을 적었는가」이고,
+> **영상 자체는 판정 대상을 담지 않는다** — `SequenceRecorder` 가 카메라 렌더 경로라
+> `ScreenSpaceOverlay` HUD 가 빠지고, 과수확 편은 당기기 전 상태가 필름에 없다.
+> 아래 「독립 승격 감사」 절을 함께 읽을 것. 두 항목 모두 **미충족**이다.
+
+| 항목 | 산출물 | 로그가 적은 것 |
 |---|---|---|
-| `UP-TEST-08` 5연쇄 이상 | `cascade_depth5_seed4242_f3.gif` | 시드 4242 · 3층 · **깊이 5** |
-| `UP-TEST-09` Critical → 과수확 → 결과 | `overharvest_Critical_seed4242_f2.gif` | 시드 4242 · 2층 · **당긴 순간 Critical** |
+| `UP-TEST-08` 5연쇄 이상 | `cascade_depth5_seed4242_f3.gif` | 시드 4242 · 3층 · 깊이 5 — **영상에는 HUD 가 없다** |
+| `UP-TEST-09` Critical → 과수확 → 결과 | `overharvest_Critical_seed4242_f2.gif` | 시드 4242 · 2층 · 당긴 순간 Critical — **순서가 영상에 없다** |
 
 **두 번 틀리고 세 번째에 맞았고, 그 과정이 요구사항의 뜻을 드러냈다.**
 
