@@ -762,6 +762,15 @@ namespace Ascend.Prototype.Run.Tests
                             Check($"{number}층 연출이 시점을 되돌리지 않는다 — {turned:F1}°",
                                   turned > 20f,
                                   $"25° 돌렸는데 {turned:F1}° 남았다 — 연출이 시점을 되돌린다");
+                            // **잰 뒤 원위치로 되돌린다.** 이 검사는 268번 돌고,
+                            // 매번 5cm 씩 밀기만 하고 되돌리지 않으면 플레이어가 런 도중
+                            // 벽까지 밀려간다. 실제로 그렇게 됐다 — 261번 통과(9.4cm·5.0cm)
+                            // 하다가 5~9층에서 7번 실패했고 그때 이동량이 0.3cm 였다.
+                            // 연출이 붙잡은 게 아니라 **내 검사가 자기 발밑을 파낸** 것이다.
+                            root.position = beforePosition;
+                            root.rotation = beforeRotation;
+                            yield return null;
+
                             Check($"{number}층 연출이 이동을 되돌리지 않는다 — {moved * 100f:F1}cm",
                                   moved > 0.005f,
                                   $"움직였는데 {moved * 100f:F1}cm — 연출이 플레이어를 붙잡는다 " +
