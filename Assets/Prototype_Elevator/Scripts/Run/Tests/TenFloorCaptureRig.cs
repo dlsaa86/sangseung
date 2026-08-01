@@ -1211,6 +1211,30 @@ namespace Ascend.Prototype.Run.Tests
         /// 값으로 바꿔 적은 것이었으므로, 출력에 「이 장」이라고 못박는다.
         /// </summary>
         /// <summary>
+        /// **위험 단계를 실제로 나르는 값 둘.** `RiskStateView` 는 `RenderSettings.ambientLight`
+        /// (`RiskAmbientLadder` 사다리)와 캐빈 광원 세기를 움직인다. 벽이 위험 단계마다
+        /// 달라 보이는가는 전적으로 이 둘에 달려 있다.
+        ///
+        /// 이걸 적는 이유는 하나다 — 스타일 셰이더를 네 번 고쳤고 그중 세 번이
+        /// **재지 않고 한 조정**이었다. 벽이 안 변할 때 「셰이더가 빛을 못 읽는다」와
+        /// 「애초에 빛이 안 변한다」가 갈리지 않으면 다섯 번째도 같은 낭비가 된다.
+        /// </summary>
+        private static string LightState()
+        {
+            Color ambient = RenderSettings.ambientLight;
+            var text = new StringBuilder("조명 — 앰비언트 ");
+            text.Append($"({ambient.r:F3}, {ambient.g:F3}, {ambient.b:F3}) ")
+                .Append($"휘도 {(0.2126f * ambient.r + 0.7152f * ambient.g + 0.0722f * ambient.b):F4}")
+                .Append($" · 모드 {RenderSettings.ambientMode}");
+
+            var lights = FindObjectsByType<Light>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            System.Array.Sort(lights, (a, b) => string.CompareOrdinal(a.name, b.name));
+            foreach (Light l in lights)
+                text.Append($" · {l.name}({l.type}) 세기 {l.intensity:F3}");
+            return text.ToString();
+        }
+
+        /// <summary>
         /// 계기판이 이 장에서 **어디에 어떤 상태로** 있는가. 가림 계측과 독립이다 —
         /// 가림은 「앞에 뭐가 있나」를 보고, 이건 「그게 거기 있기는 한가」를 본다.
         /// </summary>
@@ -1269,7 +1293,7 @@ namespace Ascend.Prototype.Run.Tests
             //
             // 그래서 장마다 계기판의 **월드 위치·활성·알파**를 적는다. `11`·`12`·`13`
             // 세 줄을 나란히 놓으면 무엇이 달라졌는지가 한눈에 나온다.
-            line.Append(InstrumentPose()).Append(" / ");
+            line.Append(InstrumentPose()).Append(" / ").Append(LightState()).Append(" / ");
 
             var board = FindAnyObjectByType<SpinBoardView>();
             if (board == null) line.Append("결과판 없음");
