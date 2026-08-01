@@ -1433,7 +1433,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 의존: UP-TEST-02
 - 남은 문제: 없음
 
-### UP-TEST-05 — 텔레메트리 (스핀별 JSON/CSV 20항목)
+### UP-TEST-05 — 텔레메트리 (스핀별 JSON/CSV · Notion §16.2 11항목)
 - 분류: Required · 출처: PRD §4.1(텔레메트리), §16.2, N08 §18
 - 상태: CONNECTED · 패스: P2
 - 구현: `Scripts/Telemetry/`(SpinTelemetryRecord 20필드 · TelemetryRecorder · TelemetryFileSink · ITelemetrySink)
