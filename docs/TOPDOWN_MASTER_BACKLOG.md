@@ -1150,12 +1150,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 ### UP-VIS-01 — 스타일 락 (low-poly industrial occult horror)
 - 분류: Required · 출처: PRD §12.1, N06 §5 Style Lock
 - 상태: SKELETON · 패스: P3
-- 구현: 그레이박스 프리미티브 (`Assets/Editor/GrayboxWorldBuilder.cs`)
+- 구현: 락 문서는 `docs/VISUAL_BIBLE.md` §2 · 지오메트리는 그레이박스 프리미티브(`Assets/Editor/GrayboxWorldBuilder.cs`)
 - 접근: 어디서든
 - 검증: 독립 시각 평가
-- 증거: 없음
+- 증거: `docs/VISUAL_BIBLE.md` §2.1·§2.2 (락 문장) + `Captures/TenFloor/` 23장 (현재 상태)
 - 의존: UP-SPACE-04
-- 남은 문제: 아직 그레이박스다. 재질·실루엣 언어가 없다
+- 남은 문제: **락 자체는 이미 문서로 존재한다** — `VISUAL_BIBLE.md` §2.1(지시서 §4 전체 그래픽 방향 11항목)과 §2.2(Notion 06 §5 영문 Style Lock 문장)다. 증거 경로가 「없음」이었던 것은 **문서를 안 가리키고 있었을 뿐**이다. → 연결했다. **그러나 구현이 락을 따르지 않는다.** 락이 요구하는 것 중 화면에 없는 것 — ① 「저해상도 손그림 픽셀 텍스처」: 텍스처가 **0개**다(전부 무지 머티리얼) ② 「단순한 Gouraud 또는 플랫 셰이딩」: URP 기본 리트 셰이딩이고 공통 스타일 셰이더가 없다(`UP-VIS-04` 가 그것이고 NOT_STARTED) ③ 「차가운 회녹색 그림자와 바랜 산업용 색」: 팔레트를 강제하는 것이 없어 `20_aim_prompt_screen` 의 하이라이트가 **팔레트에 없는 채도 높은 에메랄드**로 나갔다 (5차 판정 지적 8번) ④ 「큰 실루엣과 눈에 띄는 폴리곤 면」: 심볼 3종이 Unity 기본 프리미티브(Sphere/Cube/Capsule)이고 머티리얼조차 배정되지 않는다(`UP-DEVICE-09` 와 같은 뿌리). **셋(①②④)이 `UP-VIS-04` 공통 셰이더 하나로 같이 움직인다** — 그것이 이 항목의 실제 다음 단계다. 시각 스타일 점수가 5차에서 **2.23/5** 인 것이 이 미구현의 직접 결과다
 
 ### UP-VIS-02 — 라이팅 목표 (탁한 천장등 vs 차가운 통관 발광)
 - 분류: Required · 출처: PRD §12.3
@@ -1179,13 +1179,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 ### UP-VIS-04 — URP 공통 스타일 셰이더
 - 분류: Required · 출처: PRD §12.4
-- 상태: NOT_STARTED · 패스: P3
-- 구현: 없음
-- 접근: 해당 없음
-- 검증: 셰이더 에셋 존재 + 머티리얼 적용
-- 증거: 없음
+- 상태: SKELETON · 패스: P3
+- 구현: `Assets/Prototype_Elevator/Art/Shaders/AscendStylized.shader` + `Art/Materials/MAT_Ascend_{Iron,Brass,Wood}.mat`
+- 접근: 해당 없음 (머티리얼 채택 전)
+- 검증: `ShaderUtil.ShaderHasError` false · `shader.isSupported` true · 머티리얼 3종 생성 확인
+- 증거: `Assets/Prototype_Elevator/Art/Shaders/AscendStylized.shader`
 - 의존: UP-VIS-01
-- 남은 문제: 없음
+- 남은 문제: **셰이더는 있고 컴파일된다. 아직 아무도 안 쓴다 — 그래서 SKELETON 이다.** `Ascend/Stylized` 가 `VISUAL_BIBLE.md` §2.1 중 셰이더가 책임지는 셋을 구현한다 — ① 램버트 **양자화**(계단 3~4단)로 「단순한 Gouraud 또는 플랫 셰이딩」 ② 감쇠 거듭제곱(2.5)으로 「제한적인 국소 조명과 빠른 감쇠」 ③ 그림자 쪽을 **회녹색**(0.20,0.26,0.24)으로 물들여 「차가운 회녹색 그림자」. 실루엣 림도 약하게 넣었다 — 무지 머티리얼끼리 겹치면 경계가 사라지기 때문이다. `ShaderUtil.ShaderHasError` **false**, `isSupported` **true**, ShadowCaster 패스 포함. `.shadergraph` 가 아니라 텍스트 셰이더인 이유는 diff 가 읽히기 때문이다 — 이 저장소는 직렬화 에셋이 조용히 깨진 이력이 있다. **남은 것은 채택이다.** 씬의 MeshRenderer 99개가 아직 URP 기본 머티리얼이고, 심볼 3종은 **런타임 생성**이라(`SpinBoardView`) 에디트 모드에 존재하지 않는다 — `HumanScaleLayout.MakeSymbol` 과 보드 생성 경로에서 머티리얼을 배정해야 한다. **이번 세션에서 일괄 교체를 하지 않은 이유**: 99개를 한 번에 바꾸면 그 결과를 판정하는 데 캡처 1회(~5분) + 독립 평가가 필요한데, 직전 판정이 이미 2.45/2.23 으로 내려간 상태라 검증 없는 대규모 시각 변경은 「직전보다 나빠지면 채택하지 않는다」를 지킬 수 없다. 채택은 소수 대상부터 하고 매번 판정을 받는다
 
 ### UP-VIS-05 — 파티클 (먼지·녹가루·스파크·정화 파편·캐스케이드 유입)
 - 분류: Required · 출처: PRD §12.5
