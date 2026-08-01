@@ -162,11 +162,66 @@ namespace Ascend.Prototype.Data.Profiles
             return depth * Clamp01(FlickerDepthScale);
         }
 
-        /// <summary>사이렌 볼륨. 금지면 0.</summary>
+        /// <summary>
+        /// 사이렌 볼륨. 금지면 0.
+        ///
+        /// **아직 소비처가 없다.** 사이렌은 일회성 큐라서 지속음을 소유한
+        /// <c>Scripts/Risk/RiskStateView.cs</c>가 아니라 <c>Scripts/Audio/AudioDirector.cs</c>가
+        /// 재생해야 하고(<c>AudioCueKind</c> 참조), 그 파일은 이 작업의 수정 범위 밖이다.
+        /// 큐가 생기는 날 <c>AudioDirector</c>가 볼륨을 계산하는 자리에서 이 함수를 통과시켜야
+        /// 한다 — <c>if (AllowSiren)</c> 를 각자 쓰기 시작하면 빠뜨릴 자리가 늘어난다.
+        /// </summary>
         public float SirenVolume(float volume) => AllowSiren ? volume : 0f;
 
-        /// <summary>저주파 성분(험 등)의 볼륨.</summary>
+        /// <summary>
+        /// 저주파 성분(험 등)의 볼륨.
+        ///
+        /// 소비처: <c>RiskStateView.ApplyAudio</c>. 그 험은 50/100/150Hz로 구운 저역이라
+        /// (<c>RiskStateView.BuildHumClip</c>) 이 배율이 실제로 저주파를 줄인다.
+        /// 확인법: 프로파일에서 이 값을 0으로 내리면 <c>RiskStateView.EffectiveHumVolume</c>이
+        /// 0이 되고 험이 실제로 사라진다. 값이 살아 있는지 묻는 유일한 방법이다.
+        /// </summary>
         public float ScaleLowFrequency(float volume) => volume * Clamp01(LowFrequencyScale);
+
+        /// <summary>사이렌을 껐을 때 시각 경고에 곱하는 보상 배수.</summary>
+        public const float SirenOffWarningBoost = 1.35f;
+
+        /// <summary>사이렌을 껐을 때 험 피치 **편차**에 곱하는 배수. 1.0 기준으로 벌린다.</summary>
+        public const float SirenOffPitchBoost = 1.6f;
+
+        /// <summary>
+        /// 사이렌을 껐을 때 경고등 발광을 키운다.
+        ///
+        /// 왜 이게 「읽는 척」이 아닌가: <c>_allowSiren</c>의 툴팁이 **"끄면 경고는 시각과
+        /// 험 피치로만 전달된다"** 고 이미 약속하고 있는데, 그 약속을 지키는 코드가
+        /// 어디에도 없었다. 청각 경고 채널을 지웠으면 남은 채널이 그만큼 커져야
+        /// 「접근성 옵션이 정보를 지우지 않는다」(PRD §9)가 성립한다.
+        ///
+        /// 확인법: <c>_allowSiren</c>을 끄면 경고등 발광이 1.35배가 된다. 기본값은 켬이라
+        /// 기존 캡처는 변하지 않는다.
+        /// </summary>
+        public float CompensateWarningEmission(float emission)
+        {
+            return AllowSiren ? emission : emission * SirenOffWarningBoost;
+        }
+
+        /// <summary>
+        /// 사이렌을 껐을 때 험 피치의 단계 차이를 벌린다. 위와 같은 이유이며,
+        /// 1.0에서의 **편차**만 키운다 — 절대 피치를 올리면 험이 다른 기계가 된다.
+        /// </summary>
+        public float CompensateHumPitch(float pitch)
+        {
+            return AllowSiren ? pitch : 1f + (pitch - 1f) * SirenOffPitchBoost;
+        }
+
+        /// <summary>
+        /// 비언어 음성·기계음에 붙일 자막. 꺼져 있으면 빈 문자열이다.
+        ///
+        /// 여기서 문자열을 만들지 않고 **거르기만** 하는 이유: 문안은 소리를 내는 쪽이
+        /// 알고 있고, 표시 여부만 접근성이 정한다. 렌더링은 UI 소유자의 몫이라
+        /// 이 함수는 「무엇을 자막으로 낼지」까지만 책임진다.
+        /// </summary>
+        public string Caption(string line) => ShowSubtitles && line != null ? line : string.Empty;
 
         private static float Clamp01(float value)
         {
@@ -177,10 +232,22 @@ namespace Ascend.Prototype.Data.Profiles
     }
 }
 
+// 필드별 소비처 대조표 (`UP-RISK-08`). 「만들어졌고 아무도 안 읽는다」를 세기 위한 표다.
+//   CameraShakeScale   → RiskStateView.ApplySway (ScaleShake)
+//   WorldSwayScale     → RiskStateView.ApplySway (직접 곱)
+//   AllowFlicker       → RiskStateView.ApplyLighting (AllowFlickerAt/ClampFlickerRate)
+//   MaxFlickerHz       → 같음
+//   FlickerDepthScale  → RiskStateView.ApplyLighting
+//   LowFrequencyScale  → RiskStateView.ApplyAudio (ScaleLowFrequency)
+//   AllowSiren         → RiskStateView.ApplyWarningLight / ApplyAudio (보상 경로).
+//                        **사이렌 자체의 음소거는 아직 없다** — 사이렌 큐가 없기 때문이고,
+//                        큐를 소유할 AudioDirector 는 이 작업의 범위 밖이다. SirenVolume() 참조.
+//   ShowSubtitles      → RiskStateView.AudioCaption 이 값을 거른다.
+//                        **화면에 그리는 쪽은 아직 없다** — UI 소유자가 붙여야 한다.
+//
 // 씬 배선 필요:
 //   1. 옵션 메뉴가 아직 없다. 값 변경 경로는 현재 인스펙터뿐이다 — `UP-RISK-08` 의
 //      「옵션 메뉴」는 UI 소유자가 붙여야 한다.
-//   2. `Scripts/Risk/RiskStateView.cs` 가 `RiskProfile.CameraShake`/`FlickerRate`/`FlickerDepth`/
-//      `HumVolume` 을 쓰는 자리에서 각각 `ScaleShake`/`ClampFlickerRate`/`ScaleFlickerDepth`/
-//      `ScaleLowFrequency` 를 통과시켜야 이 프로파일이 실제로 연출을 바꾼다.
+//   2. `RiskStateView.AudioCaption` 을 읽어 표시하는 UI. 없으면 ShowSubtitles 는
+//      「값은 흐르지만 아무도 안 그린다」로 남는다.
 // 에셋 생성 필요: Assets/Prototype_Elevator/Data/Profiles/AccessibilityProfile.asset

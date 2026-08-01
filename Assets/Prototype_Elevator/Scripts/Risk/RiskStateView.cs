@@ -72,6 +72,19 @@ namespace Ascend.Prototype.Risk
         private Vector3 _cameraHome;
         private float _phase;
         private int _reasonKey = int.MinValue;
+        private float _effectiveHumVolume;
+
+        /// <summary>
+        /// 단계별 기계음 자막 문안. 미리 만들어 둔다 — 매 프레임 문자열을 짓지 않기 위해서다.
+        /// 인덱스는 <see cref="RiskLevel"/> 값이다(Stable 0 ~ Collapse 3).
+        /// </summary>
+        private static readonly string[] HumCaptions =
+        {
+            "[기계 험 — 낮고 고른 소리]",
+            "[기계 험 — 삐걱이며 높아진다]",
+            "[기계 험 — 거칠게 떨린다]",
+            "[기계 험 — 끊기며 무너진다]",
+        };
 
         /// <summary>현재 위험 단계. HUD·계기판·검증 하네스가 읽는다.</summary>
         public RiskLevel Level => _evaluator.Current;
@@ -146,6 +159,39 @@ namespace Ascend.Prototype.Risk
         /// 이 하나에만 없었던 것이라 일관성 문제이기도 하다.
         /// </summary>
         public string AccessibilitySource => _accessibilitySource;
+
+        /// <summary>
+        /// 실제로 스피커에 나간 험 볼륨. `_blended.HumVolume` 이 아니라 **접근성 배율을
+        /// 통과한 뒤의 값**이다.
+        ///
+        /// 왜 필요한가: 접근성 값이 실제로 흐르는지 묻는 유일한 반증 수단이다.
+        /// 확인법 — 프로파일의 `_lowFrequencyScale` 을 0으로 내리면 이 값이 0이 된다.
+        /// 그대로 1이면 배선이 끊긴 것이고, 그때는 「주입했다」가 거짓이다.
+        /// </summary>
+        public float EffectiveHumVolume => _effectiveHumVolume;
+
+        /// <summary>
+        /// 지금 나고 있는 기계음의 자막 한 줄. `ShowSubtitles` 가 꺼져 있으면 빈 문자열이다.
+        ///
+        /// **아직 그리는 쪽이 없다.** 자막 표시는 UI 소유자의 파일(`Scripts/UI`, `Scripts/View`)에
+        /// 속하고 이 작업의 수정 범위 밖이라, 여기서는 「무엇을 자막으로 낼지」와
+        /// 「낼지 말지」까지만 확정한다. 값 자체는 살아 있다 — `_showSubtitles` 를 끄면
+        /// 이 프로퍼티가 빈 문자열로 바뀐다.
+        ///
+        /// `Reason` 에 섞지 않은 이유: `Reason` 은 `RiskEventBridge` 와 `AccidentRecorder` 를
+        /// 통해 사건 로그로 나간다. 접근성 옵션이 **텔레메트리 내용을 바꾸면** 옵션에 따라
+        /// 다른 기록이 남고, 그건 접근성이 아니라 데이터 손상이다.
+        /// </summary>
+        public string AudioCaption
+        {
+            get
+            {
+                if (_hum == null) return string.Empty;
+                int index = (int)_evaluator.Current;
+                if (index < 0 || index >= HumCaptions.Length) index = 0;
+                return _accessibilitySnapshot.Caption(HumCaptions[index]);
+            }
+        }
 
         /// <summary>단계별 연출 값. 에셋이 배선됐으면 에셋 것이다.</summary>
         public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);
@@ -308,7 +354,11 @@ namespace Ascend.Prototype.Risk
             float pulse = _blended.WarningPulseRate > 0f
                 ? Mathf.Abs(Mathf.Sin(_phase * _blended.WarningPulseRate * Mathf.PI))
                 : 1f;
-            float emission = _blended.WarningEmission * pulse;
+
+            // 사이렌을 껐으면 경고등을 키운다. 접근성 옵션이 청각 채널을 지웠는데 시각
+            // 채널이 그대로면 「경고가 통째로 약해진다」가 되고, 그건 PRD §9 의
+            // 「특정 감각 채널 하나에만 의존하지 않는다」를 반대로 어기는 것이다.
+            float emission = _accessibilitySnapshot.CompensateWarningEmission(_blended.WarningEmission * pulse);
 
             _warningLight.GetPropertyBlock(_block);
             _block.SetColor(BaseColorId, Color.Lerp(new Color(0.16f, 0.16f, 0.18f), _blended.WarningColor,
@@ -345,8 +395,18 @@ namespace Ascend.Prototype.Risk
         private void ApplyAudio()
         {
             if (_hum == null) return;
-            _hum.volume = _blended.HumVolume;
-            _hum.pitch = Mathf.Max(0.05f, _blended.HumPitch);
+
+            // 이 험은 50/100/150Hz 로 구운 **저주파** 지속음이다(BuildHumClip 참조).
+            // `LowFrequencyScale` 이 말하는 「낮은 험」이 정확히 이것이라, 저주파 배율의
+            // 소비처는 다른 어디도 아니고 여기다. 지금까지는 `_blended.HumVolume` 을
+            // 그대로 썼기 때문에 그 값을 0으로 내려도 아무 일도 일어나지 않았다.
+            _hum.volume = _accessibilitySnapshot.ScaleLowFrequency(_blended.HumVolume);
+
+            // 사이렌을 끄면 남는 청각 채널은 피치뿐이다 — 프로파일이 그렇게 약속해 놓고
+            // 지키는 코드가 없었다. 편차만 벌리므로 사이렌이 켜져 있으면 기존과 동일하다.
+            _hum.pitch = Mathf.Max(0.05f, _accessibilitySnapshot.CompensateHumPitch(_blended.HumPitch));
+
+            _effectiveHumVolume = _hum.volume;
         }
 
         private static RiskProfile Blend(RiskProfile from, RiskProfile to, float t)

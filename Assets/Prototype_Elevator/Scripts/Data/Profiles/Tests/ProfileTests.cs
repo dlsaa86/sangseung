@@ -41,6 +41,9 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("험 배율 기본이 1 — 형태는 위험 프로파일이 정한다", TestHumScaleIsNeutral, ref passed, ref failed, report);
             Run("셰이크 0 배율이 실제로 0을 돌려준다", TestShakeScaleZero, ref passed, ref failed, report);
             Run("섬광 금지와 빈도 상한이 적용된다", TestFlickerLimits, ref passed, ref failed, report);
+            Run("사이렌을 끄면 시각·피치 보상이 붙는다", TestSirenOffCompensation, ref passed, ref failed, report);
+            Run("자막을 끄면 자막 문안이 비워진다", TestSubtitleGate, ref passed, ref failed, report);
+            Run("과수확 자기모순이 검출된다", TestOverharvestValidate, ref passed, ref failed, report);
             Run("런 요약이 정확히 9줄이다", TestSummaryNineLines, ref passed, ref failed, report);
             Run("빈 값에서도 9줄이 유지된다", TestSummaryKeepsLinesWhenEmpty, ref passed, ref failed, report);
             Run("요약 항목 수 상수와 열거형이 일치한다", TestSummaryFieldCount, ref passed, ref failed, report);
@@ -320,6 +323,90 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             var noSiren = new AccessibilitySnapshot(1f, 1f, true, 3f, 1f, false, 0.5f, true);
             if (!Near(noSiren.SirenVolume(0.8f), 0f)) return "사이렌 금지 상태에서 볼륨이 남았다";
             if (!Near(noSiren.ScaleLowFrequency(0.4f), 0.2f)) return "저주파 감쇠가 적용되지 않았다";
+            return null;
+        }
+
+        /// <summary>
+        /// 사이렌을 끈 상태의 **보상**을 검사한다. 검사 대상은 "꺼졌는가"가 아니라
+        /// "청각 채널을 지운 만큼 다른 채널이 커졌는가"다 — 접근성 옵션이 정보를
+        /// 지우면 안 된다는 것이 `UP-RISK-08` 의 요구다(PRD §9).
+        /// </summary>
+        private static string TestSirenOffCompensation()
+        {
+            AccessibilitySnapshot on = AccessibilityProfile.DefaultSnapshot;
+            if (!Near(on.CompensateWarningEmission(0.6f), 0.6f))
+                return "사이렌이 켜져 있는데 경고등 발광이 바뀌었다 — 기존 캡처가 흔들린다";
+            if (!Near(on.CompensateHumPitch(1.4f), 1.4f))
+                return "사이렌이 켜져 있는데 험 피치가 바뀌었다";
+
+            var off = new AccessibilitySnapshot(1f, 1f, true, 3f, 1f, false, 1f, true);
+            float boosted = off.CompensateWarningEmission(0.6f);
+            if (boosted <= 0.6f)
+                return $"사이렌을 껐는데 경고등이 그대로다 ({boosted:0.###}) — 경고가 통째로 약해진다";
+            if (!Near(boosted, 0.6f * AccessibilitySnapshot.SirenOffWarningBoost))
+                return $"경고등 보상 배수가 상수와 다르다 ({boosted:0.###})";
+
+            // 피치는 절대값이 아니라 1.0 기준 **편차**만 벌린다. 절대 피치를 올리면
+            // 험이 다른 기계가 되고, 그건 보상이 아니라 사운드 변경이다.
+            if (!Near(off.CompensateHumPitch(1f), 1f))
+                return "중립 피치(1.0)가 사이렌 설정에 따라 움직였다";
+            float widened = off.CompensateHumPitch(1.4f);
+            if (widened <= 1.4f) return $"사이렌을 껐는데 피치 편차가 안 벌어졌다 ({widened:0.###})";
+            if (!Near(widened, 1f + 0.4f * AccessibilitySnapshot.SirenOffPitchBoost))
+                return $"피치 보상이 상수와 다르다 ({widened:0.###})";
+
+            // 낮은 쪽 편차도 같은 비율로 벌어져야 방향이 대칭이다.
+            float lowered = off.CompensateHumPitch(0.8f);
+            if (lowered >= 0.8f) return $"1.0 아래 피치가 반대로 움직였다 ({lowered:0.###})";
+            return null;
+        }
+
+        /// <summary>
+        /// 자막 게이트. 값을 바꿨을 때 실제로 결과가 달라지는지만 본다 —
+        /// 「읽히지만 아무 일도 안 일어난다」가 이 저장소의 반복 실패다.
+        /// </summary>
+        private static string TestSubtitleGate()
+        {
+            AccessibilitySnapshot on = AccessibilityProfile.DefaultSnapshot;
+            if (on.Caption("[기계 험]") != "[기계 험]") return "자막이 켜져 있는데 문안이 사라졌다";
+
+            var off = new AccessibilitySnapshot(1f, 1f, true, 3f, 1f, true, 1f, false);
+            if (!string.IsNullOrEmpty(off.Caption("[기계 험]"))) return "자막을 껐는데 문안이 남았다";
+
+            // null 문안에서 예외를 던지면 자막을 켠 순간 게임이 죽는다.
+            if (!string.IsNullOrEmpty(on.Caption(null))) return "빈 문안이 빈 문자열로 오지 않는다";
+            return null;
+        }
+
+        /// <summary>
+        /// 과수확 값이 「범위 안이지만 기능을 죽이는」 조합인지 잡는다.
+        /// 이 검사가 실제로 도는 것이 `OverharvestProfile` 9개 필드가 런타임에서
+        /// 읽힌다는 증거다 — 여섯 개는 아직 게임 로직 소비처가 없다.
+        /// </summary>
+        private static string TestOverharvestValidate()
+        {
+            if (OverharvestProfile.DefaultSnapshot.Validate() != null)
+                return $"기본값이 자기모순으로 판정된다 — {OverharvestProfile.DefaultSnapshot.Validate()}";
+
+            var noSpins = new OverharvestSnapshot(0.12f, 0.35f, 1f, 0.35f, 0.3f, 0.7f, 0.18f, 0.25f, 0);
+            if (noSpins.Validate() == null) return "추가 스핀 상한 0이 통과됐다 — 레버가 장식이 된다";
+
+            var freeAnte = new OverharvestSnapshot(0f, 0.35f, 1f, 0.35f, 0.3f, 0.7f, 0.18f, 0.25f, 4);
+            if (freeAnte.Validate() == null) return "판돈 0이 통과됐다 — 과수확이 공짜가 된다";
+
+            var reversed = new OverharvestSnapshot(0.12f, 0.35f, 1f, 0.35f, 0.9f, 0.4f, 0.18f, 0.25f, 4);
+            if (reversed.Validate() == null) return "정적 최소 > 최대가 통과됐다";
+
+            var noDuck = new OverharvestSnapshot(0.12f, 0.35f, 1f, 1f, 0.3f, 0.7f, 0.18f, 0.25f, 4);
+            if (noDuck.Validate() == null) return "접근 감쇠 배율 1.0이 통과됐다 — 5단계 연출이 사라진다";
+
+            // 경고문에 값이 안 들어가면 재현할 수가 없다. 9개가 전부 찍혀야 한다.
+            string described = OverharvestProfile.DefaultSnapshot.Describe();
+            if (string.IsNullOrEmpty(described)) return "Describe 가 비었다";
+            if (described.IndexOf("추가스핀", StringComparison.Ordinal) < 0)
+                return $"Describe 에 추가 스핀 상한이 빠졌다 — {described}";
+            if (described.IndexOf("응시지연", StringComparison.Ordinal) < 0)
+                return $"Describe 에 응시 지연이 빠졌다 — {described}";
             return null;
         }
 

@@ -60,6 +60,12 @@ namespace Ascend.Prototype.Audio
         [Tooltip("과수확 정적 구간의 길이와 복귀 속도. 비면 아래 슬라이더를 쓴다.")]
         [SerializeField] private Data.Profiles.OverharvestProfile _overharvestProfile;
 
+        [Tooltip("위험 단계별 험 값의 원본. 비면 코드 프리셋 Standard 를 쓴다. 소리를 내지는 않고 목표값만 계산한다 — 험을 실제로 울리는 것은 RiskStateView 다.")]
+        [SerializeField] private Data.Profiles.DangerFeedbackProfile _dangerProfile;
+
+        [Tooltip("사이렌 허용 여부와 음량. 비면 전부 허용으로 본다(PRD §12 「사이렌 피로도」).")]
+        [SerializeField] private Data.Profiles.AccessibilityProfile _accessibilityProfile;
+
         [SerializeField, Range(0f, 1f)] private float _masterVolume = 0.8f;
         [SerializeField, Range(0f, 1f)] private float _machineVolume = 1f;
         [SerializeField, Range(0f, 1f)] private float _eventVolume = 0.85f;
@@ -75,6 +81,22 @@ namespace Ascend.Prototype.Audio
         [SerializeField, Min(0.01f)] private float _resumeSeconds = 0.25f;
         [Tooltip("정적 동안 AudioListener 전체를 함께 줄인다. 끄면 이 컴포넌트가 내는 소리만 조용해진다.")]
         [SerializeField] private bool _duckGlobalListener = true;
+
+        [Header("승객 비언어 음성 (UP-AUD-04 · MASTER_PRD §9.3)")]
+        [Tooltip("승객 반응 시스템이 소리를 요청하기 전까지, 사건 버스만으로 승객 음성을 낸다. " +
+                 "누군가 PlayPassengerVoice 를 부르기 시작하면 자동으로 물러난다 — 두 소유자가 겹치면 한 사건에 목소리가 두 번 난다.")]
+        [SerializeField] private bool _voiceFromEvents = true;
+
+        [Tooltip("승객 음성 사이의 최소 간격(초). 쉬지 않고 내는 소리는 반응이 아니라 소음이다(PRD §9.4).")]
+        [SerializeField, Min(0f)] private float _voiceCooldownSeconds = 0.9f;
+
+        [Header("사이렌 (UP-RISK-05 · Notion PRD §8.3)")]
+        [Tooltip("끄면 사이렌만 사라진다. 험·응력음·충격음은 그대로 남는다.")]
+        [SerializeField] private bool _sirenEnabled = true;
+
+        [Tooltip("사이렌 사이의 최소 간격(초). 이것이 없으면 단계가 빠르게 오갈 때 " +
+                 "원샷이 겹쳐 사실상 지속 사이렌이 되고, 그게 §8.3 이 금지하는 그 상태다.")]
+        [SerializeField, Min(0f)] private float _sirenCooldownSeconds = 1.2f;
 
         [Header("판정 사건 줄 세우기")]
         [Tooltip("소리가 화면보다 이만큼 넘게 뒤처지면 버린다. 밀린 소리는 정보가 아니라 소음이다.")]
@@ -93,9 +115,35 @@ namespace Ascend.Prototype.Audio
         private float _nextFree;
         private bool[] _bakeWarned;
         private Data.Profiles.AudioMixSnapshot _mix;
+        private Data.Profiles.DangerFeedbackSnapshot _danger;
+        private Data.Profiles.AccessibilitySnapshot _accessibility;
         private string _mixSource = "(미초기화)";
         private string _overharvestSource = "(미초기화)";
+        private string _dangerSource = "(미초기화)";
+        private string _accessibilitySource = "(미초기화)";
         private bool _overflowWarned;
+
+        // ── 승객 음성 ────────────────────────────────────────────────────────
+        private bool _externalVoiceDriver;
+        private float _voiceReadyAt;
+
+        // ── 사이렌 ───────────────────────────────────────────────────────────
+        private float _sirenReadyAt;
+
+        // ── 험 목표값 ────────────────────────────────────────────────────────
+        // 험 자체는 `RiskStateView` 가 소유한다(같은 험이 두 겹으로 깔리면 안 된다).
+        // 여기서 계산하는 것은 "그 험이 지금 얼마여야 하는가"뿐이다 — 값의 주인과
+        // 소리의 주인을 나눈다. 배율이 `AudioMixProfile` 에 있고 형태가
+        // `DangerFeedbackProfile` 에 있으므로, 둘을 곱하는 자리가 어딘가 하나는 있어야 한다.
+        private Risk.RiskLevel _riskLevel = Risk.RiskLevel.Stable;
+        private bool _riskRising;
+        private float _humVolume;
+        private float _humPitch;
+        private float _humVolumeScale = 1f;
+        private float _humPitchScale = 1f;
+        private bool _humValid;
+        private Risk.RiskLevel _humLevel = Risk.RiskLevel.Stable;
+        private float _humGain = 1f;
 
         private GameEventBus _bus;
         private System.Action<GameEvent> _handler;
@@ -110,8 +158,44 @@ namespace Ascend.Prototype.Audio
         /// <summary>정적 구간 값의 출처. 같은 이유로 노출한다.</summary>
         public string OverharvestSource => _overharvestSource;
 
+        /// <summary>위험 연출 값의 출처. 험 목표값이 에셋에서 왔는지 코드 프리셋에서 왔는지 가른다.</summary>
+        public string DangerSource => _dangerSource;
+
+        /// <summary>접근성 설정의 출처. 사이렌을 껐는데 계속 울린다면 여기부터 본다.</summary>
+        public string AccessibilitySource => _accessibilitySource;
+
         /// <summary>실제로 쓰이는 정적 구간 길이(초). PRD §7 의 0.3~0.7 범위를 지켜야 한다.</summary>
         public float SilenceSeconds => _silenceSeconds;
+
+        /// <summary>사건 버스에서 읽은 현재 위험 단계. 험 목표값이 여기서 갈린다.</summary>
+        public Risk.RiskLevel CurrentRiskLevel => _riskLevel;
+
+        /// <summary>
+        /// 지금 위험 단계에서 험이 내야 할 볼륨. 정적 게인이 이미 곱해져 있다 —
+        /// 과수확 정적에 험만 남아 있으면 그 연출은 「음소거됐나」로 읽힌다(파일 끝 배선 메모 4번).
+        ///
+        /// **이 컴포넌트는 험을 재생하지 않는다.** 험의 소유자(`RiskStateView`)가 이 값을
+        /// 읽어 가야 `AudioMixProfile` 의 단계별 배율이 실제로 소리에 닿는다.
+        /// </summary>
+        public float HumVolume => _humVolume;
+
+        /// <summary>같은 이유로 계산해 두는 험 피치. 곱하기 전의 형태는 `DangerFeedbackProfile` 이 정한다.</summary>
+        public float HumPitch => _humPitch;
+
+        /// <summary>지금 단계에 적용 중인 험 볼륨 배율(`AudioMixProfile._humVolumeScale`). 1이면 위험 프로파일 값 그대로다.</summary>
+        public float HumVolumeScale => _humVolumeScale;
+
+        /// <summary>지금 단계에 적용 중인 험 피치 배율(`AudioMixProfile._humPitchScale`).</summary>
+        public float HumPitchScale => _humPitchScale;
+
+        /// <summary>지금까지 울린 사이렌 수. §8.3 이 금지하는 「지속 재생」은 이 수가 폭주하는 것으로 나타난다.</summary>
+        public int SirenCueCount { get; private set; }
+
+        /// <summary>사건 버스에서 만들어 낸 승객 음성 수. 승객 반응 시스템이 붙으면 여기가 멈춘다.</summary>
+        public int EventVoiceCount { get; private set; }
+
+        /// <summary>승객 반응 시스템이 <see cref="PlayPassengerVoice"/>로 소리를 요청하고 있는가.</summary>
+        public bool HasExternalVoiceDriver => _externalVoiceDriver;
 
         public int PlayedCueCount { get; private set; }
 
@@ -187,8 +271,25 @@ namespace Ascend.Prototype.Audio
                 _resumeSeconds = Mathf.Max(0.01f, over.ResumeFadeSeconds);
             }
 
+            // 위험 프로파일은 **경고 없이** 코드 프리셋으로 폴백한다.
+            // `SnapshotOrDefault` 는 경고를 남기는데, 험의 소유자는 `RiskStateView` 이고
+            // 이쪽은 목표값 계산기일 뿐이라 같은 경고가 두 번 나면 진짜 배선 누락이 묻힌다.
+            _danger = _dangerProfile != null
+                ? _dangerProfile.Snapshot()
+                : Data.Profiles.DangerFeedbackProfile.DefaultSnapshot;
+            _dangerSource = _dangerProfile != null ? _dangerProfile.name : "코드 프리셋 Standard";
+
+            // 접근성은 없는 것이 정상이다(아직 옵션 메뉴가 없다). 그래서 이쪽도 조용하다.
+            _accessibility = Data.Profiles.AccessibilityProfile.SnapshotOrDefault(_accessibilityProfile);
+            _accessibilitySource = _accessibilityProfile != null
+                ? _accessibilityProfile.name : "코드 기본값(전부 허용)";
+
             _silence.DuckSeconds = _duckSeconds;
             _silence.ResumeSeconds = _resumeSeconds;
+
+            // 첫 Update 전에 누가 읽어도 값이 있어야 한다. 0으로 시작하면 「험이 꺼졌다」와
+            // 「아직 계산 전이다」가 구분되지 않는다.
+            RefreshHumTargets(1f);
 
             BuildSources();
 
@@ -259,6 +360,18 @@ namespace Ascend.Prototype.Audio
             _nextFree = Now;
             _silence.Reset();
             _overflowWarned = false;
+
+            // 쿨다운은 런 경계에서 풀어 준다. 지난 런의 마지막 사이렌 때문에 새 런의
+            // 첫 경보가 조용해지면, 원인이 이 타이머라는 단서가 아무 데도 없다.
+            _sirenReadyAt = Now;
+            _voiceReadyAt = Now;
+
+            // 위험 단계도 런과 함께 처음으로 돌아간다. 남겨 두면 새 런의 첫
+            // `RiskLevelChanged` 가 "하강"으로 읽혀 사이렌이 통째로 빠진다.
+            _riskLevel = Risk.RiskLevel.Stable;
+            _riskRising = false;
+            _humValid = false;
+
             RestoreListener();
         }
 
@@ -273,7 +386,36 @@ namespace Ascend.Prototype.Audio
 
             ApplyChannelVolumes(gain);
             ApplyListenerDuck(now, gain);
+            RefreshHumTargets(gain);
             DrainQueue(now, gain);
+        }
+
+        /// <summary>
+        /// 험 목표값을 다시 계산한다. 단계와 게인이 그대로면 아무 일도 하지 않는다 —
+        /// <c>DangerFeedbackSnapshot.For</c> 는 구조체 사본을 만들므로 매 프레임 무조건
+        /// 돌릴 이유가 없다. (힙 할당은 없지만 공짜도 아니다.)
+        ///
+        /// **여기가 `AudioMixProfile` 의 험 배율 네 함수가 실제로 소비되는 유일한 자리다.**
+        /// 그전까지 그 8개 필드는 에셋에만 있고 런타임에는 아무도 읽지 않았다.
+        /// </summary>
+        private void RefreshHumTargets(float gain)
+        {
+            if (_humValid && _riskLevel == _humLevel && gain == _humGain) return;
+
+            Risk.RiskProfile profile = _danger.For(_riskLevel);
+
+            _humVolumeScale = _mix.HumVolumeScaleFor(_riskLevel);
+            _humPitchScale = _mix.HumPitchScaleFor(_riskLevel);
+
+            // 형태는 위험 프로파일이, 크기는 믹스가 정한다(`AudioMixProfile` 클래스 주석).
+            // 정적 게인을 여기서 곱해 두는 이유: 험을 우회로(AudioListener)로 줄이면
+            // 플레이어의 발소리까지 같이 사라져 정적이 고장으로 읽힌다.
+            _humVolume = _mix.HumVolumeFor(_riskLevel, in profile) * gain;
+            _humPitch = _mix.HumPitchFor(_riskLevel, in profile);
+
+            _humValid = true;
+            _humLevel = _riskLevel;
+            _humGain = gain;
         }
 
         private void ApplyChannelVolumes(float gain)
@@ -340,7 +482,17 @@ namespace Ascend.Prototype.Audio
                     _queueCount = 0;
                     _nextFree = Now;
                     break;
+
+                case GameEventKind.RiskLevelChanged:
+                    TrackRiskLevel(in e);
+                    break;
             }
+
+            // 겹쳐 우는 두 채널을 먼저 처리한다. 대표음보다 **앞에** 두는 이유는
+            // 사이렌과 비명이 사건의 반응이 아니라 사건 자체와 같은 순간이기 때문이다 —
+            // 붕괴 충격음이 끝난 뒤에 오는 비명은 놀란 소리가 아니라 회상이다.
+            TryPlaySiren(in e);
+            TryPlayEventVoice(in e);
 
             AudioCueRequest req;
             if (!AudioCueTable.TryMap(in e, out req))
@@ -353,11 +505,85 @@ namespace Ascend.Prototype.Audio
         }
 
         /// <summary>
+        /// 위험 단계를 따라간다. **방향까지 기억한다** — 사이렌은 단계가 *오를* 때만
+        /// 울린다(Notion PRD §8.3). 사건의 <c>Payload</c> 에 이전 단계가 박싱돼 있지만
+        /// 그것을 꺼내는 대신 순서대로 세어 둔다. 언박싱은 매핑 표를 Risk 네임스페이스에
+        /// 묶고, 박싱된 값이 없는 경로(테스트·시뮬레이터)에서 조용히 틀린다.
+        /// </summary>
+        private void TrackRiskLevel(in GameEvent e)
+        {
+            int next = e.IntValue;
+            if (next < 0) next = 0;
+            if (next > (int)Risk.RiskLevel.Collapse) next = (int)Risk.RiskLevel.Collapse;
+
+            _riskRising = next > (int)_riskLevel;
+            _riskLevel = (Risk.RiskLevel)next;
+        }
+
+        /// <summary>
+        /// 사이렌은 네 순간에만 울린다 — 단계 상승 · 과수확 해금 · 레버 결정 · 사고.
+        /// 목록은 <see cref="AudioCueTable.TryMapSiren"/> 이 갖고, 여기서 더하는 것은
+        /// 셋뿐이다: 단계가 올랐는가, 접근성이 허용하는가, 너무 자주 울리지 않는가.
+        /// </summary>
+        private void TryPlaySiren(in GameEvent e)
+        {
+            if (!_sirenEnabled) return;
+
+            // 단계가 내려갈 때는 울리지 않는다. Critical → Strain 은 나아진 것이고,
+            // 거기서도 경보가 울리면 사이렌은 "상태"가 아니라 "변화 알림"이 되어
+            // 단계 상승의 무게가 사라진다.
+            if (e.Kind == GameEventKind.RiskLevelChanged && !_riskRising) return;
+
+            AudioCueRequest req;
+            if (!AudioCueTable.TryMapSiren(in e, out req)) return;
+
+            // 접근성 — 끄면 0이 되어 여기서 멈춘다. 경고는 시각과 험 피치로 남는다.
+            float volume = _accessibility.SirenVolume(req.Volume);
+            if (volume <= 0f) return;
+
+            float now = Now;
+            if (now < _sirenReadyAt) return;
+            _sirenReadyAt = now + _sirenCooldownSeconds;
+
+            var scaled = new AudioCueRequest(req.Kind, volume, req.Pitch, req.Variant);
+            SirenCueCount++;
+            Submit(in scaled);
+        }
+
+        /// <summary>
+        /// 사건 버스만으로 승객 음성을 낸다. 승객 반응 시스템이 아직 소리를 요청하지
+        /// 않을 때의 폴백이다 — <see cref="PlayPassengerVoice"/>가 한 번이라도 불리면
+        /// 그쪽이 소유자가 되고 이 경로는 영구히 물러난다.
+        ///
+        /// 쿨다운을 두는 이유는 PRD §9.4 와 같다: 한 사건에 모두가 동시에 말하지
+        /// 않는다. 여기서는 승객이 누구인지 모르므로 "한 번에 한 목소리"로 대신한다.
+        /// </summary>
+        private void TryPlayEventVoice(in GameEvent e)
+        {
+            if (!_voiceFromEvents || _externalVoiceDriver) return;
+
+            AudioCueRequest req;
+            if (!AudioCueTable.TryMapPassengerVoice(in e, out req)) return;
+
+            float now = Now;
+            if (now < _voiceReadyAt) return;
+            _voiceReadyAt = now + _voiceCooldownSeconds;
+
+            EventVoiceCount++;
+            Submit(in req);
+        }
+
+        /// <summary>
         /// 승객 반응 시스템(UP-NPC-*)이 부르는 통로. 사건 표를 거치지 않는 이유는
         /// "어느 승객이 왜 소리를 내는가"를 이 컴포넌트가 알지 못하기 때문이다.
+        ///
+        /// 한 번이라도 불리면 사건 버스 폴백(<see cref="TryPlayEventVoice"/>)이 꺼진다.
+        /// 둘 다 살아 있으면 같은 반응에 목소리가 두 번 나는데, 그건 승객이 늘어난 것처럼
+        /// 들려서 동시 반응 상한(UP-NPC-05)이 지켜지고 있는지 귀로 확인할 수 없게 된다.
         /// </summary>
         public void PlayPassengerVoice(int passengerIndex, float intensity)
         {
+            _externalVoiceDriver = true;
             AudioCueRequest req = AudioCueTable.PassengerVoice(passengerIndex, intensity);
             Submit(in req);
         }
@@ -462,6 +688,8 @@ namespace Ascend.Prototype.Audio
                 case AudioCueKind.CollapseImpact:
                 case AudioCueKind.MetalStress:
                 case AudioCueKind.PassengerVoice:
+                // 사이렌이 사건보다 늦게 오면 그건 경보가 아니라 사후 보고다.
+                case AudioCueKind.Siren:
                     return true;
                 default:
                     return false;
@@ -505,6 +733,9 @@ namespace Ascend.Prototype.Audio
 
                 case AudioCueKind.ResidualDamage:
                 case AudioCueKind.MetalStress:
+                // 사이렌이 경고 채널인 것은 취향이 아니다 — `AudioChannel.Warning` 의
+                // 주석이 "경고음·사이렌. 접근성 옵션이 따로 끌 수 있어야 한다"고 정의한다.
+                case AudioCueKind.Siren:
                     return AudioCueChannel.Warning;
 
                 default:
@@ -624,5 +855,21 @@ namespace Ascend.Prototype.Audio
 //  4. 위험 단계 험(`RiskStateView._hum`)은 정적 구간에 함께 줄어들지 않는다.
 //     RiskStateView 가 매 LateUpdate 마다 `_hum.volume` 을 절대값으로 덮어쓰기 때문이다
 //     (그 파일의 CabinLightMultiplier 주석이 같은 함정을 이미 적어 두었다).
-//     지금은 `_duckGlobalListener` 로 AudioListener 전체를 줄여 우회한다. 제대로 하려면
-//     RiskStateView 에 `HumVolumeMultiplier` 를 두고 AudioDirector.SilenceGain 을 곱해야 한다.
+//     지금은 `_duckGlobalListener` 로 AudioListener 전체를 줄여 우회한다.
+//
+//     **여기서 절반은 끝냈다.** `AudioDirector.HumVolume` / `HumPitch` 가 이미
+//     `AudioMixProfile` 의 단계별 배율 × `DangerFeedbackProfile` 의 형태 × 정적 게인을
+//     곱한 최종값을 매 프레임 들고 있다(`RefreshHumTargets`). 남은 한 줄은 RiskStateView
+//     쪽이다 — `ApplyHum` 에서 `_hum.volume = _blended.HumVolume` 대신 배선된
+//     AudioDirector 의 `HumVolume` 을 쓰면 된다. 그 파일은 이 작업의 소유 범위 밖이라
+//     손대지 않았다. 그때까지 이 값들은 계산되고 노출되지만 험에 닿지는 않는다.
+//
+//  5. 사이렌(UP-RISK-05)은 `_accessibilityProfile` 이 비어 있으면 "전부 허용"으로 돈다.
+//     `AccessibilityProfile.asset` 을 만들어 꽂으면 `AllowSiren` 이 실제로 사이렌만
+//     끈다 — 험·응력음·충격음은 남는다. `AccessibilitySource` 가 어느 쪽인지 알려 준다.
+//
+//  6. 승객 음성(UP-AUD-04)은 지금 **사건 버스 폴백**으로 난다. 승객 반응 중재기가
+//     누구를 고를지 이 컴포넌트는 모르기 때문이다. `PassengerReactionView.OnReacted`
+//     에서 `AudioDirector.PlayPassengerVoice(승객 인덱스, 강도)` 를 부르면 폴백이
+//     자동으로 물러나고(`HasExternalVoiceDriver`) 목소리와 몸짓이 같은 승객에게 붙는다.
+//     그 파일도 이 작업의 소유 범위 밖이다.

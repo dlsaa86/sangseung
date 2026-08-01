@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using Ascend.Prototype.Events;
+using Ascend.Prototype.Risk;
 using Ascend.Prototype.Spin;
 
 namespace Ascend.Prototype.Telemetry
@@ -20,6 +23,51 @@ namespace Ascend.Prototype.Telemetry
     {
         /// <summary>지금 진행 중인 층의 값. 층이 없으면 false를 돌려주고 아무것도 채우지 않는다.</summary>
         bool TryGetFloorContext(out float requiredPower, out float carriedWeight, out bool overloaded);
+
+        /// <summary>
+        /// 지금 규칙을 바꾸고 있는 승객·부품 요약(`SpinTelemetryRecord.Loadout` 형식).
+        /// 적재를 읽을 수 없으면 false. 비어 있는 적재는 false가 아니라
+        /// <c>SpinTelemetryRecord.NoneMarker</c>를 담은 true다 — "안 실었다"와 "못 읽었다"는 다르다.
+        ///
+        /// 왜 사건이 아니라 문맥인가: `ItemBoarded`는 **싣는 순간**만 알리고, 승객은
+        /// 목적지에서 조용히 내린다(`BuildLoadout.TakeDeparting`). 사건만 누적하면
+        /// 이미 내린 승객이 영원히 발동 중인 것처럼 기록된다.
+        /// </summary>
+        bool TryGetLoadoutSummary(out string summary);
+    }
+
+    /// <summary>
+    /// 위험 단계를 알려 줄 수 있는 곳.
+    ///
+    /// 왜 사건만으로 부족한가: <see cref="GameEventKind.RiskLevelChanged"/>는
+    /// `RiskEventBridge`(MonoBehaviour)가 폴링으로 낸다. 그 다리는 **바뀐 순간만** 알리고
+    /// 첫 프레임의 Stable은 일부러 알리지 않는다. 그래서 사건만 보면 런의 앞부분이
+    /// 통째로 비고, 씬 없는 헤드리스에서는 한 건도 오지 않는다.
+    ///
+    /// 텔레메트리가 <see cref="RiskEvaluator"/>를 직접 돌리는 선택지는 버렸다 —
+    /// 히스테리시스 상태를 따로 들게 되어 "위험 단계"의 정의가 두 벌 생긴다
+    /// (`GameEventKind` 주석이 금지하는 바로 그 상태다).
+    /// </summary>
+    public interface ITelemetryRiskSource
+    {
+        /// <summary>지금 단계. 알 수 없으면 false를 돌려준다 — Stable로 채우지 않는다.</summary>
+        bool TryGetRiskLevel(out RiskLevel level);
+    }
+
+    /// <summary>
+    /// 스핀 판정 구간의 프레임 타임과 GC 할당을 재는 곳.
+    ///
+    /// 기록기 본체가 `UnityEngine.Time`을 부르지 않는 이유는 이 클래스가 순수 C#이어야
+    /// 씬 없이 검증되기 때문이다(`TECH_SPEC.md` §2). 구간의 시작과 끝을 나눠 받는 이유는
+    /// GC 할당이 **차분**으로만 잴 수 있어서다.
+    /// </summary>
+    public interface ITelemetryPerformanceSampler
+    {
+        /// <summary>스핀이 시작됐다. 구간 기준점을 잡는다.</summary>
+        void BeginSpin();
+
+        /// <summary>구간을 닫고 값을 돌려준다. 잴 수 없으면 false.</summary>
+        bool TryEndSpin(out float frameTimeMs, out long gcAllocBytes);
     }
 
     /// <summary>
@@ -53,12 +101,23 @@ namespace Ascend.Prototype.Telemetry
         private bool _overloaded;
         private string _contractLabel;
 
+        // ── 위험 단계 ──
+        //
+        // `_riskObserved`가 따로 있는 이유는 `_requiredPowerFloor`와 같다. Stable(=0)은
+        // "안정이다"와 "아무도 알려 주지 않았다"를 구분하지 못하고, 후자를 전자로 적으면
+        // 사고 기록이 조용히 거짓이 된다.
+        private RiskLevel _riskLevel = Risk.RiskLevel.Stable;
+        private bool _riskObserved;
+
         // ── 스핀 문맥 ──
         private bool _spinStartSeen;
         private bool _spinIsExtra;
         private float _powerBeforeSpin;
 
         private bool _attached;
+
+        /// <summary>빈 목록의 단일 인스턴스. 스핀마다 빈 배열을 새로 만들면 그 자체가 GC 할당이다.</summary>
+        private static readonly string[] EmptyList = new string[0];
 
         public TelemetryRecorder(GameEventBus bus, ITelemetrySink sink)
             : this(bus, sink, null)
@@ -92,6 +151,18 @@ namespace Ascend.Prototype.Telemetry
         /// <summary>경고를 받을 곳. 씬 어댑터가 `Debug.LogWarning`을 물린다.</summary>
         public Action<string> WarningReported { get; set; }
 
+        /// <summary>
+        /// 위험 단계를 물어볼 곳. 붙이지 않으면 <see cref="GameEventKind.RiskLevelChanged"/>
+        /// 사건만 보고, 그마저 없으면 <c>(unknown)</c>으로 적는다.
+        ///
+        /// 생성자가 아니라 프로퍼티인 이유: 이미 두 벌인 생성자에 선택 협력자를 더 얹으면
+        /// 조합이 넷이 된다. `WarningReported`와 같은 방식으로 객체 초기자에서 붙인다.
+        /// </summary>
+        public ITelemetryRiskSource RiskSource { get; set; }
+
+        /// <summary>프레임 타임·GC를 재 줄 곳. 없으면 NaN·−1로 적는다.</summary>
+        public ITelemetryPerformanceSampler PerformanceSampler { get; set; }
+
         /// <summary>구독을 끊는다. 런을 버리거나 기록을 멈출 때 호출한다.</summary>
         public void Detach()
         {
@@ -119,11 +190,26 @@ namespace Ascend.Prototype.Telemetry
                     _contractLabel = e.Text;
                     break;
 
+                case GameEventKind.RiskLevelChanged:
+                    // IntValue = 새 RiskLevel (`GameEventKind` 주석). 값은 고정돼 있으므로
+                    // 정의되지 않은 숫자가 오면 조용히 받아들이지 않는다.
+                    if (Enum.IsDefined(typeof(RiskLevel), e.IntValue))
+                    {
+                        _riskLevel = (RiskLevel)e.IntValue;
+                        _riskObserved = true;
+                    }
+                    else
+                    {
+                        Warn($"RiskLevelChanged 의 IntValue 가 {e.IntValue} — RiskLevel 에 없는 값이다. 무시한다.");
+                    }
+                    break;
+
                 case GameEventKind.SpinStarted:
                     _spinStartSeen = true;
                     _spinIsExtra = e.Text == "추가 스핀";
                     _powerBeforeSpin = e.FloatValue;
                     PullContext(e.Floor);
+                    PerformanceSampler?.BeginSpin();
                     break;
 
                 case GameEventKind.SpinResolved:
@@ -193,7 +279,19 @@ namespace Ascend.Prototype.Telemetry
                 _spinIsExtra = false;
             }
 
-            SummarizeSteps(in resolution, out int normalSouls, out int purifyCount, out PatternKind best);
+            SummarizeSteps(in resolution, out int normalSouls, out int purifyCount, out PatternKind best,
+                out string[] cascadeBoards, out string[] activationOrder);
+
+            // 재지 못한 것은 0이 아니라 "모른다"로 남긴다. 0 ms·0 B는 존재할 법한 값이라
+            // 나중에 "성능이 좋았다"로 읽히고, 그 오독은 되돌릴 방법이 없다.
+            float frameTimeMs = float.NaN;
+            long gcAllocBytes = SpinTelemetryRecord.UnknownBytes;
+            if (PerformanceSampler != null &&
+                PerformanceSampler.TryEndSpin(out float sampledFrameMs, out long sampledBytes))
+            {
+                frameTimeMs = sampledFrameMs;
+                gcAllocBytes = sampledBytes;
+            }
 
             var record = new SpinTelemetryRecord
             {
@@ -217,12 +315,40 @@ namespace Ascend.Prototype.Telemetry
                 RequiredPower = _requiredPower,
                 CarriedWeight = _carriedWeight,
                 Overloaded = _overloaded,
+                CascadeBoards = cascadeBoards,
+                ActivationOrder = activationOrder,
+                ResidualAbsorbers = resolution.Residual.AbsorberCount,
+                ResidualProliferators = resolution.Residual.ProliferatorCount,
+                RiskLevel = ResolveRiskLevel(),
+                Loadout = ResolveLoadout(),
+                FrameTimeMs = frameTimeMs,
+                GcAllocBytes = gcAllocBytes,
             };
 
             _sink.Write(in record);
             RecordCount++;
 
             _spinStartSeen = false;
+        }
+
+        /// <summary>
+        /// 출처가 있으면 그 값을, 없으면 마지막으로 **관측된** 사건 값을, 둘 다 없으면
+        /// "모른다"를 돌려준다. 출처를 먼저 보는 이유는 사건이 전이만 알리기 때문이다 —
+        /// 런 시작 직후에는 아직 아무 전이도 없었지만 단계는 존재한다.
+        /// </summary>
+        private string ResolveRiskLevel()
+        {
+            if (RiskSource != null && RiskSource.TryGetRiskLevel(out RiskLevel level))
+                return level.ToString();
+            if (_riskObserved) return _riskLevel.ToString();
+            return SpinTelemetryRecord.Unknown;
+        }
+
+        private string ResolveLoadout()
+        {
+            if (_context == null) return SpinTelemetryRecord.Unknown;
+            if (!_context.TryGetLoadoutSummary(out string summary)) return SpinTelemetryRecord.Unknown;
+            return string.IsNullOrEmpty(summary) ? SpinTelemetryRecord.NoneMarker : summary;
         }
 
         /// <summary>
@@ -237,25 +363,61 @@ namespace Ascend.Prototype.Telemetry
         }
 
         /// <summary>
-        /// 캐스케이드 단계를 한 스핀 요약으로 접는다. 정화 개수와 최고 패턴은
-        /// `SpinResolution.Summary()`가 화면용으로 세는 것과 같은 정의여야 한다.
+        /// 캐스케이드 단계를 한 번만 훑어 요약과 **순서 보존 목록** 둘 다 만든다.
+        /// 정화 개수와 최고 패턴은 `SpinResolution.Summary()`가 화면용으로 세는 것과 같은
+        /// 정의여야 한다.
+        ///
+        /// 요약(개수·최고값)과 목록(순서)을 함께 내는 이유: 두 번 훑으면 "정화가 무엇인가"의
+        /// 정의가 두 벌 생기고, 한쪽만 고쳤을 때 개수와 목록이 서로 다른 말을 하게 된다.
+        /// 그 어긋남은 로그를 읽는 사람이 알아챌 수 없다.
+        ///
+        /// <paramref name="cascadeBoards"/>는 단계마다 **끝난 뒤의** 판이다. 시작 판은
+        /// `InitialBoard`가 이미 들고 있으므로 둘을 이으면 사슬 전체가 복원된다.
         /// </summary>
         private static void SummarizeSteps(in SpinResolution resolution,
-            out int normalSouls, out int purifyCount, out PatternKind best)
+            out int normalSouls, out int purifyCount, out PatternKind best,
+            out string[] cascadeBoards, out string[] activationOrder)
         {
             normalSouls = 0;
             purifyCount = 0;
             best = PatternKind.None;
+            cascadeBoards = EmptyList;
+            activationOrder = EmptyList;
 
-            if (resolution.Steps == null) return;
-            foreach (CascadeStep step in resolution.Steps)
+            CascadeStep[] steps = resolution.Steps;
+            if (steps == null || steps.Length == 0) return;
+
+            cascadeBoards = new string[steps.Length];
+            var order = new List<string>(steps.Length * 2);
+
+            for (int i = 0; i < steps.Length; i++)
             {
+                CascadeStep step = steps[i];
+                cascadeBoards[i] = step.BoardAfter.ToString();
+
+                string depth = step.Depth.ToString(CultureInfo.InvariantCulture);
+
                 normalSouls += step.NormalSoulsHarvested;
+                if (step.NormalSoulsHarvested > 0)
+                {
+                    order.Add(depth + ":Soul*" +
+                              step.NormalSoulsHarvested.ToString(CultureInfo.InvariantCulture));
+                }
+
                 if (step.Purifies == null) continue;
                 purifyCount += step.Purifies.Length;
-                foreach (PurifyEvent purify in step.Purifies)
+                for (int p = 0; p < step.Purifies.Length; p++)
+                {
+                    PurifyEvent purify = step.Purifies[p];
                     if (purify.Pattern > best) best = purify.Pattern;
+
+                    int cells = purify.Cells != null ? purify.Cells.Length : 0;
+                    order.Add(depth + ":" + purify.Kind.ToString() + "/" + purify.Pattern.ToString() +
+                              "*" + cells.ToString(CultureInfo.InvariantCulture));
+                }
             }
+
+            activationOrder = order.Count == 0 ? EmptyList : order.ToArray();
         }
 
         private void Warn(string message)

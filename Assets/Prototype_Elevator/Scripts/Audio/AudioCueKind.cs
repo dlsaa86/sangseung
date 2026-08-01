@@ -76,5 +76,23 @@ namespace Ascend.Prototype.Audio
         /// 짚을 수 없다. 지속음을 복제하지 않으면서 전이만 표시하는 최소 추가다.
         /// </summary>
         MetalStress = 24,
+
+        /// <summary>
+        /// 경보 사이렌.
+        ///
+        /// **지속음이 아니다.** Notion MASTER PRD §8.3 이 못박는다 —
+        /// "사이렌은 지속 재생하지 않는다. 단계 상승·과수확 해금·레버 결정·사고 순간에만
+        /// 강하게 사용한다." (`VISUAL_BIBLE.md` 금지 목록 16번이 「지속 재생되는 사이렌」이다.)
+        ///
+        /// 그 원칙을 주석이 아니라 **구조**로 지킨다. 사이렌을 이 열거에 넣는 순간
+        /// 사이렌은 <see cref="AudioCueKind"/> 의 계약을 물려받는다 — 한 번 울리고 끝나며,
+        /// <c>ProceduralClipFactory.MaxSeconds</c> 가 1초를 넘지 못하게 하고,
+        /// <c>AudioSource.loop</c> 가 false 인 원샷으로만 나간다. 루프로 만들 자리가 없다.
+        ///
+        /// 발동 사건은 <c>AudioCueTable.TryMapSiren</c> 넷뿐이고, 변형 번호가 그 넷을 가른다
+        /// (0 단계 상승 / 1 과수확 해금 / 2 레버 결정 / 3 사고). 왜 울렸는지 귀로 갈리지
+        /// 않으면 "경보가 켜졌다"는 정보밖에 남지 않는다.
+        /// </summary>
+        Siren = 25,
     }
 }

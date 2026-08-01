@@ -88,6 +88,7 @@ namespace Ascend.Prototype.Audio
             Bake(AudioCueKind.CollapseImpact, 0);
             for (int p = 0; p < 4; p++) Bake(AudioCueKind.PassengerVoice, p);
             for (int r = 0; r < 4; r++) Bake(AudioCueKind.MetalStress, r);
+            for (int s = 0; s < 4; s++) Bake(AudioCueKind.Siren, s);
         }
 
         /// <summary>캐시를 버린다. 도메인 리로드 이후 파괴된 클립을 붙들고 있지 않기 위한 통로.</summary>
@@ -124,6 +125,9 @@ namespace Ascend.Prototype.Audio
                 case AudioCueKind.CollapseImpact:    return 0.95f;
                 case AudioCueKind.PassengerVoice:    return 0.35f;
                 case AudioCueKind.MetalStress:       return 0.60f;
+                // 사이렌은 이 하네스가 만드는 가장 긴 소리다. 그래도 1초를 넘기지 않는다 —
+                // 넘길 자리가 없는 것이 「지속 재생하지 않는다」(PRD §8.3)의 구조적 보장이다.
+                case AudioCueKind.Siren:             return 0.90f;
                 default:                             return 0.25f;
             }
         }
@@ -137,6 +141,7 @@ namespace Ascend.Prototype.Audio
                 case AudioCueKind.ThresholdCrossed: return Clamp(variant, 0, 2);
                 case AudioCueKind.PassengerVoice:   return Clamp(variant, 0, 7);
                 case AudioCueKind.MetalStress:      return Clamp(variant, 0, 3);
+                case AudioCueKind.Siren:            return Clamp(variant, 0, 3);
                 default:                            return 0;
             }
         }
@@ -238,6 +243,10 @@ namespace Ascend.Prototype.Audio
                     AddStress(buf, count, variant, ref rng);
                     break;
 
+                case AudioCueKind.Siren:
+                    AddSiren(buf, count, variant, ref rng);
+                    break;
+
                 default:
                     AddTone(buf, count, 440f, 12f, 0.6f);
                     break;
@@ -282,6 +291,52 @@ namespace Ascend.Prototype.Audio
             }
 
             if (level >= 2) AddBandNoise(buf, count, 2400f, 3.2f, 7f, 0.22f * level, ref rng);
+        }
+
+        /// <summary>
+        /// 경보 사이렌(UP-RISK-05). 두 음 사이를 오가는 울림 + 확성기 잡음.
+        ///
+        /// **한 발이다.** 포락선이 끝에서 확실히 0으로 내려가고 길이가
+        /// <see cref="MaxSeconds"/> 안에 갇힌다 — Notion MASTER PRD §8.3 의
+        /// "사이렌은 지속 재생하지 않는다"를 소리 자체가 지키게 만든 것이다.
+        /// 루프로 깔고 싶어도 깔 물건이 없다.
+        ///
+        /// 왜 순수 사인이 아닌가: 매끈한 사인 두 음의 교대는 게임 UI 알림처럼 들린다.
+        /// 옥타브 배음과 대역 잡음을 얹어야 "기계에 달린 나팔"이 된다.
+        /// <see cref="AddStress"/>(저역 삐걱거림)와 겹치는 음역을 피해야
+        /// 무영상 청취에서 응력음과 사이렌이 한 소리로 뭉치지 않는다.
+        /// </summary>
+        private static void AddSiren(float[] buf, int count, int reason, ref Lcg rng)
+        {
+            // 넷을 서로 다르게 만든다 — 왜 울렸는지가 소리에 없으면 "경보"라는 사실만 남는다.
+            //   0 단계 상승 / 1 과수확 해금 / 2 레버 결정 / 3 사고
+            float lowHz = 470f + reason * 55f;
+            float highHz = 930f + reason * 130f;
+            float wailHz = 1.7f + reason * 0.55f;
+
+            float seconds = count / (float)SampleRate;
+            if (seconds <= 0.0001f) return;
+
+            float phase = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)SampleRate;
+
+                // 0↔1 을 오가되 끝이 둥근 곡선. 톱니로 오가면 방향이 바뀌는 지점에서 딱 소리가 난다.
+                float wail = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * wailHz * t);
+                float hz = lowHz + (highHz - lowHz) * wail;
+
+                // 주파수가 변하는 사인은 위상을 적분해야 한다(AddSweep 과 같은 이유).
+                phase += 2f * Mathf.PI * hz / SampleRate;
+
+                float open = Mathf.Clamp01(t / 0.05f);
+                float close = Mathf.Clamp01((seconds - t) / (seconds * 0.55f));
+                float env = open * close;
+
+                buf[i] += (Mathf.Sin(phase) * 0.80f + Mathf.Sin(phase * 2f) * 0.22f) * env;
+            }
+
+            AddBandNoise(buf, count, 1500f, 2.2f, 3.0f, 0.12f, ref rng);
         }
 
         /// <summary>

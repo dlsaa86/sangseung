@@ -32,6 +32,11 @@ namespace Ascend.Prototype.Audio.Tests
             Run("정화 칸 수가 볼륨을 올린다", TestPurifyVolumeScales, ref passed, ref failed, report);
             Run("볼륨·피치가 유효 범위 안이다", TestRequestRanges, ref passed, ref failed, report);
             Run("승객 인덱스가 목소리를 가른다", TestPassengerVoices, ref passed, ref failed, report);
+            Run("승객 반응 사건이 목소리를 만든다", TestVoiceFromReactionEvents, ref passed, ref failed, report);
+            Run("반응이 아닌 사건은 조용하다", TestNonReactionEventsAreVoiceless, ref passed, ref failed, report);
+            Run("같은 사건은 같은 목소리를 낸다", TestVoiceIsDeterministic, ref passed, ref failed, report);
+            Run("사이렌은 §8.3 의 네 순간에만 울린다", TestSirenOnlyOnFourMoments, ref passed, ref failed, report);
+            Run("사이렌 넷이 서로 다르게 들린다", TestSirenVariantsDiffer, ref passed, ref failed, report);
             Run("정적 — 시작 전 1, 정적 0, 끝난 뒤 1", TestSilenceBoundaries, ref passed, ref failed, report);
             Run("정적 — 감쇠는 단조 감소, 재개는 단조 증가", TestSilenceMonotonic, ref passed, ref failed, report);
             Run("정적 길이가 0.3~0.7 로 조여진다", TestSilenceClamped, ref passed, ref failed, report);
@@ -320,6 +325,245 @@ namespace Ascend.Prototype.Audio.Tests
             if (AudioCueTable.PassengerVoice(0, 1f).Volume
                 <= AudioCueTable.PassengerVoice(0, 0f).Volume)
                 return "반응 강도가 볼륨을 바꾸지 않는다";
+            return null;
+        }
+
+        // ── 승객 비언어 음성 (UP-AUD-04) ─────────────────────────────────────
+
+        /// <summary>
+        /// PRD §9.2 가 세는 반응 사건에서 승객 채널이 실제로 울리는가.
+        ///
+        /// 이 검사가 없던 동안 <c>PassengerVoice</c> 는 **구조적으로 도달 불가**였다 —
+        /// 합성기도 있고 큐 종류도 있고 재생 통로도 있었지만 그것을 부르는 코드가
+        /// 어디에도 없었다. 10층 런에서 "울린 종류 14"가 나온 뒤에야 드러났고,
+        /// 14 가 도달 가능한 전부였다는 사실은 로그만 봐서는 알 수 없었다.
+        /// </summary>
+        private static readonly GameEventKind[] VoiceEvents =
+        {
+            GameEventKind.ContractSelected,     // §9.2 계약 선택
+            GameEventKind.PurifyScattered,      // §9.2 기본 정화
+            GameEventKind.OverharvestUnlocked,  // §9.2 과수확 해금
+            GameEventKind.ExtraSpinTaken,       // §9.2 추가 스핀
+            GameEventKind.CollapseBegan,        // §9.2 Collapse 직전
+            GameEventKind.FloorResolved,        // §9.2 사고·성공
+            GameEventKind.RunEnded,
+        };
+
+        private static string TestVoiceFromReactionEvents()
+        {
+            var variants = new int[VoiceEvents.Length];
+
+            for (int i = 0; i < VoiceEvents.Length; i++)
+            {
+                var e = new GameEvent(VoiceEvents[i], 3, 1, 4, 20f);
+                AudioCueRequest req;
+                if (!AudioCueTable.TryMapPassengerVoice(in e, out req))
+                    return $"{VoiceEvents[i]} 에 승객이 반응하지 않는다";
+                if (req.Kind != AudioCueKind.PassengerVoice)
+                    return $"{VoiceEvents[i]} → {req.Kind}, 기대 PassengerVoice";
+                if (req.Volume <= 0f || req.Volume > 1f)
+                    return $"{VoiceEvents[i]} 볼륨 {req.Volume}";
+                if (req.Pitch < AudioCueTable.MinPitch || req.Pitch > AudioCueTable.MaxPitch)
+                    return $"{VoiceEvents[i]} 피치 {req.Pitch}";
+
+                // Prewarm 이 굽는 범위를 넘으면 첫 발성이 굽는 프레임이 되고,
+                // 하필 그 순간이 붕괴라 성능 캡처에 스파이크로 남는다.
+                if (req.Variant < 0 || req.Variant >= AudioCueTable.VoicePassengerCount)
+                    return $"{VoiceEvents[i]} 변형 {req.Variant} — Prewarm 범위 밖";
+
+                variants[i] = req.Variant;
+            }
+
+            // 한 층 안에서 언제나 같은 사람만 말하면 승객이 넷이라는 사실이 소리에 없다.
+            bool varied = false;
+            for (int i = 1; i < variants.Length; i++)
+                if (variants[i] != variants[0]) { varied = true; break; }
+            if (!varied) return "모든 반응이 같은 승객에게 갔다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// 반응 목록에 없는 사건은 조용해야 한다. 열이 공개될 때마다 누가 소리를 내면
+        /// 정작 5연쇄와 붕괴가 묻힌다(`PassengerReactionEvents.TryMap` 주석과 같은 이유).
+        ///
+        /// 「과수확 접근」이 여기 있는 것은 특히 중요하다 — PRD §7.3 이 그 순간을
+        /// **정적**으로 규정한다. 조용하게 만들라고 한 자리에 숨소리를 하나 넣으면
+        /// 이 층에서 가장 긴 침묵이 그냥 없어진다.
+        /// </summary>
+        private static string TestNonReactionEventsAreVoiceless()
+        {
+            GameEventKind[] silent =
+            {
+                GameEventKind.None,
+                GameEventKind.FloorStarted,
+                GameEventKind.ItemBoarded,
+                GameEventKind.BoardingFinished,
+                GameEventKind.SpinStarted,
+                GameEventKind.ColumnRevealed,
+                GameEventKind.NormalSoulHarvested,
+                GameEventKind.PurifyLine,          // 「기본 정화」는 개수 정화만이다
+                GameEventKind.PurifyCluster,
+                GameEventKind.CascadeCapReached,
+                GameEventKind.SpinResolved,
+                GameEventKind.ResidualDamage,
+                GameEventKind.PowerBanked,
+                GameEventKind.OverharvestApproached,   // §7.3 정적
+                GameEventKind.OverharvestReleased,
+                GameEventKind.JettisonPaid,
+            };
+
+            foreach (GameEventKind kind in silent)
+            {
+                // IntValue 4 는 어느 임계점(100·170·300)도 아니고 5연쇄 깊이도 아니다.
+                var e = new GameEvent(kind, 3, 1, 4, 20f);
+                AudioCueRequest req;
+                if (AudioCueTable.TryMapPassengerVoice(in e, out req))
+                    return $"{kind} 에 승객이 소리를 낸다 — 반응 목록에 없는 사건이다";
+                if (req.Kind != AudioCueKind.None)
+                    return $"{kind} 실패 경로가 req 를 비우지 않았다 ({req.Kind})";
+            }
+
+            // 깊이 4 는 5연쇄가 아니다. 여기서 울리면 「5연쇄」라는 말이 뜻을 잃는다.
+            var shallow = new GameEvent(GameEventKind.CascadeStep, 3, 1, 4, 20f);
+            AudioCueRequest shallowReq;
+            if (AudioCueTable.TryMapPassengerVoice(in shallow, out shallowReq))
+                return "캐스케이드 깊이 4 에 승객이 반응한다";
+
+            // 임계점이 아닌 퍼센트도 마찬가지다.
+            var offThreshold = new GameEvent(GameEventKind.PowerThresholdCrossed, 3, 1, 140);
+            AudioCueRequest offReq;
+            if (AudioCueTable.TryMapPassengerVoice(in offThreshold, out offReq))
+                return "임계점이 아닌 140% 에 승객이 반응한다";
+
+            return null;
+        }
+
+        /// <summary>
+        /// 같은 사건은 언제 물어도 같은 승객·같은 피치여야 한다. 난수를 쓰면
+        /// 같은 시드의 런이 다른 소리를 내고, 캡처 회귀가 오디오 때문에 흔들린다.
+        /// </summary>
+        private static string TestVoiceIsDeterministic()
+        {
+            var e = new GameEvent(GameEventKind.ContractSelected, 2, 0);
+
+            AudioCueRequest a, b;
+            if (!AudioCueTable.TryMapPassengerVoice(in e, out a)) return "첫 호출이 실패했다";
+            if (!AudioCueTable.TryMapPassengerVoice(in e, out b)) return "둘째 호출이 실패했다";
+
+            if (a.Variant != b.Variant || a.Pitch != b.Pitch || a.Volume != b.Volume)
+                return $"같은 사건이 다른 목소리를 냈다 ({a} vs {b})";
+
+            // 층이 다르면 갈릴 수 있어야 한다 — 열 층 내내 같은 사람만 말하지 않는다.
+            bool anyDifferent = false;
+            for (int floor = 1; floor <= 10; floor++)
+            {
+                var other = new GameEvent(GameEventKind.ContractSelected, floor, 0);
+                AudioCueRequest req;
+                AudioCueTable.TryMapPassengerVoice(in other, out req);
+                if (req.Variant != a.Variant) { anyDifferent = true; break; }
+            }
+            if (!anyDifferent) return "열 층 내내 같은 승객만 말한다";
+
+            return null;
+        }
+
+        // ── 사이렌 (UP-RISK-05) ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Notion MASTER PRD §8.3 — "사이렌은 지속 재생하지 않는다. **단계 상승·과수확
+        /// 해금·레버 결정·사고 순간에만** 강하게 사용한다."
+        ///
+        /// 목록을 늘리는 것은 의도적인 결정이어야 한다. 사이렌이 흔해지는 순간
+        /// 그것은 신호가 아니라 배경이 되고, `VISUAL_BIBLE.md` 금지 16번
+        /// (「지속 재생되는 사이렌」)이 다른 이름으로 재현된다.
+        /// </summary>
+        private static string TestSirenOnlyOnFourMoments()
+        {
+            foreach (GameEventKind kind in Enum.GetValues(typeof(GameEventKind)))
+            {
+                // 단계 전이는 값에 따라 갈리므로 아래에서 따로 본다.
+                if (kind == GameEventKind.RiskLevelChanged) continue;
+
+                bool allowed = kind == GameEventKind.OverharvestUnlocked
+                            || kind == GameEventKind.OverharvestPulled
+                            || kind == GameEventKind.CollapseBegan;
+
+                var e = new GameEvent(kind, 1, 0, 3, 12f);
+                AudioCueRequest req;
+                bool fired = AudioCueTable.TryMapSiren(in e, out req);
+
+                if (fired != allowed)
+                    return allowed ? $"{kind} 에서 사이렌이 빠졌다"
+                                   : $"{kind} 가 사이렌을 울린다 — §8.3 의 네 순간이 아니다";
+                if (fired && req.Kind != AudioCueKind.Siren)
+                    return $"{kind} → {req.Kind}, 기대 Siren";
+                if (!fired && req.Kind != AudioCueKind.None)
+                    return $"{kind} 실패 경로가 req 를 비우지 않았다 ({req.Kind})";
+            }
+
+            // 안정(Stable)으로 돌아온 것은 경보가 아니다.
+            for (int level = 0; level <= 3; level++)
+            {
+                var e = new GameEvent(GameEventKind.RiskLevelChanged, 1, -1, level, 0.5f);
+                AudioCueRequest req;
+                bool fired = AudioCueTable.TryMapSiren(in e, out req);
+                bool expected = level >= AudioCueTable.SirenMinRiskLevel;
+                if (fired != expected)
+                    return $"위험 단계 {level}: 사이렌 {(fired ? "울림" : "없음")}, " +
+                           $"기대 {(expected ? "울림" : "없음")}";
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 넷이 같은 소리면 "경보가 켜졌다"는 사실만 남고 **왜** 켜졌는지가 사라진다.
+        /// 변형 번호가 달라야 <c>ProceduralClipFactory</c> 가 다른 파형을 굽는다.
+        /// </summary>
+        private static string TestSirenVariantsDiffer()
+        {
+            GameEvent[] moments =
+            {
+                new GameEvent(GameEventKind.RiskLevelChanged, 1, -1, 2, 0.6f),
+                new GameEvent(GameEventKind.OverharvestUnlocked, 1, 0),
+                new GameEvent(GameEventKind.OverharvestPulled, 1, 0, 0, 40f),
+                new GameEvent(GameEventKind.CollapseBegan, 1, 0),
+            };
+
+            var variants = new int[moments.Length];
+            for (int i = 0; i < moments.Length; i++)
+            {
+                AudioCueRequest req;
+                if (!AudioCueTable.TryMapSiren(in moments[i], out req))
+                    return $"{moments[i].Kind} 에서 사이렌이 빠졌다";
+
+                if (req.Volume <= 0f || req.Volume > 1f)
+                    return $"{moments[i].Kind} 사이렌 볼륨 {req.Volume}";
+                if (req.Pitch < AudioCueTable.MinPitch || req.Pitch > AudioCueTable.MaxPitch)
+                    return $"{moments[i].Kind} 사이렌 피치 {req.Pitch}";
+
+                // Prewarm 이 굽는 범위(0~3) 밖이면 첫 사이렌이 굽는 프레임이 된다.
+                if (req.Variant < 0 || req.Variant > 3)
+                    return $"{moments[i].Kind} 사이렌 변형 {req.Variant} — Prewarm 범위 밖";
+
+                variants[i] = req.Variant;
+            }
+
+            for (int i = 0; i < variants.Length; i++)
+                for (int j = i + 1; j < variants.Length; j++)
+                    if (variants[i] == variants[j])
+                        return $"{moments[i].Kind} 와 {moments[j].Kind} 가 같은 사이렌으로 뭉쳤다";
+
+            // 단계가 깊을수록 크게. 같은 크기면 Strain 과 Collapse 가 구분되지 않는다.
+            var strain = new GameEvent(GameEventKind.RiskLevelChanged, 1, -1, 1, 0.3f);
+            var collapse = new GameEvent(GameEventKind.RiskLevelChanged, 1, -1, 3, 0.9f);
+            AudioCueRequest low, high;
+            AudioCueTable.TryMapSiren(in strain, out low);
+            AudioCueTable.TryMapSiren(in collapse, out high);
+            if (high.Volume <= low.Volume)
+                return $"Collapse 사이렌 {high.Volume:0.###} ≤ Strain {low.Volume:0.###}";
+
             return null;
         }
 
