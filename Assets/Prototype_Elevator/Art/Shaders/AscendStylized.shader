@@ -20,7 +20,8 @@ Shader "Ascend/Stylized"
         _ShadowTint     ("그림자 색조 (회녹색)", Color) = (0.20, 0.26, 0.24, 1)
         _Steps          ("명암 계단 수", Range(2, 8)) = 3
         _FalloffPower   ("감쇠 가파름", Range(1, 6)) = 2.5
-        _AmbientFloor   ("주변광 바닥", Range(0, 0.6)) = 0.18
+        _AmbientFloor   ("주변광 바닥", Range(0, 0.6)) = 0.35
+        _ShadowLift     ("그림자에 남는 기본색 비율", Range(0, 1)) = 0.55
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
 
         // **이 프로퍼티가 없으면 이 셰이더는 어디에도 채택할 수 없다.**
@@ -63,6 +64,7 @@ Shader "Ascend/Stylized"
                 float  _Steps;
                 float  _FalloffPower;
                 float  _AmbientFloor;
+                float  _ShadowLift;
                 float  _RimStrength;
                 float4 _EmissionColor;
             CBUFFER_END
@@ -130,7 +132,12 @@ Shader "Ascend/Stylized"
 
                 // 그림자 쪽을 회녹색으로 민다 — 검정으로 떨어뜨리면 「어두울 뿐」이 되고
                 // 락이 요구한 「차가운 회녹색 그림자」가 안 나온다.
-                float3 shadowed = _ShadowTint.rgb * _BaseColor.rgb;
+                //
+                // **곱하지 않는다.** 첫 판본은 `_ShadowTint * _BaseColor` 였고,
+                // 그래서 어두운 기본색(무쇠 0.16)이 그늘에서 거의 0 이 됐다.
+                // 심볼 3종에 채택했다가 「거의 검은 덩어리」가 되어 되돌렸다.
+                // 기본색을 일정 비율 남기고 색조를 **더한다** — 어두운 재질도 형태가 남는다.
+                float3 shadowed = _BaseColor.rgb * _ShadowLift + _ShadowTint.rgb * 0.35;
                 float3 color = lerp(shadowed, lit, saturate(lambert + _AmbientFloor));
 
                 // 실루엣을 살짝 세운다. 「큰 실루엣」이 락의 첫 항목이고,
