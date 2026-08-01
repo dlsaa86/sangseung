@@ -10,6 +10,11 @@ docs/                              AI 개발 동결 명세
   VISUAL_SPEC.md                   비주얼 방향과 평가 기준
   DECISION_LOG.md                  확정 결정과 변경 이력
   ASSUMPTION_LOG.md                임시 기본값과 교체 위치
+  TOPDOWN_MASTER_BACKLOG.md        탑다운 단일 작업 목록 (Required/Deferred/승인 대기)
+  runtime/TOPDOWN_PROGRESS.md      현재 패스·다음 항목·차단 사항
+  runtime/PENDING_DECISIONS.md     사용자 결정이 필요한 항목과 기본 프리셋
+  runtime/VISUAL_VERDICT.md        독립 시각 평가 판정 (구현자가 쓰지 않는다)
+tools/verify-topdown.ps1           탑다운 완료 검증기 (Stop hook이 실행)
 Assets/Prototype_Elevator/
   Scenes/Prototype_Elevator.unity   유일한 작업 씬
   Scripts/{Core,Data,Effects,Roulette,UI}
@@ -51,6 +56,80 @@ Notion의 내용이 다르다고 판단되면 임의로 구현 기준을 바꾸�
 3. 작업 순서와 검증 계획을 `docs/runtime/ImplementationPlan.md`에 기록한다.
 4. 불명확하지만 작업을 막지 않는 판단은 `docs/ASSUMPTION_LOG.md`에 기록한다.
 5. `CURRENT_PHASE.md`의 Gate를 순서대로 통과한다.
+
+---
+
+# 탑다운 자율 실행 규칙
+
+장시간 자율 개발은 `docs/TOPDOWN_MASTER_BACKLOG.md`의 **네 패스**를 순서대로 통과한다.
+이 규칙들은 취향이 아니라 이 프로젝트가 실제로 겪은 실패에서 나왔다.
+
+## 1. Pass 1·2가 끝나기 전에는 한 장면이나 기능을 두 번 이상 연속 미세 개선하지 않는다
+
+전체 Coverage 이전의 폴리싱은 **아직 존재하지도 않는 것과 비교되지 않은 개선**이다.
+같은 대상을 연속으로 두 번 손봤다면 멈추고 백로그의 다음 미구현 항목으로 간다.
+
+## 2. 비주얼 평가 실패는 기록하고 다음 미구현 필수 범위로 이동한다
+
+REJECT는 작업 종료 사유가 아니다. 지적을 백로그 §5 「수정 백로그」로 옮기고 계속한다.
+**같은 층위에서 세 번 실패한 항목은 네 번째를 시도하지 않는다** — 필요한 것은 노력이
+아니라 구조 변경이나 배치 결정이다 (`visual-verify` §6).
+
+## 3. 전체 Coverage 이전에는 정밀 폴리싱보다 누락 시스템 구현을 우선한다
+
+Pass 1의 차단 조건은 셋뿐이다 — 컴파일 오류, 데이터 손상, 진행 불가.
+최종 모델링·최종 재질·정밀 밸런스·시각 평가 실패는 Pass 1을 막지 않는다.
+
+## 4. 컴파일을 깨뜨린 상태로 다음 기능으로 이동하지 않는다
+
+asmdef이 없어 스크립트 하나가 전체를 막는다. 깨진 채로 쌓으면 원인 분리가 불가능해진다.
+
+## 5. 되돌릴 수 있는 결정은 질문하지 않고 기본값으로 진행한다
+
+안전한 기본값을 고르고 `docs/ASSUMPTION_LOG.md`에 기록한다.
+되돌리기 **어려운** 것만 `docs/runtime/PENDING_DECISIONS.md`로 올리고,
+그 항목 때문에도 작업을 멈추지 않는다 — 교체 가능한 프리셋으로 진행한다.
+
+## 6. 구현자는 자신의 작업을 VERIFIED로 최종 승인하지 않는다
+
+`CONNECTED → VERIFIED`는 독립 검증을 거쳐야 한다. 시각 항목은
+`docs/runtime/VISUAL_VERDICT.md`의 ACCEPT, 로직 항목은 독립 감사자.
+승격 규칙 전문은 백로그 §0.4에 있다.
+
+## 7. 20~30분 단위의 복구 가능한 마일스톤마다 저장 → 테스트 → 진행 로그 → 로컬 커밋
+
+순서를 지킨다. 커밋 전에 `docs/runtime/TOPDOWN_PROGRESS.md`를 갱신한다 —
+갱신하지 않은 커밋은 진행 기록이 없는 커밋이다.
+커밋 게이트(`commit-gate.sh`)가 자체 검증 없는 커밋을 막는다.
+
+## 8. 원격 push, PR 생성, main 병합은 금지한다
+
+사용자가 명시적으로 요청할 때만 수행한다. 자율 실행 중에는 로컬 커밋까지다.
+
+## 완료 판정
+
+**완료는 선언이 아니라 `tools/verify-topdown.ps1`의 exit code 0이다.**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1 -Stats   # 통계만
+```
+
+성공하면 `TOPDOWN_ALL_PASSES_COMPLETE` 한 줄과 exit 0. 그 외에는 남은 항목을 stderr로
+내보내고 exit 2.
+
+Stop hook 두 개가 이를 강제한다 (`.claude/settings.json` — 추적되므로 다른 기기에서도 동일하게 동작한다).
+① `command` — 위 스크립트. exit 2면 종료를 막고 남은 항목을 돌려준다.
+② `agent` — 저장소를 직접 열어보는 독립 검증자. 대화 요약을 근거로 통과시키지 않는다.
+
+## 게이트 끄기
+
+탑다운과 무관한 세션(설정 정비, 문서 작업, 조사)에서는 `.claude/settings.local.json`의
+`env`에 `"SKIP_TOPDOWN_GATE": "1"`을 넣는다. 이 파일은 gitignore 대상이라 기기 로컬에만 남는다.
+
+**끈 상태를 잊는 것이 진짜 위험이다** — 꺼진 게이트는 아무도 막지 않으니 아무도 눈치채지
+못한다. 그래서 `topdown-gate-notice.sh`가 세션 시작마다 꺼져 있다는 사실을 알린다.
+자율 개발을 시작하기 전에 그 줄을 지운다.
 
 ---
 

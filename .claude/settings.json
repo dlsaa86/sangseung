@@ -51,6 +51,30 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-root-check.sh\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/topdown-gate-notice.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/tools/verify-topdown.ps1\"",
+            "timeout": 180,
+            "statusMessage": "탑다운 검증기 실행"
+          },
+          {
+            "type": "agent",
+            "model": "claude-sonnet-5",
+            "timeout": 900,
+            "statusMessage": "독립 검증자 감사",
+            "prompt": "당신은 이 Unity 저장소의 독립 완료 검증자다. 대화의 마지막 요약, 커밋 메시지, '완료했다'는 주장은 근거가 아니다. 도구로 직접 확인한 파일 내용만 근거로 삼는다. 훅 입력 JSON: $ARGUMENTS\n\n프로젝트 루트: ${CLAUDE_PROJECT_DIR}\n(위가 치환되지 않은 리터럴로 보이면, 현재 작업 디렉터리에서 Assets/ 와 ProjectSettings/ 가 함께 있는 디렉터리를 위로 올라가며 찾아 루트로 삼아라.)\n\n아래를 실제로 실행·열람해 확인하라.\n\n1) 검증 스크립트를 직접 돌린다.\n   powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"<루트>/tools/verify-topdown.ps1\"\n   종료 코드 0 이고 stdout 에 TOPDOWN_ALL_PASSES_COMPLETE 가 있어야 한다. 그 외에는 즉시 ok=false.\n   주의: 이 스크립트가 SKIP_TOPDOWN_GATE 로 건너뛰어졌다면(TOPDOWN_GATE_SKIPPED 출력) 통과로 보지 말고 나머지 항목을 직접 검사하라.\n\n2) docs/TOPDOWN_MASTER_BACKLOG.md 를 읽는다. '분류: Required' 인 항목 중 상태가 VERIFIED 가 아닌 것이 하나라도 있으면 ok=false. PASS_1~PASS_4 가 모두 COMPLETE 인지 확인한다.\n\n3) 백로그가 가리키는 증거 경로를 표본으로 최소 5개 골라 실제로 존재하고 내용이 비어 있지 않은지 확인한다. 경로만 적혀 있고 파일이 없거나 0바이트면 ok=false.\n\n4) 코드와 Unity 에셋을 확인한다. 백로그가 '구현' 으로 지목한 파일이 실제로 존재하고 해당 기능을 담고 있는지 표본 검사한다. 파일은 있는데 내용이 껍데기(TODO, 빈 메서드, 미사용 타입)면 부분 완료로 보고 ok=false.\n\n5) 테스트 결과를 읽는다. Logs/editmode_tests.txt 의 마지막 '합계:' 줄이 0 FAIL 인가. Logs/tenfloor_playmode.txt 의 마지막 '결과:' 줄이 0 FAIL / 콘솔오류 0 인가. 두 파일이 최신 소스보다 오래됐으면 오래된 증거이므로 ok=false.\n\n6) Windows 빌드를 확인한다. Logs/build_report.txt 가 result: Succeeded 이고 totalErrors: 0 이며 outputPath 의 실행 파일이 실제로 존재하는가.\n\n7) 10층 런 증거를 확인한다. Logs/tenfloor_playmode.txt 에 '10층 완주가 최소 3회', '방문 층이 연속이다', '서로 다른 완주 시드가 최소 3개' 가 PASS 로 있는가.\n\n8) 캡처와 시각 평가를 확인한다. Captures/TenFloor/manifest.txt 가 있고 PNG 가 9장 이상인가. docs/runtime/VISUAL_VERDICT.md 의 마지막 VERDICT 줄이 정확히 ACCEPT 인가. REJECT 나 PENDING 이면 ok=false. ACCEPT 라도 그 파일이 manifest.txt 보다 오래됐으면 옛 판정을 재사용한 것이므로 ok=false.\n\n9) 진행 문서를 확인한다. docs/runtime/TOPDOWN_PROGRESS.md 가 현재 패스와 마지막 정상 커밋을 기록하고 있으며, 그 커밋이 git 에 실제로 존재하는가.\n\n10) git 상태를 확인한다. git status --porcelain 이 비어 있는가. 브랜치가 main/master 가 아닌가. 미커밋 변경이 있으면 증거가 커밋에 대응하지 않으므로 ok=false.\n\n판정 규칙:\n- 위 10개가 전부 만족될 때만 ok=true 를 반환한다.\n- 하나라도 미완료·부분 완료·REJECT·증거 누락이면 ok=false 를 반환하고, reason 에 (a) 무엇이 왜 실패했는지, (b) 다음에 해야 할 구체적 작업 1~3개를 백로그 ID(UP-XXX-NN)로 지목해 적는다.\n- 사용자만 해결할 수 있는 외부 차단(승인 대기, 라이선스, 하드웨어)만 남았다면 ok=false 와 함께 impossible=true 로 표시하고 무엇을 사용자에게 물어야 하는지 적는다.\n- 확인하지 못한 항목을 통과로 처리하지 않는다. 읽지 못했으면 그 사실을 reason 에 적고 ok=false 로 한다."
           }
         ]
       }
