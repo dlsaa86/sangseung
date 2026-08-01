@@ -172,6 +172,7 @@ namespace Ascend.Prototype.Run.Tests
             yield return Shot("02_device_front", DeviceFront, risk,
                 "수확 장치 정면 — 세 통관과 3×3 대응 / 열마다 한 종류(영혼·흡수체·증식체)");
             yield return Shot("03_device_side", DeviceSide, risk, "1인칭 조작 거리에서 본 장치");
+            yield return AimPromptScreenShot();
             yield return Shot("04_symbols", SymbolClose, risk,
                 "세 심볼 비교 — 왼쪽 열 정상 영혼 / 가운데 흡수체 / 오른쪽 증식체");
 
@@ -549,6 +550,16 @@ namespace Ascend.Prototype.Run.Tests
                             $"시드 {seed} / 8층 / 사선 결속기+연쇄 조속기+증식체 계약 / " +
                             $"연쇄 {depth}단계 중 {step + 1}단계 진입 시점의 판 / " +
                             $"이 단계의 정화 {purifies}건이 표식으로 서 있다");
+
+                        // **`UP-CORE-13` 은 HUD 가 증거의 대상이다.** 「한 화면에 모든 숫자를
+                        // 띄우지 않는다」를 판정하려면 그 화면에 숫자가 보여야 하는데,
+                        // 위 샷은 전용 카메라의 RenderTexture 렌더라 `ScreenSpaceOverlay`
+                        // 캔버스가 통째로 빠진다. 같은 순간을 화면 캡처로 한 장 더 찍는다 —
+                        // **판정 불가능한 증거를 걸어 두는 것이 미충족보다 나쁘다.**
+                        yield return ScreenShot("19_cascade_deep_screen",
+                            $"15번과 같은 순간의 **화면 캡처** — 연쇄 {depth}단계 / " +
+                            "HUD 를 포함한다. `UP-CORE-13`(한 화면에 모든 숫자를 띄우지 않는다)은 " +
+                            "이 장으로 판정한다. 해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
                         yield break;
                     }
                     yield return WaitWhileLocked(bridge);
@@ -768,6 +779,75 @@ namespace Ascend.Prototype.Run.Tests
         /// 게임 뷰를 그대로 찍는다. 화면 UI(사고 기록기·HUD)가 포함되는 유일한 경로다.
         /// 전용 카메라 렌더와 달리 해상도가 에디터 창에 종속되므로 비교용이 아니다.
         /// </summary>
+        /// <summary>
+        /// **`UP-SPACE-03` 은 조준 프롬프트가 증거의 대상이다.** 하이라이트도 프롬프트도
+        /// `ScreenSpaceOverlay` 라 전용 카메라 렌더에는 들어가지 않고, 무엇보다
+        /// **플레이어가 실제로 겨눠야** 나타난다 — 리그 카메라를 어디에 두든 소용없다.
+        ///
+        /// 그래서 플레이어를 레버 앞에 세워 겨누게 하고, `CrosshairInteractor` 가 실제로
+        /// 대상을 잡았는지 확인한 뒤 화면 캡처를 찍는다. 못 잡았으면 **그 사실을
+        /// 매니페스트에 적는다** — 프롬프트가 없는 그림에 「프롬프트가 보인다」라고
+        /// 적어 두는 것이 미충족보다 나쁘다.
+        /// </summary>
+        private IEnumerator AimPromptScreenShot()
+        {
+            var player = FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>();
+            var interactor = FindAnyObjectByType<Ascend.Prototype.Player.CrosshairInteractor>();
+            var lever = FindAnyObjectByType<Ascend.Prototype.Player.InteractableLever>();
+
+            if (player == null || interactor == null || lever == null)
+            {
+                _manifest.AppendLine($"{"20_aim_prompt_screen",-26} 건너뜀 — " +
+                    $"플레이어={player != null} 조준기={interactor != null} 레버={lever != null}");
+                yield break;
+            }
+
+            Transform root = player.transform;
+            Vector3 leverPoint = lever.transform.position;
+
+            // 레버에서 한 걸음 물러난 자리에 세우고 레버를 본다. 높이는 건드리지 않는다 —
+            // 눈높이는 계층이 소유하고, 여기서 다시 계산하면 그 소유권이 둘로 갈린다.
+            Vector3 back = root.position - leverPoint;
+            back.y = 0f;
+            if (back.sqrMagnitude < 0.01f) back = -lever.transform.forward;
+            Vector3 stand = leverPoint + back.normalized * 0.9f;
+            stand.y = root.position.y;
+
+            Vector3 savedPosition = root.position;
+            Quaternion savedRotation = root.rotation;
+            var controller = root.GetComponent<CharacterController>();
+            bool hadController = controller != null && controller.enabled;
+            if (hadController) controller.enabled = false;   // 텔레포트를 콜라이더가 막는다
+
+            root.position = stand;
+            Vector3 toLever = leverPoint - (player.ViewCamera != null
+                ? player.ViewCamera.transform.position : stand);
+            toLever.y = 0f;
+            if (toLever.sqrMagnitude > 0.0001f) root.rotation = Quaternion.LookRotation(toLever);
+
+            if (player.ViewCamera != null)
+            {
+                Vector3 eye = player.ViewCamera.transform.position;
+                player.ViewCamera.transform.rotation = Quaternion.LookRotation(leverPoint - eye);
+            }
+
+            yield return WaitFrames(4);   // 조준기의 Update 가 레이캐스트할 시간
+
+            bool aimed = interactor.CurrentInteractable != null;
+            string target = aimed ? interactor.CurrentInteractable.Prompt : "(없음)";
+            yield return ScreenShot("20_aim_prompt_screen",
+                $"**화면 캡처** — 플레이어를 레버 앞 0.9m 에 세워 겨눈 상태. " +
+                $"조준 대상 {(aimed ? "있음" : "**없음**")} / 프롬프트 「{target}」. " +
+                "`UP-SPACE-03`(조준 하이라이트와 행동 프롬프트)은 이 장으로 판정한다 — " +
+                "전용 카메라 렌더에는 ScreenSpaceOverlay 가 들어가지 않는다. " +
+                "해상도가 게임 뷰에 종속되므로 고정 비교 세트가 아니다");
+
+            root.position = savedPosition;
+            root.rotation = savedRotation;
+            if (hadController) controller.enabled = true;
+            yield return WaitFrames(2);
+        }
+
         private IEnumerator ScreenShot(string name, string note)
         {
             yield return new WaitForEndOfFrame();

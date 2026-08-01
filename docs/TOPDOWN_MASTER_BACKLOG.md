@@ -292,10 +292,10 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P1 P2 P3
 - 구현: `Scripts/Player/CrosshairView.cs`
 - 접근: 조준점을 상호작용물에 올린다
-- 검증: 고정 캡처 `03_device_side`
-- 증거: `Captures/TenFloor/03_device_side.png`
+- 검증: 고정 캡처 `20_aim_prompt_screen` — 조준 대상 획득 여부와 프롬프트 문구를 매니페스트에 함께 적는다
+- 증거: `Captures/TenFloor/20_aim_prompt_screen.png`
 - 의존: UP-SPACE-02
-- 남은 문제: 외곽선 셰이더가 아니라 크로스헤어 상태 변화로만 표현. PRD §12.3의 "둘 이상" 기준 재검토 필요
+- 남은 문제: **판정 가능한 증거가 처음 생겼다.** 하이라이트도 프롬프트도 `ScreenSpaceOverlay` 라 전용 카메라 렌더에는 안 들어가고, 무엇보다 **플레이어가 실제로 겨눠야** 나타난다 — 리그 카메라를 어디에 두든 소용없었다. 이제 플레이어를 레버 앞 0.9m 에 세워 겨누게 하고 `CrosshairInteractor.CurrentInteractable` 로 실제 획득을 확인한 뒤 화면 캡처를 찍는다. 실측: 조준 대상 **있음** · 프롬프트 「실행 레버 — 스핀 5회 남음」. 화면에 레버 하이라이트(녹색)·조준점·하단 프롬프트 「실행 레버를 당긴다」가 함께 보인다. **해상도가 게임 뷰 종속(816×714)이라 고정 비교 세트가 아니다**
 
 ### UP-SPACE-04 — 좁고 높은 산업용 화물 엘리베이터 내부
 - 분류: Required · 출처: PRD §4.1, §12.2, N06 §8 「엘리베이터 설계 고정 조건」
@@ -586,10 +586,10 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 - 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/UI/GameHudView.cs`, `Scripts/View/SpinPresenter.cs`
 - 접근: 깊은 캐스케이드 중 화면을 본다
-- 검증: 고정 캡처 `15_cascade_deep`
-- 증거: `Captures/TenFloor/15_cascade_deep.png`
+- 검증: 고정 캡처 `19_cascade_deep_screen` — 15번과 같은 순간의 화면 캡처
+- 증거: `Captures/TenFloor/19_cascade_deep_screen.png`
 - 의존: UP-CORE-12
-- 남은 문제: 없음
+- 남은 문제: **판정 가능한 증거가 처음 생겼다** — 이전 증거 `15_cascade_deep.png` 는 전용 카메라 렌더라 HUD 가 통째로 빠져 있었고, 그 그림으로는 「한 화면에 모든 숫자를 띄우지 않는다」를 판정할 수 없었다. **그리고 그 그림이 바로 결함을 드러냈다**: HUD 텍스트가 화면 오른쪽 끝에서 잘린다(「전력 8149 / 과…」·「스핀 2/5 판돈…」·「흡수체 1개 → 저…」). 숫자를 **적게** 띄우는 것과 띄운 숫자가 **잘리는** 것은 다른 문제다 → `UP-FIX-07`
 
 ### UP-CORE-14 — 가중치 합이 0이면 명시적 오류
 - 분류: Required · 출처: N08 §7.2 마지막 문장, PRD §13.5(조용한 실패 금지)
@@ -1594,6 +1594,7 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 | UP-FIX-04 | 좌측 벽 라벨이 거울상으로 렌더된다 | UP-DEVICE-07 | 열림 |
 | UP-FIX-05 | Critical과 Collapse가 캡처에서 구분되지 않는다 | UP-RISK-03, UP-RISK-06 | 열림 |
 | UP-FIX-06 | 17번 캡처만 해상도·방식이 다르다 | UP-REC-05 | 열림 |
+| UP-FIX-07 | HUD 텍스트가 화면 오른쪽 끝에서 잘린다 | UP-CORE-13, UP-VIS-09 | 열림 |
 
 **UP-FIX-02는 3회 반복에 실패했다.** `visual-verify` §6의 반복 상한 규칙에 따라 같은
 층위에서 네 번째를 시도하지 않는다. 필요한 것은 미세 조정이 아니라 **배치 결정**이다 —
