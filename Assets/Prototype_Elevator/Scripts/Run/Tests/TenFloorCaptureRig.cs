@@ -969,7 +969,47 @@ namespace Ascend.Prototype.Run.Tests
                 "15·19 는 `run.Spin()` 을 직접 불러 `SpinPresenter` 를 거치지 않으므로 " +
                 "연출 중 HUD 를 담을 수 없다 — 그 두 장을 이 요구의 증거로 쓰지 말 것. " +
                 "이 장은 레버를 실제로 당겨 찍었다");
-            if (risk != null) { /* 상태 유지 — 위험 뷰는 캡처에 영향을 주지 않는다 */ }
+
+            // ── `UP-SPACE-09` — 등을 돌려도 결과와 전력 변화를 알 수 있는가 ──
+            //
+            // 같은 잠금 구간 안에서 찍는다. 런을 다시 돌리면 다른 스핀이 되어
+            // 「같은 순간을 앞뒤로 본 것」이 아니게 된다 — 그러면 대조가 성립하지 않는다.
+            //
+            // 요구가 지정한 채널은 셋이다(PRD §11 · N03): **사운드 · 점등 · 보조 UI.**
+            // 그중 정지 화면이 담을 수 있는 것은 점등과 보조 UI 둘이고, 사운드는
+            // 그림으로 판정할 수 없다 — 그 한계를 매니페스트에 적는다.
+            var player = FindAnyObjectByType<Ascend.Prototype.Player.FirstPersonController>();
+            if (player != null)
+            {
+                Transform root = player.transform;
+                Quaternion saved = root.rotation;
+                Vector3 toLever = lever.transform.position - root.position;
+                toLever.y = 0f;
+                if (toLever.sqrMagnitude > 0.0001f)
+                {
+                    // 레버를 등진다 — 장치가 화각에서 빠지도록 정확히 반대를 본다.
+                    root.rotation = Quaternion.LookRotation(-toLever.normalized, Vector3.up);
+                }
+                yield return WaitFrames(2);
+
+                bool lockedWhenTurned = bridge.IsLocked;
+                yield return ScreenShot("23_back_turned_screen",
+                    $"**장치를 등지고** 선 채의 화면 캡처 (촬영 순간 잠금 {lockedWhenTurned}) — " +
+                    "22 와 **같은 스핀·같은 잠금 구간**이고 시점만 180° 돌렸다. " +
+                    "`UP-SPACE-09`(등을 돌려도 결과와 전력 변화를 알 수 있다)는 이 장으로 판정한다. " +
+                    "요구 채널 셋 중 **사운드는 정지 화면으로 판정할 수 없다** — " +
+                    "이 장이 답할 수 있는 것은 점등과 보조 UI 둘뿐이다. " +
+                    "판정 질문: 결과판이 화각에서 빠진 상태에서 **전력·스핀·연쇄 단계가 읽히는가**, " +
+                    "그리고 위험 단계가 조명만으로 구분되는가");
+
+                root.rotation = saved;
+                yield return WaitFrames(1);
+            }
+            else
+            {
+                _manifest.AppendLine($"{"23_back_turned_screen",-26} **찍지 못했다** — " +
+                                     "FirstPersonController 를 찾지 못했다");
+            }
         }
 
         private IEnumerator ScreenShot(string name, string note)
