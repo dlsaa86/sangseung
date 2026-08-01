@@ -31,6 +31,20 @@ namespace Ascend.CaptureHarness.EditorTools
         /// <summary>벽·바닥·천장. 가장 넓은 면이라 플랫 셰이딩이 가장 크게 드러난다.</summary>
         private static readonly string[] WallPrefixes = { "CarShell_" };
 
+        /// <summary>
+        /// **한 장만.** 11차에서 13장을 한꺼번에 켰다가 위험 채널을 잃고 되돌렸다.
+        /// 셰이더를 고친 뒤의 첫 확인은 가장 작은 단위여야 한다 — 나빠져도 한 장이고,
+        /// 좋아져도 그것이 이 셰이더의 공인지 아닌지가 다른 12장에 섞이지 않는다.
+        /// 좌벽을 고른 이유는 독립 평가자가 휘도를 재는 스트립이 거기이기 때문이다.
+        /// </summary>
+        private static readonly string[] OneWallPrefixes = { "CarShell_WallL" };
+
+        [MenuItem("Ascend/Adopt Stylized — 좌벽 한 장만")]
+        private static void AdoptOneWall() => Run(OneWallPrefixes, toStylized: true);
+
+        [MenuItem("Ascend/Adopt Stylized — 되돌리기 (좌벽 한 장)")]
+        private static void RevertOneWall() => Run(OneWallPrefixes, toStylized: false);
+
         [MenuItem("Ascend/Adopt Stylized — 벽·바닥·천장")]
         private static void AdoptWalls() => Run(WallPrefixes, toStylized: true);
 

@@ -19,3 +19,28 @@ MonoBehaviour:
   _overdrawBudget: 3
   _postProcessing: 1
   _renderScale: 1
+  _textureImportRules:
+  - Category: 0
+    MaxSize: 2048
+    Compression: 2
+    GenerateMipmaps: 0
+    AlphaIsTransparency: 1
+    SRgb: 1
+  - Category: 1
+    MaxSize: 1024
+    Compression: 2
+    GenerateMipmaps: 1
+    AlphaIsTransparency: 0
+    SRgb: 1
+  - Category: 2
+    MaxSize: 1024
+    Compression: 3
+    GenerateMipmaps: 1
+    AlphaIsTransparency: 0
+    SRgb: 0
+  - Category: 3
+    MaxSize: 512
+    Compression: 1
+    GenerateMipmaps: 1
+    AlphaIsTransparency: 1
+    SRgb: 1

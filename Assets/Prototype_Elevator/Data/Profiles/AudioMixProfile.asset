@@ -32,3 +32,19 @@ MonoBehaviour:
   - 1
   - 1
   - 1
+  _audioImportRules:
+  - Class: 0
+    LoadType: 0
+    Compression: 1
+    Quality: 1
+    ForceToMono: 1
+  - Class: 1
+    LoadType: 1
+    Compression: 2
+    Quality: 0.5
+    ForceToMono: 0
+  - Class: 2
+    LoadType: 2
+    Compression: 2
+    Quality: 0.7
+    ForceToMono: 1

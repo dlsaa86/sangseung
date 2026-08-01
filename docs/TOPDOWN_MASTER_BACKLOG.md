@@ -294,13 +294,31 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-PLAT-05 — 압축·임포트 Preset과 VisualQualityProfile
 - 분류: Required · 출처: PRD §13.3, §13.4, §17.4
-- 상태: SKELETON · 패스: P3
+- 상태: CONNECTED · 패스: P3
 - 구현: `Scripts/Data/Profiles/VisualQualityProfile.cs`(광원 수·그림자 거리·파티클 상한·오버드로우 예산·렌더 스케일)
 - 접근: 해당 없음
 - 검증: `Ascend/Run All EditMode Tests` → 프리셋 값 대조
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-PLAT-03
 - 남은 문제: **임포트 규칙이 생겼다 (2026-08-02). 「0건」은 더 이상 사실이 아니다.** `.preset` 파일을 만들지 **않았다** — 직렬화 에셋이라 이 저장소에서 조용히 깨지는 부류다. 대신 `Assets/Editor/AscendImportRules.cs`(`AssetPostprocessor`)가 경로로 카테고리를 판정하고 규칙 값을 `VisualQualityProfile._textureImportRules`·`AudioMixProfile._audioImportRules` 에서 **읽는다**(하드코딩 아님). 오디오 세 갈래가 **서로 다른 값**을 갖는다 — ShortEffect `DecompressOnLoad`/ADPCM/1.00/모노강제 · Loop `CompressedInMemory`/Vorbis/0.50 · Voice `Streaming`/Vorbis/0.70. 이름만 셋이고 값이 같아지는 회귀는 「세 갈래의 적재·압축이 서로 다르다」가 잡고, PRD §13.4 「무압축 원본을 런타임에 직접 쓰지 않는다」는 「PCM 이 어느 갈래의 기본값도 아니다」가 단정한다. **그래도 CONNECTED 로 올리지 않는다** — 관할 루트 아래 **텍스처 0개·오디오 0개**라 `OnPreprocessTexture`/`OnPreprocessAudio` 가 **한 번도 실행된 적이 없다.** 「규칙이 있다」와 「적용됐다」는 다르고, 그 구분을 흐리는 것이 이 저장소가 반복해서 당한 실패다. `Ascend/Report Import Rules` 가 `Logs/import_rules.txt` 에 **대상 개수를 함께** 적어 이 구분을 강제한다. **남은 것 둘**: ① 실제 텍스처·오디오 에셋이 들어오면 그때 적용이 관측된다 ② 빌드 리포트의 상위 용량 기록(PRD §13.4 마지막)은 미착수. **그리고 감사가 찾은 결함**: `VisualQualityProfile` High 의 `_shadowDistance: 30` 이 `PC_RPAsset.asset:57` 의 `m_ShadowDistance: 50` 과 **어긋난다** — 성능 리포트가 거짓 조건을 인용한다(§5.1 `UP-VIS-11`)
+- **SKELETON → CONNECTED 근거 (2026-08-02 08:5x).** 위의 「남은 것 둘」 중 ①이 관측됐고,
+  더불어 값의 **출처**가 폴백에서 에셋으로 넘어갔다. 둘 다 실측이다.
+  - **규칙이 실제로 걸렸다.** `Art/Textures/` 에 텍스처 4장이 생겼고, 임포트된 값이
+    `maxSize=1024 · mipmap 켬 · alphaIsTransparency 끔 · sRGB 켬` 이다.
+    `maxSize` 가 **Unity 기본값 2048 이 아니라 1024** 라는 것이 판별자다 —
+    `OnPreprocessTexture` 가 이 저장소 역사상 처음으로 실행됐다는 뜻이고,
+    기본값과 우연히 같아서 통과하는 종류의 거짓 초록이 아니다.
+    관할 아래 텍스처 **0개 → 6개**.
+  - **출처가 폴백이 아니다.** `Logs/import_rules.txt` 가
+    「텍스처 규칙 출처: **코드 프리셋** ← 에셋에 값이 없다」에서
+    「텍스처 규칙 출처: **VisualQualityProfile**」로 바뀌었다.
+    오디오도 「코드 프리셋」 → 「**AudioMixProfile**」.
+    `VisualQualityProfile.Reset()` 이 `TextureImportRuleSet.Presets()` 를 에셋에 굳히는
+    문서화된 경로이고, 그것을 Editor API 로 호출했다. 값은 그대로이므로 동작은 안 바뀌고
+    **출처만** 바뀐다 — 이 항목이 요구한 것이 정확히 그 구분이다.
+- 남은 것 (VERIFIED 를 막는다): ① 오디오 클립이 **아직 0개**라 `OnPreprocessAudio` 는
+  여전히 미실행이다 ② 빌드 리포트의 상위 용량 기록 미착수
+  ③ `UP-VIS-11`(그림자 거리 30 vs 50 불일치) 미해결
 
 ### UP-PLAT-06 — 결정론적 캡처 하네스
 - 분류: Required · 출처: PRD §15.1 「동일한 해상도·FOV·카메라 위치·시간대·품질 프리셋」
