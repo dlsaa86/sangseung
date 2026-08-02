@@ -43,6 +43,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("셰이크 0 배율이 실제로 0을 돌려준다", TestShakeScaleZero, ref passed, ref failed, report);
             Run("섬광 금지와 빈도 상한이 적용된다", TestFlickerLimits, ref passed, ref failed, report);
             Run("사이렌을 끄면 시각·피치 보상이 붙는다", TestSirenOffCompensation, ref passed, ref failed, report);
+            Run("사이렌을 끄면 볼륨이 실제로 0이 된다", TestSirenMuteIsReal, ref passed, ref failed, report);
             Run("자막을 끄면 자막 문안이 비워진다", TestSubtitleGate, ref passed, ref failed, report);
             Run("과수확 자기모순이 검출된다", TestOverharvestValidate, ref passed, ref failed, report);
             Run("런 요약이 정확히 9줄이다", TestSummaryNineLines, ref passed, ref failed, report);
@@ -398,6 +399,40 @@ namespace Ascend.Prototype.Data.Profiles.Tests
         /// "청각 채널을 지운 만큼 다른 채널이 커졌는가"다 — 접근성 옵션이 정보를
         /// 지우면 안 된다는 것이 `UP-RISK-08` 의 요구다(PRD §9).
         /// </summary>
+        /// <summary>
+        /// **보상이 붙는 것과 실제로 꺼지는 것은 다른 사실이다** (`UP-RISK-08`).
+        ///
+        /// 바로 위 검사는 「사이렌을 끄면 시각·피치 보상이 붙는다」만 본다. 그것만으로는
+        /// 사이렌이 **여전히 울리면서** 경고등까지 밝아지는 상태를 통과시킨다 — 접근성
+        /// 요구는 정확히 그 반대다.
+        ///
+        /// 백로그는 오랫동안 「사이렌은 미구현 — `AllowSiren`·`SirenVolume` 의 런타임
+        /// 소비처가 0곳」이라고 적고 있었다. 실측은 다르다: `AudioDirector.TryPlaySiren`
+        /// 이 `SirenVolume(req.Volume)` 을 통과시키고 **0이면 재생 전에 멈춘다**.
+        /// 그 경로가 살아 있다는 것을 값 층위에서 고정한다.
+        /// </summary>
+        private static string TestSirenMuteIsReal()
+        {
+            AccessibilitySnapshot on = AccessibilityProfile.DefaultSnapshot;
+            if (!Near(on.SirenVolume(0.8f), 0.8f))
+                return $"사이렌이 켜져 있는데 볼륨이 {on.SirenVolume(0.8f)} 로 바뀌었다";
+
+            // 여섯째 인자가 AllowSiren 이다(위 보상 검사와 같은 배치).
+            var off = new AccessibilitySnapshot(1f, 1f, true, 3f, 1f, false, 1f, true);
+            if (off.SirenVolume(0.8f) > 0f)
+                return $"사이렌을 껐는데 볼륨이 {off.SirenVolume(0.8f)} 다 — "
+                     + "AudioDirector.TryPlaySiren 은 0보다 크면 그대로 재생한다";
+            if (off.SirenVolume(0f) != 0f)
+                return "0 볼륨이 0이 아닌 값으로 나왔다";
+
+            // 껐을 때 보상이 함께 붙어야 「끄면 경고를 잃는다」가 아니게 된다.
+            // 둘을 한 검사에 두는 이유: 음소거만 맞고 보상이 빠지면 접근성이 아니라
+            // 그냥 기능 제거다.
+            if (off.CompensateWarningEmission(0.6f) <= 0.6f)
+                return "사이렌을 껐는데 경고등 보상이 없다 — 음소거만 하면 경고를 잃는다";
+            return null;
+        }
+
         private static string TestSirenOffCompensation()
         {
             AccessibilitySnapshot on = AccessibilityProfile.DefaultSnapshot;

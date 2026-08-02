@@ -1100,7 +1100,9 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `TenFloorAutoPilot` → 「위험 연출이 DangerFeedbackProfile 을 읽는다」
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-01
-- 남은 문제: 주입은 진짜다 — 12필드 전부 `LateUpdate` 에서 소비되고, 에셋이 없으면 「코드 프리셋」으로 찍혀 단정이 통과하지 않는다. **그러나 요구는 §8.4 의 9항목이고 프로파일에 없는 것이 넷이다** — 단계 임계값(`RiskEvaluator` 의 코드 필드), 승객 반응 레벨(다른 에셋), 파티클 밀도(`UP-VIS-05` 가 미착수라 존재 자체가 없다), 일회성 충격음(`AudioCueTable` 쪽)
+- 남은 문제: 주입은 진짜다 — 12필드 전부 `LateUpdate` 에서 소비되고, 에셋이 없으면 「코드 프리셋」으로 찍혀 단정이 통과하지 않는다. **그러나 요구는 §8.4 의 9항목이고 프로파일에 없는 것이 넷이었다** — 단계 임계값(`RiskEvaluator` 의 코드 필드), 승객 반응 레벨(다른 에셋), 파티클 밀도(`UP-VIS-05` 가 미착수라 존재 자체가 없다), 일회성 충격음(`AudioCueTable` 쪽).
+
+  **넷 중 둘이 해소됐다 (2026-08-02 실측).** ① **단계 임계값** — `UP-TECH-09` ⑦ 작업으로 `RiskThresholdProfile` 9종이 생겼고 `RiskStateView.RebuildProfiles()` 가 `RiskEvaluator.Apply()` 로 넣는다. **일부러 `DangerFeedbackProfile` 과 합치지 않았다**: ⑧은 「위험해 **보이는 방법**」이고 ⑦은 「**무엇이** 위험인가」다. 한 에셋에 두면 「연출이 약해 보인다」는 이유로 임계값을 내리는 일이 생기는데 그건 연출 조정이 아니라 난이도 변경이다. ③ **파티클 밀도** — `AmbientParticleDirector` 가 `PresentationProfile` 을 물고 `MaxParticlesFor` 로 읽는다(`UP-VIS-05` 와 무관하게 상한은 데이터에서 온다). **다만 상한만이다** — 배출률 램프·단계별 보간계수·파티클 5종의 색·크기·속도·수명은 여전히 코드다. **남은 둘**: 승객 반응 레벨(`PassengerReactionSet` 이라는 다른 에셋에 있다 — 합칠지 그대로 둘지가 먼저 정해져야 한다) · 일회성 충격음(`AudioCueTable` 의 코드 표)
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
@@ -1110,7 +1112,9 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `Ascend/Run All EditMode Tests` + 씬 배선
 - 증거: `Logs/editmode_tests.txt`, `Logs/tenfloor_playmode.txt`
 - 의존: UP-RISK-07
-- 남은 문제: **셋 중 둘만 분리됐다.** 섬광(`AllowFlickerAt`/`ClampFlickerRate`)과 흔들림(카메라 `ScaleShake` · 물체 `WorldSwayScale` 을 따로)은 `RiskStateView` 가 읽는다. **사이렌은 미구현** — `AllowSiren`·`SirenVolume` 의 런타임 소비처가 0곳이고 테스트와 에디터 배선 도구에서만 언급된다
+- 남은 문제: **셋 중 둘만 분리됐다.** 섬광(`AllowFlickerAt`/`ClampFlickerRate`)과 흔들림(카메라 `ScaleShake` · 물체 `WorldSwayScale` 을 따로)은 `RiskStateView` 가 읽는다. ~~**사이렌은 미구현** — `AllowSiren`·`SirenVolume` 의 런타임 소비처가 0곳이고 테스트와 에디터 배선 도구에서만 언급된다~~ → **낡은 기록이었다 (2026-08-02 실측 정정).** `AudioDirector.TryPlaySiren`(`:840-855`)이 `_accessibility.SirenVolume(req.Volume)` 을 통과시키고 **0이면 재생 전에 멈춘다.** `SirenVolume` 은 `AllowSiren ? volume : 0f` 이므로 끄면 사이렌이 실제로 죽는다. 사이렌 큐도 존재한다 — `AudioCueKind.Siren = 25` 에 `AudioCueTable.TryMapSiren` 이 변형 넷(위험 상승·과수확 해금·레버 결정·사고)을 가른다. `AccessibilityProfile.cs` 하단 트레일러의 「사이렌 자체의 음소거는 아직 없다 — 사이렌 큐가 없기 때문」도 같은 이유로 낡았다. **셋 축이 전부 배선돼 있다** — 섬광(`RiskStateView`) · 흔들림(`RiskStateView`, 카메라와 물체를 따로) · 사이렌(`AudioDirector`).
+
+  **그런데 증거가 없어서 아직 올리지 않는다.** 저장소에 `SirenVolume`·`AllowSiren` 을 검사하는 단정이 **0건**이었다 — 기존 「사이렌을 끄면 시각·피치 보상이 붙는다」는 보상만 보므로 **사이렌이 여전히 울리면서 경고등까지 밝아지는 상태를 통과시킨다**(접근성 요구의 정확한 반대). 단정 「사이렌을 끄면 볼륨이 실제로 0이 된다」를 붙였고 음소거와 보상을 한 검사에 뒀다(음소거만 맞고 보상이 빠지면 접근성이 아니라 기능 제거다). Tier 0 컴파일은 통과했으나 **에디터 자체 검증을 아직 못 돌렸다** — 다른 에이전트가 Unity 를 쓰고 있다. **다음에 자체 검증이 한 번 돌면 §0.4 세 다리가 채워진다**
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
