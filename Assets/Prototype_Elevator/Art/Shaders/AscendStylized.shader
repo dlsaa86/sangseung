@@ -352,10 +352,23 @@ Shader "Ascend/Stylized"
             float QuantizeShade(float value, float steps)
             {
                 #if defined(_SHADEGAMMA_ON)
+                    // 축을 편 뒤 양자화한다. **복원하지 않는다.**
+                    //
+                    // 첫 판본은 `pow(band, g)` 로 되돌렸고 그것이 이 기능을 무용지물로
+                    // 만들었다 — 실측에서 p99 가 47 → **1** 로 악화됐다. 이유는 산술이다:
+                    // 복원이 낮은 칸을 원래 자리로 되돌리므로 `band 1/3` 이
+                    // `(1/3)^3 = 0.037` 이 된다. **칸은 늘어나는데 전부 0 근처로 모인다.**
+                    // 「계단 위치만 바꾸고 밝기 범위는 지킨다」는 의도였는데, 지키려던
+                    // 그 범위가 애초에 이 문제의 원인이었다.
+                    //
+                    // 복원을 빼면 어두운 구간이 밝은 쪽으로 펴진다. 그것이 실내 점광에서
+                    // 원하는 것이다 — `distanceAttenuation` 이 역제곱이라 0.05~0.3 에
+                    // 몰려 있고, 그 구간에 **계조가 없으면 조명이 평평해 보인다.**
+                    //
+                    // `g = 1` 이면 `pow(v, 1)` 이라 `Quantize(value, steps)` 와 같다.
                     float g    = max(0.0001, _ShadeGamma);
                     float wide = PositivePow(saturate(value), rcp(g));
-                    float band = Quantize(wide, steps);
-                    return PositivePow(saturate(band), g);
+                    return Quantize(wide, steps);
                 #else
                     return Quantize(value, steps);
                 #endif

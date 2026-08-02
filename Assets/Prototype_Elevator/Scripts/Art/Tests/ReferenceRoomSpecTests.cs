@@ -256,6 +256,16 @@ namespace Ascend.Prototype.Art.Tests
             Between(ReferenceRoomSpec.SurfaceTexelsPerMeter, 128, 256, "벽·바닥 텍셀 밀도");
             AtLeast(ReferenceRoomSpec.HeroTexelsPerMeter, ReferenceRoomSpec.SurfaceTexelsPerMeter,
                     "주요 오브젝트 텍셀 밀도가 표면보다 높다");
+
+            // 「미터당 텍셀」과 「미터당 반복」의 변환이 왕복하는가.
+            // 이 저장소는 타일링 단위 혼동으로 세 번 실패했다 — 그래서 산술을 고정한다.
+            Approx(ReferenceRoomSpec.SurfaceUvPerMeter * ReferenceRoomSpec.SurfaceTextureSize,
+                   ReferenceRoomSpec.SurfaceTexelsPerMeter, "표면 반복→텍셀 왕복");
+            Approx(ReferenceRoomSpec.HeroUvPerMeter * ReferenceRoomSpec.SurfaceTextureSize,
+                   ReferenceRoomSpec.HeroTexelsPerMeter, "주요 반복→텍셀 왕복");
+
+            // 반복 수가 1 을 크게 넘으면 한 면 안에서 패턴이 여러 번 보여 이음매가 드러난다.
+            AtMost(ReferenceRoomSpec.SurfaceUvPerMeter, 1.5f, "표면 미터당 반복 수");
         }
 
         private static void TestNoSelfReportedViolations()

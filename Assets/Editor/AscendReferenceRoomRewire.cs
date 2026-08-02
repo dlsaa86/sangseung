@@ -47,6 +47,7 @@ namespace Ascend.Prototype.EditorTools
             MovePowerReadout(root);
             MoveFloorIndicator(root);
             RelocateInteractables(root);
+            WireImpact(root);
             RepointRiskLighting(root);
             ParkLegacyVisuals();
 
@@ -207,9 +208,14 @@ namespace Ascend.Prototype.EditorTools
                               ReferenceRoomSpec.WallRearZ - ReferenceRoomSpec.LeverColumnDepth - 0.05f),
                   Quaternion.Euler(0f, 180f, 0f), 0.5f, "실행 레버(InteractableLever)");
 
+            // ⚠ **후면 벽에 두지 않는다.** 첫 판본이 장치 왼쪽(freeWallX)에 뒀더니
+            // 밝은 판이 통관 장치를 정면에서 가렸다 — 명세 §2 의 시각적 우선순위 1 이
+            // 「후면의 붉게 빛나는 3×3 통관 장치」이므로 그것을 가리는 배치는 실패다.
+            // 우벽 앞쪽(선반보다 앞)으로 보내 화각 가장자리에 둔다.
             Place("GrayboxWorld/Car/ContractPanel",
-                  new Vector3(freeWallX, 1.45f, ReferenceRoomSpec.WallRearZ - 0.06f),
-                  Quaternion.Euler(0f, 180f, 0f), 1f, "계약 패널(InteractableContractPanel)");
+                  new Vector3(ReferenceRoomSpec.WallRightX - 0.06f, 1.45f,
+                              ReferenceRoomSpec.ShelfCenterZ - ReferenceRoomSpec.ShelfLength * 0.5f - 0.45f),
+                  Quaternion.Euler(0f, -90f, 0f), 0.75f, "계약 패널(InteractableContractPanel)");
 
             // 전력 탱크는 선반 **아래 단**에 둔다 — 명세 §7 은 물건을 선반 위·아래에만
             // 두라고 하고 §1 은 중앙 바닥을 비우라고 한다. 둘을 동시에 만족하는 자리다.
@@ -225,9 +231,11 @@ namespace Ascend.Prototype.EditorTools
                               ReferenceRoomSpec.GateOpeningWidth * 0.5f + 0.22f),
                   Quaternion.Euler(0f, 90f, 0f), 1f, "문 제어(InteractableDoorControl)");
 
+            // 사고 기록기도 후면 벽에서 뺀다 — 같은 이유다.
             Place("GrayboxWorld/Car/AccidentPrinter",
-                  new Vector3(freeWallX, 1.95f, ReferenceRoomSpec.WallRearZ - 0.10f),
-                  Quaternion.Euler(0f, 180f, 0f), 1f, "사고 기록기");
+                  new Vector3(ReferenceRoomSpec.WallLeftX + 0.10f, 1.30f,
+                              ReferenceRoomSpec.WallFrontZ + 0.55f),
+                  Quaternion.Euler(0f, 90f, 0f), 0.8f, "사고 기록기");
         }
 
         private static void Place(string path, Vector3 pos, Quaternion rot, float scale, string what)
@@ -249,6 +257,100 @@ namespace Ascend.Prototype.EditorTools
             if (scale > 0f) go.transform.localScale = Vector3.one * scale;
             EditorUtility.SetDirty(go);
             _report.AppendLine($"  {what} → ({pos.x:F2}, {pos.y:F2}, {pos.z:F2}) · 활성 {go.activeInHierarchy}");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  타격감 — 레버를 당기면 방이 반응한다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// <see cref="View.MachineImpactView"/> 를 세우고 네 채널을 물린다.
+        ///
+        /// **열 단위로 나눠 묶는 것이 요점이다.** 아홉 칸을 한 배열로 주면 동시에
+        /// 켜져 무엇이 일어났는지 읽을 시간이 없다 — 사용자가 지적한 「정확히 어떤
+        /// 일이 일어나는지 인지가 안 된다」가 그것이다.
+        ///
+        /// 발동은 코드가 아니라 **배선**으로 건다. `LeverPhysics.onBottomedOut` 은
+        /// 손잡이가 최저점에 닿은 **그 순간** 한 번만 울리므로, 타격의 정의와 정확히 같다.
+        /// </summary>
+        private static void WireImpact(GameObject root)
+        {
+            Transform lamp = root.transform.Find(AscendReferenceRoom.CeilingLampName);
+            Transform warn = root.transform.Find(AscendReferenceRoom.WarningLampName);
+            Transform grid = FindDeep(root.transform, "WindowGrid");
+            if (grid == null) { _report.AppendLine("  ⚠ WindowGrid 없음 — 타격 연출 미배선"); return; }
+
+            var impact = root.GetComponent<View.MachineImpactView>();
+            if (impact == null) impact = root.AddComponent<View.MachineImpactView>();
+
+            var so = new SerializedObject(impact);
+            Set(so, "_keyLight", lamp != null ? lamp.GetComponentInChildren<Light>(true) : null);
+            Set(so, "_warningLens", warn != null ? FindDeep(warn, "Lens")?.GetComponent<Renderer>() : null);
+            // 흔들 대상은 **물체**여야 한다. 카메라를 흔들면 `VISUAL_SPEC` §8 의
+            // 「과도한 카메라 흔들림을 피한다」에 걸리고, 무엇보다 공간이 아니라
+            // 화면이 흔들린 것으로 읽힌다.
+            Set(so, "_shakeTarget", lamp);
+
+            for (int col = 0; col < 3; col++)
+            {
+                SerializedProperty arr = so.FindProperty("_column" + col);
+                if (arr == null) continue;
+                arr.arraySize = 3;
+                for (int row = 0; row < 3; row++)
+                {
+                    Transform module = grid.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
+                    Transform soul = module != null ? module.Find(AscendReferenceRoom.SoulName) : null;
+                    arr.GetArrayElementAtIndex(row).objectReferenceValue = soul != null ? soul.GetComponent<Renderer>() : null;
+                }
+            }
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(impact);
+
+            // ── 발동 배선 ──
+            // `LeverPhysics` 가 붙어 있으면 그 `onBottomedOut` 에 건다. 없으면 적어 둔다 —
+            // 조용히 안 걸리면 「연출을 만들었는데 아무 일도 안 일어난다」가 된다.
+            int hooked = 0;
+            foreach (Physics.LeverPhysics lp in Object.FindObjectsByType<Physics.LeverPhysics>(FindObjectsInactive.Include))
+            {
+                var lso = new SerializedObject(lp);
+                SerializedProperty ev = lso.FindProperty("onBottomedOut");
+                if (ev == null) continue;
+                SerializedProperty calls = ev.FindPropertyRelative("m_PersistentCalls.m_Calls");
+                if (calls == null) continue;
+
+                // 이미 걸려 있으면 또 걸지 않는다 — 두 번 걸면 두 번 때린다.
+                bool already = false;
+                for (int i = 0; i < calls.arraySize; i++)
+                {
+                    SerializedProperty t = calls.GetArrayElementAtIndex(i).FindPropertyRelative("m_Target");
+                    if (t != null && t.objectReferenceValue == impact) { already = true; break; }
+                }
+                if (already) { hooked++; continue; }
+
+                calls.arraySize++;
+                SerializedProperty call = calls.GetArrayElementAtIndex(calls.arraySize - 1);
+                call.FindPropertyRelative("m_Target").objectReferenceValue = impact;
+                call.FindPropertyRelative("m_TargetAssemblyTypeName").stringValue =
+                    typeof(View.MachineImpactView).AssemblyQualifiedName;
+                call.FindPropertyRelative("m_MethodName").stringValue = "Strike";
+                call.FindPropertyRelative("m_Mode").intValue = 1;           // Void
+                call.FindPropertyRelative("m_CallState").intValue = 2;      // RuntimeOnly
+                lso.ApplyModifiedProperties();
+                EditorUtility.SetDirty(lp);
+                hooked++;
+            }
+
+            _report.AppendLine($"  타격 연출 — 전구 {(lamp != null ? "○" : "×")} · 경고등 {(warn != null ? "○" : "×")} " +
+                               $"· 통관 3열 × 3 · LeverPhysics {hooked}개에 onBottomedOut 배선");
+            if (hooked == 0)
+                _report.AppendLine("     ⚠ `LeverPhysics` 가 씬에 없다 — 타격이 발동하지 않는다. " +
+                                   "레버 손잡이에 붙이고 다시 돌린다.");
+        }
+
+        private static void Set(SerializedObject so, string field, Object value)
+        {
+            SerializedProperty p = so.FindProperty(field);
+            if (p != null) p.objectReferenceValue = value;
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -283,6 +385,28 @@ namespace Ascend.Prototype.EditorTools
             SerializedProperty pSway = so.FindProperty("_swayTarget");
 
             if (pLight != null && light != null) pLight.objectReferenceValue = light;
+
+            // 🔴 **이 한 줄이 없으면 플레이 모드에서만 화면이 검게 나온다.**
+            //
+            // `RiskStateView.ApplyLighting` 이 매 LateUpdate 마다
+            // `intensity = _baseLightIntensity × LightIntensity × flicker` 를
+            // **절대값으로** 쓴다. 즉 에디터에서 광원 인스펙터에 넣은 값은 플레이가
+            // 시작되는 순간 버려진다.
+            //
+            // 기본값 1.6 은 구 캐빈(4.80 × 6.00 × 5.50, 밝은 그레이박스 재질)에서 정해진
+            // 값이다. 새 방은 재질이 어둡고 셰이더의 양자화 첫 칸이 `atten < 1/steps` 를
+            // 0 으로 만들기 때문에, 1.6 이면 거의 모든 표면이 0번 칸으로 떨어진다.
+            //
+            // **에디터 캡처가 멀쩡한데 플레이가 검은** 종류의 결함이라 캡처로는 못 잡는다.
+            // 조립기가 광원에 넣는 값과 같은 값을 여기에도 넣어 둘을 묶는다.
+            SerializedProperty pBase = so.FindProperty("_baseLightIntensity");
+            if (pBase != null && light != null)
+            {
+                float before = pBase.floatValue;
+                pBase.floatValue = light.intensity;
+                _report.AppendLine($"     _baseLightIntensity {before:F2} → {light.intensity:F2} " +
+                                   "(플레이 모드에서 광원 세기를 덮어쓰는 값)");
+            }
             if (pLamp != null && bulbRenderer != null) pLamp.objectReferenceValue = bulbRenderer;
             // 흔들릴 물체도 새 등으로. 명세 §9 는 펜던트를 금지하므로 진폭은 작아야 한다.
             if (pSway != null && lamp != null) pSway.objectReferenceValue = lamp;

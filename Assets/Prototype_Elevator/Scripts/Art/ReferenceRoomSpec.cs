@@ -501,6 +501,26 @@ namespace Ascend.Prototype.Art
         /// <summary>주요 오브젝트(장치·레버) 텍셀 밀도(px/m). 명세 §14 「조금 더 높게」.</summary>
         public const int HeroTexelsPerMeter = 320;
 
+        /// <summary>
+        /// 생성 텍스처의 변 길이(px). `AscendSurfaceSynth` 의 주 표면들이 256 이다.
+        /// </summary>
+        public const int SurfaceTextureSize = 256;
+
+        /// <summary>
+        /// 미터당 텍스처 **반복 수**. 메시 생성기의 `uvPerMeter` 에 그대로 들어간다.
+        ///
+        /// ⚠ **이 둘을 혼동하면 밀도가 조용히 두 배가 된다.** 「미터당 텍셀 수」와
+        /// 「미터당 반복 수」는 다른 값이고, 변환은 텍스처 크기로 나누는 것이다.
+        /// 첫 판본이 `SurfaceTexelsPerMeter / 128f` 를 넘겨 실제 밀도가 **384 px/m** 였다 —
+        /// 명세 §14 의 상한 256 을 1.5배 넘긴 값이고, 그러면 픽셀 그레인이 화면에서
+        /// 뭉개져 「로우파이 손그림」이 아니라 그냥 노이즈로 보인다.
+        ///
+        /// 이 저장소는 타일링 모델로 **세 번** 실패했다(`GRAPHICS_TARGET` §6.3).
+        /// 세 번 다 원인이 「어느 단위인가」였다. 그래서 변환을 여기 한 곳에 둔다.
+        /// </summary>
+        public static float SurfaceUvPerMeter => (float)SurfaceTexelsPerMeter / SurfaceTextureSize;  // 0.75
+        public static float HeroUvPerMeter => (float)HeroTexelsPerMeter / SurfaceTextureSize;        // 1.25
+
         // ══════════════════════════════════════════════════════════════════════
         //  명세 불변식 — 테스트가 이것을 검사한다
         // ══════════════════════════════════════════════════════════════════════

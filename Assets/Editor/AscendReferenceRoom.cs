@@ -157,13 +157,21 @@ namespace Ascend.Prototype.EditorTools
             if (!Directory.Exists(MaterialDir)) Directory.CreateDirectory(MaterialDir);
 
             // 명세 §10 「주요 재질은 5~7개 안에서 통일한다」.
-            Mat("Steel",    ReferenceRoomSpec.SteelPlate);                                   // ① 검게 도장된 철판
-            Mat("BareSteel", new Color(0.203f, 0.196f, 0.180f));                             // ② 도장 벗겨진 강철
-            Mat("Rust",     ReferenceRoomSpec.Rust);                                         // ③ 녹
-            Mat("Glass",    new Color(0.118f, 0.112f, 0.106f));                              // ④ 긁힌 두꺼운 유리
-            Mat("RedPaint", ReferenceRoomSpec.FadedRed);                                     // ⑤ 붉은 도장 금속
-            Mat("Sign",     ReferenceRoomSpec.SignCream);                                    // ⑥ 낡은 크림색 표지판
-            Mat("Grease",   new Color(0.071f, 0.067f, 0.062f));                              // ⑦ 검은 고무·기름때
+            //
+            // ⚠ **여기 있는 것은 「화면에서 보일 색」이 아니라 반사율이다.**
+            // 명세 §10 의 「철판: 검은색에 가까운 짙은 회갈색」을 반사율 0.126 으로
+            // 받아 적었다가 방이 **통째로 검게** 나왔다(p50 = 0). 빛이 되돌아올 것이
+            // 없으면 그건 「어둡다」가 아니라 「없다」다.
+            //
+            // 레퍼런스 이미지의 금속도 중간 회색 반사율이고, 검게 보이는 이유는
+            // 광원이 하나뿐이고 빠르게 감쇠하기 때문이다. **어둠은 조명이 만든다.**
+            Mat("Steel",     new Color(0.340f, 0.318f, 0.272f));   // ① 검게 도장된 철판
+            Mat("BareSteel", new Color(0.455f, 0.440f, 0.404f));   // ② 도장 벗겨진 강철
+            Mat("Rust",      new Color(0.520f, 0.286f, 0.160f));   // ③ 녹
+            Mat("Glass",     new Color(0.230f, 0.222f, 0.210f));   // ④ 긁힌 두꺼운 유리
+            Mat("RedPaint",  new Color(0.560f, 0.140f, 0.110f));   // ⑤ 붉은 도장 금속
+            Mat("Sign",      new Color(0.760f, 0.716f, 0.592f));   // ⑥ 낡은 크림색 표지판
+            Mat("Grease",    new Color(0.190f, 0.180f, 0.166f));   // ⑦ 검은 고무·기름때
         }
 
         private static Material Mat(string key, Color color)
@@ -175,8 +183,44 @@ namespace Ascend.Prototype.EditorTools
             // **항상 전 필드를 다시 쓴다.** 재사용하되 상태는 새로 만든 것과 같아야 한다.
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
             if (m.HasProperty("_ShadowTint")) m.SetColor("_ShadowTint", new Color(0.20f, 0.26f, 0.24f, 1f));
-            if (m.HasProperty("_Steps")) m.SetFloat("_Steps", 3f);
+            if (m.HasProperty("_Steps")) m.SetFloat("_Steps", 4f);
             if (m.HasProperty("_RimStrength")) m.SetFloat("_RimStrength", 0.18f);
+
+            // ── 이 두 줄이 없으면 방이 검게 나온다 ──────────────────────────
+            //
+            // `Ascend/Stylized` 의 `Quantize` 는 `v < 1/steps` 에서 정확히 0 이다.
+            // URP 점광의 `distanceAttenuation` 은 역제곱이라 2.7m 에서 약 0.137 이고
+            // 4단 계단의 첫 칸 경계 0.25 를 못 넘는다 — 즉 **이 방의 거의 모든 표면에서
+            // 직접광 항이 통째로 사라진다.** `range` 를 늘려도 역제곱이 지배해 소용없다.
+            //
+            // `_BandFloor` 가 칸 값의 바닥만 들어 올린다. 기본값 0 은 종전과 수식적으로
+            // 동일하므로 이 파일 밖의 머티리얼은 영향을 받지 않는다.
+            if (m.HasProperty("_BandFloor")) m.SetFloat("_BandFloor", 0.55f);
+
+            // ⚠ **`_ShadeGamma` 를 켜지 않는다 — 두 번 시도했고 두 번 다 검게 나왔다.**
+            //
+            //   ① 복원 단계 포함  → p99 47 → 1
+            //   ② 복원 단계 제거  → p50 45 → 0
+            //
+            // ②는 산술적으로 **밝아져야** 했다. `pow(0.137, 1/2.6) = 0.465` 이고
+            // 그러면 4단 중 1번 칸에 들어가 직전(0번 칸)보다 밝다. 예측과 반대 결과가
+            // 나왔다는 것은 원인이 이 수식 밖에 있다는 뜻이고, 후보는 셰이더 변형
+            // (`shader_feature_local` 조합)이 실제로 컴파일되는지 쪽이다.
+            //
+            // **근거 없이 세 번째를 시도하지 않는다** (`CLAUDE.md` 「동일 오류를 세 번
+            // 이상 같은 방식으로 수정하지 않는다」). 측정으로 확인된 구성만 남긴다.
+            //
+            // 남은 대가: 첫 칸이 넓어 조명 계조가 평평하다. 이건 열린 결함이고
+            // 진행 문서에 적었다 — 숨기지 않는다.
+            if (m.HasProperty("_ShadeGammaEnabled")) m.SetFloat("_ShadeGammaEnabled", 0f);
+            m.DisableKeyword("_SHADEGAMMA_ON");
+
+            // 감쇠 거듭제곱은 **방향광**을 전제로 정해진 기본값(2.5)이다. 이 방의 주광은
+            // 점광이라 그 손잡이가 처음으로 실제로 작동하고, 2.5 제곱은 실내 거리에서
+            // 빛을 한 번 더 짓누른다. 「빠른 감쇠」는 광원의 range 와 ndotl 이 만든다.
+            if (m.HasProperty("_FalloffPower")) m.SetFloat("_FalloffPower", 1.0f);
+            if (m.HasProperty("_ShadowLift")) m.SetFloat("_ShadowLift", 0.75f);
+
 
             // 명세 §14 「디더링된 그림자와 색상 전환」 — 색 심도 양자화를 켠다.
             // 이 셰이더의 규약상 키워드를 켜야 코드가 컴파일된다.
@@ -304,7 +348,7 @@ namespace Ascend.Prototype.EditorTools
             // 높이 12mm 라 이동을 방해하지 않는다. 벽 가까이에 둔다.
             var mesh = new ProcMeshBuilder();
             mesh.AddPrism(Vector3.zero, 0.055f, 0.055f, ReferenceRoomSpec.TieDownRingHeight,
-                          8, MeshAxis.Y, 0f, true, true, false, ReferenceRoomSpec.SurfaceTexelsPerMeter / 64f);
+                          8, MeshAxis.Y, 0f, true, true, false, ReferenceRoomSpec.HeroUvPerMeter);
             Mesh ringMesh = SaveMesh(mesh.ToMesh("TieDownRing"), "TieDownRing");
 
             int n = ReferenceRoomSpec.TieDownRingCount;
@@ -518,7 +562,7 @@ namespace Ascend.Prototype.EditorTools
 
             // 한 평철이 위아래를 가로지르며 z 방향으로 이동하는 양.
             float run = span * (pz / py);
-            float uv = ReferenceRoomSpec.SurfaceTexelsPerMeter / 128f;
+            float uv = ReferenceRoomSpec.SurfaceUvPerMeter;
 
             var b = new ProcMeshBuilder();
             var rivets = new List<Vector3>();
@@ -729,7 +773,7 @@ namespace Ascend.Prototype.EditorTools
             float rGlass = ReferenceRoomSpec.WindowGlassDiameter * 0.5f;
             float rRing = ReferenceRoomSpec.WindowRingDiameter * 0.5f;
             float prot = ReferenceRoomSpec.WindowProtrusion;
-            float uv = ReferenceRoomSpec.HeroTexelsPerMeter / 128f;
+            float uv = ReferenceRoomSpec.HeroUvPerMeter;
 
             // 링 — 바깥 반지름과 안쪽 반지름 사이의 고리를 사각 단면 밴드 12개로.
             var rb = new ProcMeshBuilder();
@@ -808,7 +852,7 @@ namespace Ascend.Prototype.EditorTools
             float cw = ReferenceRoomSpec.LeverColumnWidth;
             float ch = ReferenceRoomSpec.LeverColumnHeight;
             float cd = ReferenceRoomSpec.LeverColumnDepth;
-            float uv = ReferenceRoomSpec.HeroTexelsPerMeter / 128f;
+            float uv = ReferenceRoomSpec.HeroUvPerMeter;
 
             Slab(column.transform, "Housing", new Vector3(0f, ReferenceRoomSpec.LeverColumnCenterY, -cd * 0.5f),
                  new Vector3(cw, ch, cd), "Steel");
@@ -857,6 +901,24 @@ namespace Ascend.Prototype.EditorTools
             grip.transform.SetParent(pivot.transform, false);
             grip.transform.localPosition = new Vector3(0f, 0f, -armLen - ReferenceRoomSpec.LeverGripLength * 0.5f - 0.02f);
             Render(grip, gripMesh, "RedPaint");
+
+            // ── 반동 ──
+            // 명세 §5 「레버는 수직 슬롯을 따라 약 55도 범위로 움직인다」.
+            // `LeverPhysics` 가 감쇠 스프링으로 각도를 적분한다 — **Lerp 는 끝에서
+            // 멈추고, 사람이 「당겼다」를 읽는 신호는 도달이 아니라 반동이다**
+            // (그 파일의 주석이 이 판단을 기록해 뒀다).
+            //
+            // 여기에 붙이는 이유: 이 피벗은 조립기가 만든 것이라 다른 주인이 없다.
+            // 같은 트랜스폼에 두 주인을 두면 매 프레임 싸우고 그건 떨림으로 보인다.
+            var phys = pivot.AddComponent<Prototype.Physics.LeverPhysics>();
+            var pso = new SerializedObject(phys);
+            SetFloat(pso, "_maxSwingDegrees", ReferenceRoomSpec.LeverSwingDegrees);
+            SetVector(pso, "_axis", Vector3.right);          // 앞뒤로 당기는 레버
+            SetFloat(pso, "_pullSign", -1f);                 // 아래로
+            SetFloat(pso, "_omega", 17f);
+            SetFloat(pso, "_zeta", 0.19f);                   // 두세 번 튄다
+            SetFloat(pso, "_holdSeconds", 0.12f);            // 손이 아직 레버에 있다
+            pso.ApplyModifiedProperties();
 
             // ── 경고등 ──
             GameObject lamp = Child(root.transform, WarningLampName);
@@ -1079,6 +1141,18 @@ namespace Ascend.Prototype.EditorTools
         //  헬퍼
         // ══════════════════════════════════════════════════════════════════════
 
+        private static void SetFloat(SerializedObject so, string field, float value)
+        {
+            SerializedProperty p = so.FindProperty(field);
+            if (p != null) p.floatValue = value;
+        }
+
+        private static void SetVector(SerializedObject so, string field, Vector3 value)
+        {
+            SerializedProperty p = so.FindProperty(field);
+            if (p != null) p.vector3Value = value;
+        }
+
         private static GameObject Child(Transform parent, string name)
         {
             var go = new GameObject(name);
@@ -1097,7 +1171,7 @@ namespace Ascend.Prototype.EditorTools
         private static GameObject Slab(Transform parent, string name, Vector3 localPos, Vector3 size, string material)
         {
             var b = new ProcMeshBuilder();
-            b.AddBox(Vector3.zero, size, 0f, ReferenceRoomSpec.SurfaceTexelsPerMeter / 128f);
+            b.AddBox(Vector3.zero, size, 0f, ReferenceRoomSpec.SurfaceUvPerMeter);
             Mesh mesh = SaveMesh(b.ToMesh(name), $"Slab_{name}_{size.x:F3}x{size.y:F3}x{size.z:F3}");
 
             var go = new GameObject(name);
@@ -1165,6 +1239,10 @@ namespace Ascend.Prototype.EditorTools
                 if (mesh != cached) Object.DestroyImmediate(mesh);
                 return cached;
             }
+
+            // 이름을 **두 경로 모두에서** 파일명과 맞춘다. `CopySerialized` 는 이름까지
+            // 복사하므로, 생성 경로에서만 맞추면 재조립 때마다 경고가 돌아온다.
+            mesh.name = safe;
 
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing != null)

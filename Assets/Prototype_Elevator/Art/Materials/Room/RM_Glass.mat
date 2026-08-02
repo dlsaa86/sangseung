@@ -25,7 +25,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
+        m_Texture: {fileID: 2800000, guid: 13c37c8ccff20e843821c93f32b9a25c, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailMap:
@@ -52,7 +52,7 @@ Material:
     - _FalloffPower: 1
     - _PS1DistortEnabled: 0
     - _RimStrength: 0.18
-    - _ShadeGamma: 3
+    - _ShadeGamma: 2.6
     - _ShadeGammaEnabled: 0
     - _ShadowLift: 0.75
     - _Steps: 4
@@ -61,7 +61,7 @@ Material:
     - _TriplanarScale: 0.5
     - _VertexSnap: 0
     m_Colors:
-    - _BaseColor: {r: 0.23, g: 0.222, b: 0.21, a: 1}
+    - _BaseColor: {r: 0.55, g: 0.57, b: 0.56, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
   m_BuildTextureStacks: []
