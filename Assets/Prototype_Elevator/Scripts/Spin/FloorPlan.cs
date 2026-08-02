@@ -106,10 +106,29 @@ namespace Ascend.Prototype.Spin
     /// <summary>노션 99의 10층 커리큘럼. Phase 2 이후의 기본 런.</summary>
     public sealed class TenFloorSource : IFloorPlanSource
     {
+        /// <summary>
+        /// 층별 곡선의 덮어쓰기 (`UP-TECH-09` ④). 비어 있으면 코드 프리셋 그대로다 —
+        /// **대체가 아니라 얹히는 것**이라, 에셋이 없을 때와 있을 때가 같은 게임이다.
+        /// </summary>
+        private readonly Data.Profiles.FloorCurriculumSnapshot _curriculum;
+
+        public TenFloorSource()
+            : this(Data.Profiles.FloorCurriculumProfile.DefaultSnapshot)
+        {
+        }
+
+        public TenFloorSource(Data.Profiles.FloorCurriculumSnapshot curriculum)
+        {
+            _curriculum = curriculum;
+        }
+
         public int FirstFloor => 1;
         public int LastFloor => 10;
 
-        public FloorPlan For(int floor) => PrototypeCurriculum.For(floor);
+        /// <summary>곡선 출처. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
+        public Data.Profiles.FloorCurriculumSnapshot Curriculum => _curriculum;
+
+        public FloorPlan For(int floor) => _curriculum.Apply(PrototypeCurriculum.For(floor));
     }
 
     /// <summary>

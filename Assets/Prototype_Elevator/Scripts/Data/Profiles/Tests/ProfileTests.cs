@@ -101,6 +101,13 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("닫힌 판 정지가 프로파일에 있다", TestSealedHoldIsInProfile, ref passed, ref failed, report);
             Run("템포 8종이 스냅샷에서 함께 움직인다", TestTempoValuesTravelTogether, ref passed, ref failed, report);
 
+            // ── 층별 곡선 ④ (`UP-TECH-09`) ───────────────────────────────────
+            Run("빈 곡선은 프리셋을 한 자리도 안 바꾼다", TestCurriculumEmptyIsNeutral, ref passed, ref failed, report);
+            Run("곡선을 바꾸면 층 계획이 따라온다", TestCurriculumOverrides, ref passed, ref failed, report);
+            Run("길이가 10이 아닌 배열은 통째로 무시된다", TestCurriculumPartialArrayIgnored, ref passed, ref failed, report);
+            Run("0인 칸은 그 층만 프리셋으로 남는다", TestCurriculumZeroCellFallsBack, ref passed, ref failed, report);
+            Run("곡선이 10층 런까지 도달한다", TestCurriculumReachesRun, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -2114,6 +2121,126 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             if (!Near(probe.MinTempoScale, 0.52f)) return $"압축 하한이 {probe.MinTempoScale}";
             if (!Near(probe.UnlockFlashSeconds, 0.17f)) return $"해금 섬광이 {probe.UnlockFlashSeconds}";
             if (!Near(probe.UnlockSettleSeconds, 0.18f)) return $"해금 안정이 {probe.UnlockSettleSeconds}";
+            return null;
+        }
+
+        // ── 층별 곡선 ④ (`UP-TECH-09`) ──────────────────────────────────────
+        //
+        // 이 프로파일만 모양이 다르다 — **덮어쓰기지 대체가 아니다.** 빈 배열이 기본값이고
+        // 그 상태에서 코드 곡선이 한 자리도 안 바뀌어야 한다. 그래야 근거 주석이 붙은
+        // `_tenFloors` 를 정본으로 남길 수 있다.
+
+        private static float[] Ramp(float start, float step)
+        {
+            var a = new float[FloorCurriculumProfile.FloorCount];
+            for (int i = 0; i < a.Length; i++) a[i] = start + step * i;
+            return a;
+        }
+
+        private static string TestCurriculumEmptyIsNeutral()
+        {
+            FloorCurriculumSnapshot empty = FloorCurriculumProfile.DefaultSnapshot;
+            if (empty.OverridesAnything) return "빈 스냅샷이 덮어쓴다고 말한다";
+            if (empty.Validate() != null) return $"빈 스냅샷이 자기모순으로 판정됐다: {empty.Validate()}";
+
+            for (int floor = 1; floor <= FloorCurriculumProfile.FloorCount; floor++)
+            {
+                Ascend.Prototype.Spin.FloorPlan preset = Ascend.Prototype.Spin.PrototypeCurriculum.For(floor);
+                Ascend.Prototype.Spin.FloorPlan applied = empty.Apply(preset);
+                if (!Near(applied.RequiredPower, preset.RequiredPower))
+                    return $"{floor}층 요구 전력이 {preset.RequiredPower} → {applied.RequiredPower} 로 바뀌었다";
+                if (applied.Spins != preset.Spins)
+                    return $"{floor}층 스핀이 {preset.Spins} → {applied.Spins} 로 바뀌었다";
+                if (!Near(applied.ResistanceWeightScale, preset.ResistanceWeightScale))
+                    return $"{floor}층 저항 배율이 바뀌었다";
+            }
+            return null;
+        }
+
+        private static string TestCurriculumOverrides()
+        {
+            // 프리셋 곡선(350·355·365…)과 겹치지 않는 수열.
+            var snap = new FloorCurriculumSnapshot(Ramp(1000f, 7f), null, null, "테스트 프로브");
+            if (!snap.OverridesAnything) return "덮어쓰는 축이 있는데 없다고 말한다";
+
+            for (int floor = 1; floor <= FloorCurriculumProfile.FloorCount; floor++)
+            {
+                Ascend.Prototype.Spin.FloorPlan plan =
+                    snap.Apply(Ascend.Prototype.Spin.PrototypeCurriculum.For(floor));
+                float expected = 1000f + 7f * (floor - 1);
+                if (!Near(plan.RequiredPower, expected))
+                    return $"{floor}층 요구 전력 {plan.RequiredPower}, 기대 {expected}"
+                         + " — 정적 배열이 그대로 나오나";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// **부분 배열은 부분 적용되지 않는다.** 일부만 맞는 배열을 절반 적용하면
+        /// 어느 층이 데이터에서 왔는지 아무도 말할 수 없게 되고, 그 상태가 이 항목이
+        /// 막으려는 바로 그것이다.
+        /// </summary>
+        private static string TestCurriculumPartialArrayIgnored()
+        {
+            var shortArray = new float[] { 9999f, 9999f, 9999f };
+            var snap = new FloorCurriculumSnapshot(shortArray, null, null, "짧은 배열");
+
+            if (snap.Validate() == null)
+                return "3칸짜리 배열을 자기모순으로 잡지 않았다";
+            if (snap.OverridesAnything)
+                return "3칸짜리 배열이 덮어쓴다고 말한다";
+
+            Ascend.Prototype.Spin.FloorPlan preset = Ascend.Prototype.Spin.PrototypeCurriculum.For(1);
+            Ascend.Prototype.Spin.FloorPlan applied = snap.Apply(preset);
+            if (!Near(applied.RequiredPower, preset.RequiredPower))
+                return $"1층이 {applied.RequiredPower} 로 덮였다 — 3칸 배열은 통째로 무시돼야 한다";
+            return null;
+        }
+
+        private static string TestCurriculumZeroCellFallsBack()
+        {
+            // 10칸이지만 3층 칸만 0. 그 층만 프리셋이어야 한다.
+            float[] power = Ramp(1000f, 7f);
+            power[2] = 0f;
+            var snap = new FloorCurriculumSnapshot(power, null, null, "0 칸 포함");
+            if (snap.Validate() != null) return $"0 은 자기모순이 아니어야 한다: {snap.Validate()}";
+
+            Ascend.Prototype.Spin.FloorPlan third =
+                snap.Apply(Ascend.Prototype.Spin.PrototypeCurriculum.For(3));
+            float presetThird = Ascend.Prototype.Spin.PrototypeCurriculum.For(3).RequiredPower;
+            if (!Near(third.RequiredPower, presetThird))
+                return $"3층이 {third.RequiredPower} — 0 인 칸은 프리셋 {presetThird} 로 남아야 한다";
+
+            Ascend.Prototype.Spin.FloorPlan fourth =
+                snap.Apply(Ascend.Prototype.Spin.PrototypeCurriculum.For(4));
+            if (!Near(fourth.RequiredPower, 1000f + 7f * 3))
+                return $"4층이 {fourth.RequiredPower} — 채운 칸은 덮어써야 한다";
+            return null;
+        }
+
+        /// <summary>
+        /// 사슬의 마지막 고리. 스냅샷이 `TenFloorSource` → `RunSession` → `FloorSession`
+        /// 까지 도달하는지 본다. `Apply` 만 검사하면 층 원본이 정적 배열을 그대로 읽어도
+        /// 통과한다.
+        /// </summary>
+        private static string TestCurriculumReachesRun()
+        {
+            var snap = new FloorCurriculumSnapshot(Ramp(1000f, 7f), null, null, "테스트 프로브");
+            var source = new Ascend.Prototype.Spin.TenFloorSource(snap);
+            if (!Near(source.For(1).RequiredPower, 1000f))
+                return $"층 원본의 1층 요구 전력이 {source.For(1).RequiredPower}";
+
+            var run = new Ascend.Prototype.Run.RunSession(
+                1337, 0f, 0f, OverharvestProfile.DefaultSnapshot,
+                WeightProfile.DefaultSnapshot, SpinBalanceProfile.DefaultSnapshot, source);
+            if (run.Current == null) return "첫 층이 없다";
+            if (!Near(run.Current.Plan.RequiredPower, 1000f))
+                return $"런의 1층 요구 전력이 {run.Current.Plan.RequiredPower} — 프로파일의 1000 이 아니다";
+
+            // 요구 전력은 적재 무게가 더해진 뒤 값이라 계획값과 다르다. 계획이 바뀐 것을
+            // 봤으면 충분하고, 여기서는 무게 0이라 둘이 같아야 한다.
+            if (!Near(run.Current.RequiredPower, 1000f))
+                return $"층 세션의 요구 전력이 {run.Current.RequiredPower} (무게 0인데 계획과 다르다)";
             return null;
         }
 

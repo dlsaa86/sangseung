@@ -40,6 +40,11 @@ namespace Ascend.Prototype.Run
                  "연쇄 하드 캡(20)은 여기 없다 — 그건 다이얼이 아니라 PRD §6 이 못박은 명세다.")]
         [SerializeField] private Data.Profiles.SpinBalanceProfile _spinBalanceProfile;
 
+        [Header("층별 곡선 (UP-TECH-09 ④)")]
+        [Tooltip("10층의 요구 전력·스핀 수·저항 배율. 비어 있으면 코드 곡선을 그대로 쓴다. " +
+                 "덮어쓰기지 대체가 아니라서, 채우지 않은 칸은 그 층만 프리셋으로 남는다.")]
+        [SerializeField] private Data.Profiles.FloorCurriculumProfile _floorCurriculum;
+
         public RunSession Session { get; private set; }
 
         /// <summary>
@@ -61,6 +66,9 @@ namespace Ascend.Prototype.Run
 
         /// <summary>스핀 밸런스 수치가 **어디서 왔는가** (`UP-TECH-09` ①③).</summary>
         public string SpinBalanceSource { get; private set; } = "미초기화";
+
+        /// <summary>층별 곡선이 **어디서 왔는가** (`UP-TECH-09` ④).</summary>
+        public string FloorCurriculumSource { get; private set; } = "미초기화";
 
         /// <summary>현재 런의 시드. 디버그 패널이 표시·재현에 쓴다.</summary>
         public int Seed => _seed;
@@ -88,9 +96,17 @@ namespace Ascend.Prototype.Run
 
         public void ResetRun()
         {
+            // 곡선 덮어쓰기는 10층 경로에만 뜻이 있다. Hero Slice 는 층이 하나뿐이고
+            // 그 층의 요구 전력 460 은 헤드리스 400시드 측정으로 정한 값이라
+            // 층 배열로 덮어쓸 대상이 아니다.
+            Data.Profiles.FloorCurriculumSnapshot curriculum =
+                Data.Profiles.FloorCurriculumProfile.SnapshotOrDefault(
+                    _floorCurriculum, nameof(RunSessionBehaviour));
+            FloorCurriculumSource = curriculum.SourceName;
+
             IFloorPlanSource floors = _mode == RunMode.HeroSlice
                 ? (IFloorPlanSource)new HeroSliceFloorSource()
-                : new TenFloorSource();
+                : new TenFloorSource(curriculum);
 
             // 에셋이 있으면 9개 값 전부가 여기서 온다. 없으면 인스펙터의 판돈 두 값 +
             // 코드 기본값 일곱으로 진행하되, 어느 쪽인지를 기록에 남긴다.
