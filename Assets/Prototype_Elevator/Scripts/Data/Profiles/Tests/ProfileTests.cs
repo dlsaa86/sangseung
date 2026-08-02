@@ -74,6 +74,15 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("과적 폴백이 「코드 프리셋」으로 찍힌다", TestWeightFallbackIsNamed, ref passed, ref failed, report);
             Run("과적 자기모순이 검출된다", TestWeightValidate, ref passed, ref failed, report);
 
+            // ── 스핀 밸런스 ①③ (`UP-TECH-09`) ────────────────────────────────
+            Run("스핀 프리셋이 SpinRuleSet 기본값과 같다", TestSpinPresetMatchesRuleSet, ref passed, ref failed, report);
+            Run("심볼 가중치를 바꾸면 규칙 다발이 따라온다", TestSymbolWeightsFollowProfile, ref passed, ref failed, report);
+            Run("패턴 배수를 바꾸면 판정이 따라온다", TestPatternMultipliersFollowProfile, ref passed, ref failed, report);
+            Run("밸런스가 층 세션까지 도달한다", TestBalanceReachesFloorSession, ref passed, ref failed, report);
+            Run("스핀 밸런스 폴백이 「코드 프리셋」으로 찍힌다", TestSpinBalanceFallbackIsNamed, ref passed, ref failed, report);
+            Run("스핀 밸런스 자기모순이 검출된다", TestSpinBalanceValidate, ref passed, ref failed, report);
+            Run("연쇄 하드 캡은 프로파일에 없다", TestCascadeCapIsNotADial, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -1563,6 +1572,178 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             // 무엇을 실어도 요구 전력이 그대로인 조합.
             if (new WeightSnapshot(100f, 0f, 1.5f, "x").Validate() == null)
                 return "무게 계수 0 을 통과시켰다 — 적재 선택이 무의미해지는 값이다";
+            return null;
+        }
+
+        // ── 스핀 밸런스 ①③ (`UP-TECH-09`) ──────────────────────────────────
+        //
+        // ⑤ 와 같은 함정이 여기에도 있다: 프리셋과 `SpinRuleSet` 필드 초기값이 같은 수라
+        // 값만 비교하면 배선을 떼어내도 통과한다. 그래서 프리셋과 **다른** 수를 넣고
+        // 규칙 다발이 따라오는지 본다.
+
+        /// <summary>코드 프리셋과 다른 수치 10종. 자기모순 검사를 통과하는 값이어야 한다.</summary>
+        private static SpinBalanceSnapshot ProbeBalance()
+        {
+            // 직선 4 < 연결 6 < 잭팟 9 — 단조를 지키면서 프리셋(2/3/10)과 전부 다르다.
+            return new SpinBalanceSnapshot(11f, 13f, 17f, 4f, 6f, 9f, 2, 0.25f, 3f, 0.9f, "테스트 프로브");
+        }
+
+        private static string TestSpinPresetMatchesRuleSet()
+        {
+            // 인자 없는 `CreateDefault()` 는 프리셋으로 위임한다. 그 결과가 옛 리터럴과
+            // 같아야 한다 — 다르면 이 변경이 밸런스를 건드린 것이다.
+            Ascend.Prototype.Spin.SpinRuleSet rules = Ascend.Prototype.Spin.SpinRuleSet.CreateDefault();
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul), 5f))
+                return $"정상 영혼 가중치 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul)}, 옛 값 5";
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Absorber), 2.5f))
+                return $"흡수체 가중치 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Absorber)}, 옛 값 2.5";
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Proliferator), 2.5f))
+                return $"증식체 가중치 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Proliferator)}, 옛 값 2.5";
+            if (!Near(rules.LineMultiplier, 2f) || !Near(rules.ClusterMultiplier, 3f)
+                || !Near(rules.FullBoardMultiplier, 10f))
+                return $"패턴 배수 {rules.LineMultiplier}/{rules.ClusterMultiplier}/{rules.FullBoardMultiplier}, 옛 값 2/3/10";
+            if (!Near(rules.CascadeMultiplierStep, 0.5f))
+                return $"연쇄 증분 {rules.CascadeMultiplierStep}, 옛 값 0.5";
+            if (!Near(rules.AbsorberResidualPowerLoss, 8f))
+                return $"흡수체 잔류 손실 {rules.AbsorberResidualPowerLoss}, 옛 값 8";
+            if (!Near(rules.ProliferatorResidualWeightAdd, 0.6f))
+                return $"증식체 잔류 가산 {rules.ProliferatorResidualWeightAdd}, 옛 값 0.6";
+            if (rules.MinimumCountFor(Ascend.Prototype.Spin.SymbolKind.Absorber) != 3)
+                return $"정화 최소 개수 {rules.MinimumCountFor(Ascend.Prototype.Spin.SymbolKind.Absorber)}, 옛 값 3";
+            return null;
+        }
+
+        private static string TestSymbolWeightsFollowProfile()
+        {
+            var rules = Ascend.Prototype.Spin.SpinRuleSet.CreateDefault(ProbeBalance());
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul), 11f))
+                return $"정상 영혼 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul)} — 프로파일의 11 이 아니다 (리터럴 5 로 되돌아갔나)";
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Absorber), 13f))
+                return $"흡수체 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Absorber)} — 프로파일의 13 이 아니다";
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Proliferator), 17f))
+                return $"증식체 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.Proliferator)} — 프로파일의 17 이 아니다";
+            if (rules.MinimumCountFor(Ascend.Prototype.Spin.SymbolKind.Absorber) != 2)
+                return $"정화 최소 개수 {rules.MinimumCountFor(Ascend.Prototype.Spin.SymbolKind.Absorber)} — 프로파일의 2 가 아니다";
+            if (!Near(rules.AbsorberResidualPowerLoss, 3f))
+                return $"흡수체 잔류 손실 {rules.AbsorberResidualPowerLoss} — 프로파일의 3 이 아니다";
+            if (!Near(rules.ProliferatorResidualWeightAdd, 0.9f))
+                return $"증식체 잔류 가산 {rules.ProliferatorResidualWeightAdd} — 프로파일의 0.9 가 아니다";
+            return null;
+        }
+
+        private static string TestPatternMultipliersFollowProfile()
+        {
+            var rules = Ascend.Prototype.Spin.SpinRuleSet.CreateDefault(ProbeBalance());
+            var kind = Ascend.Prototype.Spin.SymbolKind.Absorber;
+
+            // 필드 초기값으로만 두면 이 셋이 코드 값(2/3/10)에 남는다 — 「값을 옮겼는데
+            // 일부만 따라오는」 절반짜리 데이터화를 잡는 자리다.
+            if (!Near(rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Line, kind), 4f))
+                return $"직선 배수 {rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Line, kind)} — 프로파일의 4 가 아니다";
+            if (!Near(rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Cluster, kind), 6f))
+                return $"연결 배수 {rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Cluster, kind)} — 프로파일의 6 이 아니다";
+            if (!Near(rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.FullBoard, kind), 9f))
+                return $"잭팟 배수 {rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.FullBoard, kind)} — 프로파일의 9 가 아니다";
+            // 흩어짐은 다이얼이 아니라 기준점 1.0 이다. 프로파일이 건드리면 안 된다.
+            if (!Near(rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Scattered, kind), 1f))
+                return $"흩어짐 배수 {rules.PatternMultiplierFor(Ascend.Prototype.Spin.PatternKind.Scattered, kind)} — 기준점 1.0 이어야 한다";
+            if (!Near(rules.CascadeMultiplierStep, 0.25f))
+                return $"연쇄 증분 {rules.CascadeMultiplierStep} — 프로파일의 0.25 가 아니다";
+            return null;
+        }
+
+        /// <summary>
+        /// 사슬의 마지막 고리. 스냅샷이 `RunSession` → `FloorSession` → `BuildRules` 까지
+        /// 실제로 도달하는지 본다. `CreateDefault(balance)` 만 검사하면 층이 인자 없는
+        /// 판본을 계속 불러도 통과한다.
+        /// </summary>
+        private static string TestBalanceReachesFloorSession()
+        {
+            var run = new Ascend.Prototype.Run.RunSession(
+                1337, 0f, 0f, OverharvestProfile.DefaultSnapshot,
+                WeightProfile.DefaultSnapshot, ProbeBalance(), null);
+
+            if (run.Current == null) return "첫 층이 없다";
+            if (run.Current.Balance.SourceName != "테스트 프로브")
+                return $"층이 든 출처가 '{run.Current.Balance.SourceName}' — 넘긴 스냅샷이 도달하지 않았다";
+
+            var rules = run.Current.Rules;
+            if (rules == null) return "첫 층에 규칙 다발이 없다 (적재·계약 단계일 수 있다)";
+            if (!Near(rules.LineMultiplier, 4f))
+                return $"층 규칙의 직선 배수 {rules.LineMultiplier} — 프로파일의 4 가 아니다"
+                     + " (BuildRules 가 인자 없는 판본을 부르나)";
+            // 1층 풀은 영혼·흡수체뿐이라 증식체는 0으로 걸러진다. 가중치가 프로파일에서
+            // 왔는지는 **풀에 있는** 종류로 본다.
+            if (!Near(rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul), 11f))
+                return $"층 규칙의 정상 영혼 가중치 {rules.WeightOf(Ascend.Prototype.Spin.SymbolKind.NormalSoul)} — 프로파일의 11 이 아니다";
+            return null;
+        }
+
+        private static string TestSpinBalanceFallbackIsNamed()
+        {
+            SpinBalanceSnapshot fallback = SpinBalanceProfile.SnapshotOrDefault(null, "테스트");
+            if (fallback.SourceName != SpinBalanceSnapshot.CodePresetName)
+                return $"폴백 출처가 '{fallback.SourceName}'";
+            if (fallback.FromAsset) return "폴백인데 FromAsset 이 참이다";
+
+            var profile = ScriptableObject.CreateInstance<SpinBalanceProfile>();
+            try
+            {
+                profile.name = "SpinProbe";
+                SpinBalanceSnapshot fromAsset = SpinBalanceProfile.SnapshotOrDefault(profile, "테스트");
+                if (fromAsset.SourceName != "SpinProbe")
+                    return $"에셋 출처가 '{fromAsset.SourceName}'";
+                if (!Near(fromAsset.WeightNormalSoul, SpinBalanceProfile.DefaultWeightNormalSoul))
+                    return $"새 에셋의 영혼 가중치 {fromAsset.WeightNormalSoul} 이 프리셋과 다르다";
+                if (fromAsset.Validate() != null)
+                    return $"새 에셋 기본값이 자기모순이다: {fromAsset.Validate()}";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(profile);
+            }
+        }
+
+        private static string TestSpinBalanceValidate()
+        {
+            if (SpinBalanceProfile.DefaultSnapshot.Validate() != null)
+                return $"기본값이 자기모순으로 판정됐다: {SpinBalanceProfile.DefaultSnapshot.Validate()}";
+            if (ProbeBalance().Validate() != null)
+                return $"프로브 값이 자기모순으로 판정됐다: {ProbeBalance().Validate()}";
+
+            // 직선이 흩어짐과 구분되지 않으면 2층이 가르칠 것이 없다.
+            if (new SpinBalanceSnapshot(5f, 2.5f, 2.5f, 1f, 3f, 10f, 3, 0.5f, 8f, 0.6f, "x").Validate() == null)
+                return "직선 배수 1.0 을 통과시켰다";
+            // 연결이 직선 이하면 3층이 가르칠 것이 없다.
+            if (new SpinBalanceSnapshot(5f, 2.5f, 2.5f, 3f, 3f, 10f, 3, 0.5f, 8f, 0.6f, "x").Validate() == null)
+                return "연결 배수 == 직선 배수를 통과시켰다";
+            // 잭팟이 연결 이하면 9칸 전부가 보상이 아니게 된다.
+            if (new SpinBalanceSnapshot(5f, 2.5f, 2.5f, 2f, 3f, 3f, 3, 0.5f, 8f, 0.6f, "x").Validate() == null)
+                return "잭팟 배수 == 연결 배수를 통과시켰다";
+            // 전력 공급원이 판에 안 나오는 값.
+            if (new SpinBalanceSnapshot(0f, 2.5f, 2.5f, 2f, 3f, 10f, 3, 0.5f, 8f, 0.6f, "x").Validate() == null)
+                return "정상 영혼 가중치 0 을 통과시켰다";
+            // 연쇄가 길어져도 보상이 그대로인 값.
+            if (new SpinBalanceSnapshot(5f, 2.5f, 2.5f, 2f, 3f, 10f, 3, 0f, 8f, 0.6f, "x").Validate() == null)
+                return "연쇄 증분 0 을 통과시켰다";
+            return null;
+        }
+
+        /// <summary>
+        /// 하드 캡 20은 밸런스 다이얼이 아니라 `MASTER_PRD.md` §6 · `TECH_SPEC.md` §9 가
+        /// 못박은 명세다. 프로파일에 넣으면 「고쳐도 되는 것」과 「고치면 명세 위반인 것」이
+        /// 같은 인스펙터에 나란히 놓이고, 그 상태에서 누가 20을 8로 내려도 아무도 못 막는다.
+        /// 프로파일에서 온 규칙 다발이 여전히 20을 들고 있는지 본다.
+        /// </summary>
+        private static string TestCascadeCapIsNotADial()
+        {
+            var rules = Ascend.Prototype.Spin.SpinRuleSet.CreateDefault(ProbeBalance());
+            if (rules.MaxCascadeDepth != 20)
+                return $"연쇄 하드 캡이 {rules.MaxCascadeDepth} — 프로파일이 건드리면 안 되는 값이다";
+            // `RequiredFieldCount != 10` 을 여기서 검사하려 했으나 둘 다 컴파일 상수라
+            // 분기가 접혀 **아무것도 검사하지 않는 단언**이 된다(CS0162 가 그걸 알려 줬다).
+            // 캡이 프로파일로 새어 들어갔는지는 위 한 줄이 실제로 잡는다.
             return null;
         }
     }

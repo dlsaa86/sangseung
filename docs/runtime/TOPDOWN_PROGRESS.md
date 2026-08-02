@@ -1531,3 +1531,53 @@ Tier 1 은 프리셋과 **다른** 수치(허용 37 · 계수 5 · 배수 3)를 
 상대가 같은 저장소에서 계속 쓰고 있다(씬·`AscendPostProfile.asset`·`PurifyMarker*`).
 경로가 겹치지 않는 순수 C# 영역만 잡았고, 커밋은 **경로를 명시해서** 한다 —
 `git add -A` 가 이 세션 앞부분의 사고 원인이었다(`CONCURRENT_AGENT_INCIDENT.md`).
+
+---
+
+# 2026-08-02 12:5x — UP-TECH-09 ①③ 심볼 가중치·패턴 배수
+
+⑤ 와 같은 패턴. `SpinBalanceProfile` + 순수 구조체 `SpinBalanceSnapshot` 10종이
+`RunSessionBehaviour` → `RunSession` → `FloorSession` → `PrototypeCurriculum.BuildRules`
+→ `SpinRuleSet.CreateDefault(balance)` 로 흐른다. 인자 없는 판본은 프리셋으로 위임하므로
+동작이 안 바뀐다.
+
+## 다이얼과 명세를 갈랐다
+
+`MaxCascadeDepth = 20` 은 **일부러 뺐다.** `MASTER_PRD.md` §6 과 `TECH_SPEC.md` §9 가
+못박은 값이라 밸런스 다이얼이 아니다. 프로파일에 넣으면 「고쳐도 되는 것」과 「고치면
+명세 위반인 것」이 같은 인스펙터에 나란히 놓이고, 그 상태에서 누가 20을 8로 내려도
+아무도 못 막는다. `RequireAdjacencyToPurify` 같은 불리언 스위치도 같은 이유로 뺐다 —
+그건 정화가 무엇인가를 정하는 규칙이지 세기가 아니다.
+
+테스트가 프로파일 경유 규칙 다발이 여전히 20을 드는지 본다.
+
+## 필드 초기값만 두면 절반만 따라온다
+
+`CreateDefault` 에서 가중치만 덮어쓰고 패턴 배수 셋을 필드 초기값에 남겨 두면,
+에셋을 물려도 그 셋은 코드 값을 계속 쓴다. 「값을 옮겼는데 일부만 따라오는」
+절반짜리 데이터화다. 여섯 값을 모두 덮어쓰고, 패턴 배수 셋을 따로 단언한다.
+
+흩어짐 배수 1.0 은 다이얼이 아니라 **기준점**이라 프로파일이 못 건드린다 — 그것도 단언한다.
+
+## 검증
+
+| 티어 | 결과 |
+|---|---|
+| 0 — 오프라인 Roslyn | **PASS** 소스 228 · 오류 0 · 경고 44 |
+| 1 — 과적 + 스핀 밸런스 | **33/33 PASS** (⑤ 17 + ①③ 16, Unity 밖) |
+
+`ProfileTests` 는 44 → **51건**.
+
+Tier 1 은 프리셋과 다른 수(가중치 11/13/17 · 패턴 4/6/9 · 연쇄 증분 0.25)를 주입하고
+층 규칙 다발까지 따라오는지 본다. `CreateDefault(balance)` 만 검사하면 층이 인자 없는
+판본을 계속 불러도 통과하므로, `RunSession` 을 세워 `Current.Rules` 를 직접 읽는
+단언을 따로 뒀다 — 사슬의 마지막 고리다.
+
+`TestCascadeCapIsNotADial` 에 넣었던 `RequiredFieldCount != 10` 은 **둘 다 컴파일 상수라
+분기가 접혀 아무것도 검사하지 않는 단언**이었다. CS0162 가 알려 줘서 뺐다.
+
+## 검증하지 않은 것
+
+에디터 안 자체 검증은 여전히 이 변경 이전 것이다. Unity·씬·캡처는 다른 에이전트가
+쓰고 있다. 다음에 에디터를 잡는 사람이 두 러너를 다 돌려야 한다.
+`SpinBalanceProfile.asset` 도 만들지 않았다 — 없어도 코드 프리셋으로 같은 밸런스로 돈다.

@@ -34,6 +34,12 @@ namespace Ascend.Prototype.Run
                  "PrototypeConfig 의 allowedWeight 를 여기 옮기지 말 것 — 그쪽은 단위가 다른 레거시 경로의 값이다.")]
         [SerializeField] private Data.Profiles.WeightProfile _weightProfile;
 
+        [Header("스핀 밸런스 (UP-TECH-09 ①③)")]
+        [Tooltip("심볼 가중치 3종·패턴 배수 3종·정화 최소 개수·연쇄 증분·잔류 2종. " +
+                 "비어 있으면 코드 프리셋으로 진행하고 그 사실이 SpinBalanceSource 에 남는다. " +
+                 "연쇄 하드 캡(20)은 여기 없다 — 그건 다이얼이 아니라 PRD §6 이 못박은 명세다.")]
+        [SerializeField] private Data.Profiles.SpinBalanceProfile _spinBalanceProfile;
+
         public RunSession Session { get; private set; }
 
         /// <summary>
@@ -52,6 +58,9 @@ namespace Ascend.Prototype.Run
         /// 그래서 「어느 쪽을 읽었는가」를 따로 남긴다.
         /// </summary>
         public string WeightSource { get; private set; } = "미초기화";
+
+        /// <summary>스핀 밸런스 수치가 **어디서 왔는가** (`UP-TECH-09` ①③).</summary>
+        public string SpinBalanceSource { get; private set; } = "미초기화";
 
         /// <summary>현재 런의 시드. 디버그 패널이 표시·재현에 쓴다.</summary>
         public int Seed => _seed;
@@ -112,8 +121,12 @@ namespace Ascend.Prototype.Run
                 _weightProfile, nameof(RunSessionBehaviour));
             WeightSource = weight.SourceName;
 
+            Data.Profiles.SpinBalanceSnapshot balance = Data.Profiles.SpinBalanceProfile.SnapshotOrDefault(
+                _spinBalanceProfile, nameof(RunSessionBehaviour));
+            SpinBalanceSource = balance.SourceName;
+
             Session = new RunSession(_seed, _startingWeight, _startingMoney,
-                overharvest, weight, floors);
+                overharvest, weight, balance, floors);
 
             // 캡 도달은 조용히 넘어가면 안 된다(MASTER_PRD §6). 엔진은 순수 C#이라
             // 로그 채널을 모르므로 Unity 어댑터인 여기서 붙인다.

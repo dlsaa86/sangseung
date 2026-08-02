@@ -326,8 +326,16 @@ namespace Ascend.Prototype.Spin
         /// 밸런스 수치가 조용히 갈라지고, 시뮬이 통과시킨 값이 실제 플레이에서 다르게 나온다.
         /// </summary>
         public static SpinRuleSet BuildRules(in FloorPlan plan)
+            => BuildRules(in plan, Data.Profiles.SpinBalanceProfile.DefaultSnapshot);
+
+        /// <summary>
+        /// 밸런스 수치를 밖에서 받는 판본 (`UP-TECH-09` ①③). 인자 없는 판본은 코드
+        /// 프리셋으로 위임하므로 동작이 같다. 층 풀 필터·저항 총량 보정은 그대로다 —
+        /// 그건 밸런스 다이얼이 아니라 층 계획이 정하는 구조다.
+        /// </summary>
+        public static SpinRuleSet BuildRules(in FloorPlan plan, Data.Profiles.SpinBalanceSnapshot balance)
         {
-            SpinRuleSet rules = SpinRuleSet.CreateDefault();
+            SpinRuleSet rules = SpinRuleSet.CreateDefault(balance);
 
             // 이번 층 풀에 없는 종류는 가중치 0
             var pool = plan.SymbolPool ?? Array.Empty<SymbolKind>();

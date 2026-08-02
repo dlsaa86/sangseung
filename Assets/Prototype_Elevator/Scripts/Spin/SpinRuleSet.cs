@@ -166,15 +166,36 @@ namespace Ascend.Prototype.Spin
 
         /// <summary>프로토타입 고정안의 기본 규칙(계약·승객 적용 전).</summary>
         public static SpinRuleSet CreateDefault()
+            => CreateDefault(Data.Profiles.SpinBalanceProfile.DefaultSnapshot);
+
+        /// <summary>
+        /// 밸런스 수치를 밖에서 받아 규칙 다발을 만든다 (`UP-TECH-09` ①③).
+        ///
+        /// 인자 없는 판본은 코드 프리셋으로 위임하므로 **동작이 같다.** 여기 있던
+        /// 리터럴(5 / 2.5 / 2.5 / 3)은 <see cref="Data.Profiles.SpinBalanceProfile"/> 의
+        /// 프리셋 상수로 옮겼고, 두 곳이 갈라지지 않도록 테스트가 대조한다.
+        ///
+        /// 패턴 배수 셋과 잔류·연쇄 값도 여기서 덮어쓴다. 필드 초기값으로만 두면
+        /// 에셋을 물려도 그 넷은 코드 값을 계속 쓴다 — 「값을 옮겼는데 일부만 따라오는」
+        /// 절반짜리 데이터화가 이 저장소의 반복 실패다.
+        /// </summary>
+        public static SpinRuleSet CreateDefault(Data.Profiles.SpinBalanceSnapshot balance)
         {
             var rules = new SpinRuleSet();
-            rules.Weights[SymbolKind.NormalSoul]   = 5f;
-            rules.Weights[SymbolKind.Absorber]     = 2.5f;
-            rules.Weights[SymbolKind.Proliferator] = 2.5f;
+            rules.Weights[SymbolKind.NormalSoul]   = balance.WeightNormalSoul;
+            rules.Weights[SymbolKind.Absorber]     = balance.WeightAbsorber;
+            rules.Weights[SymbolKind.Proliferator] = balance.WeightProliferator;
+
+            rules.LineMultiplier                 = balance.LineMultiplier;
+            rules.ClusterMultiplier              = balance.ClusterMultiplier;
+            rules.FullBoardMultiplier            = balance.FullBoardMultiplier;
+            rules.CascadeMultiplierStep          = balance.CascadeMultiplierStep;
+            rules.AbsorberResidualPowerLoss      = balance.AbsorberResidualPowerLoss;
+            rules.ProliferatorResidualWeightAdd  = balance.ProliferatorResidualWeightAdd;
 
             foreach (SymbolKind kind in SymbolKinds.ResistanceKinds)
             {
-                rules.MinimumCountToPurify[kind]     = 3;
+                rules.MinimumCountToPurify[kind]     = balance.MinimumCountToPurify;
                 rules.PurifyRewardMultiplier[kind]   = 1f;
                 rules.PatternBonusAdd[kind]          = 0f;
                 rules.ResidualPenaltyMultiplier[kind] = 1f;

@@ -30,6 +30,9 @@ namespace Ascend.Prototype.Run
         /// </summary>
         private readonly WeightSnapshot _weight;
 
+        /// <summary>층마다 그대로 넘어가는 스핀 밸런스 10종 (`UP-TECH-09` ①③).</summary>
+        private readonly SpinBalanceSnapshot _balance;
+
         public RunSession(int seed = 1337, float startingWeight = 0f, float startingMoney = 0f)
             : this(seed, startingWeight, startingMoney,
                 FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation)
@@ -79,6 +82,18 @@ namespace Ascend.Prototype.Run
         /// </summary>
         public RunSession(int seed, float startingWeight, float startingMoney,
             OverharvestSnapshot overharvest, WeightSnapshot weight, IFloorPlanSource floors)
+            : this(seed, startingWeight, startingMoney, overharvest, weight,
+                SpinBalanceProfile.DefaultSnapshot, floors)
+        {
+        }
+
+        /// <summary>
+        /// 스핀 밸런스까지 받는 경로. `RunSessionBehaviour` 가 `SpinBalanceProfile.asset`
+        /// 에서 스냅샷을 떠 넘긴다. 에셋이 없으면 코드 프리셋이라 동작이 같다.
+        /// </summary>
+        public RunSession(int seed, float startingWeight, float startingMoney,
+            OverharvestSnapshot overharvest, WeightSnapshot weight,
+            SpinBalanceSnapshot balance, IFloorPlanSource floors)
         {
             _floors = floors ?? new TenFloorSource();
             _engine = new SpinEngine(seed);
@@ -88,6 +103,7 @@ namespace Ascend.Prototype.Run
             Money = startingMoney;
             _overharvest = overharvest;
             _weight = weight;
+            _balance = balance;
 
             // 적재가 어느 경로로 바뀌든 현재 층이 즉시 안다. 호출부마다 갱신을 기억하게
             // 하면 하나만 빠져도 무게와 요구 전력이 조용히 어긋난다 — 실제로 그렇게 됐다.
@@ -191,6 +207,9 @@ namespace Ascend.Prototype.Run
         /// <summary>과적 수치의 출처. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
         public WeightSnapshot Weight => _weight;
 
+        /// <summary>스핀 밸런스 수치의 출처와 값.</summary>
+        public SpinBalanceSnapshot Balance => _balance;
+
         public bool IsOverloaded => CarriedWeight > WeightCapacity;
         public float Money { get; private set; }
         public bool IsComplete { get; private set; }
@@ -282,7 +301,7 @@ namespace Ascend.Prototype.Run
             // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
             // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                _baseWeight, _residual, _overharvest, _weight, _loadout)
+                _baseWeight, _residual, _overharvest, _weight, _balance, _loadout)
             {
                 Events = Events,
             };

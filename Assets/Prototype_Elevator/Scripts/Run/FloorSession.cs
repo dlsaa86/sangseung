@@ -65,6 +65,12 @@ namespace Ascend.Prototype.Run
         /// 그 사실이 <see cref="WeightSnapshot.SourceName"/> 에 남는다.
         /// </summary>
         private readonly WeightSnapshot _weight;
+
+        /// <summary>
+        /// 스핀 밸런스 10종의 값 사본 (`UP-TECH-09` ①③). 층이 규칙 다발을 만들 때마다
+        /// 쓰이므로 층이 들고 있어야 한다 — 계약 선택 뒤 `BuildRules` 가 다시 돈다.
+        /// </summary>
+        private readonly SpinBalanceSnapshot _balance;
         private float _totalAnte;
         private float _extraSpinNetPower;
         private float _lastAnte;
@@ -143,6 +149,19 @@ namespace Ascend.Prototype.Run
         public FloorSession(FloorPlan plan, SpinEngine engine,
             PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
             OverharvestSnapshot overharvest, WeightSnapshot weight, BuildLoadout loadout)
+            : this(plan, engine, thresholds, carriedWeight, carriedResidual,
+                overharvest, weight, SpinBalanceProfile.DefaultSnapshot, loadout)
+        {
+        }
+
+        /// <summary>
+        /// <paramref name="balance"/>는 `SpinBalanceProfile.asset` 에서 온 값 사본이거나
+        /// 에셋이 없으면 코드 프리셋이다. 심볼 가중치·패턴 배수·연쇄 증분이 여기서 온다.
+        /// </summary>
+        public FloorSession(FloorPlan plan, SpinEngine engine,
+            PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
+            OverharvestSnapshot overharvest, WeightSnapshot weight,
+            SpinBalanceSnapshot balance, BuildLoadout loadout)
         {
             if (engine == null) throw new ArgumentNullException(nameof(engine));
             if (plan.Spins <= 0) throw new ArgumentOutOfRangeException(nameof(plan), "A floor needs at least one spin.");
@@ -156,6 +175,8 @@ namespace Ascend.Prototype.Run
             // `Capacity`·`ComputeRequiredPower` 가 이 값을 읽으므로, 순서를 뒤집으면
             // 첫 계산만 허용 중량 0(기본값 구조체)으로 돌아 층이 시작부터 과적이 된다.
             _weight = weight;
+            // 규칙 다발은 이 생성자 끝에서 만들어질 수 있다. 그 전에 들어와야 한다.
+            _balance = balance;
             // 앞선 층에서 실은 것이 그대로 따라온다. 여기서 기본 무게만 쓰면 2층 이후
             // 적재가 요구 전력에 반영되지 않는다.
             RecomputeLoad();
@@ -219,6 +240,9 @@ namespace Ascend.Prototype.Run
         /// 구분할 수 없기 때문이다.
         /// </summary>
         public WeightSnapshot Weight => _weight;
+
+        /// <summary>스핀 밸런스 수치의 출처와 값. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
+        public SpinBalanceSnapshot Balance => _balance;
 
         public bool IsOverloaded => _carriedWeight > Capacity;
 
@@ -573,7 +597,7 @@ namespace Ascend.Prototype.Run
             // FloorPlan owns pool filtering and resistance scaling. Keep this as
             // the single runtime call site, then apply the selected contract once.
             FloorPlan plan = Plan;
-            _rules = PrototypeCurriculum.BuildRules(in plan);
+            _rules = PrototypeCurriculum.BuildRules(in plan, _balance);
             _rules.Apply(in contract);
 
             // 발동 순서: 기본값 → 층 규칙 → 계약 → 승객·부품(`SpinRuleSet` 주석).
