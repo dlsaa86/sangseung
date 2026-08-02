@@ -39,6 +39,20 @@
 **이것들을 「미배선」으로 읽지 말 것.** 비어 있어도 기능은 돈다.
 자체 검증 로그의 「배선되지 않았다」 경고와 같은 종류의 오독을 부른다.
 
+## 프로파일 슬롯 — **배선 완료 (2026-08-02 14:36)**
+
+**6/6 꽂았고 씬을 저장했다.** 전수 조사가 24 → **18 필드**로 줄었다.
+자체 검증 470 · EditMode 451 · 둘 다 0 FAIL — **배선 전과 같은 수다.**
+프로파일 값이 전부 코드 프리셋과 같으므로 밸런스가 한 자리도 안 바뀌었다는 실측이다.
+
+만든 에셋 다섯: `WeightProfile` · `SpinBalanceProfile` · `RiskThresholdProfile` ·
+`FloorCurriculumProfile` · `ContractProfile`
+(`PresentationProfile.asset` 은 이미 있었고 `SpinPresenter._presentation` 에 꽂기만 했다).
+뒤의 둘은 `Reset()` 을 불러 현재 곡선·계약 값을 채웠다 — 편집자가 빈 칸이 아니라
+현재 값을 보고 시작하도록.
+
+아래는 그 작업 **이전** 기록이다.
+
 ## 프로파일 슬롯 — 6 필드 (설계상 비어 있는 것이 정상)
 
 `RunSessionBehaviour._weightProfile`·`_spinBalanceProfile`·`_floorCurriculum`·
