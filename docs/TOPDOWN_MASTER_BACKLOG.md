@@ -1131,15 +1131,17 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-RISK-08 — 접근성 옵션 분리 (셰이크·사이렌·섬광)
 - 분류: Required · 출처: PRD §8.3 마지막, §14.1
-- 상태: CONNECTED · 패스: P2 P3
-- 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs` + `.asset` + `RiskStateView` 의 `ApplyLighting`(섬광)·`ApplySway`(셰이크)
-- 접근: 옵션 메뉴 (없음)
-- 검증: `Ascend/Run All EditMode Tests` + 씬 배선
-- 증거: `Logs/editmode_tests.txt`, `Logs/tenfloor_playmode.txt`
+- 상태: VERIFIED · 패스: P2 P3
+- 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs` + `.asset`(씬 참조 2곳) + `RiskStateView` 의 `ApplyLighting`(섬광)·`ApplySway`(셰이크, 카메라와 물체를 따로) + `AudioDirector.TryPlaySiren`(`:840-855`, 사이렌)
+- 접근: 옵션 메뉴 (없음 — 값 교체는 인스펙터)
+- 검증: `Ascend/Run All EditMode Tests` → 「섬광 금지와 빈도 상한이 적용된다」·「셰이크 0 배율이 실제로 0을 돌려준다」·**「사이렌을 끄면 볼륨이 실제로 0이 된다」**·「사이렌을 끄면 시각·피치 보상이 붙는다」
+- 증거: `Logs/editmode_tests.txt` (2026-08-02 14:00 · 447 PASS / 0 FAIL · `:198`), `.claude/state/last-selftest.txt` (466 PASS / 0 FAIL)
 - 의존: UP-RISK-07
 - 남은 문제: **셋 중 둘만 분리됐다.** 섬광(`AllowFlickerAt`/`ClampFlickerRate`)과 흔들림(카메라 `ScaleShake` · 물체 `WorldSwayScale` 을 따로)은 `RiskStateView` 가 읽는다. ~~**사이렌은 미구현** — `AllowSiren`·`SirenVolume` 의 런타임 소비처가 0곳이고 테스트와 에디터 배선 도구에서만 언급된다~~ → **낡은 기록이었다 (2026-08-02 실측 정정).** `AudioDirector.TryPlaySiren`(`:840-855`)이 `_accessibility.SirenVolume(req.Volume)` 을 통과시키고 **0이면 재생 전에 멈춘다.** `SirenVolume` 은 `AllowSiren ? volume : 0f` 이므로 끄면 사이렌이 실제로 죽는다. 사이렌 큐도 존재한다 — `AudioCueKind.Siren = 25` 에 `AudioCueTable.TryMapSiren` 이 변형 넷(위험 상승·과수확 해금·레버 결정·사고)을 가른다. `AccessibilityProfile.cs` 하단 트레일러의 「사이렌 자체의 음소거는 아직 없다 — 사이렌 큐가 없기 때문」도 같은 이유로 낡았다. **셋 축이 전부 배선돼 있다** — 섬광(`RiskStateView`) · 흔들림(`RiskStateView`, 카메라와 물체를 따로) · 사이렌(`AudioDirector`).
 
-  **그런데 증거가 없어서 아직 올리지 않는다.** 저장소에 `SirenVolume`·`AllowSiren` 을 검사하는 단정이 **0건**이었다 — 기존 「사이렌을 끄면 시각·피치 보상이 붙는다」는 보상만 보므로 **사이렌이 여전히 울리면서 경고등까지 밝아지는 상태를 통과시킨다**(접근성 요구의 정확한 반대). 단정 「사이렌을 끄면 볼륨이 실제로 0이 된다」를 붙였고 음소거와 보상을 한 검사에 뒀다(음소거만 맞고 보상이 빠지면 접근성이 아니라 기능 제거다). Tier 0 컴파일은 통과했으나 **에디터 자체 검증을 아직 못 돌렸다** — 다른 에이전트가 Unity 를 쓰고 있다. **다음에 자체 검증이 한 번 돌면 §0.4 세 다리가 채워진다**
+  **그런데 증거가 없어서 아직 올리지 않는다.** 저장소에 `SirenVolume`·`AllowSiren` 을 검사하는 단정이 **0건**이었다 — 기존 「사이렌을 끄면 시각·피치 보상이 붙는다」는 보상만 보므로 **사이렌이 여전히 울리면서 경고등까지 밝아지는 상태를 통과시킨다**(접근성 요구의 정확한 반대). 단정 「사이렌을 끄면 볼륨이 실제로 0이 된다」를 붙였고 음소거와 보상을 한 검사에 뒀다(음소거만 맞고 보상이 빠지면 접근성이 아니라 기능 제거다). **그 자체 검증이 돌았다 (2026-08-02 14:00 · `Logs/editmode_tests.txt:198` 「PASS 사이렌을 끄면 볼륨이 실제로 0이 된다」 · 447 PASS / 0 FAIL).** §0.4 세 다리가 전부 채워져 VERIFIED 로 올린다 — ① 코드: 세 축의 소비처가 `RiskStateView` 4곳 + `AudioDirector:853` ② 도달 경로: `AccessibilityProfile.asset` 씬 참조 2곳 ③ 증거: 위 단정 4건.
+
+  **CONNECTED 에 묶여 있던 진짜 이유는 「사이렌 미구현」이 아니라 「사이렌을 검사하는 단정이 없었다」였다.** 구현은 진작 되어 있었고 기록만 낡아 있었다 — §0.35 가 막으려는 바로 그 형태다
 
 ### UP-RISK-09 — 과수확이 위험과 보상을 실제로 바꾼다
 - 분류: Required · 출처: PRD §7.1, §7.4
@@ -1171,7 +1173,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `TenFloorAutoPilot` 의 「승객 반응 종류가 줄지 않았다」 + `Ascend/Run All EditMode Tests`
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-NPC-01
-- 남은 문제: **안 울린 3종이 이제 산출물에 이름으로 적힌다** — `Threshold170`, `OverharvestApproach`, `ExtraSpin`(`Logs/tenfloor_playmode.txt`). 이전에는 `BitCount` 만 찍어서 감사자가 「8종」만 보고는 무엇이 빠졌는지 **끝내 특정하지 못했다.** 셋의 성격이 서로 다르다. ① **`OverharvestApproach` 는 구조적으로 도달 불가**다 — `OverharvestApproachBridge.cs:71-73` 이 **크로스헤어가 레버를 겨눌 때만** 발행하는데 하네스는 `TenFloorAutoPilot.cs:734` 에서 `overharvest.Interact(gameObject)` 를 직접 부른다. 조준하지 않는다. 하네스가 겨누도록 바꾸지 않으면 영원히 안 나온다. ② **`ExtraSpin` 은 사건이 실제로 발행된다** — `FloorSession.cs:290` 이 `GameEventKind.ExtraSpinTaken` 을 publish 하고 이번 런에서 과수확이 실제로 일어났다(오디오 `OverharvestPull` 이 울렸다). 그런데 반응은 안 울렸다. **원인 후보가 둘이고 지금 산출물로는 못 가른다** — 매핑이 안 걸렸는가, 아니면 발행됐지만 **매번 억제됐는가**(이번 런의 억제 130건 &gt; 시작 110건). `FiredKindsMask` 는 **실제로 시작된 것**만 센다. ③ `Threshold170` 도 같은 모호성 아래 있다. **그 「다음」을 했다 (2026-08-02).** 억제 마스크 하나가 아니라 **둘로 갈랐다** — 원인이 셋인데 마스크 둘로는 여전히 못 가르기 때문이다. `PassengerReactionDirector` 에 `SuppressedKindsMask`(쿨다운·동시 한도·우선순위에 막힘)와 `InactiveKindsMask`(에셋이 지속 0 으로 꺼 둠)를 더했고, 셋을 합친 `ObservedKindsMask` 로 「도착은 했는가」를 묻는다. **판별표**: 세 마스크 어디에도 없으면 ① 사건이 아예 안 왔다(하네스가 그 상황을 안 만든다) · `Suppressed` 에 있으면 ③ 매번 막혔다 · `Inactive` 에 있으면 ② 데이터가 꺼 뒀다. **셋의 고치는 곳이 전부 다르다** — 하네스 · 밸런스 · 에셋. `TenFloorAutoPilot` 이 이제 네 줄로 찍는다(울린 것 / 막힌 것 / 꺼진 것 / 사건 자체가 안 온 것). 단정 2건을 붙여 세 칸이 실제로 갈라지는지 반증 가능하게 했다(`Logs/editmode_tests.txt` · 446 PASS / 0 FAIL). **①`OverharvestApproach` 의 원인은 이미 확정돼 있다** — 하네스가 크로스헤어로 레버를 겨누지 않는다(`TenFloorAutoPilot.cs:734` 가 `Interact` 를 직접 부른다). 다음 런의 산출물이 `Threshold170`·`ExtraSpin` 을 어느 칸에 넣는지가 남은 답이다
+- 남은 문제: ~~**안 울린 3종이 이제 산출물에 이름으로 적힌다** — `Threshold170`, `OverharvestApproach`, `ExtraSpin`~~ → **셋이 아니라 둘이다 (2026-08-02 실측 정정).** `Logs/tenfloor_playmode.txt:2133-2134` 가 「울린 종류 **9**」와 함께 이름을 적는데 그 목록에 **`Threshold170` 이 들어 있다.** 안 울린 것은 `OverharvestApproach`·`ExtraSpin` **둘**이다. 같은 블록의 오디오 줄은 「16종 전부 울렸다」이고 거기 `Siren` 이 있다 — `UP-RISK-08` 의 사이렌이 실제 런에서 울린다는 증거이기도 하다. 이전에는 `BitCount` 만 찍어서 감사자가 「8종」만 보고는 무엇이 빠졌는지 **끝내 특정하지 못했다.** 셋의 성격이 서로 다르다. ① **`OverharvestApproach` 는 구조적으로 도달 불가**다 — `OverharvestApproachBridge.cs:71-73` 이 **크로스헤어가 레버를 겨눌 때만** 발행하는데 하네스는 `TenFloorAutoPilot.cs:734` 에서 `overharvest.Interact(gameObject)` 를 직접 부른다. 조준하지 않는다. 하네스가 겨누도록 바꾸지 않으면 영원히 안 나온다. ② **`ExtraSpin` 은 사건이 실제로 발행된다** — `FloorSession.cs:290` 이 `GameEventKind.ExtraSpinTaken` 을 publish 하고 이번 런에서 과수확이 실제로 일어났다(오디오 `OverharvestPull` 이 울렸다). 그런데 반응은 안 울렸다. **원인 후보가 둘이고 지금 산출물로는 못 가른다** — 매핑이 안 걸렸는가, 아니면 발행됐지만 **매번 억제됐는가**(이번 런의 억제 130건 &gt; 시작 110건). `FiredKindsMask` 는 **실제로 시작된 것**만 센다. ③ `Threshold170` 도 같은 모호성 아래 있다. **그 「다음」을 했다 (2026-08-02).** 억제 마스크 하나가 아니라 **둘로 갈랐다** — 원인이 셋인데 마스크 둘로는 여전히 못 가르기 때문이다. `PassengerReactionDirector` 에 `SuppressedKindsMask`(쿨다운·동시 한도·우선순위에 막힘)와 `InactiveKindsMask`(에셋이 지속 0 으로 꺼 둠)를 더했고, 셋을 합친 `ObservedKindsMask` 로 「도착은 했는가」를 묻는다. **판별표**: 세 마스크 어디에도 없으면 ① 사건이 아예 안 왔다(하네스가 그 상황을 안 만든다) · `Suppressed` 에 있으면 ③ 매번 막혔다 · `Inactive` 에 있으면 ② 데이터가 꺼 뒀다. **셋의 고치는 곳이 전부 다르다** — 하네스 · 밸런스 · 에셋. `TenFloorAutoPilot` 이 이제 네 줄로 찍는다(울린 것 / 막힌 것 / 꺼진 것 / 사건 자체가 안 온 것). 단정 2건을 붙여 세 칸이 실제로 갈라지는지 반증 가능하게 했다(`Logs/editmode_tests.txt` · 446 PASS / 0 FAIL). **①`OverharvestApproach` 의 원인은 이미 확정돼 있다** — 하네스가 크로스헤어로 레버를 겨누지 않는다(`TenFloorAutoPilot.cs:734` 가 `Interact` 를 직접 부른다). 다음 런의 산출물이 `Threshold170`·`ExtraSpin` 을 어느 칸에 넣는지가 남은 답이다
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
