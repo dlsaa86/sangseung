@@ -147,9 +147,12 @@ namespace Ascend.Prototype.Run.Tests
 
         private IEnumerator MeasureFrames(string label, string condition)
         {
-            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            // **버퍼를 recorder 보다 먼저 잡는다.** 뒤에서 잡으면 float[180] + long[180]
+            // = 약 2.2 KB 가 측정 창 첫 프레임에 들어가 **하네스가 자기 비용을 게임 비용으로
+            // 보고한다.** `HeroSlicePerfProbe` 는 같은 이유로 이미 고쳐 뒀는데 이쪽이 남아 있었다.
             var samples = new float[Frames];
             var alloc = new long[Frames];
+            var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
 
             for (int i = 0; i < Frames; i++)
             {
@@ -164,13 +167,29 @@ namespace Ascend.Prototype.Run.Tests
             float p95 = samples[Mathf.Min(Frames - 1, Mathf.RoundToInt(Frames * 0.95f))];
             float worst = samples[Frames - 1];
 
-            long allocSum = 0; long allocWorst = 0; int allocValid = 0;
+            long allocSum = 0; long allocWorst = 0; int allocValid = 0; int allocZero = 0;
             for (int i = 0; i < Frames; i++)
             {
                 if (alloc[i] < 0) continue;
                 allocValid++;
                 allocSum += alloc[i];
+                if (alloc[i] == 0) allocZero++;
                 if (alloc[i] > allocWorst) allocWorst = alloc[i];
+            }
+
+            // **요구는 「매 프레임 0 B」다 — 그런데 이 프로브는 평균과 최악만 적어 왔다.**
+            // 그 둘로는 요구를 판정할 수 없다. 평균 9 KB 가 「전부 9 KB」인지
+            // 「179 프레임 0 B + 한 프레임 1.6 MB」인지 구분되지 않기 때문이다.
+            // 앞의 것이면 위반이고 뒤의 것이면 워밍업 한 번이라 요구를 만족할 수도 있다.
+            // 그래서 **0 B 프레임 수와 중앙값**을 함께 적는다. 중앙값은 스파이크에 안 끌린다.
+            long allocMedian = -1;
+            if (allocValid > 0)
+            {
+                var valid = new long[allocValid];
+                int k = 0;
+                for (int i = 0; i < Frames; i++) if (alloc[i] >= 0) valid[k++] = alloc[i];
+                System.Array.Sort(valid);
+                allocMedian = valid[allocValid / 2];
             }
 
             _report.AppendLine($"[{label}]");
@@ -191,10 +210,19 @@ namespace Ascend.Prototype.Run.Tests
                     break;
                 }
             }
-            _report.AppendLine(allocValid > 0
-                ? $"  GC Alloc 평균 {(double)allocSum / allocValid:F0} B/프레임 / 최악 {allocWorst} B / " +
-                  $"유효 표본 {allocValid}/{Frames}"
-                : "  GC Alloc 측정 불가 (ProfilerRecorder 무효)");
+            if (allocValid > 0)
+            {
+                _report.AppendLine($"  GC Alloc 중앙 {allocMedian} B/프레임 / 평균 {(double)allocSum / allocValid:F0} B / " +
+                                   $"최악 {allocWorst} B / 유효 표본 {allocValid}/{Frames}");
+                _report.AppendLine($"  **0 B 프레임 {allocZero}/{allocValid}** " +
+                                   $"({(allocValid > 0 ? 100.0 * allocZero / allocValid : 0):F1}%) " +
+                                   "— `UP-TECH-05`(워밍업 후 매 프레임 0 B)는 이 수로만 판정한다");
+                if (allocZero < allocValid)
+                    _report.AppendLine($"  → 0 B 가 아닌 프레임이 {allocValid - allocZero}개 있다. **요구 미충족이다.** " +
+                                       "다만 이 수치에는 **에디터·프로파일러 자신의 할당이 섞여 있다** — " +
+                                       "대조군(게임 코드 전부 끔) 없이 게임 코드 탓으로 돌리지 말 것.");
+            }
+            else _report.AppendLine("  GC Alloc 측정 불가 (ProfilerRecorder 무효)");
         }
 
         private IEnumerator ForceCritical(RunSessionBehaviour run,
