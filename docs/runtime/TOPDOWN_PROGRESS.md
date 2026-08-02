@@ -11,9 +11,10 @@
 |---|---|
 | 현재 패스 | **Pass 1·2·3 COMPLETE → Pass 4 IN_PROGRESS** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `6059b5d` — 커밋 안 된 채 남아 있던 셋을 넣는다 |
+| 마지막 정상 커밋 | `3a393f9` — G-1 이 사는 곳은 프레임 중앙이었다 |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` |
+| 테스트 (둘 다 적는다) | `Logs/editmode_tests.txt` **447** · `.claude/state/last-selftest.txt` **466** — 둘 다 FAIL 0 |
 | 갱신 시각 | **2026-08-02** (그래픽 완성도 승격 + 지표 도구 + 6레인) |
 
 > ⚠ **이 표가 백로그와 어긋난 채로 오래 있었다.** 「Pass 1 COMPLETE → Pass 2 IN_PROGRESS」로
