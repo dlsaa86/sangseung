@@ -385,21 +385,21 @@ namespace Ascend.Prototype.View
             _contractSelectedLabel = selectedLabel;
 
             _text.Clear();
-            // 시너지 줄은 **선택 전**에 가장 필요하다 (`UP-CONTRACT-05`) — 고른 뒤에 알려
-            // 주면 「공개」가 아니라 사후 설명이다. `NotionSyncReport.md:166` 의 필수
-            // 4정보 중 넷째이고, 앞의 셋은 `Preview()` 가 낸다.
+            // **여기에 시너지 줄을 붙이지 않는다** (`UP-CONTRACT-05`).
+            // 이 메서드는 씬에서 `_contractLabel: {fileID: 0}` 이라 위 가드에서 즉시 반환한다 —
+            // `UP-DEVICE-06` 이 「계기판의 계약 표시는 죽은 경로다」로 기록해 둔 자리다.
+            // 한 번 여기 붙였다가 되돌렸다: 컴파일도 되고 테스트도 통과하는데
+            // **화면에는 아무것도 안 나온다.** 살아 있는 경로는 `ApplyPlaqueLabel` 이다.
             if (selecting)
             {
                 _text.Append("계약 ").Append(shown + 1).Append('/').Append(choices.Length)
                      .Append("   ").Append(choices[shown].Label).AppendLine();
-                _text.Append(choices[shown].Preview()).AppendLine();
-                _text.Append(choices[shown].SynergyWith(floor.Loadout));
+                _text.Append(choices[shown].Preview());
             }
             else
             {
                 _text.Append("확정 — ").Append(floor.SelectedContract.Label).AppendLine();
-                _text.Append(floor.SelectedContract.Preview()).AppendLine();
-                _text.Append(floor.SelectedContract.SynergyWith(floor.Loadout));
+                _text.Append(floor.SelectedContract.Preview());
             }
             Apply(_contractLabel, _text);
         }
@@ -641,7 +641,7 @@ namespace Ascend.Prototype.View
                 _block.SetColor(EmissionColorId, color * emission);
                 plaque.SetPropertyBlock(_block);
 
-                ApplyPlaqueLabel(i, exists, exists ? choices[i] : ResistanceContract.None);
+                ApplyPlaqueLabel(i, exists, exists ? choices[i] : ResistanceContract.None, floor.Loadout);
             }
         }
 
@@ -650,7 +650,8 @@ namespace Ascend.Prototype.View
         /// `visual-criteria` B-4.11이 "보상만 크게 보이고 대가가 작게 적혀 있으면
         /// 함정이다"라고 못 박은 지점이다. 문구는 데이터가 만든다.
         /// </summary>
-        private void ApplyPlaqueLabel(int index, bool exists, in ResistanceContract contract)
+        private void ApplyPlaqueLabel(int index, bool exists, in ResistanceContract contract,
+                                      Build.BuildLoadout loadout)
         {
             if (_plaqueLabels == null || index >= _plaqueLabels.Length) return;
             TextMeshPro label = _plaqueLabels[index];
@@ -666,13 +667,22 @@ namespace Ascend.Prototype.View
 
             // 층이 바뀌어야 선택지가 바뀐다. 라벨명 해시를 키로 쓰면 매 프레임
             // 문자열을 만들지 않고도 교체 시점을 잡을 수 있다.
+            //
+            // **적재 상태를 키에 섞는다** (`UP-CONTRACT-05`). 시너지 줄은 적재에 따라
+            // 달라지는데 계약 이름만 키로 쓰면 층 안에서 부품을 실어도 문구가 얼어붙는다 —
+            // 그러면 「선택 전에 공개한다」가 **틀린 값을 공개하는 것**이 된다.
+            // 칸 수와 총무게만 섞어도 적재 변화는 전부 잡힌다(부품이 바뀌면 둘 중 하나가 움직인다).
             int key = contract.Label != null ? contract.Label.GetHashCode() : 1;
+            if (loadout != null)
+                key = key * 31 + loadout.Count * 7919 + Mathf.RoundToInt(loadout.TotalWeight * 100f);
             if (_plaqueKeys[index] == key) return;
             _plaqueKeys[index] = key;
 
             _text.Clear();
             _text.Append(contract.Label).AppendLine();
-            _text.Append(contract.Preview());
+            _text.Append(contract.Preview()).AppendLine();
+            // 필수 4정보의 넷째. 위 `Preview()` 가 셋을 낸다 (`NotionSyncReport.md:166`).
+            _text.Append(contract.SynergyWith(loadout));
             Apply(label, _text);
         }
 

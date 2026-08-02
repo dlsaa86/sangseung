@@ -758,11 +758,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 분류: Required · 출처: PRD §6.2(판독), N01 「공정성 안전장치」, N03 「위험 계약은 선택 전에 공개」, N08 §10.4
 - 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/Player/InteractableContractPanel.cs`, 씬 `ContractPlaqueLabel_0..2`, `Scripts/Spin/ResistanceContract.cs` 의 `Preview()` + `SynergyWith(loadout)`, `Scripts/View/InstrumentPanelView.cs`
-- 접근: 계약 패널을 조준한다 — 선택 전에 네 정보가 함께 뜬다
+- 접근: 계약 패널을 조준한다 — 명판 세 장(`_plaqueLabels`)에 네 정보가 함께 뜬다
 - 검증: 고정 캡처 `14_contract_select` + `Ascend/Run All EditMode Tests` → 「시너지 한 줄이 같은 저항을 겨냥한 부품만 센다」·「적재가 비면 시너지 줄이 그렇게 말한다」
 - 증거: `Captures/TenFloor/14_contract_select.png`, `Logs/editmode_tests.txt` (2026-08-02 14:16 · 449 PASS / 0 FAIL · 133·134번째 줄), `.claude/state/last-selftest.txt` (468 PASS / 0 FAIL)
 - 의존: UP-CONTRACT-01
-- 남은 문제: ~~N08 §10.4의 「현재 빌드와 관련된 시너지 한 줄」이 없다~~ → **넣었다 (2026-08-02).** `ResistanceContract.SynergyWith(BuildLoadout)` 가 적재된 부품의 효과 중 **이 계약과 같은 저항을 겨냥한 것**만 세어 한 줄로 말한다. `InstrumentPanelView` 가 선택 중·확정 후 둘 다 붙인다 — 고른 뒤에만 알려 주면 「공개」가 아니라 사후 설명이다. **문구를 지어내지 않는다** — 규칙에 없는 관계를 쓰면 플레이어가 UI 를 근거로 잘못된 선택을 하고, 그건 정보 공개가 아니라 오정보다. **대상 없는 효과(연쇄 증분·잔류 완화)는 세지 않는다** — 어느 계약을 고르든 똑같이 걸리므로 「이 계약과의」 시너지가 아니고, 그것까지 세면 모든 계약이 같은 줄을 달아 비교에 쓸모가 없어진다. 테스트가 바로 그걸 잡는다: 연쇄 조속기(대상 없음)만 실린 상태에서 흡수체 계약이 「시너지 있다」를 내면 실패하고, 두 계약이 같은 줄을 내도 실패한다
+- 남은 문제: ~~N08 §10.4의 「현재 빌드와 관련된 시너지 한 줄」이 없다~~ → **넣었다 (2026-08-02).** `ResistanceContract.SynergyWith(BuildLoadout)` 가 적재된 부품의 효과 중 **이 계약과 같은 저항을 겨냥한 것**만 세어 한 줄로 말한다. `InstrumentPanelView` 가 선택 중·확정 후 둘 다 붙인다 — 고른 뒤에만 알려 주면 「공개」가 아니라 사후 설명이다. **문구를 지어내지 않는다** — 규칙에 없는 관계를 쓰면 플레이어가 UI 를 근거로 잘못된 선택을 하고, 그건 정보 공개가 아니라 오정보다. **대상 없는 효과(연쇄 증분·잔류 완화)는 세지 않는다** — 어느 계약을 고르든 똑같이 걸리므로 「이 계약과의」 시너지가 아니고, 그것까지 세면 모든 계약이 같은 줄을 달아 비교에 쓸모가 없어진다. 테스트가 바로 그걸 잡는다: 연쇄 조속기(대상 없음)만 실린 상태에서 흡수체 계약이 「시너지 있다」를 내면 실패하고, 두 계약이 같은 줄을 내도 실패한다.
+
+  > **처음엔 죽은 경로에 붙였다 (같은 날 발견·정정).** `InstrumentPanelView.ApplyContractPreview` 에 넣었는데 그 메서드는 씬에서 `_contractLabel: {fileID: 0}` 이라 `:368` 가드에서 **즉시 반환한다** — `UP-DEVICE-06` 이 「계기판의 계약 표시는 죽은 경로다」로 이미 기록해 둔 자리였고, 나는 그것을 읽기 전에 배선했다. **컴파일도 되고 단정 2건도 통과했는데 화면에는 아무것도 안 나왔다** — 값 층위 테스트만으로는 도달 경로를 증명하지 못한다는 것의 정확한 실례다. 살아 있는 경로인 `ApplyPlaqueLabel`(씬 `_plaqueLabels` 에 fileID 3개)로 옮겼고, 죽은 쪽에는 「여기 붙이지 말 것」과 이유를 주석으로 남겼다. **캐시 키에 적재 상태를 섞었다** — 명판은 계약 이름 해시로 캐시하는데 시너지는 적재에 따라 달라지므로, 그대로 두면 층 안에서 부품을 실어도 문구가 얼어붙어 **틀린 값을 「공개」하게 된다**
 
 ## 2.6 POWER — 전력·임계점·푸시 유어 럭
 
