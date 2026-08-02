@@ -188,3 +188,13 @@ namespace Ascend.Prototype.Data.Profiles
         }
     }
 }
+
+// 씬 배선 필요:
+//   `Scripts/Risk/RiskStateView.cs` 의 `_thresholdProfile` 슬롯에 아래 에셋을 물린다.
+//   `RiskStateView.ThresholdSource` 가 「코드 프리셋」이 아닌 에셋 이름을 찍는지로 확인한다.
+//   연출 출처인 `ProfileSource` 와는 다른 축이다 — 둘을 같이 봐야 「연출은 에셋, 판정은
+//   코드」인 절반 배선을 잡는다.
+// 에셋 생성 필요: Assets/Prototype_Elevator/Data/Profiles/RiskThresholdProfile.asset
+//   (Create ▸ Ascend ▸ Profiles ▸ RiskThreshold). 생성 직후 값은 코드 프리셋과 같다.
+// 주의: 여기 값과 `DangerFeedbackProfile`(⑧) 을 한 에셋으로 합치지 않는다. 「연출이 약해
+//   보인다」는 이유로 임계값을 내리는 일이 생기고, 그건 연출 조정이 아니라 난이도 변경이다.

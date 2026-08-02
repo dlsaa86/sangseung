@@ -197,3 +197,13 @@ namespace Ascend.Prototype.Data.Profiles
         }
     }
 }
+
+// 씬 배선 필요:
+//   `RunSessionBehaviour` 의 `_spinBalanceProfile` 슬롯에 아래 에셋을 물린다.
+//   확인은 `RunSessionBehaviour.SpinBalanceSource` 로 한다 — 배선하지 않아도 코드
+//   프리셋으로 같은 밸런스로 돌기 때문에 화면으로는 구분되지 않는다.
+// 에셋 생성 필요: Assets/Prototype_Elevator/Data/Profiles/SpinBalanceProfile.asset
+//   (Create ▸ Ascend ▸ Profiles ▸ SpinBalance).
+// **하지 말 것**: 연쇄 하드 캡(20)과 `RequireAdjacencyToPurify` 같은 스위치를 이 에셋에
+//   추가하지 않는다. 전자는 PRD §6·TECH_SPEC §9 가 못박은 명세고 후자는 규칙의 정의다.
+//   다이얼이 아닌 것을 인스펙터에 올리면 명세 위반이 편집 실수와 구분되지 않는다.

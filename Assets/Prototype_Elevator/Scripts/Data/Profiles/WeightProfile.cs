@@ -189,3 +189,15 @@ namespace Ascend.Prototype.Data.Profiles
         }
     }
 }
+
+// 씬 배선 필요:
+//   `RunSessionBehaviour` 의 `_weightProfile` 슬롯에 아래 에셋을 물린다. 배선하지 않아도
+//   코드 프리셋으로 **같은 밸런스로** 돌기 때문에 화면에서는 차이가 없다 — 그래서
+//   「배선했는가」는 눈으로 못 본다. `RunSessionBehaviour.WeightSource` 가 「코드 프리셋」이
+//   아닌 에셋 이름을 찍는지로 확인한다.
+// 에셋 생성 필요: Assets/Prototype_Elevator/Data/Profiles/WeightProfile.asset
+//   (Create ▸ Ascend ▸ Profiles ▸ Weight). 생성 직후 값은 코드 프리셋과 같으므로
+//   만들기만 해서는 밸런스가 바뀌지 않는다.
+// **하지 말 것**: `PrototypeConfig.asset` 의 `allowedWeight`(=8)를 여기 옮기지 않는다.
+//   그쪽은 승객 수 단위인 레거시 경로의 값이고 여기는 kg 단위다. 자세한 근거는 이 파일
+//   맨 위 주석에 있다.
