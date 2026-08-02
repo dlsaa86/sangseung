@@ -51,6 +51,10 @@ namespace Ascend.Prototype.EditorTools
             // **두 번** 났다 — 레인은 자기 소유 경로 밖인 이 파일을 고칠 수 없고,
             // 통합자가 넣지 않으면 합계가 안 움직인다. 그 침묵이 곧 미검증이다.
             Art.Tests.ProcMeshTests.RunAll(),
+            // 원형 현창 3×3. 레퍼런스가 요구한 「세로 릴이 아닌 계기판」이 구조로
+            // 지켜지는지를 기하에서 직접 잰다 — 가로 리브가 더 두껍고, 세로 리브가
+            // 끊겨 있고, 아홉 개 구멍이 실제로 뚫려 있다는 것. 산문 주장이 아니다.
+            Art.Tests.PortholeMeshTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]

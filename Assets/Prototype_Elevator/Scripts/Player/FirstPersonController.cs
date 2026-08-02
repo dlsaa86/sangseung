@@ -117,6 +117,21 @@ namespace Ascend.Prototype.Player
             if (_characterController == null)
                 return;
 
+            // 컨트롤러가 꺼져 있는 프레임에는 움직이지 않는다.
+            //
+            // 왜 필요한가: 캡처 리그(`TenFloorCaptureRig`)와 증거 레코더는 플레이어를
+            // 텔레포트시키려고 `CharacterController.enabled = false` 로 콜라이더를 잠깐
+            // 끈다. 그런데 이 컴포넌트는 계속 활성이라 그 사이에도 `Update()` 가 돌고
+            // `Move()` 를 불러 「Move called on inactive controller」 오류를 냈다.
+            // 누수가 아니라 **두 컴포넌트의 Update 순서 경합**이다 — 끈 쪽이 다시 켜도
+            // 꺼져 있던 프레임의 호출은 이미 오류로 기록된다.
+            //
+            // Pass 3 이 콘솔 오류 0 을 요구하므로 이 오류 하나가 캡처 세트 전체를
+            // 판정 근거에서 탈락시킨다. 꺼진 컨트롤러를 미는 것은 어차피 무의미하므로
+            // 조기 반환이 옳은 자리다 — 끄는 쪽을 고치면 다음에 끄는 코드가 또 밟는다.
+            if (!_characterController.enabled)
+                return;
+
             Keyboard keyboard = Keyboard.current;
             Vector2 input = Vector2.zero;
             if (keyboard != null)

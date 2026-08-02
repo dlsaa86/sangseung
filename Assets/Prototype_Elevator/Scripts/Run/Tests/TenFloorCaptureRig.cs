@@ -50,6 +50,16 @@ namespace Ascend.Prototype.Run.Tests
 
         public static string ManifestPath => OutputDirectory + "/manifest.txt";
 
+        /// <summary>
+        /// 결과판 관심영역(ROI) 목록. `capture-metrics.ps1 -BoardRoiCsv` 가 읽어
+        /// `G-SLOT-A`(결과판 띠·색)를 잰다.
+        ///
+        /// **왜 파일로 내보내는가**: 24장의 카메라 자세가 전부 달라 사각형 하나로는
+        /// 대부분의 장에서 엉뚱한 곳을 잰다. 장마다 사각형이 필요하고, 그 사각형을
+        /// 아는 것은 카메라 행렬을 가진 이 리그뿐이다.
+        /// </summary>
+        public static string BoardRoiPath => OutputDirectory + "/board-roi.csv";
+
         /// <summary>이 런에서 포스트 처리를 강제로 끌 것인가. 진단 세트 전용.</summary>
         public static bool PostDisabledForRun
         {
@@ -77,6 +87,9 @@ namespace Ascend.Prototype.Run.Tests
         private const float Fov = 60f;
 
         private readonly StringBuilder _manifest = new StringBuilder();
+        private readonly StringBuilder _boardRoi = new StringBuilder();
+        private int _roiRows;
+        private int _roiUnmeasurable;
         private Camera _camera;
         private RenderTexture _target;
         private Texture2D _readback;
@@ -1015,6 +1028,7 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine($"{"",-26} {note}");
             _manifest.AppendLine($"{"",-26} {GaugeFill()}");
             _manifest.AppendLine($"{"",-26} {FrameFacts()}");
+            RecordBoardRoi(name, Width, Height);
             if (extra != null) _manifest.AppendLine($"{"",-26} {extra()}");
         }
 
@@ -1099,6 +1113,102 @@ namespace Ascend.Prototype.Run.Tests
         /// 이 변환을 손으로 하지 않는 것이 이 함수가 존재하는 이유다.
         /// </summary>
         private static float NdcSpanToFramePercent(float ndcSpan) => ndcSpan * 50f;
+
+        /// <summary>
+        /// 이 장의 **결과판 화면공간 사각형**을 `board-roi.csv` 에 적는다.
+        ///
+        /// 이전 판은 칸마다 <c>InFrame(cell.position)</c> 으로 **한 점만** 검사하고
+        /// 투영 좌표를 버렸다. 그래서 매니페스트에 「9칸 중 프레임 안 N칸」이라는
+        /// **개수만** 남고 사각형은 어디에도 없었다 — 점 하나에는 넓이가 없다.
+        /// 그 결과 `G-SLOT-A` 가 24/24 「측정 불가」로 앉아 게이트를 막았다.
+        ///
+        /// 여기서는 칸 렌더러의 **월드 AABB 8꼭짓점을 투영**해 x·y 의 min/max 를
+        /// 취하고 아홉 칸을 합집합한다.
+        ///
+        /// ⚠ **원점은 좌하단이다.** Unity 의 <c>WorldToScreenPoint</c> 가 좌하단
+        /// 기준이고 PNG 행은 좌상단 기준이라 서로 뒤집혀 있다. 도구는
+        /// `-BoardRoiOrigin bottomleft` 로 받아야 하며, CSV 머리말에도 같은 사실을
+        /// 적는다 — 도구는 어느 쪽을 썼는지 찍어 주지만 **틀린 것을 감지하지는 못한다.**
+        /// </summary>
+        private void RecordBoardRoi(string name, int pixelWidth, int pixelHeight)
+        {
+            Camera cam = MeasureCamera;
+            var board = FindAnyObjectByType<SpinBoardView>();
+            if (cam == null || board == null) { _roiUnmeasurable++; return; }
+
+            float minX = float.MaxValue, minY = float.MaxValue;
+            float maxX = float.MinValue, maxY = float.MinValue;
+            int contributing = 0, centresInFrame = 0;
+
+            for (int i = 0; i < SpinBoard.Cells; i++)
+            {
+                Transform cell = board.CellTransform(i);
+                if (cell == null) continue;
+                if (InFrame(cell.position)) centresInFrame++;
+
+                // 빈 칸도 판의 일부다. 심볼이 꺼져 있어도 자리는 그 자리이므로
+                // 비활성 렌더러까지 포함해 **판의 물리적 넓이**를 잡는다. 그래야
+                // 회귀 ROI 가 심볼 유무에 따라 흔들리지 않는다.
+                var renderers = cell.GetComponentsInChildren<Renderer>(true);
+                bool any = false;
+                for (int r = 0; r < renderers.Length; r++)
+                {
+                    if (renderers[r] == null) continue;
+                    Bounds b = renderers[r].bounds;
+                    if (ProjectBounds(cam, b, ref minX, ref minY, ref maxX, ref maxY)) any = true;
+                }
+                if (any) contributing++;
+            }
+
+            // 프레임 안 칸이 0개인 장은 행을 만들지 않는다 — 그 장은 「측정 불가」가 정답이다.
+            if (centresInFrame == 0 || contributing == 0)
+            {
+                _roiUnmeasurable++;
+                return;
+            }
+
+            // 뷰포트(0~1) → 이 장의 PNG 픽셀. 좌하단 원점 그대로다.
+            float x0 = Mathf.Clamp(minX * pixelWidth, 0f, pixelWidth);
+            float y0 = Mathf.Clamp(minY * pixelHeight, 0f, pixelHeight);
+            float x1 = Mathf.Clamp(maxX * pixelWidth, 0f, pixelWidth);
+            float y1 = Mathf.Clamp(maxY * pixelHeight, 0f, pixelHeight);
+            int w = Mathf.RoundToInt(x1 - x0);
+            int h = Mathf.RoundToInt(y1 - y0);
+            if (w <= 0 || h <= 0) { _roiUnmeasurable++; return; }
+
+            _boardRoi.AppendLine($"{name},{Mathf.RoundToInt(x0)},{Mathf.RoundToInt(y0)},{w},{h},bottomleft");
+            _roiRows++;
+        }
+
+        /// <summary>
+        /// 월드 AABB 의 **8꼭짓점**을 화면으로 투영해 min/max 를 넓힌다.
+        /// 카메라 뒤쪽 꼭짓점(z ≤ 0)은 투영이 뒤집히므로 버린다.
+        /// 하나라도 앞쪽이면 true.
+        /// </summary>
+        private static bool ProjectBounds(Camera cam, Bounds b,
+                                          ref float minX, ref float minY, ref float maxX, ref float maxY)
+        {
+            Vector3 c = b.center, e = b.extents;
+            bool any = false;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var world = new Vector3(
+                    c.x + ((corner & 1) == 0 ? -e.x : e.x),
+                    c.y + ((corner & 2) == 0 ? -e.y : e.y),
+                    c.z + ((corner & 4) == 0 ? -e.z : e.z));
+                // **뷰포트(0~1)로 받는다.** 화면 캡처 경로는 카메라 픽셀 공간과 PNG
+                // 크기가 다를 수 있어 `WorldToScreenPoint` 의 픽셀 값을 그대로 쓰면
+                // 배율이 어긋난다. 정규화해 두고 호출부에서 PNG 크기를 곱한다.
+                Vector3 s = cam.WorldToViewportPoint(world);
+                if (s.z <= 0f) continue;              // 뒤쪽 — 투영이 뒤집힌다
+                if (s.x < minX) minX = s.x;
+                if (s.y < minY) minY = s.y;
+                if (s.x > maxX) maxX = s.x;
+                if (s.y > maxY) maxY = s.y;
+                any = true;
+            }
+            return any;
+        }
 
         /// <summary>매니페스트 여러 줄을 계기 줄 들여쓰기에 맞춘다.</summary>
         private const string FactIndent = "                           ";
@@ -1907,6 +2017,20 @@ namespace Ascend.Prototype.Run.Tests
             Quaternion savedRotation = root.rotation;
             var controller = root.GetComponent<CharacterController>();
             bool hadController = controller != null && controller.enabled;
+
+            // **컨트롤러를 끄는 동안 그것을 모는 쪽도 함께 세운다.**
+            //
+            // 끄는 이유는 콜라이더가 텔레포트를 막기 때문인데, 이 메서드는 끈 채로
+            // `WaitFrames(4)` 와 `ScreenShot` 을 **yield** 한다. 그 프레임마다
+            // `FirstPersonController.Update` 가 돌아 꺼진 컨트롤러에 `Move()` 를 부르고
+            // 콘솔에 `CharacterController.Move called on inactive controller` 가 쌓였다
+            // (한 런에 200건). `EvidenceClipRecorder` 의 같은 껐다 켜기가 멀쩡한 이유는
+            // 그쪽이 **동기**라 프레임을 넘지 않기 때문이다 — 차이는 `yield` 하나다.
+            //
+            // 세워 두면 부수 효과도 사라진다. 연출로 잡아 둔 시점을 마우스 입력이
+            // 흔들거나 중력이 좌표를 끌어내리지 못한다.
+            bool hadPlayer = player.enabled;
+            if (hadPlayer) player.enabled = false;
             if (hadController) controller.enabled = false;   // 텔레포트를 콜라이더가 막는다
 
             root.position = stand;
@@ -1935,6 +2059,7 @@ namespace Ascend.Prototype.Run.Tests
             root.position = savedPosition;
             root.rotation = savedRotation;
             if (hadController) controller.enabled = true;
+            if (hadPlayer) player.enabled = true;
             yield return WaitFrames(2);
         }
 
@@ -2147,6 +2272,7 @@ namespace Ascend.Prototype.Run.Tests
                     _measureCamera = view;
                     _manifest.AppendLine($"{"",-26} {GaugeFill()}");
                     _manifest.AppendLine($"{"",-26} {FrameFacts()}");
+                    RecordBoardRoi(name, shot.width, shot.height);
                     _manifest.AppendLine($"{"",-26} 실측 기준 카메라 — `{view.name}` " +
                                          $"pos {view.transform.position:F2} m · FOV {view.fieldOfView:F1}° · " +
                                          $"화면비 {view.aspect:F3} (캡처 {(float)shot.width / Mathf.Max(1, shot.height):F3}) " +
@@ -2384,6 +2510,37 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine($"촬영 {_shots}장 — 전용 카메라(RenderTexture {Width}×{Height}) {_renderShots}장 / " +
                                  $"게임 뷰 화면 캡처 {_screenShots}장");
             _manifest.AppendLine(StaleFiles());
+
+            // 결과판 ROI. **원점을 여기에도 적는다** — 도구는 `-BoardRoiOrigin` 으로
+            // 받은 대로 찍어 주지만 틀린 것을 감지하지는 못하므로, 생산자 쪽 사실을
+            // 파일과 매니페스트 양쪽에 남긴다.
+            _manifest.AppendLine(
+                $"결과판 ROI — `{BoardRoiPath}` 에 {_roiRows}장 · 측정 불가 {_roiUnmeasurable}장 " +
+                "(프레임 안 칸 0개인 장은 행을 만들지 않는다). " +
+                "**좌표 원점은 좌하단**(Unity 뷰포트 기준)이라 " +
+                "`capture-metrics.ps1 -BoardRoiCsv <세트>/board-roi.csv -BoardRoiOrigin bottomleft` 로 읽어야 한다");
+            try
+            {
+                string roiPath = Path.Combine(Directory.GetCurrentDirectory(), BoardRoiPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(roiPath));
+                // **머리말이 반드시 첫 줄이어야 한다.** 도구는 `Import-Csv` 로 읽고
+                // 그것은 첫 줄을 무조건 헤더로 삼는다 — 앞에 `#` 주석을 붙였더니
+                // 주석이 헤더가 되어 모든 필드가 null 이 됐고 「0 장 수록」이 나왔다.
+                // 그래서 원점은 주석이 아니라 **열**로 싣는다. 사실이 파일과 함께
+                // 이동하고, 기계가 읽을 수 있고, 파서를 깨뜨리지 않는다.
+                //
+                // BOM 도 붙이지 않는다 — 붙이면 첫 헤더 이름이 `﻿file` 이 되어
+                // `$row.file` 이 조용히 null 이 된다. 헤더는 전부 ASCII 라 BOM 이 필요 없다.
+                var roi = new StringBuilder();
+                roi.AppendLine("file,x,y,w,h,origin");
+                roi.Append(_boardRoi);
+                File.WriteAllText(roiPath, roi.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[상승] 결과판 ROI 저장 실패: {exception.Message}");
+            }
+
             try
             {
                 string path = Path.Combine(Directory.GetCurrentDirectory(), ManifestPath);

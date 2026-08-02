@@ -96,6 +96,7 @@ public static class PrototypeSelfTest
         // 스모크다. 한쪽에만 넣으면 게이트가 못 보는 테스트가 생긴다.
         FoldInSuite("표현 계층 물리", Ascend.Prototype.Physics.Tests.PresentationPhysicsTests.RunAll());
         FoldInSuite("절차적 메시", Ascend.Prototype.Art.Tests.ProcMeshTests.RunAll());
+        FoldInSuite("원형 현창 3×3", Ascend.Prototype.Art.Tests.PortholeMeshTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

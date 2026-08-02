@@ -235,7 +235,18 @@ if (-not [string]::IsNullOrWhiteSpace($BoardRoiCsv)) {
         [Console]::Error.WriteLine("capture-metrics: BoardRoiCsv 를 찾지 못했다: $roiCsvPath")
         exit 2
     }
-    foreach ($row in (Import-Csv -LiteralPath $roiCsvPath)) {
+    # 리그는 표 앞에 `#` 주석으로 원점 규약을 적는다 (bottomleft 인지 topleft 인지가
+    # 이 표에서 가장 틀리기 쉬운 값이라서다). Import-Csv 는 첫 줄을 무조건 헤더로 읽으므로
+    # 주석을 걸러 준다 — 규약 기록을 지우게 만드는 것보다 도구가 관대한 편이 낫다.
+    $roiLines = @(Get-Content -LiteralPath $roiCsvPath -Encoding UTF8 |
+                  Where-Object { $_.TrimStart([char]0xFEFF, ' ', "`t") -notmatch '^\s*#' -and
+                                 -not [string]::IsNullOrWhiteSpace($_) })
+    if ($roiLines.Count -lt 2) {
+        [Console]::Error.WriteLine("capture-metrics: BoardRoiCsv 에 데이터 행이 없다: $roiCsvPath")
+        exit 2
+    }
+    $roiLines[0] = $roiLines[0].TrimStart([char]0xFEFF)
+    foreach ($row in ($roiLines | ConvertFrom-Csv)) {
         $key = "$($row.file)".Trim()
         if ([string]::IsNullOrWhiteSpace($key)) { continue }
         $roiMap[$key] = ConvertTo-CaptureRoi -Text ("{0},{1},{2},{3}" -f $row.x, $row.y, $row.w, $row.h) `
