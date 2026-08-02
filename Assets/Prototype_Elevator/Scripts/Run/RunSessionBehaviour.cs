@@ -45,6 +45,10 @@ namespace Ascend.Prototype.Run
                  "덮어쓰기지 대체가 아니라서, 채우지 않은 칸은 그 층만 프리셋으로 남는다.")]
         [SerializeField] private Data.Profiles.FloorCurriculumProfile _floorCurriculum;
 
+        [Tooltip("저항 계약 8종 (UP-TECH-09 ②). 비어 있으면 코드 계약을 그대로 쓰고 " +
+                 "갈아끼움 자체가 일어나지 않는다 — 배열 복사도 없다.")]
+        [SerializeField] private Data.Profiles.ContractProfile _contractProfile;
+
         public RunSession Session { get; private set; }
 
         /// <summary>
@@ -69,6 +73,9 @@ namespace Ascend.Prototype.Run
 
         /// <summary>층별 곡선이 **어디서 왔는가** (`UP-TECH-09` ④).</summary>
         public string FloorCurriculumSource { get; private set; } = "미초기화";
+
+        /// <summary>계약 수치가 **어디서 왔는가** (`UP-TECH-09` ②).</summary>
+        public string ContractSource { get; private set; } = "미초기화";
 
         /// <summary>현재 런의 시드. 디버그 패널이 표시·재현에 쓴다.</summary>
         public int Seed => _seed;
@@ -104,9 +111,14 @@ namespace Ascend.Prototype.Run
                     _floorCurriculum, nameof(RunSessionBehaviour));
             FloorCurriculumSource = curriculum.SourceName;
 
+            Data.Profiles.ContractSnapshot contracts =
+                Data.Profiles.ContractProfile.SnapshotOrDefault(
+                    _contractProfile, nameof(RunSessionBehaviour));
+            ContractSource = contracts.SourceName;
+
             IFloorPlanSource floors = _mode == RunMode.HeroSlice
                 ? (IFloorPlanSource)new HeroSliceFloorSource()
-                : new TenFloorSource(curriculum);
+                : new TenFloorSource(curriculum, contracts);
 
             // 에셋이 있으면 9개 값 전부가 여기서 온다. 없으면 인스펙터의 판돈 두 값 +
             // 코드 기본값 일곱으로 진행하되, 어느 쪽인지를 기록에 남긴다.

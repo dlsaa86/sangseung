@@ -108,6 +108,14 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("0인 칸은 그 층만 프리셋으로 남는다", TestCurriculumZeroCellFallsBack, ref passed, ref failed, report);
             Run("곡선이 10층 런까지 도달한다", TestCurriculumReachesRun, ref passed, ref failed, report);
 
+            // ── 계약 수치 ② (`UP-TECH-09`) ───────────────────────────────────
+            Run("계약 프리셋이 코드 정의와 같다", TestContractPresetMatchesCode, ref passed, ref failed, report);
+            Run("폴백은 갈아끼우지 않는다", TestContractFallbackDoesNotTouch, ref passed, ref failed, report);
+            Run("계약 수치를 바꾸면 선택지가 따라온다", TestContractOverrides, ref passed, ref failed, report);
+            Run("공유 정적 배열이 오염되지 않는다", TestContractDoesNotMutateStatic, ref passed, ref failed, report);
+            Run("무계약은 갈아끼움에서 제외된다", TestContractNoneUntouched, ref passed, ref failed, report);
+            Run("거래가 안 되는 계약이 검출된다", TestContractValidate, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -2241,6 +2249,156 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             // 봤으면 충분하고, 여기서는 무게 0이라 둘이 같아야 한다.
             if (!Near(run.Current.RequiredPower, 1000f))
                 return $"층 세션의 요구 전력이 {run.Current.RequiredPower} (무게 0인데 계획과 다르다)";
+            return null;
+        }
+
+        // ── 계약 수치 ② (`UP-TECH-09`) ──────────────────────────────────────
+
+        /// <summary>계약 선택지가 있는 층. 4층이 흡수체 계약을 가르친다.</summary>
+        private static Ascend.Prototype.Spin.FloorPlan ContractFloor()
+        {
+            for (int floor = 1; floor <= FloorCurriculumProfile.FloorCount; floor++)
+            {
+                Ascend.Prototype.Spin.FloorPlan plan = Ascend.Prototype.Spin.PrototypeCurriculum.For(floor);
+                if (plan.ContractChoices != null && plan.ContractChoices.Length > 0) return plan;
+            }
+            return Ascend.Prototype.Spin.PrototypeCurriculum.For(1);
+        }
+
+        private static ContractSnapshot ProbeContracts()
+        {
+            // 프리셋(1.6/1.8/0.5/1.8 · 1.5/1.5/1.0/2.0)과 전부 다른 수.
+            return new ContractSnapshot(3.1f, 4.2f, 1.3f, 2.4f, 3.5f, 4.6f, 1.7f, 2.8f, "테스트 프로브");
+        }
+
+        private static string TestContractPresetMatchesCode()
+        {
+            Ascend.Prototype.Spin.ResistanceContract a = Ascend.Prototype.Spin.PrototypeCurriculum.AbsorberContract;
+            if (!Near(ContractProfile.DefaultAbsorberAppearance, a.AppearanceMultiplier))
+                return $"흡수 출현 {ContractProfile.DefaultAbsorberAppearance} vs 코드 {a.AppearanceMultiplier}";
+            if (!Near(ContractProfile.DefaultAbsorberPurifyReward, a.PurifyRewardMultiplier))
+                return $"흡수 보상 {ContractProfile.DefaultAbsorberPurifyReward} vs 코드 {a.PurifyRewardMultiplier}";
+            if (!Near(ContractProfile.DefaultAbsorberPatternBonus, a.PatternBonusAdd))
+                return $"흡수 패턴 가산 {ContractProfile.DefaultAbsorberPatternBonus} vs 코드 {a.PatternBonusAdd}";
+            if (!Near(ContractProfile.DefaultAbsorberResidualPenalty, a.ResidualPenaltyMultiplier))
+                return $"흡수 대가 {ContractProfile.DefaultAbsorberResidualPenalty} vs 코드 {a.ResidualPenaltyMultiplier}";
+
+            Ascend.Prototype.Spin.ResistanceContract p = Ascend.Prototype.Spin.PrototypeCurriculum.ProliferatorContract;
+            if (!Near(ContractProfile.DefaultProliferatorAppearance, p.AppearanceMultiplier))
+                return $"증식 출현 {ContractProfile.DefaultProliferatorAppearance} vs 코드 {p.AppearanceMultiplier}";
+            if (!Near(ContractProfile.DefaultProliferatorPurifyReward, p.PurifyRewardMultiplier))
+                return $"증식 보상 {ContractProfile.DefaultProliferatorPurifyReward} vs 코드 {p.PurifyRewardMultiplier}";
+            if (!Near(ContractProfile.DefaultProliferatorPatternBonus, p.PatternBonusAdd))
+                return $"증식 패턴 가산 {ContractProfile.DefaultProliferatorPatternBonus} vs 코드 {p.PatternBonusAdd}";
+            if (!Near(ContractProfile.DefaultProliferatorResidualPenalty, p.ResidualPenaltyMultiplier))
+                return $"증식 대가 {ContractProfile.DefaultProliferatorResidualPenalty} vs 코드 {p.ResidualPenaltyMultiplier}";
+            return null;
+        }
+
+        /// <summary>
+        /// 폴백은 값이 프리셋과 같더라도 **아예 안 건드린다.** 「값이 같으니 덮어써도
+        /// 결과가 같다」와 「아예 안 건드린다」는 다르고, 후자여야 에셋이 없을 때 배열
+        /// 복사가 0이 된다.
+        /// </summary>
+        private static string TestContractFallbackDoesNotTouch()
+        {
+            ContractSnapshot fallback = ContractProfile.DefaultSnapshot;
+            if (fallback.Overrides) return "폴백이 갈아끼운다고 말한다";
+            if (fallback.FromAsset) return "폴백인데 FromAsset 이 참이다";
+
+            Ascend.Prototype.Spin.FloorPlan plan = ContractFloor();
+            var before = plan.ContractChoices;
+            Ascend.Prototype.Spin.FloorPlan applied = fallback.Apply(plan);
+            if (!ReferenceEquals(applied.ContractChoices, before))
+                return "폴백인데 배열이 새로 만들어졌다 — 할당이 0이어야 한다";
+            return null;
+        }
+
+        private static string TestContractOverrides()
+        {
+            Ascend.Prototype.Spin.FloorPlan plan = ProbeContracts().Apply(ContractFloor());
+            bool sawAbsorber = false, sawProliferator = false;
+
+            foreach (Ascend.Prototype.Spin.ResistanceContract c in plan.ContractChoices)
+            {
+                if (c.Target == Ascend.Prototype.Spin.SymbolKind.Absorber)
+                {
+                    sawAbsorber = true;
+                    if (!Near(c.AppearanceMultiplier, 3.1f))
+                        return $"흡수 출현이 {c.AppearanceMultiplier} — 프로파일의 3.1 이 아니다 (정적 정의가 그대로 나오나)";
+                    if (!Near(c.PurifyRewardMultiplier, 4.2f)) return $"흡수 보상이 {c.PurifyRewardMultiplier}";
+                    if (!Near(c.PatternBonusAdd, 1.3f)) return $"흡수 패턴 가산이 {c.PatternBonusAdd}";
+                    if (!Near(c.ResidualPenaltyMultiplier, 2.4f)) return $"흡수 대가가 {c.ResidualPenaltyMultiplier}";
+                }
+                else if (c.Target == Ascend.Prototype.Spin.SymbolKind.Proliferator)
+                {
+                    sawProliferator = true;
+                    if (!Near(c.AppearanceMultiplier, 3.5f)) return $"증식 출현이 {c.AppearanceMultiplier}";
+                    if (!Near(c.ResidualPenaltyMultiplier, 2.8f)) return $"증식 대가가 {c.ResidualPenaltyMultiplier}";
+                }
+            }
+            if (!sawAbsorber && !sawProliferator)
+                return "계약 선택지가 있는 층을 못 찾았다 — 이 검사가 아무것도 안 본다";
+            return null;
+        }
+
+        /// <summary>
+        /// `ContractChoices` 는 `_tenFloors` 정적 초기화로 만들어진 **공유 배열**이다.
+        /// 제자리에서 고치면 그 뒤의 모든 런이 오염된다 — 한 번 갈아 끼운 뒤 코드 정의를
+        /// 다시 읽어 원래 값인지 본다.
+        /// </summary>
+        private static string TestContractDoesNotMutateStatic()
+        {
+            ProbeContracts().Apply(ContractFloor());
+
+            Ascend.Prototype.Spin.FloorPlan fresh = ContractFloor();
+            foreach (Ascend.Prototype.Spin.ResistanceContract c in fresh.ContractChoices)
+            {
+                if (c.Target == Ascend.Prototype.Spin.SymbolKind.Absorber
+                    && !Near(c.AppearanceMultiplier, ContractProfile.DefaultAbsorberAppearance))
+                    return $"갈아끼운 뒤 코드 정의의 흡수 출현이 {c.AppearanceMultiplier} 로 바뀌었다"
+                         + " — 공유 정적 배열을 제자리에서 고쳤다";
+                if (c.Target == Ascend.Prototype.Spin.SymbolKind.Proliferator
+                    && !Near(c.AppearanceMultiplier, ContractProfile.DefaultProliferatorAppearance))
+                    return $"갈아끼운 뒤 코드 정의의 증식 출현이 {c.AppearanceMultiplier} 로 바뀌었다";
+            }
+            if (!Near(Ascend.Prototype.Spin.PrototypeCurriculum.AbsorberContract.AppearanceMultiplier,
+                      ContractProfile.DefaultAbsorberAppearance))
+                return "PrototypeCurriculum.AbsorberContract 자체가 오염됐다";
+            return null;
+        }
+
+        private static string TestContractNoneUntouched()
+        {
+            Ascend.Prototype.Spin.FloorPlan plan = ProbeContracts().Apply(ContractFloor());
+            foreach (Ascend.Prototype.Spin.ResistanceContract c in plan.ContractChoices)
+            {
+                if (!c.IsNone) continue;
+                // 무계약은 계약이 아니라 계약을 안 한 것이다. 배율이 붙으면 안 된다.
+                if (!Near(c.AppearanceMultiplier, Ascend.Prototype.Spin.ResistanceContract.None.AppearanceMultiplier))
+                    return $"무계약에 출현 배율 {c.AppearanceMultiplier} 이 붙었다";
+                if (!Near(c.ResidualPenaltyMultiplier, Ascend.Prototype.Spin.ResistanceContract.None.ResidualPenaltyMultiplier))
+                    return $"무계약에 대가 배수 {c.ResidualPenaltyMultiplier} 이 붙었다";
+            }
+            return null;
+        }
+
+        private static string TestContractValidate()
+        {
+            if (ContractProfile.DefaultSnapshot.Validate() != null)
+                return $"기본값이 자기모순으로 판정됐다: {ContractProfile.DefaultSnapshot.Validate()}";
+            if (ProbeContracts().Validate() != null)
+                return $"프로브 값이 자기모순으로 판정됐다: {ProbeContracts().Validate()}";
+
+            // 계약을 걸어도 대상이 더 안 나오는 값.
+            if (new ContractSnapshot(1f, 1.8f, 0.5f, 1.8f, 1f, 1.5f, 1f, 2f, "x").Validate() == null)
+                return "출현 배율이 둘 다 1.0 인 값을 통과시켰다";
+            // 위험만 늘리는 계약.
+            if (new ContractSnapshot(1.6f, 1f, 0f, 1.8f, 1.5f, 1.5f, 1f, 2f, "x").Validate() == null)
+                return "흡수체 계약이 아무것도 안 주는 값을 통과시켰다";
+            // 계약이 잔류를 오히려 덜 아프게 만드는 값.
+            if (new ContractSnapshot(1.6f, 1.8f, 0.5f, 0.5f, 1.5f, 1.5f, 1f, 2f, "x").Validate() == null)
+                return "잔류 대가 배수가 1 미만인 값을 통과시켰다";
             return null;
         }
 

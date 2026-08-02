@@ -112,14 +112,24 @@ namespace Ascend.Prototype.Spin
         /// </summary>
         private readonly Data.Profiles.FloorCurriculumSnapshot _curriculum;
 
+        /// <summary>계약 수치의 덮어쓰기 (`UP-TECH-09` ②). 폴백이면 갈아끼움 자체가 없다.</summary>
+        private readonly Data.Profiles.ContractSnapshot _contracts;
+
         public TenFloorSource()
             : this(Data.Profiles.FloorCurriculumProfile.DefaultSnapshot)
         {
         }
 
         public TenFloorSource(Data.Profiles.FloorCurriculumSnapshot curriculum)
+            : this(curriculum, Data.Profiles.ContractProfile.DefaultSnapshot)
+        {
+        }
+
+        public TenFloorSource(Data.Profiles.FloorCurriculumSnapshot curriculum,
+            Data.Profiles.ContractSnapshot contracts)
         {
             _curriculum = curriculum;
+            _contracts = contracts;
         }
 
         public int FirstFloor => 1;
@@ -128,7 +138,11 @@ namespace Ascend.Prototype.Spin
         /// <summary>곡선 출처. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
         public Data.Profiles.FloorCurriculumSnapshot Curriculum => _curriculum;
 
-        public FloorPlan For(int floor) => _curriculum.Apply(PrototypeCurriculum.For(floor));
+        /// <summary>계약 수치 출처.</summary>
+        public Data.Profiles.ContractSnapshot Contracts => _contracts;
+
+        public FloorPlan For(int floor)
+            => _contracts.Apply(_curriculum.Apply(PrototypeCurriculum.For(floor)));
     }
 
     /// <summary>
