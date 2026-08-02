@@ -250,7 +250,23 @@ Shader "Ascend/Stylized"
                 // 무지 머티리얼끼리 겹치면 경계가 사라진다.
                 float3 viewDir = normalize(GetWorldSpaceViewDir(input.positionWS));
                 float rim = pow(1.0 - saturate(dot(normalWS, viewDir)), 3.0);
-                color += rim * _RimStrength * _ShadowTint.rgb;
+
+                // **림도 계단으로 끊는다. 이것이 계단 셰이딩이 안 보이던 마지막 구멍이다.**
+                //
+                // 12차 판정 실측 — 셰이더가 실제로 도는데도 `12` y=470 의 200px 에
+                // 평탄 구간이 **156개**(최장 7px)였다. 사실상 연속 그라데이션이다.
+                // 「렌더러에 안 걸렸다」로는 더 설명되지 않으므로 로직 문제로 재분류됐다.
+                //
+                // 조명 항은 전부 이미 끊겨 있다 — 주광 `Quantize(ndotl * atten)`,
+                // 추가 광원도 같은 형태, 앰비언트는 Flat 이라 면 안에서 상수다.
+                // **남은 연속 항이 림 하나였다.** `pow(1 - dot(N, V), 3)` 은 시선각을
+                // 따라 매끄럽게 변하고, 넓은 벽을 비스듬히 보면 그 부드러운 기울기가
+                // 앞에서 끊어 놓은 계단을 **뒤에서 메운다.**
+                //
+                // 세기(`_RimStrength`)를 건드리지 않고 **모양만** 끊는다. 그래서 이 변경은
+                // 밝기 수준에 손대지 않고, 위험 단계가 나르는 신호(앰비언트·광원 세기)와
+                // 직교한다 — 12차가 회귀 감시로 지정한 좌벽 ΔL ≥ 15 를 구조적으로 건드리지 않는다.
+                color += Quantize(rim, _Steps) * _RimStrength * _ShadowTint.rgb;
 
                 // 발광은 조명과 무관하게 **더한다**. 정화 점등은 어두운 칸에서도
                 // 보여야 하고, 곱하면 그림자 쪽에서 사라진다.
