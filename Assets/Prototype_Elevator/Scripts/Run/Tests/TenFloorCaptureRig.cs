@@ -379,6 +379,18 @@ namespace Ascend.Prototype.Run.Tests
                 "**챔퍼 이전 실측값이 ×0.327 이었다** — 아래 계수가 그보다 크지 않으면 챔퍼는 듣지 않은 것이다. " +
                 "②는 이 장이 고치지 않았다");
 
+            // **세운 표식을 여기서 반드시 내린다** (`UP-FIX-41`).
+            //
+            // 바로 위에서 `ShowReveal(2)` 로 셔터 막대를 직접 세웠는데 끝까지 내리지 않아
+            // **그 뒤의 모든 장에 막대가 서 있었다** — 07·08·06·09·10·11·12·13·14·15…
+            // `PurifyBar_07` 이 `13_overharvest_pulled` 의 계기판 「스핀」·「흡」 글자를 먹었고,
+            // 네 라운드 동안 그 증상이 계기판 배치 문제로 오진됐다.
+            //
+            // 이 리그의 다른 장들은 `run.Spin()` 을 직접 불러 `SpinPresenter` 를 우회하므로
+            // 아무도 이 표식을 대신 지워 주지 않는다. **세운 쪽이 내린다.**
+            FindAnyObjectByType<PurifyMarkerView>()?.Clear();
+            yield return WaitFrames(1);
+
             yield return CapturePresentingScreen(run, bridge, risk);
 
             // ── 2) 적재 ──

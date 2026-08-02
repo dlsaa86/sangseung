@@ -42,6 +42,8 @@ namespace Ascend.Prototype.Npc
         private int _startedBeforeRebuild;
         private int _suppressedBeforeRebuild;
         private int _firedKindsBeforeRebuild;
+        private int _suppressedKindsBeforeRebuild;
+        private int _inactiveKindsBeforeRebuild;
 
         // 표현 채널 넷의 누적(UP-NPC-04). 중재기가 아니라 **뷰**가 들고 있는 이유는
         // `Rebuild` 가 중재기를 통째로 새로 만들기 때문이다 — 승객 한 명이 내리는 순간
@@ -100,6 +102,19 @@ namespace Ascend.Prototype.Npc
         /// </summary>
         public int FiredKindsMask =>
             _firedKindsBeforeRebuild | (_director != null ? _director.FiredKindsMask : 0);
+
+        /// <summary>
+        /// 도착했는데 아무도 반응하지 못한 종류 (`UP-NPC-02`). 쿨다운·동시 한도·우선순위.
+        /// </summary>
+        public int SuppressedKindsMask =>
+            _suppressedKindsBeforeRebuild | (_director != null ? _director.SuppressedKindsMask : 0);
+
+        /// <summary>도착했는데 데이터가 꺼 둔 종류 (지속 0). 억제와 고치는 곳이 다르다.</summary>
+        public int InactiveKindsMask =>
+            _inactiveKindsBeforeRebuild | (_director != null ? _director.InactiveKindsMask : 0);
+
+        /// <summary>도착은 한 종류 전부 — 울렸든 막혔든 꺼져 있든.</summary>
+        public int ObservedKindsMask => FiredKindsMask | SuppressedKindsMask | InactiveKindsMask;
 
         /// <summary>울린 종류 수.</summary>
         public int FiredKindCount
@@ -211,6 +226,8 @@ namespace Ascend.Prototype.Npc
             _startedBeforeRebuild = 0;
             _suppressedBeforeRebuild = 0;
             _firedKindsBeforeRebuild = 0;
+            _suppressedKindsBeforeRebuild = 0;
+            _inactiveKindsBeforeRebuild = 0;
             PeakActiveCount = 0;
 
             _poseKindsMask = 0;
@@ -238,6 +255,8 @@ namespace Ascend.Prototype.Npc
             if (_director != null)
             {
                 _firedKindsBeforeRebuild |= _director.FiredKindsMask;
+                _suppressedKindsBeforeRebuild |= _director.SuppressedKindsMask;
+                _inactiveKindsBeforeRebuild |= _director.InactiveKindsMask;
                 _contrastCount += _director.ContrastCount;
             }
 

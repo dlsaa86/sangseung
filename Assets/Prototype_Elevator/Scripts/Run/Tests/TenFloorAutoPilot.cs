@@ -291,6 +291,13 @@ namespace Ascend.Prototype.Run.Tests
             // 직접 훑어야 했다. 이름 한 줄이면 그 비용이 사라진다.
             _report.AppendLine($"    울린 것: {KindNames<Npc.PassengerReactionEvent>(_reactionKindsMask)}");
             _report.AppendLine($"    안 울린 것: {MissingKindNames<Npc.PassengerReactionEvent>(_reactionKindsMask)}");
+            // 안 울린 이유를 셋으로 가른다. 세 마스크 어디에도 없으면 **사건이 아예 안 왔다**
+            // (하네스가 그 상황을 안 만든다), 억제면 쿨다운·동시 한도·우선순위,
+            // 비활성이면 에셋이 지속 0 으로 꺼 둔 것이다 — 고치는 곳이 셋 다 다르다.
+            int arrived = _reactionKindsMask | _reactionSuppressedMask | _reactionInactiveMask;
+            _report.AppendLine($"    막힌 것(쿨다운·한도·우선순위): {KindNames<Npc.PassengerReactionEvent>(_reactionSuppressedMask)}");
+            _report.AppendLine($"    꺼진 것(데이터 지속 0): {KindNames<Npc.PassengerReactionEvent>(_reactionInactiveMask)}");
+            _report.AppendLine($"    사건 자체가 안 온 것: {MissingKindNames<Npc.PassengerReactionEvent>(arrived)}");
             _report.AppendLine($"  오디오 큐 울린 종류 {BitCount(_audioKindsMask)}");
             _report.AppendLine($"    울린 것: {KindNames<Audio.AudioCueKind>(_audioKindsMask)}");
             _report.AppendLine($"    안 울린 것: {MissingKindNames<Audio.AudioCueKind>(_audioKindsMask)}");
@@ -496,6 +503,11 @@ namespace Ascend.Prototype.Run.Tests
         private bool _sawReactionView;
         private bool _budgetExhausted;
         private int _reactionKindsMask;
+
+        // 안 울린 종류의 **이유**를 가른다 (`UP-NPC-02`). 「울린 것/안 울린 것」만으로는
+        // 사건이 아예 안 왔는지, 왔는데 막혔는지, 데이터가 꺼 뒀는지 구분되지 않는다.
+        private int _reactionSuppressedMask;
+        private int _reactionInactiveMask;
         private int _audioKindsMask;
         private bool _sawPresentationLock;
         private bool _sawNonEmptyOwnerCheck;
@@ -1654,6 +1666,8 @@ namespace Ascend.Prototype.Run.Tests
                 _peakConcurrentReactions = view.PeakActiveCount;
             if (view.MaxConcurrent > _maxConcurrentSeen) _maxConcurrentSeen = view.MaxConcurrent;
             _reactionKindsMask |= view.FiredKindsMask;
+            _reactionSuppressedMask |= view.SuppressedKindsMask;
+            _reactionInactiveMask |= view.InactiveKindsMask;
 
             // 위험 단계가 **방 전체**에 닿는가. 캐빈 등 하나로는 벽 색이 2% 밖에 안 움직여
             // 독립 평가가 세 라운드 연속 「Critical 이 Stable 과 같은 방」이라고 지적했다.

@@ -101,14 +101,53 @@ namespace Ascend.Prototype.Npc
         public int FiredKindsMask { get; private set; }
 
         /// <summary>울린 종류 수. 비트를 센다.</summary>
-        public int FiredKindCount
+        public int FiredKindCount => CountBits(FiredKindsMask);
+
+        // ── 안 울린 이유를 가르는 두 마스크 (`UP-NPC-02`) ──────────────────────
+        //
+        // `FiredKindsMask` 는 **실제로 시작된 것**만 센다. 그래서 어떤 종류가 빠져 있을 때
+        // 원인이 셋인데 산출물로는 하나도 못 가른다.
+        //
+        //   ① 사건이 아예 발행되지 않았다 (하네스가 그 상황을 안 만든다)
+        //   ② 발행됐지만 데이터가 그 반응을 꺼 뒀다 (지속 0)
+        //   ③ 발행됐지만 매번 억제됐다 (쿨다운·동시 한도·우선순위)
+        //
+        // 실측에서 `Threshold170` 과 `ExtraSpin` 이 정확히 이 모호성에 걸렸다 — 과수확이
+        // 실제로 일어났고 오디오는 울렸는데 반응 종류에는 안 잡혔다. ②인지 ③인지
+        // 가릴 방법이 없어 원인 추적이 거기서 멈췄다.
+        //
+        // 아래 둘을 함께 보면 한 줄로 갈린다. 세 마스크 어디에도 없으면 ①,
+        // <see cref="InactiveKindsMask"/>에 있으면 ②, <see cref="SuppressedKindsMask"/>에
+        // 있으면 ③이다.
+
+        /// <summary>
+        /// 사건이 도착했는데 **아무도 반응하지 못한** 종류의 비트 집합.
+        /// 쿨다운·동시 한도·우선순위에 전부 막힌 경우다. 한 번이라도 울린 적이 있어도
+        /// 막힌 적이 있으면 켜진다 — 「한 번은 됐다」와 「자주 막힌다」는 다른 사실이다.
+        /// </summary>
+        public int SuppressedKindsMask { get; private set; }
+
+        /// <summary>
+        /// 사건이 도착했는데 **데이터가 그 반응을 꺼 둔** 종류의 비트 집합(지속 0).
+        /// 억제와 가르는 이유: 이건 밸런스가 아니라 **에셋 값**이라 고치는 곳이 다르다.
+        /// </summary>
+        public int InactiveKindsMask { get; private set; }
+
+        /// <summary>도착은 했다 — 울렸든, 막혔든, 꺼져 있든.</summary>
+        public int ObservedKindsMask => FiredKindsMask | SuppressedKindsMask | InactiveKindsMask;
+
+        public int SuppressedKindCount => CountBits(SuppressedKindsMask);
+        public int InactiveKindCount => CountBits(InactiveKindsMask);
+        public int ObservedKindCount => CountBits(ObservedKindsMask);
+
+        /// <summary>
+        /// 비트를 세운 마스크를 돌려준다. 종류는 1~11 이라 int 하나로 충분하다.
+        /// `ref` 대신 값을 돌려주는 이유는 자동 프로퍼티에 `ref` 를 쓸 수 없기 때문이다.
+        /// </summary>
+        private static int WithKindBit(int mask, PassengerReactionEvent kind)
         {
-            get
-            {
-                int n = 0;
-                for (int mask = FiredKindsMask; mask != 0; mask &= mask - 1) n++;
-                return n;
-            }
+            int bit = (int)kind;
+            return bit > 0 && bit < 32 ? mask | (1 << bit) : mask;
         }
 
         // ── 표현 채널 관측 (UP-NPC-04) ────────────────────────────────────────
@@ -179,6 +218,8 @@ namespace Ascend.Prototype.Npc
             StartedCount = 0;
             SuppressedCount = 0;
             FiredKindsMask = 0;
+            SuppressedKindsMask = 0;
+            InactiveKindsMask = 0;
             PoseKindsMask = 0;
             GazeKindsMask = 0;
             LineCount = 0;
@@ -209,7 +250,13 @@ namespace Ascend.Prototype.Npc
             Tick(now);
 
             PassengerReaction reaction = Resolve(reactionEvent);
-            if (!reaction.IsActive) return _selected;                 // 지속 0 = 데이터로 꺼 둔 반응
+            if (!reaction.IsActive)
+            {
+                // 지속 0 = 데이터로 꺼 둔 반응. **억제와 따로 센다** — 이건 밸런스가
+                // 아니라 에셋 값이라 고치는 곳이 다르다.
+                InactiveKindsMask = WithKindBit(InactiveKindsMask, reactionEvent);
+                return _selected;
+            }
 
             // 상반된 반응(§9.3)은 **표현만** 바꾼다. 지속·우선순위·쿨다운은
             // `ApplyTo` 가 대표 반응에서 그대로 물려주므로 아래 중재 규칙에는
@@ -242,7 +289,14 @@ namespace Ascend.Prototype.Npc
                 Begin(index, reactionEvent, in reaction, in contrast, hasContrast, now);
             }
 
-            if (_selected.Count == 0) SuppressedCount++;
+            if (_selected.Count == 0)
+            {
+                SuppressedCount++;
+                // **총합만으로는 어느 종류가 막혔는지 모른다.** 한 종류가 130번 막힌 것과
+                // 열 종류가 13번씩 막힌 것이 같은 숫자를 낸다 — `FiredKindsMask` 가 존재하는
+                // 이유와 같은 문제이고, 같은 해법을 쓴다.
+                SuppressedKindsMask = WithKindBit(SuppressedKindsMask, reactionEvent);
+            }
             return _selected;
         }
 
@@ -272,8 +326,7 @@ namespace Ascend.Prototype.Npc
             // 어떤 **종류**가 울렸는지 비트로 남긴다. 총합만으로는 한 종류가 110번 울린 것과
             // 열한 종류가 열 번씩 울린 것이 구분되지 않고, `UP-NPC-02` 가 묻는 것은 후자다.
             // 종류는 1~11 이라 int 하나로 충분하다.
-            int bit = (int)reactionEvent;
-            if (bit > 0 && bit < 32) FiredKindsMask |= 1 << bit;
+            FiredKindsMask = WithKindBit(FiredKindsMask, reactionEvent);
 
             // 표현 채널 넷도 같은 방식으로 센다(UP-NPC-04).
             int pose = (int)reaction.Pose;

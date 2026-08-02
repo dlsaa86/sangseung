@@ -61,6 +61,14 @@ namespace Ascend.Prototype.View.Tests
             Run("순차 공개 — 칸 인덱스 매핑이 SpinBoard 와 같다", TestRevealCellMatchesColumn, ref passed, ref failed, report);
             Run("순차 공개 — 셔터가 막대 풀을 넘지 않는다", TestRevealFitsInPool, ref passed, ref failed, report);
 
+            // ── 정화 표식 칸 단위화 (`G-SLOT-A` / `UP-VIS-08` / `UP-CORE-12`) ──
+            // 같은 이유로 여기에 이어 붙인다 — 새 스위트는 `AscendTestMenu` 와
+            // `PrototypeSelfTest` 두 곳에 등록이 필요하고, **이 배치에서 그 등록이
+            // 두 번 누락됐다.** 누락된 검사는 돌지 않으면서 통과한 것처럼 보인다.
+            // 별도 등록이 들어오면 `PurifyMarkerLayoutTests.RunAll()` 이 그 진입점이고,
+            // 그때 이 세 줄을 지우면 된다.
+            PurifyMarkerLayoutTests.Append(ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === 과수확 5단계 연출 Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());

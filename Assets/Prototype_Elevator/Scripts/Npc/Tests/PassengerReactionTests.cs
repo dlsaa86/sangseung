@@ -47,6 +47,8 @@ namespace Ascend.Prototype.Npc.Tests
             Run("대조 조회기가 없으면 전원이 같은 반응이다", TestNoContrastMeansUniform, ref passed, ref failed, report);
             Run("Reset 이 대조 반응 11종도 채운다", TestSetResetFillsContrasts, ref passed, ref failed, report);
             Run("대사 없는 옛 항목이 코드 기본값으로 폴백한다", TestLegacyEntryFallsBackForLine, ref passed, ref failed, report);
+            Run("막힌 종류와 꺼진 종류가 따로 기록된다", TestSuppressedAndInactiveMasksSplit, ref passed, ref failed, report);
+            Run("도착 안 한 종류는 세 마스크 어디에도 없다", TestNeverArrivedIsAbsentFromAllMasks, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Passenger Reaction Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -191,6 +193,63 @@ namespace Ascend.Prototype.Npc.Tests
         }
 
         // ── 중재 규칙 ────────────────────────────────────────────────────────
+
+        // ── 안 울린 이유를 가르는 세 마스크 (`UP-NPC-02`) ──────────────────────
+        //
+        // 실측에서 `Threshold170` 과 `ExtraSpin` 이 10층 런에서 안 울렸는데, 원인이
+        // 「사건이 안 왔다」인지 「왔는데 막혔다」인지 산출물로 가릴 수 없었다.
+        // `FiredKindsMask` 는 **시작된 것**만 세기 때문이다. 두 마스크를 더해 갈랐다.
+
+        private static int Bit(PassengerReactionEvent kind) => 1 << (int)kind;
+
+        private static string TestSuppressedAndInactiveMasksSplit()
+        {
+            // 승객 1명 · 동시 한도 1 · 지속 10초 → 두 번째 사건은 반드시 막힌다.
+            var director = new PassengerReactionDirector(1, 1, kind =>
+                kind == PassengerReactionEvent.BasicPurify
+                    ? new PassengerReaction(ReactionPose.Flinch, ReactionGaze.Device, "cue", 0f, 0.5f, 10, 1f)
+                    : Reaction(10, 10f, 1f));
+
+            if (director.Notify(PassengerReactionEvent.FiveChain, 0f).Count != 1)
+                return "선행 조건 실패: 첫 사건이 반응을 못 만들었다";
+            if ((director.FiredKindsMask & Bit(PassengerReactionEvent.FiveChain)) == 0)
+                return "울린 종류가 FiredKindsMask 에 없다";
+
+            // 자리가 없다 — 막힌다.
+            if (director.Notify(PassengerReactionEvent.Threshold170, 0f).Count != 0)
+                return "한도 1인데 두 번째 사건이 반응을 만들었다";
+            if ((director.SuppressedKindsMask & Bit(PassengerReactionEvent.Threshold170)) == 0)
+                return "막힌 종류가 SuppressedKindsMask 에 없다 — 원인을 가릴 수 없다";
+            if ((director.FiredKindsMask & Bit(PassengerReactionEvent.Threshold170)) != 0)
+                return "막혔는데 울린 것으로 기록됐다";
+
+            // 지속 0 = 데이터가 꺼 둔 반응. 억제와 **다른** 칸에 들어가야 한다.
+            director.Notify(PassengerReactionEvent.BasicPurify, 0f);
+            if ((director.InactiveKindsMask & Bit(PassengerReactionEvent.BasicPurify)) == 0)
+                return "꺼진 종류가 InactiveKindsMask 에 없다";
+            if ((director.SuppressedKindsMask & Bit(PassengerReactionEvent.BasicPurify)) != 0)
+                return "꺼진 것이 막힌 것으로도 기록됐다 — 고치는 곳이 다른데 같은 칸에 들어갔다";
+
+            if (director.ObservedKindCount != 3)
+                return $"도착한 종류가 {director.ObservedKindCount} — 셋(울림·막힘·꺼짐)이어야 한다";
+            return null;
+        }
+
+        private static string TestNeverArrivedIsAbsentFromAllMasks()
+        {
+            var director = new PassengerReactionDirector(3, 3, Fixed(1f, 0f));
+            director.Notify(PassengerReactionEvent.FiveChain, 0f);
+
+            // 한 번도 알린 적 없는 종류. 세 마스크 어디에도 없어야 「사건이 안 왔다」로 읽힌다.
+            int absent = Bit(PassengerReactionEvent.ExtraSpin);
+            if ((director.ObservedKindsMask & absent) != 0)
+                return "알린 적 없는 종류가 도착한 것으로 기록됐다 — 「사건이 안 왔다」를 못 가린다";
+
+            director.Reset();
+            if (director.ObservedKindsMask != 0)
+                return $"Reset 뒤에도 마스크가 남아 있다 ({director.ObservedKindsMask})";
+            return null;
+        }
 
         /// <summary>테스트가 값을 직접 정한다. 기본값 밸런스가 움직여도 규칙 자체는 유지되어야 한다.</summary>
         private static PassengerReaction Reaction(int priority, float duration, float cooldown) =>
