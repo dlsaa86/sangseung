@@ -243,6 +243,52 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
+        /// 포스트를 끈 **진단** 세트. `Captures/TenFloor_NoPost/` 로 나간다.
+        ///
+        /// 왜 세트가 둘인가: 포스트 체인의 디더링(±1 LSB)과 필름 그레인이
+        /// `GRAPHICS_TARGET` 의 축 둘을 서로 반대 방향으로 오염시킨다 —
+        /// **G-4** 는 인접 화소 차 ≤ 1 인 평탄 구간을 세는데 ±1 LSB 만으로 부서지고,
+        /// **G-1** 은 국소 분산이라 텍스처가 없어도 노이즈만으로 올라간다(거짓 그린).
+        /// 그렇다고 그레인을 끄면 **G-6 이 Film Grain 활성을 요구한다.**
+        /// 축이 서로를 부정하므로 재는 세트를 나눈다 — G-1·G-4 는 이 세트에서,
+        /// G-2·G-3·G-6 은 포스트를 켠 `Captures/TenFloor/` 에서 잰다.
+        ///
+        /// **같은 리그·같은 시드·같은 시점이다.** 리그를 복제하지 않는 이유가 그것이다.
+        /// </summary>
+        [MenuItem("Ascend/Capture Ten Floor Set (No Post — diagnostic)")]
+        public static void RunTenFloorCaptureSetNoPost()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogError("[상승] 이미 Play 모드다. 먼저 종료한다.");
+                return;
+            }
+
+            if (!Ascend.CaptureHarness.EditorTools.GameViewResolution.TrySetFixed(
+                    Ascend.CaptureHarness.EditorTools.GameViewResolution.SpecWidth,
+                    Ascend.CaptureHarness.EditorTools.GameViewResolution.SpecHeight))
+            {
+                Debug.LogError("[상승] 게임 뷰를 1920×1080 으로 고정하지 못했다 — " +
+                               Ascend.CaptureHarness.EditorTools.GameViewResolution.LastError);
+                return;
+            }
+
+            const string scenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
+            if (EditorSceneManager.GetActiveScene().path != scenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+
+            TenFloorCaptureRig.ArmNoPost("Captures/TenFloor_NoPost");
+            string manifest = Path.Combine(Directory.GetCurrentDirectory(), TenFloorCaptureRig.ManifestPath);
+            if (File.Exists(manifest)) File.Delete(manifest);
+
+            EditorApplication.EnterPlaymode();
+            Debug.Log($"[상승] 진단(포스트 OFF) 캡처 시작 → {TenFloorCaptureRig.OutputDirectory}");
+        }
+
+        /// <summary>
         /// `P2-Gate G`의 "최대 적재와 Critical 상태 측정". Hero Slice 측정과 별개인 이유는
         /// <see cref="LoadedCriticalPerfProbe"/> 주석에 있다 — 그쪽은 무적재·Stable 만 잰다.
         /// </summary>

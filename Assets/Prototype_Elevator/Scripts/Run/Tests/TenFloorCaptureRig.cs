@@ -30,8 +30,35 @@ namespace Ascend.Prototype.Run.Tests
     /// </summary>
     public sealed class TenFloorCaptureRig : MonoBehaviour
     {
-        public const string OutputDirectory = "Captures/TenFloor";
-        public const string ManifestPath = "Captures/TenFloor/manifest.txt";
+        public const string DefaultOutputDirectory = "Captures/TenFloor";
+
+        /// <summary>
+        /// 진단 세트의 출력 위치. 기본은 <see cref="DefaultOutputDirectory"/> 다.
+        ///
+        /// 왜 바꿀 수 있어야 하나: 포스트 체인의 **디더링·필름 그레인이 축 둘을 서로
+        /// 부정한다.** ±1 LSB 노이즈만으로 G-4(인접 화소 차 ≤ 1 인 평탄 구간)는
+        /// 부서지고, 반대로 G-1(국소 분산)은 텍스처가 없어도 올라가 **거짓 그린**이 된다.
+        /// 그래서 포스트를 끈 세트를 따로 찍어 G-1·G-4 를 거기서 재고, G-6 은 켠
+        /// 세트에서 잰다. 두 세트는 **같은 카메라·같은 게임 상태**여야 비교가 성립하므로
+        /// 리그를 복제하지 않고 출력 위치와 포스트 스위치만 바꾼다.
+        /// </summary>
+        public static string OutputDirectory
+        {
+            get => UnityEditor.EditorPrefs.GetString(OutDirPrefKey, DefaultOutputDirectory);
+            private set => UnityEditor.EditorPrefs.SetString(OutDirPrefKey, value);
+        }
+
+        public static string ManifestPath => OutputDirectory + "/manifest.txt";
+
+        /// <summary>이 런에서 포스트 처리를 강제로 끌 것인가. 진단 세트 전용.</summary>
+        public static bool PostDisabledForRun
+        {
+            get => UnityEditor.EditorPrefs.GetBool(NoPostPrefKey, false);
+            private set => UnityEditor.EditorPrefs.SetBool(NoPostPrefKey, value);
+        }
+
+        private const string OutDirPrefKey = "Ascend.TenFloorCaptureRig.OutDir";
+        private const string NoPostPrefKey = "Ascend.TenFloorCaptureRig.NoPost";
 
         /// <summary>
         /// 화면 캡처가 나와야 할 해상도. `VISUAL_SPEC.md:107` 의 기준 해상도이고,
@@ -200,7 +227,24 @@ namespace Ascend.Prototype.Run.Tests
             go.AddComponent<TenFloorCaptureRig>();
         }
 
-        public static void Arm() => UnityEditor.EditorPrefs.SetBool(PrefKey, true);
+        /// <summary>기본 세트. 씬에 직렬화된 포스트 설정을 그대로 통과시킨다.</summary>
+        public static void Arm()
+        {
+            OutputDirectory = DefaultOutputDirectory;
+            PostDisabledForRun = false;
+            UnityEditor.EditorPrefs.SetBool(PrefKey, true);
+        }
+
+        /// <summary>
+        /// 포스트를 끈 진단 세트. G-1(국소 분산)·G-4(계단 평탄 구간)는 여기서 잰다 —
+        /// 디더·그레인이 그 둘을 각각 거짓 그린과 거짓 레드로 만들기 때문이다.
+        /// </summary>
+        public static void ArmNoPost(string outputDirectory)
+        {
+            OutputDirectory = outputDirectory;
+            PostDisabledForRun = true;
+            UnityEditor.EditorPrefs.SetBool(PrefKey, true);
+        }
 #endif
 
         /// <summary>고정 프레임 시간. manifest 머리말에 적어 재현 조건을 남긴다.</summary>
@@ -882,10 +926,23 @@ namespace Ascend.Prototype.Run.Tests
             // 네 장과 스무 장이 서로 다른 렌더 파이프를 통과한 그림이 된다 —
             // 그 상태로 비교하면 "포스트가 좋아졌나"를 판정할 수 없다.
             var srcData = source != null ? source.GetUniversalAdditionalCameraData() : null;
+
+            // 진단 세트는 **화면 경로도 함께** 꺼야 한다. 전용 카메라만 끄면 같은 세트
+            // 안에서 스무 장은 포스트가 없고 넉 장은 있는 그림이 나온다 — 그 상태의
+            // G-1·G-4 는 두 파이프의 평균이라 어느 쪽도 판정하지 못한다.
+            bool wantPost = srcData == null || srcData.renderPostProcessing;
+#if UNITY_EDITOR
+            if (PostDisabledForRun)
+            {
+                wantPost = false;
+                if (srcData != null) srcData.renderPostProcessing = false;
+            }
+#endif
+
             var camData = _camera.GetUniversalAdditionalCameraData();
             if (camData != null)
             {
-                camData.renderPostProcessing = srcData == null || srcData.renderPostProcessing;
+                camData.renderPostProcessing = wantPost;
                 camData.antialiasing         = srcData != null ? srcData.antialiasing : AntialiasingMode.None;
                 camData.antialiasingQuality  = srcData != null ? srcData.antialiasingQuality : AntialiasingQuality.High;
                 camData.dithering            = srcData == null || srcData.dithering;
