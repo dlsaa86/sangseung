@@ -1431,13 +1431,42 @@ namespace Ascend.Prototype.EditorTools
             Render(go, mesh, "BareSteel");
         }
 
+        /// <summary>
+        /// 작은 조각은 그림자를 드리우지 않는 크기(m). 이보다 작은 경계 상자를 가진
+        /// 렌더러는 <c>ShadowCastingMode.Off</c> 로 만든다.
+        /// </summary>
+        private const float ShadowCasterMinSize = 0.26f;
+
         private static Renderer Render(GameObject go, Mesh mesh, string material)
         {
             var mf = go.AddComponent<MeshFilter>();
             mf.sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();
             mr.sharedMaterial = P(material);
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+
+            // ── 🔴 볼트에 그림자를 시키지 않는다 ────────────────────────────
+            //
+            // 직전 판본은 **모든** 렌더러에 그림자를 켰다. 10층 PlayMode 가 그것을
+            // 잡았다 — 프레임타임 p95 **89.03 ms = 11 FPS**, PRD §13.1 하한(60 FPS)의
+            // 5분의 1이다.
+            //
+            // 원인이 산술로 설명된다. 켜진 렌더러 292개 중 **279개가 그림자를 드리웠고**,
+            // 주광이 **점광**이라 그림자 패스가 큐브맵 **6면**이다. 즉 볼트 하나가
+            // 드로우콜 7개(본 패스 1 + 그림자 6)를 만든다. 볼트·리벳·톱니·이음매가
+            // 그 279개의 대부분이다.
+            //
+            // **그리고 그것들은 그림자를 만들 이유가 없다.** 지름 20mm 짜리 볼트가
+            // 드리우는 그림자는 화면에서 1~2 화소이고, 그 화소는 볼트 자신의 명암과
+            // 구분되지 않는다. 비용은 전부 내고 얻는 것은 없다.
+            //
+            // 벽·바닥·장치 프레임·선반처럼 **공간을 만드는 것**만 남긴다 —
+            // 명세 §11 「천장 보강빔이 굵은 그림자를 만든다」가 요구하는 것이 그쪽이다.
+            Bounds b = mesh != null ? mesh.bounds : new Bounds();
+            bool bigEnough = b.size.magnitude >= ShadowCasterMinSize;
+            mr.shadowCastingMode = bigEnough
+                ? UnityEngine.Rendering.ShadowCastingMode.On
+                : UnityEngine.Rendering.ShadowCastingMode.Off;
+
             return mr;
         }
 

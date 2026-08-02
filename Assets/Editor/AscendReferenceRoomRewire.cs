@@ -131,8 +131,39 @@ namespace Ascend.Prototype.EditorTools
             legacy.rotation = handle.rotation;
             EditorUtility.SetDirty(legacy);
 
+            // ── 🔴 구 레버 **몸통**을 숨긴다 ────────────────────────────────
+            //
+            // 상호작용체를 새 회전축으로 옮기면 **그 자식 그레이박스가 통째로 따라온다.**
+            // 실측 z — 구 `CoverPlate` 1.70 · `Housing` 1.99 · `HandleShaft` 2.04 인데
+            // 새 `Grip` 은 1.81, `Arm` 은 2.14 다. 즉 **새로 만든 디테일이 구 덩어리
+            // 뒤에 가려 화면에서 안 보인다.** 사용자가 「모델링 디테일이 왜 반영 안
+            // 됐냐」고 물은 것이 이것이다 — 반영은 됐고 가려져 있었다.
+            //
+            // 오브젝트를 끄지 않고 **렌더러만** 끈다. 끄면
+            // `FindAnyObjectByType<InteractableOverharvestLever>()` 가 못 찾아
+            // 10층 검증이 첫 줄에서 죽는다 (이미 한 번 그렇게 죽였다).
+            //
+            // ⚠ **덮개(`CoverPivot`)와 잠금등(`LockLight`)은 남긴다.**
+            // `OverharvestUnlockEffect` 가 그것들을 움직여 「2단 구간이 열렸다」를
+            // 표현하고, 그건 `D-20260802-10` 의 통합 레버가 요구하는 바로 그 신호다.
+            // 형상이 겹치는 것과 연출이 사는 것은 다른 문제다.
+            string[] duplicateBody = { "Housing", "HandleShaft", "HandleGrip", "WarningStripe", "WarningStripe_Upper" };
+            int hiddenBody = 0;
+            foreach (Renderer r in legacy.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.GetComponent<TMPro.TMP_Text>() != null) continue;
+                bool dup = false;
+                for (int i = 0; i < duplicateBody.Length; i++)
+                    if (r.gameObject.name == duplicateBody[i]) { dup = true; break; }
+                if (!dup || !r.enabled) continue;
+                r.enabled = false;
+                EditorUtility.SetDirty(r);
+                hiddenBody++;
+            }
+
             _report.AppendLine($"  레버 — 상호작용체를 새 회전축 ({handle.position.x:F2}, {handle.position.y:F2}, {handle.position.z:F2}) 으로 " +
-                               $"(명세 회전축 y={ReferenceRoomSpec.LeverPivotY})");
+                               $"(명세 회전축 y={ReferenceRoomSpec.LeverPivotY}) " +
+                               $"· 구 몸통 렌더러 {hiddenBody}개 비표시 (덮개·잠금등은 남긴다)");
         }
 
         // ══════════════════════════════════════════════════════════════════════
