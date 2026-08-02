@@ -317,7 +317,7 @@ Idle
 - 캐스케이드 10회까지 정상 동작과 판독성 유지
 - 기준 PC는 `TargetHardwareProfile`로 기록하고, 미지정 상태에서는 성능 완료를 선언하지 않는다.
 
-현재 사용자 기준 PC 후보는 Ryzen 7 5700 / RTX 3070이다. RAM, OS 빌드, 그래픽 API가 확정되지 않았다면 `ASSUMPTION_LOG.md`에 기록한다.
+기준 PC 는 **Ryzen 5 5600X / RTX 3070 / D3D12 / Win11** 로 확정됐다 (2026-08-02, `PD-16` 사용자 결정). 「Ryzen 7 5700」은 그 이전의 후보였고 더 이상 기준이 아니다 — 정본은 `TargetHardwareProfile.asset` 이고 이 문장은 그 사본이 아니라 결정 시점을 가리킨다. RAM·OS 빌드 세부가 미확정이면 `ASSUMPTION_LOG.md` 에 기록한다.
 
 # 14. 캡처와 검증
 
