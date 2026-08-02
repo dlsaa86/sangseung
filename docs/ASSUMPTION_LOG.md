@@ -110,13 +110,13 @@
 - 작성일: 2026-07-30
 - 관련 요구사항: `MASTER_PRD.md` §7·§9, `TECH_SPEC.md` §6.4
 - 사용한 가정: 흡수체 1.0 / 증식체 1.2 / 과수확 3.2 / 과적 3.0 / 스핀소진·미달 4.0,
-  Warning 진입 3.0·이탈 2.0, Critical 진입 7.0·이탈 5.5.
+  Strain 진입 3.0·이탈 2.0, Critical 진입 7.0·이탈 5.5.
 - 선택 이유: **과수확 가중치만은 임의값이 아니다.** `MASTER_PRD.md` §7이 과수확을
-  "공간적 사건"으로 규정하므로 1회만으로 Warning에 진입해야 한다(≥ WarningEnter).
+  "공간적 사건"으로 규정하므로 1회만으로 Strain 에 진입해야 한다(≥ StrainEnter).
   실제로 처음 잡은 2.6에서는 PlayMode 검증이 "과수확 1회 후에도 Stable"로 실패했고,
   그래서 3.2로 올린 뒤 불변식을 테스트로 고정했다. 나머지 값은 상대적 비중만 맞춘 임시값이다.
-- 구현 위치: `Risk/RiskEvaluator.cs`의 공개 필드
-- 교체 방법: 필드값 수정. 단 `OverharvestWeight >= WarningEnter` 불변식은 테스트가 지킨다.
+- 구현 위치: `Risk/RiskEvaluator.cs`의 공개 필드. 2026-08-02 부터는 `Data/Profiles/RiskThresholdProfile.asset` 이 있으면 그쪽이 이긴다(`RiskStateView` → `RiskEvaluator.Apply`)
+- 교체 방법: 필드값 수정. 단 `OverharvestWeight >= StrainEnter` 불변식은 테스트가 지킨다.
 - 사용자 확인 필요 여부: 최종 밸런스 단계에서 필요
 
 ## A-20260730-09 — 공포 표현 강도는 3종 프리셋으로 유지
