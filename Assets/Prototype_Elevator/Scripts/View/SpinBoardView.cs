@@ -33,22 +33,20 @@ namespace Ascend.Prototype.View
         [Tooltip("맥동 최대 배율.")]
         [SerializeField, Min(1f)] private float _highlightScale = 1.35f;
         /// <summary>
-        /// 정화 점등 색. **따뜻한 금색이 아니라 차가운 창백함이다.**
+        /// 정화 점등 색.
         ///
-        /// 이전 값 `(1.00, 0.86, 0.55)` × 세기 3 은 R−B ≈ 115 · G−B ≈ 79 로
-        /// 독립 평가자의 금색 판정식(R−B ≥ 60 그리고 G−B ≥ 30)에 정면으로 걸린다.
-        /// 그 결과 `15`·`19`·`21` 이 금색 띠로 뒤덮여 **「카지노 슬롯머신」으로 읽혔다** —
-        /// `UP-VIS-08` 이 금지한 바로 그것이고, 여덟 라운드 연속 지적됐다.
-        /// 14차 실측: `21` 의 금색 화소 **36,716개**.
+        /// **한 번 차가운 청록 `(0.62, 0.82, 0.78)` × 2 로 바꿨다가 되돌렸다 (2026-08-02).**
+        /// 이유는 「`21` 의 금색 화소를 줄인다」였는데 **그 전제가 틀렸다** —
+        /// 바꾼 뒤에도 금색이 36,716 → 36,716 으로 화소 하나까지 같았고,
+        /// 실제 출처는 `RiskStateView` 가 런타임에 거는 **천장등 발광**이었다
+        /// (`PD-22`). 정화 점등은 그 장에 아예 없다.
         ///
-        /// 색을 죽이지 않고 **옮긴다.** 점등 자체는 `UP-CORE-12`(판정 원인 시각화)가
-        /// 요구하는 것이라 약하게 만들면 다른 요구가 깨진다. 대신 `VISUAL_SPEC` 의
-        /// 「차가운 통관 발광」쪽으로 민다 — 이 프로젝트가 이미 「안정·정화」에 쓰는
-        /// 청록 계열이다(`GameHudView.LampOn(0)` 과 같은 색).
-        /// 새 값은 R−B = −41 · G−B = +10 으로 금색 판정식 두 조건을 **둘 다** 벗어난다.
+        /// 근거가 사라진 변경을 남겨 두면 다음 시각 판정이 **무엇 때문에 달라졌는지**
+        /// 를 못 가른다. 그래서 원래 값으로 되돌린다. 팔레트 락 관점의 재검토는
+        /// 별개 항목으로 다루고, 그때는 목적과 측정을 먼저 맞춘다.
         /// </summary>
-        [SerializeField] private Color _purifyEmission = new Color(0.62f, 0.82f, 0.78f);
-        [SerializeField, Min(0f)] private float _purifyEmissionStrength = 2f;
+        [SerializeField] private Color _purifyEmission = new Color(1f, 0.86f, 0.55f);
+        [SerializeField, Min(0f)] private float _purifyEmissionStrength = 3f;
 
         private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 

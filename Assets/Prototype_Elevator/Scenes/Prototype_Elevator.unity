@@ -9589,8 +9589,8 @@ MonoBehaviour:
   - {fileID: 956571960}
   - {fileID: 1704779571}
   _highlightScale: 1.35
-  _purifyEmission: {r: 0.62, g: 0.82, b: 0.78, a: 1}
-  _purifyEmissionStrength: 2
+  _purifyEmission: {r: 1, g: 0.86, b: 0.55, a: 1}
+  _purifyEmissionStrength: 3
 --- !u!114 &998528531
 MonoBehaviour:
   m_ObjectHideFlags: 0
