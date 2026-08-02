@@ -1865,3 +1865,73 @@ UP-TECH-09 실측: 12 중 충족 8 · 부분 2(⑨⑩) · 미충족 2(②⑫).
 UP-TECH-09 실측: 12 중 충족 9 · 부분 2(⑨⑩) · 미충족 1(⑫).
 ⑫ 는 머티리얼을 건드려야 해서 씬 소유자가 필요하고, 지금은 다른 에이전트가 조명·재질을
 재설계 중이라 정면 충돌한다. **코드로 할 수 있는 것은 여기까지다.**
+
+---
+
+# 2026-08-02 13:3x — 자체 검증을 직접 돌리고, 널리 퍼진 낡은 기록 하나를 잡았다
+
+## C5 두 건 해소
+
+다른 에이전트가 Unity 를 11분간 놓아둔 것을 확인하고(Editor.log 13:18:03 이후 무활동,
+상대 작업 파일은 12:44~12:47 이후 그대로) 컴파일과 자체 검증을 돌렸다. 씬·머티리얼·
+직렬화 에셋은 건드리지 않았다 — `AssetDatabase.Refresh` 와 테스트 메뉴 둘뿐이다.
+
+| | 전 | 후 |
+|---|---|---|
+| `Assembly-CSharp.dll` | 13:14:15 (소스보다 낡음) | **13:30:30** (소스 13:26:10 보다 새로움) |
+| `PrototypeSelfTest` | 450 | **461 PASS / 0 FAIL** |
+| `AscendTestMenu` | 390 | **442 PASS / 0 FAIL** |
+
+검증기 차단이 6 → 4 건으로 줄었다.
+
+## 「배선되지 않았다」 경고를 미배선의 증거로 읽고 있었다
+
+자체 검증 로그에 `VisualQualityProfile 이 없다` · `RunSummaryTemplate 이 배선되지
+않았다` · `PresentationProfile 이 배선되지 않았다` 가 뜬다. **그 경고들은 헤드리스
+테스트가 컴포넌트를 에셋 없이 만들어 폴백 경로를 일부러 시험하면서 나오는 것이다.**
+
+씬 YAML 의 GUID 를 `.meta` 로 역매핑해 전수 확인했다 — **프로파일 에셋 9종이 전부
+씬에 배선돼 있다.**
+
+| 에셋 | 씬 참조 |
+|---|---|
+| Accessibility | 2 |
+| AudioMix | 1 |
+| DangerFeedback | 2 |
+| Overharvest | **3** |
+| PassengerReactionSet | 1 |
+| Presentation | 1 |
+| RunSummaryTemplate | 1 |
+| TargetHardware | 1 |
+| VisualQuality | 1 |
+
+`UP-POWER-07` 의 「남은 문제」는 「런타임 소비처 0곳 · 씬이 참조하는 프로파일은
+`PassengerReactionSet.asset` 하나뿐」이라고 적고 있었다. **셋 다 지금은 사실이 아니다.**
+
+## UP-POWER-07 → VERIFIED
+
+§0.4 세 기준을 실측으로 대조했다.
+
+1. **코드** — `OverharvestProfile.cs` 9필드 + `.asset`
+2. **도달 경로** — 씬 참조 3곳, `RunSessionBehaviour.ResetRun()` 이 런 시작마다 읽는다
+3. **증거** — 442 / 461 PASS · 0 FAIL
+
+9필드 전부 `Data/Profiles`·테스트 **밖에** 소비처가 있다(앤티 2 · 해금 임계 1 +
+`IsUnlocked` 4곳 · 감쇠/정적/응시/복귀 2~3 · 추가 스핀 상한 1 + `EffectiveExtraSpinLimit`
+1곳). 폴백이면 `OverharvestSource` 가 「코드 기본값 + 인스펙터 판돈」으로 찍혀
+값 비교 없이 판별된다.
+
+VERIFIED 75 → **76** · CONNECTED 52 → 51.
+
+**측정을 한 번 틀렸다.** 필드별 소비처를 셀 때 패턴에 `IsUnlocked|EffectiveExtraSpinLimit`
+를 OR 로 넣어 아홉 개 수가 전부 오염됐다(4~6 으로 부풀었다). 다시 세서 1~3 으로
+정정했다. 결론은 같지만 **부풀린 수로 승격했으면 근거가 거짓이 됐을 것이다.**
+
+## 남은 차단 (4건)
+
+| | 무엇이 필요한가 |
+|---|---|
+| C2 · 51 CONNECTED | 항목별 §0.4 실측 감사. 위 방식이 통한다 — 낡은 기록이 널리 퍼져 있다 |
+| C10 시각 REJECT | 캡처 재생성 + 독립 판정. **씬 오너** |
+| C10b 27건 | 경험·비주얼. 캡처 필요. **씬 오너** |
+| C12 미커밋 6건 | **전부 다른 에이전트의 미완성 작업**(`PurifyMarker*`, `OverharvestStageTests`). 내가 커밋하면 이 세션 앞부분의 사고를 그대로 반복한다 — 손대지 않는다 |

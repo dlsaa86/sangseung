@@ -797,13 +797,14 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-POWER-07 — OverharvestProfile 데이터화 (9개 항목)
 - 분류: Required · 출처: PRD §7.4
-- 상태: CONNECTED · 패스: P2
-- 구현: `Scripts/Data/Profiles/OverharvestProfile.cs`(PRD §7.4 의 9항목)
+- 상태: VERIFIED · 패스: P2
+- 구현: `Scripts/Data/Profiles/OverharvestProfile.cs`(PRD §7.4 의 9항목) + `Data/Profiles/OverharvestProfile.asset` + `Scripts/Run/RunSessionBehaviour.cs` 의 `ResetRun()`
 - 접근: 해당 없음
-- 검증: `Ascend/Run All EditMode Tests` → 정적 구간 범위 조임 등
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `Ascend/Run All EditMode Tests` → 데이터 프로파일 스위트
+- 증거: `Logs/editmode_tests.txt` (2026-08-02 13:32 · 442 PASS / 0 FAIL), `.claude/state/last-selftest.txt` (461 PASS / 0 FAIL)
 - 의존: UP-POWER-05
-- 남은 문제: **`.asset` 은 이미 있다. 문제는 그것을 읽는 코드가 없다는 것이다.** 런타임 소비처를 세면 0곳이다(`Scripts/Data/Profiles/`·테스트·`Assets/Editor/` 제외). 씬 YAML 의 GUID 를 `.meta` 로 역매핑해도 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐이다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `OverharvestApproachBridge`, 과수확 연출
+- 남은 문제: **직전 판본의 「읽는 코드가 없다」는 낡은 기록이었다 (2026-08-02 실측 정정).** 그 문장은 「런타임 소비처 0곳 · 씬이 참조하는 프로파일은 `PassengerReactionSet.asset` 하나뿐」이라고 적고 있었다. **셋 다 지금은 사실이 아니다.** ① `RunSessionBehaviour.ResetRun()` 이 `SnapshotOrDefault` 로 9종을 읽어 `RunSession` → `FloorSession` 으로 넘긴다. ② 씬 YAML 의 GUID 를 `.meta` 로 역매핑하면 `OverharvestProfile.asset` 참조가 **3곳**이고, 프로파일 에셋 **9종이 전부** 씬에 배선돼 있다(2026-08-02 전수 확인 — Accessibility 2 · AudioMix 1 · DangerFeedback 2 · Overharvest 3 · PassengerReactionSet 1 · Presentation 1 · RunSummaryTemplate 1 · TargetHardware 1 · VisualQuality 1). ③ 9필드 전부 `Data/Profiles`·테스트 밖에 소비처가 있다(앤티 2 · 해금 임계 1 + 헬퍼 `IsUnlocked` 4곳 · 감쇠/정적/응시/복귀 2~3 · 추가 스핀 상한 1 + `EffectiveExtraSpinLimit` 1곳). **폴백이면 `OverharvestSource` 가 「코드 기본값 + 인스펙터 판돈」으로 찍히므로 배선 여부가 값 비교 없이 판별된다.** §0.4 세 기준(코드·도달 경로·증거)을 모두 충족해 VERIFIED 로 올린다.
+  > **자체 검증 로그의 「배선되지 않았다」 경고를 미배선의 증거로 읽지 말 것.** 그 경고들은 헤드리스 테스트가 컴포넌트를 에셋 없이 만들어 폴백 경로를 **일부러** 시험하면서 나온다. 실제 씬은 위 표대로 전부 물려 있다. 이 혼동이 이 항목을 여러 세션 동안 CONNECTED 에 묶어 뒀다. 값을 바꿔도 화면에서 아무 일도 일어나지 않으므로 PRD §14.2 「교체 가능한 프리셋」이 성립하지 않는다 — `docs/runtime/DEAD_IMPLEMENTATION_AUDIT.md` §1. 소비처가 될 곳: `OverharvestApproachBridge`, 과수확 연출
 
 ### UP-POWER-08 — 초과 전력이 다층 상승·보상으로 이어진다
 - 분류: Required · 출처: PRD §4.1, N03 「부분 실패」, N08 §11.3
