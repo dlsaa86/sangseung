@@ -436,16 +436,28 @@ namespace Ascend.Prototype.View
             if (residual.IsClean) _text.Append("잔류 없음");
             else
             {
+                // **배킹판이 글자상자보다 좁다.** 12·13차가 같은 것을 두 번 지목했다 —
+                // 여덟 장 전부 이 줄이 「저장 전력」에서 끝나고 **값이 화면에 없다.**
+                // 매니페스트는 그 여섯 장을 「프레임밖 0자」로 적었다(거짓 그린) —
+                // 글자상자(26.00) 기준으로 재고 있어서 판을 넘는 것을 못 본다.
+                //
+                // 실측: 판 오른끝 1260 px · 잉크 오른끝 1273 px — **13 px 넘친다.**
+                // 앞서 잰 글자 폭은 「흡수체 4개 → 저장 전력 −32.0」 18.15 단위이고
+                // 「흡수체 4 · 전력 −32.0」은 14.45 단위다. 20% 를 줄이면 13 px 는 덮는다.
+                //
+                // 「개」와 「저장」을 뺀다. 뜻은 안 죽는다 — 숫자 뒤의 조사이고,
+                // 「전력」이 이미 무엇이 깎이는지 말한다. **끝에 값이 남는 것이 요구다**
+                // (`B-3 #10` 대가 수치). 잘린 숫자는 못 읽지만 짧은 문장은 읽힌다.
                 if (residual.AbsorberCount > 0)
                     _text.Append("흡수체 ").Append(residual.AbsorberCount)
-                         .Append("개 → 저장 전력 −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
+                         .Append(" · 전력 −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
                 if (residual.AbsorberCount > 0 && residual.ProliferatorCount > 0)
                     _text.AppendLine();
                 if (residual.ProliferatorCount > 0)
-                    // 「출현」을 뺐다. 이 줄만 21 단위를 넘겨서다 — 흡수체 줄과 달리
-                    // 한 낱말이 더 들어 있었다. 뜻은 앞의 「다음 스핀」이 이미 옮긴다.
+                    // 흡수체 줄과 같은 폭으로 맞춘다. 둘이 나란히 있는데 한 줄만
+                    // 판을 넘으면 「어느 쪽이 잘렸나」가 매번 달라져 회귀를 못 잡는다.
                     _text.Append("증식체 ").Append(residual.ProliferatorCount)
-                         .Append("개 → 다음 스핀 +")
+                         .Append(" · 출현 +")
                          .AppendFormat("{0:F2}", residual.NextProliferatorWeightAdd);
             }
         }
