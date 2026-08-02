@@ -876,6 +876,30 @@ namespace Ascend.Prototype.Run.Tests
                                   "연출이 timeScale 을 0 으로 두면 이동·회전이 코드로는 되지만 " +
                                   "플레이어 입력으로는 죽는다");
 
+                            // **실제 look 경로를 한 번 태운다** (`UP-SPACE-08` 의 마지막 조각).
+                            //
+                            // 위 회전 측정이 항등식인 이유는 `HandleLook` 이 커서 잠금을 요구하는데
+                            // 씬이 `_lockCursorOnStart: 0` 이라 그 경로가 **한 번도 안 돌기** 때문이다.
+                            // 「하네스가 흉내 낼 수 없다」고 적혀 있었으나 과장이었다 —
+                            // `SetCursorLocked(bool)` 이 public 이다.
+                            //
+                            // 잠그고 한 프레임 돌린 뒤 **반드시 원래대로 되돌린다.** 잠근 채로 두면
+                            // 이후 268회가 다른 조건에서 돌고, 캡처 창이 마우스를 가둔다.
+                            // 조준 흉내(`:983`)와 같은 원칙이다 — 게이트를 면제하지 않고 연다.
+                            bool lockedBefore = Cursor.lockState == CursorLockMode.Locked;
+                            Quaternion lookBefore = _player.transform.rotation;
+                            _player.SetCursorLocked(true);
+                            yield return null;
+                            _player.SetCursorLocked(lockedBefore);
+
+                            // 입력이 없으므로 각도는 안 변하는 것이 정상이다. 이 검사가 묻는 것은
+                            // **연출이 그 경로를 막지 않았는가** — 컨트롤러가 꺼지거나 파괴됐으면
+                            // `SetCursorLocked` 이후 프레임에서 예외가 나거나 컴포넌트가 죽는다.
+                            Check($"{number}층 연출 중 시점 경로가 살아 있다 (커서 잠금 왕복)",
+                                  _player != null && _player.enabled &&
+                                  Quaternion.Angle(lookBefore, _player.transform.rotation) < 90f,
+                                  "커서를 잠갔다 푸는 사이 컨트롤러가 죽거나 시점이 튀었다");
+
                             Transform root = _player.transform;
                             Quaternion beforeRotation = root.rotation;
                             Vector3 beforePosition = root.position;
