@@ -31,7 +31,17 @@ namespace Ascend.Prototype.Run.Tests
     public static class PlayerPerfProbe
     {
         private const string Arg = "-ascend-perf";
-        private const int WarmupFrames = 120;   // 셰이더·풀 워밍업. 이 구간은 버린다
+        // 워밍업 720 프레임(6초 @120Hz). 처음엔 120 이었다.
+        //
+        // **한 번 잘못 읽었다.** 소거 구간(본 측정 뒤)의 기준선이 0 B 로 나오길래
+        // 「1,638 B 는 정상 상태가 아니라 덜 끝난 워밍업」이라고 단정하고 워밍업을 늘렸다.
+        // **틀렸다** — 720 으로 늘려도 본 측정은 여전히 1,638 B 다. 그때 소거 기준선이
+        // 0 이었던 것은 워밍업 때문이 아니라 **그 순간 게임 상태가 달랐기 때문**이다
+        // (결과판이 돌지 않는 국면).
+        //
+        // 늘린 것 자체는 남긴다 — 워밍업은 길수록 안전하고, 720 에서도 결론이 같다는 것이
+        // 오히려 「이 값은 워밍업 길이에 의존하지 않는다」는 증거가 된다.
+        private const int WarmupFrames = 720;
         private const int MeasureFrames = 600;  // 60 Hz 기준 10초
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -74,7 +84,84 @@ namespace Ascend.Prototype.Run.Tests
                 recorder.Dispose();
 
                 Write(ms, gc);
+                yield return Ablate();
                 Application.Quit(0);
+            }
+
+            /// <summary>
+            /// **컴포넌트를 하나씩 끄고 GC 차이를 잰다.** 1,638 B/프레임의 출처를 찾는 유일한
+            /// 신뢰 가능한 방법이다.
+            ///
+            /// 정적으로 찾으려 했으나 Update 를 가진 파일이 48개고, 이 세션에서 추측으로
+            /// 네 번 틀렸다. 코드를 읽어 「여기일 것 같다」로 고르는 대신 **끄고 재서** 고른다.
+            ///
+            /// 각 구간은 짧다(90 프레임). 절대값이 아니라 **켰을 때와의 차이**만 보므로
+            /// 구간이 짧아도 된다 — 같은 프레임 조건에서 한 컴포넌트만 달라진다.
+            /// </summary>
+            private IEnumerator Ablate()
+            {
+                const int Seg = 90;
+                var sb = new StringBuilder();
+                sb.AppendLine();
+                sb.AppendLine("=== 컴포넌트 소거 측정 — 1,638 B/프레임 출처 추적 ===");
+                sb.AppendLine($"각 구간 {Seg} 프레임 · 값은 그 구간 GC 중앙값(B/프레임)");
+                sb.AppendLine("차이 = (전부 켬) − (그것만 끔). 양수면 그 컴포넌트가 그만큼 쓴다.");
+                sb.AppendLine();
+
+                // 씬의 모든 게임 MonoBehaviour 를 모은다. 목록을 손으로 적으면 적히지 않은
+                // 것이 **구조적으로 상쇄**되어 무엇을 고쳐도 수치가 안 움직인다 —
+                // 이 저장소가 이미 그 맹점을 한 번 겪었다(HeroSlicePerfProbe 의 손 열거).
+                var all = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                var targets = new System.Collections.Generic.List<MonoBehaviour>();
+                foreach (MonoBehaviour mb in all)
+                {
+                    if (mb == null || !mb.enabled) continue;
+                    if (mb is Runner) continue;                       // 자기 자신
+                    System.Type t = mb.GetType();
+                    if (t.Namespace == null || !t.Namespace.StartsWith("Ascend")) continue;
+                    targets.Add(mb);
+                }
+
+                long baseAlloc = 0;
+                yield return Measure(Seg, v => baseAlloc = v);
+                sb.AppendLine($"[전부 켬] {baseAlloc} B/프레임 · 대상 컴포넌트 {targets.Count}개");
+                sb.AppendLine();
+
+                var rows = new System.Collections.Generic.List<string>();
+                foreach (MonoBehaviour mb in targets)
+                {
+                    if (mb == null) continue;
+                    mb.enabled = false;
+                    long off = 0;
+                    yield return Measure(Seg, v => off = v);
+                    mb.enabled = true;
+                    long delta = baseAlloc - off;
+                    if (delta != 0)
+                        rows.Add($"  {delta,7} B  {mb.GetType().Name} ({mb.gameObject.name})");
+                }
+                rows.Sort((a, b) => b.CompareTo(a));   // 문자열 정렬이지만 폭 고정이라 수 순서와 같다
+                if (rows.Count == 0) sb.AppendLine("  차이를 낸 컴포넌트가 없다 — 할당이 Update 밖(엔진·렌더)이다");
+                else foreach (string r in rows) sb.AppendLine(r);
+
+                string path = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(Application.dataPath) ?? ".", "player_perf.txt");
+                System.IO.File.AppendAllText(path, sb.ToString());
+                Debug.Log("[상승] 소거 측정 기록 완료");
+            }
+
+            /// <summary>구간 하나의 GC 중앙값. 버퍼를 recorder 앞에서 잡는 규칙은 여기도 같다.</summary>
+            private static IEnumerator Measure(int frames, System.Action<long> done)
+            {
+                var buf = new long[frames];
+                var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+                for (int i = 0; i < frames; i++)
+                {
+                    yield return null;
+                    buf[i] = rec.Valid ? rec.LastValue : 0;
+                }
+                rec.Dispose();
+                System.Array.Sort(buf);
+                done(buf[frames / 2]);
             }
 
             private static void Write(float[] ms, long[] gc)

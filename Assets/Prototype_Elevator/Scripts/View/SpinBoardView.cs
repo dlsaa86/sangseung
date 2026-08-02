@@ -169,9 +169,40 @@ namespace Ascend.Prototype.View
         /// 하이라이트를 크기와 발광 **양쪽**에 건다. 발광만 쓰면 회색조에서 사라지고,
         /// 크기만 쓰면 밝은 장면에서 묻힌다(visual-criteria B-2.6).
         /// </summary>
+        /// <summary>직전에 실제로 칠한 하이라이트 값. 같은 값을 다시 쓰지 않기 위한 것이다.</summary>
+        private float[] _highlightApplied;
+
+        /// <summary>
+        /// 정화 점등을 칸에 바른다.
+        ///
+        /// **값이 바뀐 칸만 바른다.** 이전에는 매 프레임 27개 슬롯 전부에
+        /// `GetPropertyBlock`/`SetPropertyBlock` 을 걸었고, 그것이 **`UP-TECH-05`
+        /// (워밍업 후 매 프레임 0 B)를 혼자서 위반하고 있었다.**
+        ///
+        /// 빌드 소거 측정이 지목했다 — 36개 컴포넌트 중 이것 하나가 **1,638 B/프레임
+        /// 전부**였다. 27 슬롯 × 약 60 B 가 그 수와 맞는다. 정적으로 찾으려 했을 때는
+        /// 못 찾았다(Update 를 가진 파일이 48개다). **끄고 재서** 찾았다.
+        ///
+        /// 하이라이트는 정화 연출 중에만 움직이고 나머지 시간에는 전부 0 이다.
+        /// 즉 대부분의 프레임에서 이 27번의 왕복은 **같은 값을 다시 쓰는 것**이었다.
+        /// </summary>
         private void ApplyHighlights()
         {
             if (_slots == null) return;
+
+            // 바뀐 것이 없으면 통째로 건너뛴다. 부동소수 비교에 허용오차를 두는 이유는
+            // 감쇠가 0 에 점근하면서 마지막 몇 프레임이 1e-8 씩 달라지기 때문이다 —
+            // 그걸 「바뀌었다」로 세면 연출이 끝난 뒤에도 매 프레임 칠하게 된다.
+            if (_highlightApplied != null && _highlightApplied.Length == _highlight.Length)
+            {
+                bool changed = false;
+                for (int i = 0; i < _highlight.Length; i++)
+                    if (Mathf.Abs(_highlight[i] - _highlightApplied[i]) > 0.0005f) { changed = true; break; }
+                if (!changed) return;
+            }
+            else _highlightApplied = new float[_highlight.Length];
+
+            for (int i = 0; i < _highlight.Length; i++) _highlightApplied[i] = _highlight[i];
 
             for (int i = 0; i < _slots.Length; i++)
             {
