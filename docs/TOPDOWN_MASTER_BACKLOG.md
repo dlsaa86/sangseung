@@ -36,6 +36,7 @@
 |---|---|
 | **Required** | PRD §4.1 필수 구현 목록 / §13 엔지니어링 목표 / §15 시각 평가 / §17 Definition of Done |
 | **Deferred** | PRD §4.2 명시적 제외, 또는 다른 문서에만 있고 PRD 필수 범위에 없는 확장 |
+| **OUT_OF_SESSION_SCOPE** (상태값) | **분류는 Required 그대로다.** 제품에는 필요하지만 이번 세션 범위 밖이라 이번 게이트가 요구하지 않는다. `Deferred` 와 다른 점이 핵심이다 — `Deferred` 는 **요구가 없다**는 뜻이고 이것은 **요구는 있는데 지금 안 한다**는 뜻이다. 출처 줄을 지우지 않으므로 범위를 되돌리면 상태만 `CONNECTED` 로 바꾸면 된다 (2026-08-02 사용자 결정으로 신설) |
 | **Approval Required** | PRD §14.2 「승인 전 잠그지 않을 항목」 + `ASSUMPTION_LOG.md` 미뤄 둔 결정 |
 
 Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 가능한 프리셋으로 진행하고
@@ -465,13 +466,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-SPACE-08 — 판정 진행 중에도 이동·시점 회전 허용
 - 분류: Required · 출처: PRD §17.1(진행 불가 상태 없음), N01 「자동 연쇄가 진행되는 동안 이동과 시점 회전은 허용」, N08 §17
-- 상태: CONNECTED · 패스: P2 P3
+- 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/View/SpinPresenter.cs`(연출 잠금은 입력만 잠근다), `FirstPersonController.cs`
 - 접근: 레버를 당긴 직후 이동해 본다
 - 검증: `TenFloorAutoPilot` 의 「연출 중에도 플레이어 조작이 살아 있다」 — 268회
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-SPACE-01, UP-CORE-11
-- 남은 문제: **내 단정이 공허하게 참이었다 — 독립 감사가 짚었고 고쳤다.** 직전 판본은 `root.Rotate(25°)` 로 직접 쓰고 다음 프레임에 읽는 것뿐이었는데, 루트 회전을 되돌릴 주체가 **존재하지 않는다** — `HandleLook` 은 커서 잠금을 요구하고 씬은 `_lockCursorOnStart: 0` 이다. 그래서 268회 전부 정확히 `25.0°` 였다. 실측이 아니라 **항등식**이다. 게다가 그 커밋 메시지는 「컨트롤러를 끄든 `timeScale` 을 0 으로 두든 여기서 걸린다」고 적었는데 **둘 다 걸리지 않는다** — `Transform.Rotate` 와 `CharacterController.Move` 는 시간 배율과 무관하고, 검사 대상 `_character` 는 `CharacterController` 이지 `FirstPersonController` 가 아니다. **즉 반증력이 있던 옛 검사(`enabled && activeInHierarchy && timeScale > 0`)를 반증력이 없는 것으로 갈아 끼우고 반대로 적었다.** → 떨어질 수 있는 조건 둘(조작 컴포넌트 활성 · `timeScale > 0`)을 되살려 함께 걸었고, 결과 측정 두 건은 「연출이 되돌리지 않는다」로 이름을 바꿔 **충족 근거로 단독 인용하지 말라고 코드에 적었다.** ~~남은 것: `FirstPersonController.SetCursorLocked(true)`(public)로 게이트를 열어 실제 look 경로를 태우는 것 — 코드 주석의 「하네스가 흉내 낼 수 없다」는 과장이었다~~ → **했다 (2026-08-02).** 하네스가 층마다 커서를 **잠갔다 원래대로 되돌리고**(`lockedBefore` 를 기억해 복원한다) 그 사이 한 프레임을 흘려 `HandleLook` 게이트를 실제로 연다. 새 단정 「연출 중 시점 경로가 살아 있다 (커서 잠금 왕복)」이 그 왕복에서 컨트롤러가 죽거나 시점이 튀는 것을 잡는다. **잠근 채로 두지 않는 것이 핵심이다** — 268회가 다른 조건에서 돌게 되고 캡처 창이 마우스를 가둔다. 과수확 조준 흉내(`:983`)와 같은 원칙이다: **게이트를 면제하지 않고 연다.** 입력이 없으므로 각도가 안 변하는 것이 정상이고, 이 검사가 묻는 것은 「연출이 그 경로를 막지 않았는가」다. Tier 0 컴파일 통과(소스 231 · 오류 0). **실제 왕복 결과는 다음 10층 런의 산출물이 낸다** — 268회 중 몇 번 통과하는지가 거기 찍힌다
+- 남은 문제: **VERIFIED — 독립 감사 승격 (2026-08-02). `TenFloorAutoPilot.cs:864-901` 의 단정 셋이 반증 가능하고 `Logs/tenfloor_playmode.txt`(16:36) 에 각 268회 · 0 FAIL. 「다음 10층 런이 낸다」던 조건이 그 로그로 충족됐다.** 이전 기록: **내 단정이 공허하게 참이었다 — 독립 감사가 짚었고 고쳤다.** 직전 판본은 `root.Rotate(25°)` 로 직접 쓰고 다음 프레임에 읽는 것뿐이었는데, 루트 회전을 되돌릴 주체가 **존재하지 않는다** — `HandleLook` 은 커서 잠금을 요구하고 씬은 `_lockCursorOnStart: 0` 이다. 그래서 268회 전부 정확히 `25.0°` 였다. 실측이 아니라 **항등식**이다. 게다가 그 커밋 메시지는 「컨트롤러를 끄든 `timeScale` 을 0 으로 두든 여기서 걸린다」고 적었는데 **둘 다 걸리지 않는다** — `Transform.Rotate` 와 `CharacterController.Move` 는 시간 배율과 무관하고, 검사 대상 `_character` 는 `CharacterController` 이지 `FirstPersonController` 가 아니다. **즉 반증력이 있던 옛 검사(`enabled && activeInHierarchy && timeScale > 0`)를 반증력이 없는 것으로 갈아 끼우고 반대로 적었다.** → 떨어질 수 있는 조건 둘(조작 컴포넌트 활성 · `timeScale > 0`)을 되살려 함께 걸었고, 결과 측정 두 건은 「연출이 되돌리지 않는다」로 이름을 바꿔 **충족 근거로 단독 인용하지 말라고 코드에 적었다.** ~~남은 것: `FirstPersonController.SetCursorLocked(true)`(public)로 게이트를 열어 실제 look 경로를 태우는 것 — 코드 주석의 「하네스가 흉내 낼 수 없다」는 과장이었다~~ → **했다 (2026-08-02).** 하네스가 층마다 커서를 **잠갔다 원래대로 되돌리고**(`lockedBefore` 를 기억해 복원한다) 그 사이 한 프레임을 흘려 `HandleLook` 게이트를 실제로 연다. 새 단정 「연출 중 시점 경로가 살아 있다 (커서 잠금 왕복)」이 그 왕복에서 컨트롤러가 죽거나 시점이 튀는 것을 잡는다. **잠근 채로 두지 않는 것이 핵심이다** — 268회가 다른 조건에서 돌게 되고 캡처 창이 마우스를 가둔다. 과수확 조준 흉내(`:983`)와 같은 원칙이다: **게이트를 면제하지 않고 연다.** 입력이 없으므로 각도가 안 변하는 것이 정상이고, 이 검사가 묻는 것은 「연출이 그 경로를 막지 않았는가」다. Tier 0 컴파일 통과(소스 231 · 오류 0). **실제 왕복 결과는 다음 10층 런의 산출물이 낸다** — 268회 중 몇 번 통과하는지가 거기 찍힌다
 
 ### UP-SPACE-09 — 등을 돌려도 결과와 전력 변화를 알 수 있다
 - 분류: Required · 출처: PRD §11(무음 관전자 기준), N03 「등을 돌려도 사운드·점등·보조 UI로」, N08 §17
@@ -1124,13 +1125,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-RISK-05 — 저주파·금속 응력음 (사이렌은 사건에만)
 - 분류: Required · 출처: PRD §8.3 「사이렌은 지속 재생하지 않는다」
-- 상태: CONNECTED · 패스: P2 P3
+- 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/Audio/ProceduralClipFactory.cs`(금속 타격·저역 하강·Collapse 임펄스), `Scripts/Audio/AudioCueTable.cs`(사건 전용 발동)
 - 접근: 위험이 오르면 소리가 달라진다
 - 검증: 오디오 채널 목록 + 무영상 청취 테스트
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-AUD-01
-- 남은 문제: 사이렌을 **지속 재생하지 않는다**는 §8.3 원칙은 구조로 지켜진다 — 위험 사운드가 전부 사건 큐이고 지속음은 hum 하나뿐이다. 다만 씬 배선 전이라 실제로 들리지 않는다
+- 남은 문제: **VERIFIED — 독립 감사 승격 (2026-08-02). **차단 사유가 낡았다** — 「씬 배선 전이라 안 들린다」는 거짓이다. `AudioDirector` 가 씬에 있고 10층 로그에 `MetalStress`·`Siren` 포함 16종 전부 울렸다.** 이전 기록: 사이렌을 **지속 재생하지 않는다**는 §8.3 원칙은 구조로 지켜진다 — 위험 사운드가 전부 사건 큐이고 지속음은 hum 하나뿐이다. 다만 씬 배선 전이라 실제로 들리지 않는다
 
 ### UP-RISK-06 — Collapse 단계 (암전 → 파열음 → 급강하 → 재점등)
 - 분류: Required · 출처: PRD §8.2 Collapse
@@ -1228,13 +1229,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
-- 상태: CONNECTED · 패스: P2 P3
+- 상태: VERIFIED · 패스: P2 P3
 - 구현: `Scripts/Npc/PassengerReaction.cs`(자세 7종 · 시선 6종 · 음성 큐 ID), `Scripts/Build/BuildFigureView.cs`(`SetReaction`/`GazeRotation`)
 - 접근: 승객을 바라본다
 - 검증: `Ascend/Run All EditMode Tests` + 고정 캡처의 승객 자세 대비
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-NPC-02, UP-AUD-04
-- 남은 문제: 자세와 시선 두 채널이 코드에 생겼다. **짧은 대사는 없고**(PRD §9.4 가 긴 대화 트리를 제외하므로 한 줄 이하), 비언어 음성은 큐 ID 만 있고 재생 배선이 없다. 시선 대상 넷은 씬에서 배선해야 동작한다
+- 남은 문제: **VERIFIED — 독립 감사 승격 (2026-08-02). **차단 사유 셋이 전부 낡았다** — 대사(`BuildFigureView.cs:487`)·음성(`PassengerReactionView.cs:325`)·시선 배선 넷 중 셋이 해소됐고 `_gazeCeiling` 만 폴백을 쓴다.** 이전 기록: 자세와 시선 두 채널이 코드에 생겼다. **짧은 대사는 없고**(PRD §9.4 가 긴 대화 트리를 제외하므로 한 줄 이하), 비언어 음성은 큐 ID 만 있고 재생 배선이 없다. 시선 대상 넷은 씬에서 배선해야 동작한다
 
 ### UP-NPC-05 — 동시 반응 제한 (우선순위·쿨다운·최대 수)
 - 분류: Required · 출처: PRD §9.4 「한 이벤트에서 모든 승객이 동시에 말하지 않는다」
@@ -1260,13 +1261,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-REC-02 — 출력 항목 9종
 - 분류: Required · 출처: PRD §10.2 (최고 층 / 최고 캐스케이드 / 최고 과수확 비율 / 핵심 계약 / 핵심 승객·부품 / 종료 원인 / 마지막 과수확 선택 / 잃은 승객·화물 / 런 시드)
-- 상태: CONNECTED · 패스: P2
+- 상태: VERIFIED · 패스: P2
 - 구현: `Scripts/Run/FloorRecord.cs`, `RunResult.cs`, `Scripts/Data/Profiles/RunSummaryTemplate.cs` 의 `RunSummaryField` 열거형(9종)
 - 접근: 사고 기록기 화면
 - 검증: 고정 캡처 `17_accident_recorder` + `Ascend/Run All EditMode Tests` → 「런 요약이 정확히 9줄이다」·「빈 값에서도 9줄이 유지된다」·「요약 항목 수 상수와 열거형이 일치한다」
 - 증거: `Captures/TenFloor/17_accident_recorder.png`, `Logs/editmode_tests.txt` (2026-08-02 · 203~205번째 줄 · 451 PASS / 0 FAIL)
 - 의존: UP-REC-01
-- 남은 문제: ~~항목 대조표가 없다. 9종이 전부 나오는지 검증되지 않았다~~ → **대조표가 생겼다 (2026-08-02 실측 정정).** `RunSummaryTemplate.cs:14` 의 `RunSummaryField` 가 **정확히 9개 값**을 갖고, 그 파일 주석이 「이 지적 때문에 만들었다」고 적는다 — 즉 지적은 반영됐는데 **항목의 「남은 문제」만 안 따라왔다.** 단정 3건이 지금 통과 중이다(`Logs/editmode_tests.txt` 203~205번째 줄). 그중 「빈 값에서도 9줄이 유지된다」가 핵심이다 — 값이 비면 줄이 사라지는 구현은 **평소에 9줄을 내면서도 요구를 어긴다.** 열한 번째 낡은 기록이다
+- 남은 문제: **VERIFIED — 독립 감사 승격 (2026-08-02). `Captures/TenFloor/17_accident_recorder.png` 에 9줄이 실제로 그려져 있고 `Run Summary Builder Tests` 12 PASS 가 공허하지 않다.** 이전 기록: ~~항목 대조표가 없다. 9종이 전부 나오는지 검증되지 않았다~~ → **대조표가 생겼다 (2026-08-02 실측 정정).** `RunSummaryTemplate.cs:14` 의 `RunSummaryField` 가 **정확히 9개 값**을 갖고, 그 파일 주석이 「이 지적 때문에 만들었다」고 적는다 — 즉 지적은 반영됐는데 **항목의 「남은 문제」만 안 따라왔다.** 단정 3건이 지금 통과 중이다(`Logs/editmode_tests.txt` 203~205번째 줄). 그중 「빈 값에서도 9줄이 유지된다」가 핵심이다 — 값이 비면 줄이 사라지는 구현은 **평소에 9줄을 내면서도 요구를 어긴다.** 열한 번째 낡은 기록이다
 
 ### UP-REC-03 — 인게임 출력과 디버그가 같은 데이터를 쓴다
 - 분류: Required · 출처: PRD §10.3
@@ -1445,8 +1446,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 ## 2.13 AUD — 사운드
 
 ### UP-AUD-01 — 위험 단계별 오디오 레이어
-- 분류: Deferred · 출처: PRD §8.2, §8.3, §8.4
-- 상태: DEFERRED · 패스: P2 P3
+- 분류: Required · 출처: PRD §8.2, §8.3, §8.4
+- 상태: OUT_OF_SESSION_SCOPE · 패스: P2 P3
 - 구현: `Scripts/Risk/RiskStateView.cs`(hum), `Scripts/Audio/AudioCueTable.cs`(단계 전이 사건음), 씬 배선
 - 접근: 위험 단계를 올린다
 - 검증: `WaveBRuntimeProbe` + EditMode 큐 매핑
@@ -1455,8 +1456,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: 지속 hum + 사건음이 씬에서 함께 돈다. **위험 단계가 프로브 중 Stable 을 벗어나지 않아** 단계별 차이는 아직 귀로도 계측으로도 확인되지 않았다
 
 ### UP-AUD-02 — 룰렛 사운드 10종
-- 분류: Deferred · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
-- 상태: DEFERRED · 패스: P2 P3
+- 분류: Required · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
+- 상태: OUT_OF_SESSION_SCOPE · 패스: P2 P3
 - 구현: `Scripts/Audio/` 5파일 + 씬 `AudioDirector` 배선
 - 접근: 스핀을 돌린다
 - 검증: `Ascend/Run All EditMode Tests` 13건 + `WaveBRuntimeProbe` 재생 카운터
@@ -1465,8 +1466,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: **백로그가 자기 성과를 과소 보고하고 있었다 — 룰렛 10종은 전부 울렸다.** 독립 감사의 도달성 논증: `AudioCueKind` 는 열거자 16개 중 `None=0` 을 빼면 15종이고 `AudioDirector.cs:445-446` 이 `bit > 0` 이라 15종만 기록된다. 그중 `PassengerVoice`(23)는 `AudioCueTable.TryMap` 이 절대 만들지 않고 `PlayPassengerVoice`(:359)의 **호출자가 0곳**이라 도달 불가다. 즉 **도달 가능한 최대치가 14** 인데 실측이 14종이다 → **도달 가능한 전부가 울렸고 룰렛 10종(kind 1~10)이 필연적으로 포함된다.** 안 난 것은 「2종」이 아니라 1종이고, 그것은 「아직 안 났다」가 아니라 구조적 미구현이다. **그럼에도 VERIFIED 로 올리지 않는 이유 둘:** ① 그 결론은 감사자가 열거형과 호출자를 따로 훑어 증명한 것이지 **산출물이 말해 주는 것이 아니었다** — 하네스가 `BitCount` 만 찍었다. → **고쳤다**: 이제 울린/안 울린 종류 **이름**을 함께 찍는다. ② 요구의 나머지 절반 「10종이 서로 **다른 소리로 들리는가**」는 여전히 미검증이다 — `AudioTests.cs:133-149` 는 큐 종류 매핑 검사이지 구운 클립의 청각 차이 검사가 아니다
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
-- 분류: Deferred · 출처: PRD §7.3(4)
-- 상태: DEFERRED · 패스: P2 P3
+- 분류: Required · 출처: PRD §7.3(4)
+- 상태: OUT_OF_SESSION_SCOPE · 패스: P2 P3
 - 구현: `Scripts/Audio/SilenceWindow.cs`, `AudioDirector`, `Scripts/Run/OverharvestApproachBridge.cs` — 씬 배선 완료
 - 접근: 과수확 레버에 손을 올린다
 - 검증: `WaveBRuntimeProbe` 의 정적 게인 타임라인
@@ -1475,8 +1476,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: **게인이 실제로 떨어진다** — 접근 0.25초 후 0.000, 1.45초 후 1.000 복귀. 남은 것은 플레이어가 실제로 레버를 조준했을 때의 발동 — 프로브는 접근 사건을 직접 넣었고 `IsApproaching=False` 였다(조준 대상 없음)
 
 ### UP-AUD-04 — 승객 비언어 음성
-- 분류: Deferred · 출처: PRD §9.3
-- 상태: DEFERRED · 패스: P3
+- 분류: Required · 출처: PRD §9.3
+- 상태: OUT_OF_SESSION_SCOPE · 패스: P3
 - 구현: `Scripts/Audio/ProceduralClipFactory.cs`(PassengerVoice — 포먼트 2개, 승객 인덱스로 피치 변화)
 - 접근: 승객이 반응할 때
 - 검증: `Ascend/Run All EditMode Tests` → 큐 종류 분기
@@ -1485,8 +1486,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: 합성기는 있으나 승객 반응과 이어지지 않았다 (`UP-NPC-04` 선행)
 
 ### UP-AUD-05 — AudioMixProfile / 오디오 압축 구분
-- 분류: Deferred · 출처: PRD §13.4, §14.3
-- 상태: DEFERRED · 패스: P2
+- 분류: Required · 출처: PRD §13.4, §14.3
+- 상태: OUT_OF_SESSION_SCOPE · 패스: P2
 - 구현: `Scripts/Data/Profiles/AudioMixProfile.cs` + `.asset` + `Scripts/Audio/AudioDirector.cs` 의 `ChannelVolume`·`ToMixChannel`
 - 접근: 해당 없음
 - 검증: `TenFloorAutoPilot` → 「오디오가 AudioMixProfile 을 읽는다」

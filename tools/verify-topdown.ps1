@@ -132,10 +132,18 @@ function Read-Utf8Lines {
 # VISIBLE 은 2026-08-01 감사에서 추가됐다 — "씬이나 화면에 보이지만 게임과 연결되지 않음".
 # 파일이 있고 오브젝트도 있으니 SKELETON 은 아니고, 규칙과 이어지지 않았으니 CONNECTED 도 아니다.
 # 이 구간이 이름 없이 남아 있으면 죽은 연출이 구현으로 계상된다.
-$ValidStates = @('NOT_STARTED','SKELETON','VISIBLE','CONNECTED','VERIFIED','DEFERRED','BLOCKED_EXTERNAL')
+$ValidStates = @('NOT_STARTED','SKELETON','VISIBLE','CONNECTED','VERIFIED','DEFERRED','BLOCKED_EXTERNAL','OUT_OF_SESSION_SCOPE')
 
 # 상태 서열 — 「최소 X 이상」을 숫자로 비교하기 위한 것이다.
-# DEFERRED/BLOCKED_EXTERNAL 은 서열 밖이라 별도로 다룬다 (아래 $OutOfLadder).
+# DEFERRED/BLOCKED_EXTERNAL/OUT_OF_SESSION_SCOPE 는 서열 밖이라 별도로 다룬다 (아래 $OutOfLadder).
+#
+# OUT_OF_SESSION_SCOPE 는 2026-08-02 에 사용자 결정으로 늘렸다. 그전에는 「제품에는
+# 필요하지만 이번 세션 범위는 아닌」 항목을 표현할 값이 없었고, 그래서 오디오 5건을
+# DEFERRED 로 내렸다가 되돌리는 일이 있었다 — DEFERRED 는 「PRD §4.2 명시적 제외」라
+# 제품 요구를 지우는 뜻이 되고, Required 로 두면 손대지 않기로 한 항목이 Pass 4 를
+# 영구히 막는다. **요구를 지우는 것보다 상태값을 늘리는 쪽이 싸다.**
+#
+# 분류는 Required 로 남고 출처 줄도 그대로다 — 사라지는 것은 이번 게이트의 요구뿐이다.
 $StateRank = @{
     'NOT_STARTED' = 0
     'SKELETON'    = 1
@@ -143,7 +151,7 @@ $StateRank = @{
     'CONNECTED'   = 2
     'VERIFIED'    = 3
 }
-$OutOfLadder = @('DEFERRED','BLOCKED_EXTERNAL')
+$OutOfLadder = @('DEFERRED','BLOCKED_EXTERNAL','OUT_OF_SESSION_SCOPE')
 
 $Items = New-Object System.Collections.ArrayList
 $PassState = @{}
