@@ -314,6 +314,135 @@ namespace Ascend.Prototype.EditorTools
             Debug.Log(report.ToString());
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        //  통관 유리 3장 (`UP-FIX-47`)
+        //
+        //  16차 독립 평가와 전담 화소 조사가 **독립적으로** 같은 곳을 지목했다 —
+        //  Unlit `TubeFrame` 이 프레임의 29.4% 를 차지하고 그 블록의 28.6% 가
+        //  std 1.75 에 구조적으로 고정돼 있다. G-1 과 G-2 가 공존할 수 있는 유일한 창이다.
+        //
+        //  ── ⚠ 지시대로 `Ascend/Stylized` 로 바꾸지 **않았다.** 바꿀 수 없다 ──────
+        //
+        //  `AscendStylized.shader:142-146` 이 `RenderType=Opaque · Queue=Geometry` 이고
+        //  블렌드 경로도 `_Surface`/`_Blend` 프로퍼티도 없다. 그림자까지 드리운다.
+        //  현재 통관 재질은 **alpha 0.25 · Transparent · ZWrite Off** 인 유리다.
+        //
+        //  실측: 통관 부피 안에 렌더러 **34개**가 있고 그중 **27개가 심볼 메시**다
+        //  (`Sym_NormalSoul`/`Sym_Absorber`/`Sym_Proliferator`, x=−0.84).
+        //  통관을 불투명으로 바꾸면 **3×3 결과판 전체가 사라진다.**
+        //  통관은 결과판을 *보여주는* 물건이므로 그건 개선이 아니라 게임의 판독 채널을
+        //  없애는 것이다 — 「판독성이 스타일보다 우선한다」가 정확히 이 경우다.
+        //
+        //  그래서 **`URP/Lit` + Transparent** 로 간다. 요구된 세 효과를 다 준다 —
+        //  ① 텍스처가 걸린다 ② **조명을 받는다**(형태 음영 · G-4 주사선이 측정 가능해진다)
+        //  ③ 투명이 유지되어 심볼이 보인다. 못 주는 것은 `Ascend/Stylized` 의 계단·림뿐이고,
+        //  그건 셰이더에 투명 패스가 생긴 뒤에나 가능하다(셰이더는 다른 레인 소유).
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 유리 알파. 0.25 → 0.18. 평가자가 「근백색 평면이 결과판을 하얗게 덮는다」고 한
+        /// 것이 이 값이다. 낮추면 심볼 대비가 살아나고 G-2 의 p50 도 함께 내려간다.
+        /// </summary>
+        public const float GlassAlpha = 0.18f;
+
+        /// <summary>
+        /// 유리 타일링. **실측 ρ 가 아니라 계산값이다** — 이 면은 조사 표에 없었다.
+        ///
+        /// 유도: 통관 면은 0.30 m 폭 × 1.30 m 높이, 플레이어(x=0.55)에서 약 1.5 m.
+        /// 1080p · 수직 FOV 60° 에서 1 화소 ≈ 1.5 × 2·tan30° / 1080 ≈ 1.6 mm.
+        /// 텍스처는 128 px 이므로 텍셀을 화소와 같게 하려면
+        ///   가로 0.30 / (0.0016 × 128) ≈ 1.46 회 · 세로 1.30 / (0.0016 × 128) ≈ 6.35 회.
+        ///
+        /// ⚠ **가정이 셋 붙어 있다**(거리 1.5 m · 정면 · FOV 60°). 지표 도구의 ρ 측정이
+        /// 이 면을 덮게 되면 그 실측으로 갈아야 한다. 추정임을 숨기지 않는다.
+        /// </summary>
+        public static readonly Vector2 GlassST = new Vector2(1.5f, 6.3f);
+
+        [MenuItem("Ascend/Graphics/Wire Tube Glass")]
+        public static void WireTubeGlass()
+        {
+            if (EditorApplication.isPlaying)
+            { Debug.LogError("[상승] Play 모드에서는 씬을 고치지 않는다."); return; }
+
+            Scene scene = AscendGraphicsBuilder.EnsureScene();
+            if (!scene.IsValid()) return;
+
+            var report = new StringBuilder("[상승] 통관 유리 배선 (`UP-FIX-47`)\n");
+            var glass = AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexDir}/TEX_Glass_Smudged.png");
+            if (glass == null) { Debug.LogError("[상승] TEX_Glass_Smudged 없음"); return; }
+
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { Debug.LogError("[상승] URP/Lit 셰이더 없음"); return; }
+
+            int done = 0;
+            foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (r.gameObject.name != "TubeFrame") continue;
+                Material mat = r.sharedMaterial;
+                if (mat == null) continue;
+
+                // 이 인스턴스를 통관 밖에서도 쓰면 복제한다. 실측상 지금은 공유가 없지만
+                // (0건) 그건 지금의 사실이지 불변식이 아니다 — 남의 표면을 조용히 바꾸지 않는다.
+                bool sharedElsewhere = false;
+                foreach (Renderer other in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    if (other.gameObject.name == "TubeFrame") continue;
+                    foreach (Material om in other.sharedMaterials) if (om == mat) sharedElsewhere = true;
+                }
+                if (sharedElsewhere)
+                {
+                    mat = new Material(mat) { name = "TubeGlass" };
+                    r.sharedMaterial = mat;
+                    report.AppendLine("  공유 인스턴스라 복제했다 → TubeGlass");
+                }
+
+                Undo.RecordObject(mat, "Wire tube glass");
+                Color before = mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor") : Color.white;
+                string shaderBefore = mat.shader != null ? mat.shader.name : "null";
+
+                mat.shader = lit;
+
+                // ── Transparent 를 **명시적으로** 세운다 ──
+                // 셰이더만 바꾸면 URP 는 Opaque 기본값으로 되돌리고, 그러면 통관이
+                // 불투명해져 심볼 27개가 사라진다. 키워드·블렌드·큐를 전부 직접 쓴다.
+                mat.SetFloat("_Surface", 1f);                 // 1 = Transparent
+                mat.SetFloat("_Blend", 0f);                   // 0 = Alpha
+                mat.SetFloat("_ZWrite", 0f);
+                mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                mat.SetFloat("_AlphaClip", 0f);
+                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                mat.DisableKeyword("_ALPHATEST_ON");
+                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
+                // 유리답게 — 금속 아님, 반사 약간, 그림자는 받되 드리우지 않는다.
+                if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.35f);
+                if (mat.HasProperty("_ReceiveShadows")) mat.SetFloat("_ReceiveShadows", 1f);
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+                mat.SetTexture("_BaseMap", glass);
+                mat.SetTextureScale("_BaseMap", GlassST);
+                mat.SetTextureOffset("_BaseMap", Vector2.zero);
+
+                // 색조는 유지하고 알파만 내린다. **절대값이다** — 현재 알파에 곱하면
+                // 두 번 돌릴 때마다 투명해진다(이미 한 번 그 실패를 했다).
+                Color tint = new Color(before.r, before.g, before.b, GlassAlpha);
+                mat.SetColor("_BaseColor", tint);
+
+                EditorUtility.SetDirty(mat);
+                done++;
+                report.AppendLine($"  {r.gameObject.name} ({r.transform.parent?.name}) — shader {shaderBefore} → {mat.shader.name} " +
+                                  $"· Transparent · alpha {before.a:F2} → {GlassAlpha:F2} · ST {GlassST} · queue {mat.renderQueue}");
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            report.AppendLine($"  통관 {done}장 — 심볼은 계속 보인다(투명 유지). 불투명 전환은 결과판을 지운다");
+            Debug.Log(report.ToString());
+        }
+
         private static float ValueOf(Color c) { Color.RGBToHSV(c, out _, out _, out float v); return v; }
 
         private static readonly Dictionary<Texture2D, float> _meanCache = new Dictionary<Texture2D, float>();

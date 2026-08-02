@@ -71,7 +71,12 @@
 
 .OUTPUTS
     콘솔 표 + <세트>/metrics.csv (장별) + <세트>/metrics-gates.csv (축별 판정)
+             + <세트>/metrics-blockstd-hist.csv (블록 std 히스토그램)
     exit 0 전부 통과 · exit 1 캡처 없음 · exit 2 통과선 미달
+
+    ⚠ G-1b·G-1c 는 exit code 에 영향을 주지 않는다 — 통과선이 없기 때문이다.
+      G-4 도 통과선(관측 ≥ 12장)은 그대로다. 세 갈래 분류는 **무엇을 미관측으로 셀 것인가**만
+      바꾸며, 비율 통과선은 제안으로만 찍고 적용하지 않는다.
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-metrics.ps1
@@ -334,7 +339,11 @@ if (-not $NoHistogram) {
                 $valley.Peak1Value, $valley.Peak1Count, $valley.Peak2Value, $valley.Peak2Count, `
                 $valley.ValleyValue, $valley.ValleyCount)
             if (-not $valley.IsBimodal) {
-                Write-Output '  ⚠ 쌍봉이 아니다 — 임계 4.0 이 「두 집단을 가르는 선」이라는 전제가 이 세트에서는 성립하지 않는다.'
+                Write-Output ("  ⚠ 쌍봉이 아니다 — 임계 {0:F1} 이 「두 집단을 가르는 선」이라는 전제가 이 세트에서는 성립하지 않는다." -f $K.G1b_TexturedBlockStd)
+                if ($valley.ValleyBin -eq $valley.Peak2Bin) {
+                    Write-Output '    둘째 봉우리와 골이 같은 칸이다 = 골이 없다 = 단조 감소 분포다.'
+                    Write-Output '    무지 블록과 텍스처 블록이 std 축에서 분리되지 않고 연속으로 이어져 있다는 뜻이다.'
+                }
                 Write-Output '    임계를 옮기지 말고 이 사실을 보고할 것. 임계를 결과에 맞추면 그 순간 근거가 사라진다.'
             } elseif ([Math]::Abs($valley.ValleyValue - $K.G1b_TexturedBlockStd) -gt 1.0) {
                 Write-Output ("  ⚠ 골이 {0:F1} 인데 임계는 {1:F1} 이다 — 둘이 1.0 이상 어긋난다. 보고할 것 (임의로 옮기지 말 것)." -f `
@@ -506,7 +515,7 @@ Write-Output ''
 Write-Output '── G-1 축 정정 (GRAPHICS_TARGET §5.1) ──'
 Write-Output '  G-1a 는 「텍스처가 잘 보이는가」가 아니라 「화면의 몇 %가 텍스처인가」를 잰다.'
 Write-Output ("  무지 표면 위 블록은 std 가 구조적으로 ≈1.75 에 고정되므로 전체 중앙값은 커버리지에 지배된다.")
-Write-Output ("  이 세트의 텍스처 블록 비율은 대표 {0:F1}% · 전장 {1:F1}% 다 — 50%% 미만이면 G-1a 는" -f $texPctRep, $texPctAll)
+Write-Output ("  이 세트의 텍스처 블록 비율은 대표 {0:F1}% · 전장 {1:F1}% 다 — 50% 미만이면 G-1a 는" -f $texPctRep, $texPctAll)
 Write-Output '  텍스처가 아무리 선명해도 무지 블록 값에 눌린다. G-1b 를 함께 볼 것.'
 if ($g1PostWarn) {
     Write-Output ''
