@@ -84,6 +84,12 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 후자는 판단이다. `⑤` 는 실측(「두 벌이 있다」)은 맞았는데 판단(「합치면 된다」)이
 틀렸고, 그 둘이 한 문장에 있어서 판단까지 실측처럼 읽혔다.
 
+> **`증거:` 줄에는 백틱을 파일 경로에만 쓴다 (2026-08-02).** `verify-topdown.ps1` 의 C4 가
+> 그 줄의 **모든 백틱 토큰을 경로로 읽어** 디스크에 있는지 확인한다. 줄 번호를
+> `` `:198` `` 처럼 백틱으로 감싸면 「증거 파일이 없다」로 빨간불이 된다 — 실제로
+> `UP-RISK-08` 승격 직후에 그렇게 막혔다. 줄 번호·날짜·PASS 수는 **맨살 글자**로 적는다.
+> 위치를 정확히 남기고 싶으면 `남은 문제` 쪽에 적는다 — 그쪽은 파싱하지 않는다.
+
 ## 0.4 VERIFIED 판정 규칙
 
 `VERIFIED`는 다음 셋이 **함께** 있을 때 부여한다.
@@ -1135,7 +1141,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 구현: `Scripts/Data/Profiles/AccessibilityProfile.cs` + `.asset`(씬 참조 2곳) + `RiskStateView` 의 `ApplyLighting`(섬광)·`ApplySway`(셰이크, 카메라와 물체를 따로) + `AudioDirector.TryPlaySiren`(`:840-855`, 사이렌)
 - 접근: 옵션 메뉴 (없음 — 값 교체는 인스펙터)
 - 검증: `Ascend/Run All EditMode Tests` → 「섬광 금지와 빈도 상한이 적용된다」·「셰이크 0 배율이 실제로 0을 돌려준다」·**「사이렌을 끄면 볼륨이 실제로 0이 된다」**·「사이렌을 끄면 시각·피치 보상이 붙는다」
-- 증거: `Logs/editmode_tests.txt` (2026-08-02 14:00 · 447 PASS / 0 FAIL · `:198`), `.claude/state/last-selftest.txt` (466 PASS / 0 FAIL)
+- 증거: `Logs/editmode_tests.txt` (2026-08-02 14:00 · 447 PASS / 0 FAIL · 198번째 줄이 사이렌 음소거 단정), `.claude/state/last-selftest.txt` (466 PASS / 0 FAIL)
 - 의존: UP-RISK-07
 - 남은 문제: **셋 중 둘만 분리됐다.** 섬광(`AllowFlickerAt`/`ClampFlickerRate`)과 흔들림(카메라 `ScaleShake` · 물체 `WorldSwayScale` 을 따로)은 `RiskStateView` 가 읽는다. ~~**사이렌은 미구현** — `AllowSiren`·`SirenVolume` 의 런타임 소비처가 0곳이고 테스트와 에디터 배선 도구에서만 언급된다~~ → **낡은 기록이었다 (2026-08-02 실측 정정).** `AudioDirector.TryPlaySiren`(`:840-855`)이 `_accessibility.SirenVolume(req.Volume)` 을 통과시키고 **0이면 재생 전에 멈춘다.** `SirenVolume` 은 `AllowSiren ? volume : 0f` 이므로 끄면 사이렌이 실제로 죽는다. 사이렌 큐도 존재한다 — `AudioCueKind.Siren = 25` 에 `AudioCueTable.TryMapSiren` 이 변형 넷(위험 상승·과수확 해금·레버 결정·사고)을 가른다. `AccessibilityProfile.cs` 하단 트레일러의 「사이렌 자체의 음소거는 아직 없다 — 사이렌 큐가 없기 때문」도 같은 이유로 낡았다. **셋 축이 전부 배선돼 있다** — 섬광(`RiskStateView`) · 흔들림(`RiskStateView`, 카메라와 물체를 따로) · 사이렌(`AudioDirector`).
 
