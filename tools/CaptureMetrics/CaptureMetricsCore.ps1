@@ -108,7 +108,16 @@ namespace CaptureMetrics
         public const int BlockG5 = 32;
         public const double EmptyPlaneStdThreshold = 4.0;
         public const int GlowLuminance = 200;
-        public const double FlatDelta = 1.0;
+        public const int FlatDelta = 1;
+
+        // 0~255 로 반올림·클램프한 정수 휘도.
+        public static int Q(double L)
+        {
+            int q = (int)Math.Round(L, MidpointRounding.AwayFromZero);
+            if (q < 0) return 0;
+            if (q > 255) return 255;
+            return q;
+        }
 
         public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen)
         {
@@ -163,9 +172,7 @@ namespace CaptureMetrics
                         double L = 0.2126 * rr + 0.7152 * g + 0.0722 * b;
                         lum[li++] = L;
 
-                        int q = (int)Math.Round(L, MidpointRounding.AwayFromZero);
-                        if (q < 0) q = 0; else if (q > 255) q = 255;
-                        hist[q]++;
+                        hist[Q(L)]++;
 
                         if (rr - b >= 60 && g - b >= 30) gold++;
                         if (rr > 200 && b > 200 && g < 80) magenta++;
@@ -216,18 +223,24 @@ namespace CaptureMetrics
             r.ScanX0 = x0;
             r.ScanLen = len;
 
+            // 휘도차는 **반올림한 정수 휘도**로 잰다. 화소값은 8비트 정수이고,
+            // 배정밀도 그대로 비교하면 회색 v 의 휘도가 v 에서 1e-16 만큼 벗어나
+            // 「차이가 정확히 1」인 경계가 부동소수 잔차로 갈린다.
             int runs = 0;
             int longest = 0;
             if (len > 0)
             {
                 int baseIdx = scanY * w + x0;
                 int cur = 1;
+                int prev = Q(lum[baseIdx]);
                 for (int i = 1; i < len; i++)
                 {
-                    double d = lum[baseIdx + i] - lum[baseIdx + i - 1];
+                    int q = Q(lum[baseIdx + i]);
+                    int d = q - prev;
                     if (d < 0) d = -d;
                     if (d <= FlatDelta) { cur++; }
                     else { runs++; if (cur > longest) longest = cur; cur = 1; }
+                    prev = q;
                 }
                 runs++;
                 if (cur > longest) longest = cur;
