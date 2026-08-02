@@ -73,10 +73,27 @@ namespace Ascend.Prototype.EditorTools
             public readonly Tone   Tone;       // 명도 정책
             public readonly bool   Stylize;    // URP/Lit → Ascend/Stylized 전환 여부
 
+            /// <summary>
+            /// 0 보다 크면 **크기에서 유도하지 않고 이 값을 그대로** `_BaseMap_ST` 로 쓴다.
+            ///
+            /// 공유 머티리얼에 필요하다. `_BaseMap_ST` 는 **머티리얼 하나에 하나**인데
+            /// `M_Gray_Readout` 은 크기가 제각각인 렌더러 **32개**가 함께 쓴다.
+            /// 「가장 큰 렌더러의 실측 크기 × 회/m」로 정하면 나머지 31개는 전부 틀리고,
+            /// 실제로 (0.36, 0.72) — **한 바퀴도 안 도는** 타일링이 나와 32슬롯이 통째로
+            /// 평평한 색 덩어리가 됐다. 그것이 배선을 5.7배 늘리고도 G-1 이
+            /// 2.71 → 2.87 밖에 안 움직인 이유다.
+            ///
+            /// Unity 기본 큐브는 면마다 UV 가 0..1 이라, 고정 타일링은 크기와 무관하게
+            /// 모든 면에 같은 **반복 수**를 준다. 텍셀 밀도는 물체마다 달라지지만
+            /// 「무늬가 보인다」는 전부에서 성립한다.
+            /// </summary>
+            public readonly float  FixedUV;
+
             public Rule(string mat, string tex, float perMetre, float value,
-                        string emis = null, Tone tone = Tone.Lift, bool stylize = false)
+                        string emis = null, Tone tone = Tone.Lift, bool stylize = false,
+                        float fixedUv = 0f)
             { Material = mat; Texture = tex; PerMetre = perMetre; Value = value;
-              Emission = emis; Tone = tone; Stylize = stylize; }
+              Emission = emis; Tone = tone; Stylize = stylize; FixedUV = fixedUv; }
         }
 
         // 텍스처 레인의 제안표를 그대로 옮긴 것이다. **배율만 옮겼고 타일링 수치는
@@ -116,22 +133,34 @@ namespace Ascend.Prototype.EditorTools
             //
             // ⚠ **판독 면은 `Tone.Preserve` 다.** 아래 「글자·눈금이 얹히는 면」 넷은
             // 어두운 것이 기능이라 명도를 올리지 않는다.
-            new Rule("M_Gray_Recessive",   "TEX_Machine_Housing", 1.20f, 0.88f, null, Tone.Lift,     true),
-            new Rule("M_Gray_Interactive", "TEX_Machine_Housing", 1.60f, 0.85f, null, Tone.Lift,     true),
-            new Rule("M_Gray_Button",      "TEX_Machine_Housing", 3.00f, 0.62f, null, Tone.Lift,     true),
+            // ⚠ **셋 다 `Preserve` 다. 올리면 안 된다.**
+            //
+            // 첫 판본은 이 셋을 0.88 / 0.85 / 0.62 로 **올렸고, 그것이 순손실이었다.**
+            // `HumanScaleLayout.cs:48-52` 가 세운 3단 명도 위계 —
+            // 결과판 0.85 · 조작 대상 0.62 · 구조물 0.16 — 가 한꺼번에 0.83~0.94 로
+            // 뭉쳐서 **「만질 수 있는 것」과 「배경 구조」가 같은 밝기가 됐다.**
+            // 캡처 `21` 에서 통관 판과 심볼 타일이 다 같은 창백한 회색으로 붙어
+            // 심볼 실루엣 대비까지 무너졌다. 명도는 위계이지 장식이 아니다.
+            //
+            // 값은 배선 전 씬 실측이고 `HumanScaleLayout` 의 상수와 같은 계열이다.
+            new Rule("M_Gray_Recessive",   "TEX_Machine_Housing",  0f, 0.170f, null, Tone.Preserve, true, 3f),
+            new Rule("M_Gray_Interactive", "TEX_Machine_Housing",  0f, 0.657f, null, Tone.Preserve, true, 2f),
+            new Rule("M_Gray_Button",      "TEX_Machine_Housing",  0f, 0.320f, null, Tone.Preserve, true, 2f),
 
             // 판독 면 — 명도 유지.
             // `Value` 는 **설계 원본 명도**(HSV 의 V)다. 배선 전 씬에서 실측한 값이고,
             // `Tone.Preserve` 가 이것을 텍스처 평균으로 나눠 평균 반사율을 되돌린다.
             // 현재 값이 아니라 이 상수를 쓰기 때문에 몇 번을 돌려도 같은 결과가 나온다.
-            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",    1.40f, 0.120f, null, Tone.Preserve, true),
-            new Rule("M_Gray_Console",     "TEX_Machine_Housing", 1.40f, 0.180f, null, Tone.Preserve, true),
-            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",    2.00f, 0.100f, null, Tone.Preserve, true),
-            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",    2.40f, 0.901f, null, Tone.Preserve, true),
+            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",     0f, 0.120f, null, Tone.Preserve, true, 3f),
+            new Rule("M_Gray_Console",     "TEX_Machine_Housing",  0f, 0.180f, null, Tone.Preserve, true, 3f),
+            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",     0f, 0.100f, null, Tone.Preserve, true, 2f),
+            // 결과판 32슬롯. 심볼 실루엣이 얹히는 면이라 **명도를 유지하고** 무늬는 잘게 —
+            // 큰 무늬는 심볼 윤곽과 경쟁한다.
+            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",     0f, 0.901f, null, Tone.Preserve, true, 4f),
 
-            new Rule("TenFloor_212426",    "TEX_Machine_Housing", 1.20f, 0.150f, null, Tone.Preserve, true),
-            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0.80f, 0.210f, null, Tone.Preserve, true),
-            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",     1.00f, 0.86f,  null, Tone.Lift,     true),
+            new Rule("TenFloor_212426",    "TEX_Machine_Housing",  0f, 0.150f, null, Tone.Preserve, true, 2f),
+            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0f, 0.210f, null, Tone.Preserve, true, 2f),
+            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",      0f, 0.460f, null, Tone.Preserve, true, 2f),
         };
 
         // ── 손대지 않는 것과 그 이유 ─────────────────────────────────────────
@@ -222,7 +251,7 @@ namespace Ascend.Prototype.EditorTools
                 mat.SetColor("_BaseColor", lifted);
 
                 // ── 타일링은 실측 크기 × 미터당 반복 수 (경고 2) ──
-                Vector2 uv = TilingFor(sizes, rule.Material, rule.PerMetre);
+                Vector2 uv = TilingFor(sizes, rule.Material, rule.PerMetre, rule.FixedUV);
                 mat.SetTexture("_BaseMap", tex);
                 mat.SetTextureScale("_BaseMap", uv);
                 mat.SetTextureOffset("_BaseMap", Vector2.zero);
@@ -402,8 +431,11 @@ namespace Ascend.Prototype.EditorTools
         /// 벽이면 (수평, 높이)다. Unity 기본 Cube 는 각 면이 UV 0..1 이므로
         /// **면의 미터 크기 × 미터당 반복 수**가 곧 타일링이다.
         /// </summary>
-        private static Vector2 TilingFor(Dictionary<string, Vector3> sizes, string material, float perMetre)
+        private static Vector2 TilingFor(Dictionary<string, Vector3> sizes, string material, float perMetre, float fixedUv)
         {
+            // 공유 머티리얼은 크기 유도가 성립하지 않는다 — `Rule.FixedUV` 주석 참조.
+            if (fixedUv > 0f) return new Vector2(fixedUv, fixedUv);
+
             if (!sizes.TryGetValue(material, out Vector3 s) || s == Vector3.zero)
                 return Vector2.one;   // 못 재면 1×1 — 조용히 틀린 수를 쓰지 않는다
 
