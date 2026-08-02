@@ -540,10 +540,12 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 상태: CONNECTED · 패스: P1 P2 P3
 - 구현: `Scripts/View/InstrumentPanelView.cs`
 - 접근: 계기판 앞에 선다
-- 검증: 고정 캡처 `02_device_front`, `14_contract_select`
-- 증거: `Captures/TenFloor/14_contract_select.png`
+- 검증: 고정 캡처 `03_device_side`(「스핀 5/5 · 잔류 없음」)·`08_passenger_and_device`(「흡수체 1개 → 저장 전력 −8.0」 = 잔류 오염 실측). 계약 저항 절반은 계기판에서 **아직 미구현**이라 캡처로 잴 것이 없다
+- 증거: `Captures/TenFloor/03_device_side.png`, `Captures/TenFloor/08_passenger_and_device.png`
 - 의존: UP-CONTRACT-01
-- 남은 문제: **계기판의 계약 표시는 죽은 경로다.** 씬 `Prototype_Elevator.unity:17722` 가 `_contractLabel: {fileID: 0}` 이고 `InstrumentPanelView.cs:199` 가 `if (_contractLabel == null) return;` 로 즉시 반환한다 — **`ApplyContractPreview` 가 한 번도 실행되지 않는다.** 계약 문구는 `_plaqueLabels`(계약 패널 = `UP-DEVICE-07` 의 물건)에만 뜬다. 즉 이 항목 제목의 「계약 저항」 절반이 계기판에서는 미구현이다. **증거도 틀렸다** — 걸려 있는 `14_contract_select.png` 에는 **계기판이 프레임에 없다**(계약 명판 3장·과수확 라벨·층수 표시뿐). 계기판이 실제로 읽히는 장은 `03_device_side.png`(「스핀 5/5 · 잔류 없음」)와 `08_passenger_and_device.png`(「흡수체 1개 → 저장 전력 −8.0」 = 잔류 오염 실측)인데 **둘 다 증거로 걸려 있지 않다.** 게다가 `14_contract_select` 는 시각 판정에서 **판독성 2/5 세트 최저점**이라 `UP-FIX-09`(재설계)로 이미 전환됐다. **다음**: ① `_contractLabel` 을 씬에서 배선하거나 「계기판은 잔류만 표시한다」로 요구를 줄이는 결정 ② 증거를 `08_passenger_and_device.png` 로 교체. ①을 배선하면 `[RequiredReference]` 를 붙여 재발을 막는다 — 지금 붙이면 `SceneWiringValidator` 가 즉시 결함으로 잡는다(그것이 이 항목의 실상이다)
+- 남은 문제: **계기판의 계약 표시는 죽은 경로다.** 씬 `Prototype_Elevator.unity:17722` 가 `_contractLabel: {fileID: 0}` 이고 `InstrumentPanelView.cs:199` 가 `if (_contractLabel == null) return;` 로 즉시 반환한다 — **`ApplyContractPreview` 가 한 번도 실행되지 않는다.** 계약 문구는 `_plaqueLabels`(계약 패널 = `UP-DEVICE-07` 의 물건)에만 뜬다. 즉 이 항목 제목의 「계약 저항」 절반이 계기판에서는 미구현이다. **증거도 틀렸다** — 걸려 있는 `14_contract_select.png` 에는 **계기판이 프레임에 없다**(계약 명판 3장·과수확 라벨·층수 표시뿐). **증거 줄을 고쳤다 (2026-08-02).** 네 장이 다 디스크에 있는 것을 확인하고 `03_device_side.png`·`08_passenger_and_device.png` 로 바꿔 걸었다 — 계기판이 실제로 읽히는 장이 그 둘이다. **남은 절반(계약 저항)은 `_contractLabel: {fileID: 0}` 이라 계기판에 뜰 자리 자체가 없다**(`docs/runtime/DEAD_SCENE_WIRING.md` 의 「빈 채로 남음」 14 필드 중 하나). 닫는 길은 둘이고 **둘 다 씬 오너나 결정이 필요하다** — ⓐ 계기판에 계약용 라벨을 만들어 `_contractLabel` 에 꽂는다 ⓑ 계약 표시는 명판(`UP-DEVICE-07`)의 몫으로 확정하고 이 항목 제목에서 「계약 저항」을 뗀다. 아래는 그 정정 이전 기록이다.
+
+  ~~계기판이 실제로 읽히는 장은 `03_device_side.png`와 `08_passenger_and_device.png` 인데 **둘 다 증거로 걸려 있지 않다.** 게다가 `14_contract_select` 는 시각 판정에서 **판독성 2/5 세트 최저점**이라 `UP-FIX-09`(재설계)로 이미 전환됐다. **다음**: ① `_contractLabel` 을 씬에서 배선하거나 「계기판은 잔류만 표시한다」로 요구를 줄이는 결정 ② 증거를 `08_passenger_and_device.png` 로 교체. ①을 배선하면 `[RequiredReference]` 를 붙여 재발을 막는다 — 지금 붙이면 `SceneWiringValidator` 가 즉시 결함으로 잡는다(그것이 이 항목의 실상이다)
 
 ### UP-DEVICE-07 — 계약 패널 (물리적 인터페이스)
 - 분류: Required · 출처: PRD §4.1, N01 「계약은 벽면 계약 패널, 인쇄된 계약서, 봉인된 표식 등」
