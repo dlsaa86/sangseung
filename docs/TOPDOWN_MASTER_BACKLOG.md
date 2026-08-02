@@ -1449,13 +1449,33 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-TECH-04 — 1080p 목표 90 FPS / 하드 플로어 60 FPS
 - 분류: Required · 출처: PRD §13.1, §17.4
-- 상태: SKELETON · 패스: P4
+- 상태: VERIFIED · 패스: P4
 - 구현: `Scripts/Run/Tests/HeroSlicePerfProbe.cs`, `LoadedCriticalPerfProbe.cs`
 - 접근: 해당 없음
 - 검증: 프로브 실행 → `Logs/loaded_critical_perf.txt`
 - 증거: `Logs/loaded_critical_perf.txt`
 - 의존: UP-PLAT-04
 - 남은 문제: **프로브가 이제 스스로 경고한다.** `loaded_critical_perf.txt` 가 각 조건마다 「⚠ 중앙값이 120 Hz 상한(8.33 ms)에 붙어 있다 — 중앙값은 비용이 아니라 상한이다. 조건 비교는 95%·최악으로만 한다」를 찍는다. 즉 **중앙값으로는 90 FPS 목표를 판정할 수 없다**는 사실이 산출물에 박혀 있다. 실측(1920×1080) — 중앙 8.33 ms 고정, 95% 8.38~8.44 ms, 최악 8.53~8.57 ms. 95%·최악도 8.6 ms 아래이므로 **116 FPS 이상**이지만, 상한에 눌린 분포에서 나온 값이라 「90 FPS 목표 달성」의 근거로 쓸 수 없다. **원인은 에디터 게임 뷰가 디스플레이에 동기되는 것**이고, vSync 0 · targetFrameRate −1 로도 안 풀린다. **푸는 길은 빌드에서 재는 것뿐이다** — `Builds/Windows/Upandup_DDD.exe` 는 이미 있다. 에디터 루프가 빠지면 바닥(`UP-TECH-05` 의 8,805 B)도 같이 내려갈 것이다
+- **SKELETON → VERIFIED 근거 (2026-08-02, 빌드 실측).** 에디터로는 판정 불가였다 —
+  네 조건 전부 중앙 8.33 ms 로 **120 Hz 상한에 붙어** 있었고 그건 비용이 아니라 상한이다.
+  그래서 빌드하고 **플레이어 안에서** 쟀다 (`Scripts/Run/Tests/PlayerPerfProbe.cs`,
+  `-ascend-perf` 인자로만 깨어난다 · `DEVELOPMENT_BUILD` 밖에서는 컴파일도 안 된다).
+
+  ```
+  해상도 1920×1080 · vSync 0 · targetFrameRate -1
+  워밍업 120 프레임 버림 · 측정 600 프레임
+  중앙 8.33 ms / 95% 8.45 ms / 최악 9.13 ms (109 FPS)
+  90 FPS(11.11 ms) 초과 프레임 0/600
+  60 FPS(16.67 ms) 초과 프레임 0/600
+  ```
+
+  **목표 90 FPS·하드 플로어 60 FPS 둘 다 충족.** 판정을 평균이 아니라 **초과 프레임 수**로
+  한 이유 — 평균이 목표를 넘어도 한 프레임이 16.67 ms 를 넘으면 그 순간 끊긴 것이고
+  요구가 금지하는 것이 그 끊김이다. **최악 프레임조차 9.13 ms** 다.
+- 증거: `Logs/player_perf.txt` · `Logs/build_report_dev.txt` (result Succeeded · 0 errors)
+- **남은 의심 (숨기지 않는다)**: vSync 를 껐는데도 중앙값이 정확히 8.33 ms 다 —
+  드라이버·컴포지터 상한이 남아 있을 수 있다. **판정 자체는 성립한다**(최악 9.13 ms).
+  다만 **여유가 얼마인지는 이 측정이 말하지 못한다.**
 
 ### UP-TECH-05 — 워밍업 후 매 프레임 0 B GC Alloc
 - 분류: Required · 출처: PRD §13.2, §17.4
@@ -1466,6 +1486,21 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 증거: `Logs/loaded_critical_perf.txt`
 - 의존: UP-TECH-04
 - 남은 문제: **숫자가 틀렸다 — 격차는 10 KB 가 아니라 약 1.6 KB 다.** 같은 기기·같은 카운터로 잰 대조군(`heroslice_perf.txt` 「게임 코드 전부 끄고 60초」)의 바닥이 **8,805 B/프레임(중앙)**이고, `loaded_critical_perf.txt` 네 조건 중 **둘(9,128·9,127)은 그 바닥보다 낮다.** 실제로 남는 게임 코드 할당은 **1,638 B/프레임**(#1 10,443 − #3 8,805)이며 범위는 `HeroSlicePerfProbe.cs:100-113` 이 한 덩어리로 끄는 8개 컴포넌트다 — **어느 것인지는 아직 모른다.** 그리고 이 1,638 B 는 **게임 코드 전체가 아니라 그 8개의 비용**이다 — 「대조군 = 게임 코드 전부 끔」이 실은 `Disable<>()` **12번의 손 열거**라 `AudioDirector`·`PaperTapePrinterView`·`FloorIndicatorView`·`PassengerReactionView`·`TubeController`×3·`RenderBudgetProbe`·`MemoryTrendProbe` 등 14개가 바닥 안에서 계속 돌았다. **상한은 미측정이다 — 「1.6 KB 만 고치면 된다」로 읽으면 안 된다.** 게다가 보고서의 최대 할당 두 개(205,437 B·402,053 B)는 **하네스 자신의 표본 버퍼**다 (`List<FrameSample>` 4096×48 B / 8192×48 B + 바닥, 오차 24·32 B = 객체·배열 헤더). `ProfilerRecorder.StartNew` 다음 줄에서 버퍼를 만든다(`HeroSlicePerfProbe.cs:357-358`). **측정을 고치기 전에는 위반 여부를 확정하지 않는다.** 전체 분해는 `docs/runtime/GC_ALLOC_ANALYSIS.md`. 다음: ① 버퍼를 recorder 앞으로 + 대조군 arm 추가 + A/B arm 층 단계 정렬 ② 8개를 하나씩 끄는 측정 ③ 빌드에서 1920×1080 재측정
+- **빌드 실측으로 수치 확정 (2026-08-02).** 에디터 측정에는 에디터·프로파일러 할당이
+  섞여 게임 코드 탓으로 확정할 수 없었다. 빌드에는 그것이 없다.
+
+  ```
+  0 B 프레임 0/600 (0.0%)
+  GC Alloc 중앙 1,638 B/프레임 / 평균 1,650 B / 최악 8,902 B
+  ```
+
+  **요구 미충족이고, 이 1,638 B 는 게임 코드다.**
+- **예전 추정이 맞았다.** 위의 「게임 코드 할당 **1,638 B/프레임**(#1 10,443 − #3 8,805)」은
+  대조군 **뺄셈으로 추정**한 값이었는데, 빌드에서 **직접 잰 중앙값이 1,638 B 로 정확히 같다.**
+  서로 다른 두 방법이 같은 수에 닿았으므로 이 수는 신뢰할 수 있다.
+- **다음**: 1,638 B 의 출처 특정. 범위는 `HeroSlicePerfProbe.cs:100-113` 이 한 덩어리로 끄는
+  8개 컴포넌트이고 **어느 것인지는 아직 모른다.** 빌드 프로브가 생겼으므로 이제
+  **컴포넌트를 하나씩 끄고 빌드에서 재는** 방법이 가능하다 — 에디터 잡음 없이 갈린다.
 
 ### UP-TECH-06 — 오브젝트 풀링 (파티클·심볼·사운드)
 - 분류: Required · 출처: PRD §13.2, §17.4
