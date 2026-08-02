@@ -90,6 +90,12 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("히스테리시스 역전이 검출된다", TestRiskHysteresisValidate, ref passed, ref failed, report);
             Run("과수확 한 번이 방을 못 바꾸는 값이 검출된다", TestOverharvestMustLeaveStable, ref passed, ref failed, report);
 
+            // ── 승객 대사 ⑨ (`UP-TECH-09`) ───────────────────────────────────
+            Run("Reset 이 11종을 대사까지 채운다", TestReactionResetFillsLines, ref passed, ref failed, report);
+            Run("빈 대사는 코드 기본값으로 채워진다", TestReactionLineFallsBack, ref passed, ref failed, report);
+            Run("에셋 대사가 코드 기본값을 이긴다", TestReactionLineOverrides, ref passed, ref failed, report);
+            Run("출하 에셋의 대사 직렬화가 전부거나 전무다", TestShippedReactionAssetLineCoverage, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -1894,6 +1900,149 @@ namespace Ascend.Prototype.Data.Profiles.Tests
                 return $"프리셋에서 과수확 1회가 Stable 이다 (점수 {preset.Score(Residuals(0, 1))},"
                      + $" 진입 {preset.StrainEnter}) — PRD §7 위반";
             return null;
+        }
+
+        // ── 승객 대사 ⑨ (`UP-TECH-09`) ──────────────────────────────────────
+        //
+        // 백로그는 ⑨ 를 「코드 상수·정적 배열」로 적어 뒀으나 **실측은 다르다.**
+        // `PassengerReactionSet.asset` 은 존재하고 11종이 채워져 있으며 씬이 물고 있다.
+        // 진짜 결함은 좁고 정확하다: **그 에셋에 `Line` 필드가 아예 직렬화돼 있지 않다**
+        // (`Line:` 0개). `Line` 은 에셋이 만들어진 뒤에 생긴 필드라, 11종 전부가 조용히
+        // 코드 기본 대사로 폴백한다. 화면에서는 대사가 나오므로 아무도 눈치채지 못한다.
+        //
+        // 고치는 방법은 코드가 아니다 — 인스펙터에서 그 에셋의 톱니바퀴 ▸ Reset 을 한 번
+        // 누르면 대사·대조까지 다시 직렬화된다. `.asset` 은 단일 소유 파일이라 씬 오너의
+        // 일이고, 그래서 여기서는 **상태를 고정하는 것까지만** 한다.
+
+
+        /// <summary>
+        /// Reset 이 실제로 대사를 채우는지 본다 — 그게 이 항목의 **처방**이기 때문이다.
+        /// 이 검사가 통과하는데 디스크의 에셋에 대사가 없다면, 남은 것은 클릭 한 번이다.
+        /// </summary>
+        private static string TestReactionResetFillsLines()
+        {
+            var set = ScriptableObject.CreateInstance<Ascend.Prototype.Npc.PassengerReactionSet>();
+            try
+            {
+                set.Reset();
+                if (set.Entries.Count != 11)
+                    return $"Reset 이 {set.Entries.Count}종을 채웠다 — PRD §9.2 의 11종이어야 한다";
+
+                foreach (var kind in Ascend.Prototype.Npc.PassengerReactionEvents.All)
+                {
+                    if (!set.HasEntry(kind))
+                        return $"{kind} 항목이 Reset 뒤에도 없다";
+                    if (!set.For(kind).HasLine)
+                        return $"{kind} 의 대사가 비어 있다 — Reset 이 대사를 채우지 않으면 처방이 성립하지 않는다";
+                }
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(set);
+            }
+        }
+
+        private static string TestReactionLineFallsBack()
+        {
+            var set = ScriptableObject.CreateInstance<Ascend.Prototype.Npc.PassengerReactionSet>();
+            try
+            {
+                set.Reset();
+                var kind = Ascend.Prototype.Npc.PassengerReactionEvent.ContractChosen;
+                string codeLine = set.For(kind).Line;
+                if (string.IsNullOrEmpty(codeLine)) return "코드 기본 대사가 비어 있다";
+
+                // 디스크의 에셋과 같은 상태를 만든다 — 항목은 있는데 대사만 빈 것.
+                var blank = ScriptableObject.CreateInstance<Ascend.Prototype.Npc.PassengerReactionSet>();
+                try
+                {
+                    var reaction = set.For(kind);
+                    reaction.Line = null;
+                    blank.ReplaceEntries(new[]
+                    {
+                        new Ascend.Prototype.Npc.PassengerReactionSet.Entry(kind, reaction)
+                    });
+
+                    if (blank.For(kind).Line != codeLine)
+                        return $"대사가 빈 항목이 '{blank.For(kind).Line}' 를 냈다 — 코드 기본값 '{codeLine}' 으로 채워져야 한다";
+                    // 나머지 채널은 에셋 값이 그대로여야 한다. 대사만 폴백이다.
+                    if (blank.For(kind).Duration != reaction.Duration)
+                        return "대사 폴백이 다른 채널까지 덮어썼다";
+                    return null;
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(blank);
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(set);
+            }
+        }
+
+        private static string TestReactionLineOverrides()
+        {
+            var set = ScriptableObject.CreateInstance<Ascend.Prototype.Npc.PassengerReactionSet>();
+            try
+            {
+                var kind = Ascend.Prototype.Npc.PassengerReactionEvent.BasicPurify;
+                var reaction = new Ascend.Prototype.Npc.PassengerReaction(
+                    Ascend.Prototype.Npc.ReactionPose.Lean, Ascend.Prototype.Npc.ReactionGaze.Device,
+                    "cue", "데이터에서 온 대사", 1f, 0.3f, 10, 6f);
+                set.ReplaceEntries(new[]
+                {
+                    new Ascend.Prototype.Npc.PassengerReactionSet.Entry(kind, reaction)
+                });
+
+                if (set.For(kind).Line != "데이터에서 온 대사")
+                    return $"에셋 대사가 '{set.For(kind).Line}' 로 나왔다 — 데이터가 코드를 이겨야 한다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(set);
+            }
+        }
+
+        /// <summary>
+        /// 디스크의 에셋을 텍스트로 읽어 `Line:` 개수를 센다. 플레이스홀더 PNG 검사와
+        /// 같은 방식이다 — 에디터 API 없이 도는 검사여야 하기 때문이다.
+        ///
+        /// **0 또는 11 만 허용한다.** 0 은 지금의 알려진 상태(전부 코드 폴백)이고
+        /// 11 은 Reset 을 누른 뒤다. 그 사이 값은 **절반만 고친 것**이고, 그 상태가
+        /// 가장 나쁘다 — 일부 사건만 데이터에서 오면 「대사를 데이터로 옮겼다」가
+        /// 참인지 거짓인지 아무도 말할 수 없다.
+        /// </summary>
+        private static string TestShippedReactionAssetLineCoverage()
+        {
+            const string relative = "Prototype_Elevator/Data/Profiles/PassengerReactionSet.asset";
+            string path = AbsoluteAssetPath(relative);
+            if (!File.Exists(path))
+                return $"{relative} 가 없다 — 씬이 물고 있는 에셋이다";
+
+            string text = File.ReadAllText(path);
+            int entries = CountOccurrences(text, "- Event:");
+            int lines = CountOccurrences(text, "Line:");
+
+            if (entries != 11)
+                return $"에셋 항목이 {entries}종이다 — PRD §9.2 의 11종이어야 한다";
+            if (lines != 0 && lines != entries)
+                return $"대사가 {entries}종 중 {lines}종만 직렬화돼 있다 — 절반만 고친 상태다."
+                     + " 인스펙터에서 이 에셋의 톱니바퀴 ▸ Reset 을 눌러 전부 채울 것";
+            return null;
+        }
+
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            int count = 0, at = 0;
+            while ((at = haystack.IndexOf(needle, at, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                at += needle.Length;
+            }
+            return count;
         }
     }
 }

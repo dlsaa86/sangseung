@@ -157,6 +157,18 @@ namespace Ascend.Prototype.Npc
         public void Clear() => _entries = Array.Empty<Entry>();
 
         /// <summary>
+        /// 항목을 통째로 갈아 끼운다. <see cref="Clear"/>의 일반형이다.
+        ///
+        /// 필요한 이유도 <see cref="Clear"/>와 같다 — **부분 정의 상태를 만들 통로**가
+        /// 없으면 폴백을 검증할 수 없다. 특히 디스크의 `PassengerReactionSet.asset` 은
+        /// 항목은 11종 다 있는데 `Line` 필드만 직렬화되지 않은 상태다(그 필드가 에셋보다
+        /// 늦게 생겼다). 그 조합은 <see cref="Reset"/>으로도 <see cref="Clear"/>로도
+        /// 만들 수 없다. 실제 출하 상태를 재현하지 못하는 검사는 그 상태를 지켜 주지 못한다.
+        /// </summary>
+        public void ReplaceEntries(Entry[] entries)
+            => _entries = entries ?? Array.Empty<Entry>();
+
+        /// <summary>
         /// 코드 기본값 스냅샷. 밸런스가 아니라 **판독 순서**를 담은 값이다 —
         /// 우선순위는 `MASTER_PRD.md` §6.1이 정한 강조 순서를 따른다. 붕괴가 가장 위고,
         /// 가장 흔한 기본 정화가 가장 아래다. 흔한 것이 우선하면 드문 순간이 묻힌다.
