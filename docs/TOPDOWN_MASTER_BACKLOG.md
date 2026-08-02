@@ -1445,8 +1445,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 ## 2.13 AUD — 사운드
 
 ### UP-AUD-01 — 위험 단계별 오디오 레이어
-- 분류: Required · 출처: PRD §8.2, §8.3, §8.4
-- 상태: CONNECTED · 패스: P2 P3
+- 분류: Deferred · 출처: PRD §8.2, §8.3, §8.4
+- 상태: DEFERRED · 패스: P2 P3
 - 구현: `Scripts/Risk/RiskStateView.cs`(hum), `Scripts/Audio/AudioCueTable.cs`(단계 전이 사건음), 씬 배선
 - 접근: 위험 단계를 올린다
 - 검증: `WaveBRuntimeProbe` + EditMode 큐 매핑
@@ -1455,8 +1455,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: 지속 hum + 사건음이 씬에서 함께 돈다. **위험 단계가 프로브 중 Stable 을 벗어나지 않아** 단계별 차이는 아직 귀로도 계측으로도 확인되지 않았다
 
 ### UP-AUD-02 — 룰렛 사운드 10종
-- 분류: Required · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
-- 상태: CONNECTED · 패스: P2 P3
+- 분류: Deferred · 출처: N08 §16.4 (레버 / 칸 공개 / 영혼 수확 / 정화 / 직선 / 연결 / 캐스케이드 단계 / 임계점 / 잔류 피해 / 확정)
+- 상태: DEFERRED · 패스: P2 P3
 - 구현: `Scripts/Audio/` 5파일 + 씬 `AudioDirector` 배선
 - 접근: 스핀을 돌린다
 - 검증: `Ascend/Run All EditMode Tests` 13건 + `WaveBRuntimeProbe` 재생 카운터
@@ -1465,8 +1465,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: **백로그가 자기 성과를 과소 보고하고 있었다 — 룰렛 10종은 전부 울렸다.** 독립 감사의 도달성 논증: `AudioCueKind` 는 열거자 16개 중 `None=0` 을 빼면 15종이고 `AudioDirector.cs:445-446` 이 `bit > 0` 이라 15종만 기록된다. 그중 `PassengerVoice`(23)는 `AudioCueTable.TryMap` 이 절대 만들지 않고 `PlayPassengerVoice`(:359)의 **호출자가 0곳**이라 도달 불가다. 즉 **도달 가능한 최대치가 14** 인데 실측이 14종이다 → **도달 가능한 전부가 울렸고 룰렛 10종(kind 1~10)이 필연적으로 포함된다.** 안 난 것은 「2종」이 아니라 1종이고, 그것은 「아직 안 났다」가 아니라 구조적 미구현이다. **그럼에도 VERIFIED 로 올리지 않는 이유 둘:** ① 그 결론은 감사자가 열거형과 호출자를 따로 훑어 증명한 것이지 **산출물이 말해 주는 것이 아니었다** — 하네스가 `BitCount` 만 찍었다. → **고쳤다**: 이제 울린/안 울린 종류 **이름**을 함께 찍는다. ② 요구의 나머지 절반 「10종이 서로 **다른 소리로 들리는가**」는 여전히 미검증이다 — `AudioTests.cs:133-149` 는 큐 종류 매핑 검사이지 구운 클립의 청각 차이 검사가 아니다
 
 ### UP-AUD-03 — 과수확 정적 구간 (0.3~0.7초)
-- 분류: Required · 출처: PRD §7.3(4)
-- 상태: CONNECTED · 패스: P2 P3
+- 분류: Deferred · 출처: PRD §7.3(4)
+- 상태: DEFERRED · 패스: P2 P3
 - 구현: `Scripts/Audio/SilenceWindow.cs`, `AudioDirector`, `Scripts/Run/OverharvestApproachBridge.cs` — 씬 배선 완료
 - 접근: 과수확 레버에 손을 올린다
 - 검증: `WaveBRuntimeProbe` 의 정적 게인 타임라인
@@ -1475,8 +1475,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: **게인이 실제로 떨어진다** — 접근 0.25초 후 0.000, 1.45초 후 1.000 복귀. 남은 것은 플레이어가 실제로 레버를 조준했을 때의 발동 — 프로브는 접근 사건을 직접 넣었고 `IsApproaching=False` 였다(조준 대상 없음)
 
 ### UP-AUD-04 — 승객 비언어 음성
-- 분류: Required · 출처: PRD §9.3
-- 상태: CONNECTED · 패스: P3
+- 분류: Deferred · 출처: PRD §9.3
+- 상태: DEFERRED · 패스: P3
 - 구현: `Scripts/Audio/ProceduralClipFactory.cs`(PassengerVoice — 포먼트 2개, 승객 인덱스로 피치 변화)
 - 접근: 승객이 반응할 때
 - 검증: `Ascend/Run All EditMode Tests` → 큐 종류 분기
@@ -1485,8 +1485,8 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 남은 문제: 합성기는 있으나 승객 반응과 이어지지 않았다 (`UP-NPC-04` 선행)
 
 ### UP-AUD-05 — AudioMixProfile / 오디오 압축 구분
-- 분류: Required · 출처: PRD §13.4, §14.3
-- 상태: CONNECTED · 패스: P2
+- 분류: Deferred · 출처: PRD §13.4, §14.3
+- 상태: DEFERRED · 패스: P2
 - 구현: `Scripts/Data/Profiles/AudioMixProfile.cs` + `.asset` + `Scripts/Audio/AudioDirector.cs` 의 `ChannelVolume`·`ToMixChannel`
 - 접근: 해당 없음
 - 검증: `TenFloorAutoPilot` → 「오디오가 AudioMixProfile 을 읽는다」
