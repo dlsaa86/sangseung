@@ -4679,7 +4679,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.3476599, g: 0.38, b: 0.36383012, a: 1}
+    - _BaseColor: {r: 0.3476599, g: 0.38, b: 0.36383027, a: 1}
     - _Color: {r: 0.0859999, g: 0.093999825, b: 0.08999988, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -8451,7 +8451,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: TenFloor_333633
-  m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
+  m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -8460,8 +8460,7 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap:
-    RenderType: Opaque
+  stringTagMap: {}
   disabledShaderPasses:
   - MOTIONVECTORS
   m_LockedProperties: 
@@ -8469,14 +8468,18 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 0.20799999, y: 0.272}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -8527,41 +8530,63 @@ Material:
     m_Ints: []
     m_Floats:
     - _AddPrecomputedVelocity: 0
+    - _AffineAmount: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
+    - _AmbientFloor: 0.35
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _ColorDepth: 0
+    - _ColorDepthEnabled: 0
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DebugOutput: 0
     - _DetailAlbedoMapScale: 1
+    - _DetailMapEnabled: 0
     - _DetailNormalMapScale: 1
+    - _DetailScale: 8
+    - _DetailStrength: 1
+    - _DitherStrength: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
+    - _EmissionMapEnabled: 0
     - _EnvironmentReflections: 1
+    - _FalloffPower: 2.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
+    - _PS1DistortEnabled: 0
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
+    - _RimStrength: 0.25
+    - _ShadeGamma: 1
+    - _ShadeGammaEnabled: 0
+    - _ShadowLift: 0.55
     - _Smoothness: 0.06
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
+    - _Steps: 3
     - _Surface: 0
+    - _TriplanarBlend: 4
+    - _TriplanarEnabled: 0
+    - _TriplanarScale: 0.5
+    - _VertexSnap: 0
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.2, g: 0.21, b: 0.2, a: 1}
+    - _BaseColor: {r: 0.3975937, g: 0.41747338, b: 0.3975937, a: 1}
     - _Color: {r: 0.19999996, g: 0.20999995, b: 0.19999996, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ShadowTint: {r: 0.19999996, g: 0.25999996, b: 0.23999995, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
@@ -8682,7 +8707,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: TenFloor_212426
-  m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
+  m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -8691,8 +8716,7 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap:
-    RenderType: Opaque
+  stringTagMap: {}
   disabledShaderPasses:
   - MOTIONVECTORS
   m_LockedProperties: 
@@ -8700,14 +8724,18 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 46ce0e647c479fa4592767e7a3b0b23a, type: 3}
+        m_Scale: {x: 0.528, y: 0.97200006}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -8758,41 +8786,63 @@ Material:
     m_Ints: []
     m_Floats:
     - _AddPrecomputedVelocity: 0
+    - _AffineAmount: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
+    - _AmbientFloor: 0.35
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _ColorDepth: 0
+    - _ColorDepthEnabled: 0
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DebugOutput: 0
     - _DetailAlbedoMapScale: 1
+    - _DetailMapEnabled: 0
     - _DetailNormalMapScale: 1
+    - _DetailScale: 8
+    - _DetailStrength: 1
+    - _DitherStrength: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
+    - _EmissionMapEnabled: 0
     - _EnvironmentReflections: 1
+    - _FalloffPower: 2.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
+    - _PS1DistortEnabled: 0
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
+    - _RimStrength: 0.25
+    - _ShadeGamma: 1
+    - _ShadeGammaEnabled: 0
+    - _ShadowLift: 0.55
     - _Smoothness: 0.06
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
+    - _Steps: 3
     - _Surface: 0
+    - _TriplanarBlend: 4
+    - _TriplanarEnabled: 0
+    - _TriplanarScale: 0.5
+    - _VertexSnap: 0
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.13, g: 0.14, b: 0.15, a: 1}
+    - _BaseColor: {r: 0.26950425, g: 0.2902353, b: 0.3109665, a: 1}
     - _Color: {r: 0.12999997, g: 0.13999996, b: 0.14999998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ShadowTint: {r: 0.19999996, g: 0.25999996, b: 0.23999995, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
@@ -9823,6 +9873,8 @@ MonoBehaviour:
   _anteEscalation: 0.35
   _weightProfile: {fileID: 0}
   _spinBalanceProfile: {fileID: 0}
+  _floorCurriculum: {fileID: 0}
+  _contractProfile: {fileID: 0}
 --- !u!4 &998528528
 Transform:
   m_ObjectHideFlags: 0
@@ -14866,7 +14918,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.41842082, g: 0.45, b: 0.4342103, a: 1}
+    - _BaseColor: {r: 0.41842067, g: 0.45, b: 0.43421012, a: 1}
     - _Color: {r: 0.105999835, g: 0.11399985, b: 0.10999983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -15242,7 +15294,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: TenFloor_756B4C
-  m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
+  m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -15251,8 +15303,7 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap:
-    RenderType: Opaque
+  stringTagMap: {}
   disabledShaderPasses:
   - MOTIONVECTORS
   m_LockedProperties: 
@@ -15260,14 +15311,18 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 968612d9f6e07d143b06985ef3078d2e, type: 3}
+        m_Scale: {x: 0.22711147, y: 0.16509008}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -15318,41 +15373,63 @@ Material:
     m_Ints: []
     m_Floats:
     - _AddPrecomputedVelocity: 0
+    - _AffineAmount: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
+    - _AmbientFloor: 0.35
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _ColorDepth: 0
+    - _ColorDepthEnabled: 0
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DebugOutput: 0
     - _DetailAlbedoMapScale: 1
+    - _DetailMapEnabled: 0
     - _DetailNormalMapScale: 1
+    - _DetailScale: 8
+    - _DetailStrength: 1
+    - _DitherStrength: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
+    - _EmissionMapEnabled: 0
     - _EnvironmentReflections: 1
+    - _FalloffPower: 2.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
+    - _PS1DistortEnabled: 0
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
+    - _RimStrength: 0.25
+    - _ShadeGamma: 1
+    - _ShadeGammaEnabled: 0
+    - _ShadowLift: 0.55
     - _Smoothness: 0.06
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
+    - _Steps: 3
     - _Surface: 0
+    - _TriplanarBlend: 4
+    - _TriplanarEnabled: 0
+    - _TriplanarScale: 0.5
+    - _VertexSnap: 0
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.46, g: 0.42, b: 0.3, a: 1}
+    - _BaseColor: {r: 0.86, g: 0.7852175, b: 0.56086963, a: 1}
     - _Color: {r: 0.45999992, g: 0.41999996, b: 0.29999998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ShadowTint: {r: 0.19999996, g: 0.25999996, b: 0.23999995, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

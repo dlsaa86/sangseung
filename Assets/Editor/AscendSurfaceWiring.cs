@@ -120,15 +120,18 @@ namespace Ascend.Prototype.EditorTools
             new Rule("M_Gray_Interactive", "TEX_Machine_Housing", 1.60f, 0.85f, null, Tone.Lift,     true),
             new Rule("M_Gray_Button",      "TEX_Machine_Housing", 3.00f, 0.62f, null, Tone.Lift,     true),
 
-            // 판독 면 — 명도 유지
-            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",    1.40f, 0f,    null, Tone.Preserve, true),
-            new Rule("M_Gray_Console",     "TEX_Machine_Housing", 1.40f, 0f,    null, Tone.Preserve, true),
-            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",    2.00f, 0f,    null, Tone.Preserve, true),
-            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",    2.40f, 0f,    null, Tone.Preserve, true),
+            // 판독 면 — 명도 유지.
+            // `Value` 는 **설계 원본 명도**(HSV 의 V)다. 배선 전 씬에서 실측한 값이고,
+            // `Tone.Preserve` 가 이것을 텍스처 평균으로 나눠 평균 반사율을 되돌린다.
+            // 현재 값이 아니라 이 상수를 쓰기 때문에 몇 번을 돌려도 같은 결과가 나온다.
+            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",    1.40f, 0.120f, null, Tone.Preserve, true),
+            new Rule("M_Gray_Console",     "TEX_Machine_Housing", 1.40f, 0.180f, null, Tone.Preserve, true),
+            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",    2.00f, 0.100f, null, Tone.Preserve, true),
+            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",    2.40f, 0.901f, null, Tone.Preserve, true),
 
-            new Rule("TenFloor_212426",    "TEX_Machine_Housing", 1.20f, 0f,    null, Tone.Preserve, true),
-            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0.80f, 0f,   null, Tone.Preserve, true),
-            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",     1.00f, 0.86f, null, Tone.Lift,     true),
+            new Rule("TenFloor_212426",    "TEX_Machine_Housing", 1.20f, 0.150f, null, Tone.Preserve, true),
+            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0.80f, 0.210f, null, Tone.Preserve, true),
+            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",     1.00f, 0.86f,  null, Tone.Lift,     true),
         };
 
         // ── 손대지 않는 것과 그 이유 ─────────────────────────────────────────
@@ -205,9 +208,14 @@ namespace Ascend.Prototype.EditorTools
                 else
                 {
                     // 텍스처 평균만큼 되돌려 **평균 반사율을 보존**한다.
-                    // 1.0 을 넘으면 되돌릴 수 없으므로 자른다(그만큼은 어두워진다 — 적어 둔다).
+                    //
+                    // ⚠ 나누는 대상은 `rule.Value`(**설계 원본 명도**)이지 `v0`(현재 값)가
+                    // 아니다. 현재 값으로 나누면 두 번째 실행이 이미 나눈 값을 다시 나눠
+                    // 실행할 때마다 밝아진다 — 첫 판본이 그랬고 멱등 검사가 `False` 로 잡았다.
+                    // `Reproportion Elevator Car` 가 계기판을 1/0.66 씩 두 번 민 것과 같은 실패다.
+                    // **값은 델타가 아니라 절대값으로 준다.**
                     float mean = Mathf.Max(0.05f, TextureMean(tex));
-                    targetV = Mathf.Clamp01(v0 / mean);
+                    targetV = Mathf.Clamp01(rule.Value / mean);
                 }
                 Color lifted = Color.HSVToRGB(h, s, targetV);
                 lifted.a = before.a;
