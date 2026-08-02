@@ -1247,12 +1247,12 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 ### UP-REC-02 — 출력 항목 9종
 - 분류: Required · 출처: PRD §10.2 (최고 층 / 최고 캐스케이드 / 최고 과수확 비율 / 핵심 계약 / 핵심 승객·부품 / 종료 원인 / 마지막 과수확 선택 / 잃은 승객·화물 / 런 시드)
 - 상태: CONNECTED · 패스: P2
-- 구현: `Scripts/Run/FloorRecord.cs`, `RunResult.cs`
+- 구현: `Scripts/Run/FloorRecord.cs`, `RunResult.cs`, `Scripts/Data/Profiles/RunSummaryTemplate.cs` 의 `RunSummaryField` 열거형(9종)
 - 접근: 사고 기록기 화면
-- 검증: 고정 캡처 `17_accident_recorder`
-- 증거: `Captures/TenFloor/17_accident_recorder.png`
+- 검증: 고정 캡처 `17_accident_recorder` + `Ascend/Run All EditMode Tests` → 「런 요약이 정확히 9줄이다」·「빈 값에서도 9줄이 유지된다」·「요약 항목 수 상수와 열거형이 일치한다」
+- 증거: `Captures/TenFloor/17_accident_recorder.png`, `Logs/editmode_tests.txt` (2026-08-02 · 203~205번째 줄 · 451 PASS / 0 FAIL)
 - 의존: UP-REC-01
-- 남은 문제: 항목 대조표가 없다. 9종이 전부 나오는지 검증되지 않았다
+- 남은 문제: ~~항목 대조표가 없다. 9종이 전부 나오는지 검증되지 않았다~~ → **대조표가 생겼다 (2026-08-02 실측 정정).** `RunSummaryTemplate.cs:14` 의 `RunSummaryField` 가 **정확히 9개 값**을 갖고, 그 파일 주석이 「이 지적 때문에 만들었다」고 적는다 — 즉 지적은 반영됐는데 **항목의 「남은 문제」만 안 따라왔다.** 단정 3건이 지금 통과 중이다(`Logs/editmode_tests.txt` 203~205번째 줄). 그중 「빈 값에서도 9줄이 유지된다」가 핵심이다 — 값이 비면 줄이 사라지는 구현은 **평소에 9줄을 내면서도 요구를 어긴다.** 열한 번째 낡은 기록이다
 
 ### UP-REC-03 — 인게임 출력과 디버그가 같은 데이터를 쓴다
 - 분류: Required · 출처: PRD §10.3
