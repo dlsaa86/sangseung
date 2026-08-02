@@ -11,7 +11,8 @@
 |---|---|
 | 현재 패스 | **Pass 1·2·3 COMPLETE → Pass 4 IN_PROGRESS** |
 | 브랜치 | `agent/phase2-full-prototype` |
-| 마지막 정상 커밋 | `cf6d705` — 「같은 데이터를 쓴다」를 검사하는 단정이 0건이었다 |
+| 마지막 정상 커밋 | **이 칸을 손으로 적지 않는다** — `git log --oneline -1` 이 정본이다 |
+| └ 왜 | 병렬 레인이 몇 분마다 커밋해서 **이 칸은 적는 순간 낡는다.** 독립 감사가 세 번 지적했고 세 번 다 맞았다. 손으로 유지하는 필드가 계속 틀리면 그건 자산이 아니라 **부채**다 — 이 저장소가 반복해서 당한 「거짓 기록」의 한 형태다 |
 | 마지막 검증 통과 커밋 | **없음** — `verify-topdown.ps1`이 아직 통과한 적 없다 |
 | 백로그 | `docs/TOPDOWN_MASTER_BACKLOG.md` |
 | 테스트 (둘 다 적는다) | `Logs/editmode_tests.txt` **451** · `.claude/state/last-selftest.txt` **468** — 둘 다 FAIL 0 |

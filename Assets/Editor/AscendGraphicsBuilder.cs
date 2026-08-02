@@ -309,8 +309,48 @@ namespace Ascend.Prototype.EditorTools
         /// 주광 세기. 실내라서 방향광이 벽을 균일하게 때리면 위험 연출이 죽는다 —
         /// 주역은 실용 광원(천장등·계기 발광·통관)이고 방향광은 형태를 세우는 보조다.
         /// </summary>
-        public const float SunIntensity = 0.55f;
+        // ── `VISUAL_REFERENCE.md` §2 로 재구성 ────────────────────────────────
+        //
+        //  「주광이 **하나**다 — 철망 씌운 백열등. 따뜻한 호박색, 원뿔형 낙하, **빠른 감쇠**.
+        //   나머지는 **거의 검정.** 구석·바닥 가장자리·좌벽 하단이 완전히 죽어 있다.」
+        //
+        //  지금 씬은 그 반대였다 — 앰비언트가 전체를 고르게 들어 올리고 방향광이
+        //  실내를 균일하게 때렸다. 레퍼런스가 요구하는 것은 **광원 하나와 어둠**이다.
+        //
+        //  0.55 → 0.18. 실내에는 해가 없다. 방향광은 형태를 세우는 최소한으로만 남긴다 —
+        //  **끄지는 않는다.** 주광 그림자가 꺼지면 `atten = pow(1,2.5) = 1` 이 되어
+        //  셰이더의 `_FalloffPower` 가 다시 죽은 손잡이가 되고 G-4 계단이 사라진다.
+        public const float SunIntensity = 0.18f;
         public const float SunShadowStrength = 0.85f;
+
+        /// <summary>
+        /// 캐빈 주광의 사거리. 7.0 → 4.6.
+        ///
+        /// **이것이 「빠른 감쇠」의 실체다.** 사거리가 7 이면 4.80 × 6.00 × 5.50 캐빈의
+        /// 구석까지 빛이 닿아 레퍼런스가 요구하는 「구석이 완전히 검다」가 성립하지 않는다.
+        /// 4.6 이면 등 아래 원뿔이 서고 벽 하단과 모서리가 죽는다.
+        ///
+        /// ⚠ `RiskStateView` 는 `_cabinLight` 의 **intensity 와 color 만** 매 프레임 덮는다
+        /// (`RiskStateView.cs:439-441`). **range 는 건드리지 않으므로** 여기서 준 값이 산다.
+        /// 세기를 여기서 바꾸는 것은 의미가 없다 — 런타임에 `1.6 × 프로파일` 로 덮인다.
+        /// </summary>
+        public const float CabinLightRange = 4.6f;
+
+        /// <summary>
+        /// 천장등 **발광**. 이것이 G-2 p95 의 잠긴 문이었다.
+        ///
+        /// 실측: `CeilingLamp` 는 y=3.14 에 실물로 있는데 `_EmissionColor` 가 **검정**이었다.
+        /// 등이 프레임 안에 있어도 **빛나지 않으니** 밝은 화소가 생기지 않는다 —
+        /// 「위험 프레임(p95 119/106/134/150)에 밝은 광원이 화각 안에 없다」는 진단의
+        /// 물리적 원인이 이것이다. 포스트로는 없는 것을 밝게 만들 수 없다.
+        ///
+        /// 색은 호박색이다 — 레퍼런스 §2 「따뜻한 호박색」이고 `PD-22`(따뜻한 천장등 유지)와
+        /// 같은 방향이다. 탈색하지 않는다.
+        ///
+        /// 세기 3.2 는 Bloom 임계 0.80 을 넉넉히 넘겨 번지게 하려는 값이다.
+        /// </summary>
+        public static readonly Color LampEmission = new Color(1.00f, 0.72f, 0.38f, 1f);
+        public const float LampEmissionIntensity = 3.2f;
 
         /// <summary>
         /// 씬 앰비언트 배율. **줄이는 것이 목적이지 0 이 목적이 아니다.**
@@ -322,7 +362,14 @@ namespace Ascend.Prototype.EditorTools
         /// 그러면 **좌벽 ΔL 회귀 감시선(≥ 15)이 무너진다.**
         /// 그래서 절반 조금 아래까지만 내리고 캡처로 확인한다.
         /// </summary>
-        public const float AmbientScale = 0.55f;
+        /// 0.55 → **0.20.** 레퍼런스 §2 「나머지는 거의 검정」이 이 값이 하는 일이다.
+        /// 앰비언트는 방향과 무관하게 모든 면을 똑같이 들어 올리므로 「제한적인 국소 조명」의
+        /// 정확한 반대다. 이걸 내리지 않으면 등을 아무리 세게 해도 대비가 안 선다.
+        ///
+        /// ⚠ 위험 사다리의 **천장**이 이 값이라 단계 간격도 함께 줄어든다. 지금 좌벽 ΔL 이
+        /// **42.71** 로 기준(15)의 2.8배라 내릴 여유가 있다고 판단했다 — 그래도 캡처로
+        /// 확인해야 한다. 여유가 있다는 것은 예측이지 측정이 아니다.
+        public const float AmbientScale = 0.20f;
 
         /// <summary>앰비언트 원본. 배율이 아니라 **절대값**으로 둔다 — 두 번 돌려도 같아야 한다.</summary>
         public static readonly Color AmbientBase = new Color(0.260f, 0.270f, 0.310f, 1f);
@@ -355,6 +402,70 @@ namespace Ascend.Prototype.EditorTools
                 report.AppendLine($"  {l.gameObject.name} — shadows {beforeShadows} → {l.shadows} " +
                                   $"(strength {l.shadowStrength:F2}) · intensity {beforeIntensity:F2} → {l.intensity:F2}");
             }
+
+            // ── 주광 하나: 사거리를 좁혀 원뿔을 만든다 ──
+            foreach (Light l in Object.FindObjectsByType<Light>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (l.type != LightType.Point) continue;
+                if (l.gameObject.name != "CabinLight") continue;
+                Undo.RecordObject(l, "Build lighting");
+                float beforeRange = l.range;
+                l.range = CabinLightRange;
+                l.shadows = LightShadows.Soft;
+                EditorUtility.SetDirty(l);
+                report.AppendLine($"  CabinLight — range {beforeRange:F2} → {l.range:F2} (빠른 감쇠) · shadows {l.shadows}" +
+                                  "  [세기·색은 RiskStateView 가 런타임에 덮으므로 여기서 안 건드린다]");
+            }
+
+            // ── 등을 **실제로 빛나게** 한다 ──
+            // 등이 프레임 안에 있는데 발광이 검정이면 밝은 화소는 생기지 않는다.
+            //
+            // ⚠ **남의 머티리얼에 쓰지 않는다.** 첫 판본이 정확히 그 사고를 냈다 —
+            // `CeilingLamp` 가 물고 있던 재질은 이름이 `Lit` 인 씬 재질이 아니라
+            // `Packages/com.unity.render-pipelines.universal/Runtime/Materials/Lit.mat`,
+            // 즉 **URP 패키지의 불변 기본 머티리얼**이었다. 거기에 발광을 써 넣자
+            // Unity 가 「immutable package 가 변경됐다」고 경고했고, 그대로 뒀으면
+            // 그 기본 재질을 쓰는 **모든 오브젝트가 호박색으로 빛나고** 패키지 작업 중
+            // 조용히 사라졌을 것이다. 통관 유리에는 이 방어를 넣어 두고 여기엔 빠뜨렸다.
+            int lamps = 0;
+            foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (r.gameObject.name != "CeilingLamp") continue;
+                Material m = r.sharedMaterial;
+                if (m == null || !m.HasProperty("_EmissionColor")) continue;
+
+                string path = AssetDatabase.GetAssetPath(m);
+                bool immutable = !string.IsNullOrEmpty(path) && path.StartsWith("Packages/");
+                bool sharedElsewhere = false;
+                foreach (Renderer other in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    if (other == r) continue;
+                    foreach (Material om in other.sharedMaterials) if (om == m) sharedElsewhere = true;
+                }
+
+                if (immutable || sharedElsewhere)
+                {
+                    m = new Material(m) { name = "CeilingLampGlow" };
+                    r.sharedMaterial = m;
+                    report.AppendLine($"  ⚠ 원래 재질이 {(immutable ? "**패키지 불변 에셋**" : "다른 렌더러와 공유")} " +
+                                      $"(`{path}`) — 씬 전용 사본 `CeilingLampGlow` 를 만들어 그쪽에 쓴다");
+                }
+
+                Undo.RecordObject(m, "Build lighting");
+                Color before = m.GetColor("_EmissionColor");
+                // **절대값이다.** 현재 값에 곱하면 두 번 돌릴 때마다 밝아진다.
+                // 알파는 곱하지 않는다 — 색 × 세기에 알파까지 실리면 3.2 가 된다.
+                Color glow = LampEmission * LampEmissionIntensity;
+                glow.a = 1f;
+                m.SetColor("_EmissionColor", glow);
+                m.EnableKeyword("_EMISSION");
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                EditorUtility.SetDirty(m);
+                lamps++;
+                report.AppendLine($"  CeilingLamp 발광 {before.ToString("F2")} → {glow.ToString("F2")} " +
+                                  $"(재질 `{m.name}`, y={r.bounds.center.y:F2}) — G-2 p95 의 프레임 안 광원");
+            }
+            if (lamps == 0) report.AppendLine("  ⚠ CeilingLamp 렌더러를 찾지 못했다 — 프레임 안 광원이 없다");
 
             Color ambient = AmbientBase * AmbientScale;
             ambient.a = 1f;

@@ -1186,6 +1186,98 @@ function Format-CaptureBlockStdHistogram {
     return $lines
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# G-SLOT — ROI 파싱과 판정 (VISUAL_VERDICT.md §10)
+#
+# ⚠ 이 도구는 ROI 를 **추정하지 않는다.** 매니페스트(`TenFloorCaptureRig.cs` 소유)가
+#   결과판 아홉 칸의 화면 AABB 를 내보내지 않으므로, ROI 는 호출자가 준다.
+#   주지 않으면 결과는 0 이 아니라 **「측정 불가」**다.
+# ══════════════════════════════════════════════════════════════════════════════
+function ConvertTo-CaptureRoi {
+    <#
+    .SYNOPSIS
+        "x,y,w,h" 문자열을 ROI 객체로 바꾼다. 형식이 틀리면 예외를 던진다.
+
+    .PARAMETER Origin
+        'topleft'    이미지 좌상단 원점 (PNG 행 순서 · 이 도구의 기본)
+        'bottomleft' Unity `WorldToScreenPoint` 원점. 내부에서 뒤집어 저장한다.
+        ⚠ 원점을 틀리면 ROI 가 상하로 뒤집힌 자리를 재고, 그 수는 조용히 틀린다.
+           그래서 기본값을 두되 실제로 쓴 원점을 항상 출력에 적는다.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [ValidateSet('topleft', 'bottomleft')][string] $Origin = 'topleft',
+        [int] $ImageHeight = 0
+    )
+    $parts = @($Text -split '\s*,\s*')
+    if ($parts.Count -ne 4) {
+        throw "BoardRoi 는 'x,y,w,h' 네 정수여야 한다. 받은 값: '$Text'"
+    }
+    $v = New-Object 'int[]' 4
+    for ($i = 0; $i -lt 4; $i++) {
+        $tmp = 0
+        if (-not [int]::TryParse($parts[$i].Trim(), [ref]$tmp)) {
+            throw "BoardRoi 의 $($i+1)번째 값이 정수가 아니다: '$($parts[$i])'"
+        }
+        $v[$i] = $tmp
+    }
+    if ($v[2] -le 0 -or $v[3] -le 0) {
+        throw "BoardRoi 의 폭·높이는 양수여야 한다. 받은 값: w=$($v[2]) h=$($v[3])"
+    }
+    $y = $v[1]
+    if ($Origin -eq 'bottomleft') {
+        if ($ImageHeight -le 0) { throw 'bottomleft 원점을 쓰려면 이미지 높이를 알아야 한다.' }
+        # 아래쪽 원점의 (y, h) → 위쪽 원점의 y = H - (y + h)
+        $y = $ImageHeight - ($v[1] + $v[3])
+    }
+    return [pscustomobject]@{ X = $v[0]; Y = $y; W = $v[2]; H = $v[3]; Origin = $Origin; RawY = $v[1] }
+}
+
+function Get-CaptureSlotVerdict {
+    <#
+    .SYNOPSIS
+        한 장의 G-SLOT 판정을 'PASS' | 'FAIL' | 'UNMEASURABLE' 로 낸다.
+
+    .DESCRIPTION
+        **UNMEASURABLE 은 PASS 가 아니다.** 띠 0 과 측정 불가를 같은 값으로 내보내면
+        재지 않은 축이 초록으로 읽힌다 — 이 저장소가 G-4 에서 이미 한 번 당한 구조다.
+    #>
+    param(
+        [Parameter(Mandatory)] $Metric,
+        [int]    $BandMax     = 0,
+        [double] $ColorMaxPct = 2.0
+    )
+    if (-not $Metric.SlotRoiProvided) { return 'UNMEASURABLE' }
+    if (($Metric.SlotBandCount -le $BandMax) -and ($Metric.SlotColorPercent -le $ColorMaxPct)) { return 'PASS' }
+    return 'FAIL'
+}
+
+function Get-CaptureSlotVerdictLabel {
+    param([string] $Verdict)
+    switch ($Verdict) {
+        'PASS'         { return '통과' }
+        'FAIL'         { return '미달' }
+        'UNMEASURABLE' { return '측정불가' }
+        default        { return $Verdict }
+    }
+}
+
+function Format-CaptureSlotBands {
+    <#
+    .SYNOPSIS
+        띠 개수의 표시 문자열. ROI 가 없으면 숫자가 아니라 「측정불가」다.
+    #>
+    param($Metric)
+    if (-not $Metric.SlotRoiProvided) { return '측정불가' }
+    return "$($Metric.SlotBandCount)"
+}
+
+function Format-CaptureSlotColor {
+    param($Metric)
+    if (-not $Metric.SlotRoiProvided) { return '측정불가' }
+    return ('{0:F2}' -f $Metric.SlotColorPercent)
+}
+
 function Format-CaptureG1b {
     <#
     .SYNOPSIS

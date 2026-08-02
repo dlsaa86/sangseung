@@ -64,6 +64,22 @@
 .PARAMETER NoCsv
     metrics.csv 를 쓰지 않는다.
 
+.PARAMETER BoardRoi
+    G-SLOT 의 ROI 를 `x,y,w,h` 로 준다 (결과판 아홉 칸의 화면 AABB 합집합).
+    **주지 않으면 G-SLOT 은 「측정 불가」다 — ROI 를 추정하지 않는다.**
+    한 장의 사각형을 24장 전부에 쓰므로, 카메라 포즈가 장마다 다른 세트에서는
+    거의 확실히 틀린다. 진짜 답은 `-BoardRoiCsv` 이고 그것은 리그가 내보내야 한다.
+
+.PARAMETER BoardRoiCsv
+    장별 ROI 표. 헤더 `file,x,y,w,h` 이고 `file` 은 확장자 없는 파일 이름이다.
+    표에 없는 장은 그 장만 「측정 불가」가 된다 — 결과판이 화각 밖인 장이 그렇다.
+    **이것이 `TenFloorCaptureRig.cs` 가 내보내야 하는 형식이다** (완료 보고 참조).
+
+.PARAMETER BoardRoiOrigin
+    ROI 좌표의 원점. `topleft`(기본, PNG 행 순서) 또는 `bottomleft`(Unity 화면 좌표).
+    ⚠ 원점을 틀리면 상하로 뒤집힌 자리를 재고 그 수는 조용히 틀린다.
+      그래서 실제로 쓴 원점을 항상 출력에 적는다.
+
 .PARAMETER NoHistogram
     블록 std 히스토그램을 찍지 않는다. 기본은 찍는다 —
     G-1b 의 임계 4.0 이 실제로 무지 블록과 텍스처 블록을 가르는지 매번 눈으로 확인해야
@@ -91,6 +107,9 @@ param(
     [double] $ScanXFraction = 0.10,
     [int]    $ScanLength    = 200,
     [int]    $FlatDelta     = 1,
+    [string] $BoardRoi,
+    [string] $BoardRoiCsv,
+    [ValidateSet('topleft', 'bottomleft')][string] $BoardRoiOrigin = 'topleft',
     [switch] $Json,
     [switch] $NoCsv,
     [switch] $NoHistogram
@@ -179,15 +198,82 @@ if ([string]::IsNullOrWhiteSpace($headSha)) { $headSha = '(git 없음)'; $headSh
 # ══════════════════════════════════════════════════════════════════════════════
 # 측정
 # ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# G-SLOT ROI 결정 — **추정하지 않는다**
+#
+# `manifest.txt` 는 결과판을 「9칸 중 프레임 안 N칸」이라는 **개수**로만 적는다.
+# 리그(`TenFloorCaptureRig.cs`)가 `InFrame(cell.position)` 로 점 하나를 뷰포트에
+# 넣어 보고 좌표는 버리기 때문이다. 그래서 화면 사각형이 어디에도 없다.
+#
+# 없는 것을 추정해서 채우면 「재지 않은 축」이 숫자를 갖게 되고, 그 숫자는
+# 통과선 0 을 자동으로 만족한다 — G-4 가 무지 면을 자동 통과시킨 것과 같은 구조다.
+# 그래서 ROI 가 없으면 **측정 불가**로 내보낸다.
+# ══════════════════════════════════════════════════════════════════════════════
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+
+function Get-PngSize {
+    param([string] $Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $ms = New-Object System.IO.MemoryStream(,$bytes)
+    try {
+        $img = [System.Drawing.Image]::FromStream($ms)
+        try { return [pscustomobject]@{ W = $img.Width; H = $img.Height } } finally { $img.Dispose() }
+    } finally { $ms.Dispose() }
+}
+
+$roiMap = @{}          # 파일이름(확장자 없음) → ROI 객체
+$roiSingle = $null
+$roiSource = 'none'
+$roiNote = ''
+
+$firstSize = Get-PngSize $files[0].FullName
+
+if (-not [string]::IsNullOrWhiteSpace($BoardRoiCsv)) {
+    $roiCsvPath = $BoardRoiCsv
+    if (-not [System.IO.Path]::IsPathRooted($roiCsvPath)) { $roiCsvPath = Join-Path $Root $BoardRoiCsv }
+    if (-not (Test-Path -LiteralPath $roiCsvPath)) {
+        [Console]::Error.WriteLine("capture-metrics: BoardRoiCsv 를 찾지 못했다: $roiCsvPath")
+        exit 2
+    }
+    foreach ($row in (Import-Csv -LiteralPath $roiCsvPath)) {
+        $key = "$($row.file)".Trim()
+        if ([string]::IsNullOrWhiteSpace($key)) { continue }
+        $roiMap[$key] = ConvertTo-CaptureRoi -Text ("{0},{1},{2},{3}" -f $row.x, $row.y, $row.w, $row.h) `
+                                             -Origin $BoardRoiOrigin -ImageHeight $firstSize.H
+    }
+    $roiSource = 'csv'
+    $roiNote = "장별 ROI 표 $roiCsvPath · $($roiMap.Count) 장 수록"
+} elseif (-not [string]::IsNullOrWhiteSpace($BoardRoi)) {
+    $roiSingle = ConvertTo-CaptureRoi -Text $BoardRoi -Origin $BoardRoiOrigin -ImageHeight $firstSize.H
+    $roiSource = 'single'
+    $roiNote = '단일 ROI 를 24장 전부에 적용했다 — 카메라 포즈가 장마다 다르면 거의 확실히 틀린다'
+} else {
+    $roiSource = 'none'
+    $roiNote = 'ROI 를 받지 못했다 — G-SLOT 은 전 장 「측정 불가」다 (추정하지 않는다)'
+}
+
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $results = New-Object System.Collections.ArrayList
 $readErrors = New-Object System.Collections.ArrayList
 
 foreach ($f in $files) {
     try {
-        $m = [CaptureMetrics.Analyzer]::Analyze($f.FullName, $ScanYFraction, $ScanXFraction, $ScanLength,
-                                                $FlatDelta, $T.G4_StepMinLength, $T.G4_BoundaryMinDelta,
-                                                $K.G1b_TexturedBlockStd, $K.G1c_SharpBlockStd)
+        $roi = $null
+        if ($roiSource -eq 'single') { $roi = $roiSingle }
+        elseif ($roiSource -eq 'csv') {
+            $key = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            if ($roiMap.ContainsKey($key)) { $roi = $roiMap[$key] }
+        }
+        if ($null -eq $roi) {
+            $m = [CaptureMetrics.Analyzer]::Analyze($f.FullName, $ScanYFraction, $ScanXFraction, $ScanLength,
+                                                    $FlatDelta, $T.G4_StepMinLength, $T.G4_BoundaryMinDelta,
+                                                    $K.G1b_TexturedBlockStd, $K.G1c_SharpBlockStd)
+        } else {
+            $m = [CaptureMetrics.Analyzer]::Analyze($f.FullName, $ScanYFraction, $ScanXFraction, $ScanLength,
+                                                    $FlatDelta, $T.G4_StepMinLength, $T.G4_BoundaryMinDelta,
+                                                    $K.G1b_TexturedBlockStd, $K.G1c_SharpBlockStd,
+                                                    $true, $roi.X, $roi.Y, $roi.W, $roi.H)
+        }
         $null = $results.Add($m)
     } catch {
         $null = $readErrors.Add("$($f.Name) — $($_.Exception.Message)")
@@ -228,6 +314,10 @@ $rows = @($results | ForEach-Object {
     $g1 = ($_.LocalStdMedian -ge $T.G1_LocalStdMedian)
     $mg = ($_.MagentaPixels -le $T.MagentaMax)
 
+    # ── G-SLOT (VISUAL_VERDICT.md §10) ───────────────────────────────────────
+    # PASS / FAIL / **UNMEASURABLE** 세 갈래. 측정 불가는 통과가 아니다.
+    $slotV = Get-CaptureSlotVerdict -Metric $_ -BandMax $T.SlotA_BandMax -ColorMaxPct $T.SlotB_ColorMaxPct
+
     $miss = New-Object System.Collections.ArrayList
     if (-not $g1) { $null = $miss.Add('G-1a') }
     if (-not $g2) { $null = $miss.Add('G-2') }
@@ -237,19 +327,23 @@ $rows = @($results | ForEach-Object {
     if ($g4v -eq 'UNMEASURABLE') { $null = $miss.Add('G-4(불가)') }
     if (-not $g5) { $null = $miss.Add('G-5') }
     if (-not $mg) { $null = $miss.Add('마젠타') }
+    # 여기서도 「미달」과 「측정 불가」를 한 낱말로 합치지 않는다.
+    if ($slotV -eq 'FAIL')         { $null = $miss.Add('G-SLOT') }
+    if ($slotV -eq 'UNMEASURABLE') { $null = $miss.Add('G-SLOT(불가)') }
 
     [pscustomobject]@{
-        M         = $_
-        Rep       = $rep
-        G1        = $g1
-        G2        = $g2
-        G3        = $g3
-        G4        = $g4
-        G4Verdict = $g4v
-        G4Legacy  = $g4legacy
-        G5        = $g5
-        Magenta   = $mg
-        Missing   = @($miss)
+        M           = $_
+        Rep         = $rep
+        G1          = $g1
+        G2          = $g2
+        G3          = $g3
+        G4          = $g4
+        G4Verdict   = $g4v
+        G4Legacy    = $g4legacy
+        G5          = $g5
+        Magenta     = $mg
+        SlotVerdict = $slotV
+        Missing     = @($miss)
     }
 })
 
@@ -293,9 +387,9 @@ if (Test-Path -LiteralPath $manifestPath) {
 }
 Write-Output ''
 
-$fmt = '{0,-23} {1,-3} {2,7} {3,8} {4,7} {5,4} {6,4} {7,4} {8,7} {9,5} {10,5} {11,5} {12,9} {13,8} {14,9} {15,6}  {16}'
-Write-Output ($fmt -f '파일','대표','G-1a','G-1b','G-1c%','L5','L50','L95','발광%','계단','단차','휘도폭','G-4','빈평면%','금색px','마젠타','미달')
-Write-Output ('-' * 172)
+$fmt = '{0,-23} {1,-3} {2,7} {3,8} {4,7} {5,4} {6,4} {7,4} {8,7} {9,5} {10,5} {11,5} {12,9} {13,8} {14,8} {15,9} {16,9} {17,6}  {18}'
+Write-Output ($fmt -f '파일','대표','G-1a','G-1b','G-1c%','L5','L50','L95','발광%','계단','단차','휘도폭','G-4','띠','색%','G-SLOT','빈평면%','마젠타','미달')
+Write-Output ('-' * 190)
 foreach ($r in $rows) {
     $m = $r.M
     Write-Output ($fmt -f `
@@ -308,8 +402,11 @@ foreach ($r in $rows) {
         ('{0:F3}' -f $m.GlowPercent),
         $m.StepCount, $m.BoundaryCount, $m.ScanSpan,
         (Get-CaptureG4VerdictLabel $r.G4Verdict),
+        (Format-CaptureSlotBands $m),
+        (Format-CaptureSlotColor $m),
+        (Get-CaptureSlotVerdictLabel $r.SlotVerdict),
         ('{0:F1}' -f $m.EmptyPlanePercent),
-        $m.GoldPixels, $m.MagentaPixels,
+        $m.MagentaPixels,
         $(if ($r.Missing.Count -eq 0) { '통과' } else { ($r.Missing -join ' ') }))
 }
 Write-Output ("  G-1a = 8×8 블록 std 의 **전체** 중앙값 (직전 정의 그대로 — 회귀 비교용)")
@@ -320,6 +417,12 @@ Write-Output ("  계단 = 길이 ≥ {0}px 인 평탄 구간(δ≤{1}) · 단차
 Write-Output ("  G-4  관측됨 = 휘도폭 ≥ {0} 그리고 계단 ≥ {1} 그리고 단차 ≥ {2} · 미관측 = 휘도폭은 있는데 계단·단차 부족" -f `
     $K.G4_MeasurableMinSpan, $T.G4_StepsMinPerFrame, $T.G4_BoundsMinPerFrame)
 Write-Output ("       측정불가 = 휘도폭 < {0} — 평평한 언릿 면이거나 단색이라 계단이 **원리적으로** 없다 (§5.4)" -f $K.G4_MeasurableMinSpan)
+Write-Output ("  띠   = G-SLOT-A. ROI 안에서 |ΔL| ≥ {0} 이진화 → 장축/단축 ≥ {1:F0} · 장축 ≥ ROI 폭의 {2:P0} · 칸 경계 {3}개 이상 횡단" -f `
+    $K.SlotA_ContrastMinDelta, $K.SlotA_AspectMin, $K.SlotA_MajorMinFraction, $K.SlotA_CrossingsMin)
+Write-Output ("  색%  = G-SLOT-B. ROI 안에서 R−B ≥ {0} · G−B ≥ {1} · max−min ≥ {2} · R ≥ {3}" -f `
+    $K.SlotB_RminusB, $K.SlotB_GminusB, $K.SlotB_SaturationMin, $K.SlotB_RedMin)
+Write-Output ("  G-SLOT 통과 = 띠 ≤ {0} 그리고 색 ≤ {1:F1}% · **측정불가 = ROI 를 받지 못했다 (0 이 아니다)**" -f `
+    $T.SlotA_BandMax, $T.SlotB_ColorMaxPct)
 Write-Output ''
 
 # ── 블록 std 히스토그램 — 임계 4.0 이 실제로 두 집단을 가르는가 ────────────────
@@ -474,6 +577,29 @@ if ($repRows.Count -gt 0) {
     Add-Gate 'G-5' '빈 평면 비율 (대표 중앙값)' '대표 0장' ("≤ {0:F0}%" -f $T.G5_EmptyPlaneMaxPct) $false '대표 8장을 찾지 못했다'
 }
 
+# ── G-SLOT (VISUAL_VERDICT.md §10) ───────────────────────────────────────────
+#
+# 세 갈래다: 통과 / 미달 / **측정 불가**.
+# 측정 불가는 **통과가 아니다** — Ok=$false 로 둔다. 그래서 ROI 를 주지 않은
+# 세트는 exit 2 가 된다. 이것이 의도한 동작이다: 재지 않은 회귀 감시축이
+# 초록으로 남아 있는 것이 이 공백을 만든 원인이었다.
+$slotPass   = @($rows | Where-Object { $_.SlotVerdict -eq 'PASS' })
+$slotFail   = @($rows | Where-Object { $_.SlotVerdict -eq 'FAIL' })
+$slotUnmeas = @($rows | Where-Object { $_.SlotVerdict -eq 'UNMEASURABLE' })
+
+$slotMeasured = $slotPass.Count + $slotFail.Count
+$slotOk = ($slotUnmeas.Count -eq 0) -and ($slotFail.Count -eq 0)
+$slotMeasuredText = if ($slotUnmeas.Count -eq $rows.Count) {
+    "측정불가 $($rows.Count)/$($rows.Count) 장"
+} else {
+    "통과 $($slotPass.Count) · 미달 $($slotFail.Count) · 측정불가 $($slotUnmeas.Count) / $($rows.Count) 장"
+}
+$slotNote = $roiNote
+Add-Gate 'G-SLOT' '결과판 띠·색 (전장)' $slotMeasuredText `
+    ("띠 ≤ {0}개 그리고 색 ≤ {1:F1}% · 전 {2}장에서 **측정되어야** 한다" -f `
+        $T.SlotA_BandMax, $T.SlotB_ColorMaxPct, $rows.Count) `
+    $slotOk $slotNote
+
 # 마젠타 — 전 장 0
 $mgBad = @($rows | Where-Object { -not $_.Magenta })
 $mgTotal = ($results | Measure-Object -Property MagentaPixels -Sum).Sum
@@ -541,6 +667,36 @@ Write-Output '        직전 11/24 는 9장이 측정 불가인 채로 세어진
 Write-Output '  ⚠ 적용하지 않았다. 통과선 변경은 GRAPHICS_TARGET.md 를 먼저 고치는 사람의 결정이다.'
 Write-Output ''
 
+# ── G-SLOT ROI 출처와 인수인계 ────────────────────────────────────────────────
+Write-Output '── G-SLOT ROI 출처 (VISUAL_VERDICT.md §10) ──'
+Write-Output ("  ROI 출처   {0}" -f $(switch ($roiSource) {
+    'csv'    { "장별 표 (-BoardRoiCsv)" }
+    'single' { "단일 사각형 (-BoardRoi)" }
+    default  { "**없음**" } }))
+Write-Output ("  좌표 원점  {0}  (topleft = PNG 행 순서 · bottomleft = Unity 화면 좌표)" -f $BoardRoiOrigin)
+if ($roiNote) { Write-Output ("  비고       {0}" -f $roiNote) }
+if ($roiSource -eq 'single') {
+    Write-Output ("  적용 사각형 x={0} y={1} w={2} h={3}" -f $roiSingle.X, $roiSingle.Y, $roiSingle.W, $roiSingle.H)
+    Write-Output '  ⚠ 24장은 카메라 포즈가 서로 다르다. 한 사각형을 전부에 쓰면 대부분의 장에서'
+    Write-Output '    결과판이 아닌 곳을 재게 된다. 이 모드는 도구 검증용이지 판정용이 아니다.'
+}
+if ($roiSource -eq 'none') {
+    Write-Output ''
+    Write-Output '  **이 세트의 G-SLOT 은 측정되지 않았다.** 0 이 아니라 측정 불가다.'
+    Write-Output '  manifest.txt 는 결과판을 「9칸 중 프레임 안 N칸」이라는 개수로만 적는다 —'
+    Write-Output '  리그가 `InFrame(cell.position)` 로 점 하나를 넣어 보고 화면 좌표는 버리기 때문이다.'
+    Write-Output ''
+    Write-Output '  ── 리그(`TenFloorCaptureRig.cs`)가 내보내야 하는 것 ── (씬 소유자 몫)'
+    Write-Output '    장마다 결과판 아홉 칸의 **화면 AABB 합집합**을 픽셀로 적는다.'
+    Write-Output '    칸의 중심점 하나가 아니라 각 칸 렌더러의 월드 AABB 여덟 꼭짓점을 투영해'
+    Write-Output '    그 x·y 의 min/max 를 취한 뒤, 아홉 칸에 대해 합집합을 낸다.'
+    Write-Output '    프레임 안 칸이 0개인 장은 ROI 를 적지 않는다 — 그 장은 측정 불가가 정답이다.'
+    Write-Output '    형식: `<세트>/board-roi.csv` · 헤더 `file,x,y,w,h` · file 은 확장자 없는 이름.'
+    Write-Output '    원점을 함께 밝힌다 (Unity WorldToScreenPoint 는 bottomleft 다).'
+    Write-Output '    그러면 이 도구는 `-BoardRoiCsv <세트>/board-roi.csv -BoardRoiOrigin bottomleft` 로 잰다.'
+}
+Write-Output ''
+
 # ── G-4 세 갈래 장 목록 ───────────────────────────────────────────────────────
 Write-Output '── G-4 세 갈래 분류 (전장) ──'
 Write-Output ("  관측됨   {0,2} 장  {1}" -f $g4Observed.Count,     (($g4Observed     | ForEach-Object { $_.M.Name }) -join ', '))
@@ -572,6 +728,7 @@ Write-Output '  · G-6 포스트 체인 · G-7 물리 · G-8 GC — 단일 정�
 Write-Output '  · G-1b · G-1c — 통과선이 아직 없다. 재기만 하고 판정하지 않는다'
 Write-Output '  · G-4 「측정 가능」은 휘도폭 대리 판정이다 — 셰이더가 Unlit 인지는 PNG 로 알 수 없다'
 Write-Output '  · 캡처 시점의 커밋 — manifest.txt 가 적지 않는다. 위에 찍은 것은 **측정 시점의** HEAD 다'
+Write-Output '  · G-SLOT ROI 위치 — 리그가 내보내야 한다. 도구는 **추정하지 않는다**'
 Write-Output ''
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -583,11 +740,23 @@ if (-not $NoCsv) {
     $lines = New-Object System.Collections.ArrayList
     # g1aLocalStdMedian 는 직전 열 이름 localStdMedian 을 그대로 둔다 — 기존 비교 스크립트가 깨지지 않게.
     # g1bTexturedStdMedian 은 텍스처 블록이 0개면 **빈 칸**이다 (0 을 쓰면 집계에 섞인다).
-    $null = $lines.Add('file,width,height,totalPixels,representative,localStdMedian,g1bTexturedStdMedian,g1bTexturedBlocks,g1bTexturedPct,g1cSharpPct,g1cSharpBlocks,g1bBlockStdMin,g1cBlockStdMin,blockCount8,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatDelta,stepMinLength,boundaryMinDelta,stepCount,boundaryCount,stepLongest,flatRunCount,flatRunLongest,flatRunCountEq0,flatRunLongestEq0,scanSpan,g4Verdict,g4LegacyObserved,emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing')
+    # slotBands / slotColorPct 는 ROI 를 받지 못한 장에서 **빈 칸**이다.
+    # 0 을 쓰면 「띠가 없다」로 읽히고, 그것이 이 축을 공백으로 만든 실수의 재생산이다.
+    $null = $lines.Add('file,width,height,totalPixels,representative,localStdMedian,g1bTexturedStdMedian,g1bTexturedBlocks,g1bTexturedPct,g1cSharpPct,g1cSharpBlocks,g1bBlockStdMin,g1cBlockStdMin,blockCount8,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatDelta,stepMinLength,boundaryMinDelta,stepCount,boundaryCount,stepLongest,flatRunCount,flatRunLongest,flatRunCountEq0,flatRunLongestEq0,scanSpan,g4Verdict,g4LegacyObserved,slotVerdict,slotRoiProvided,slotRoiX,slotRoiY,slotRoiW,slotRoiH,slotRoiBgLum,slotComponents,slotBands,slotColorPct,slotTopMajor,slotTopMinor,slotTopRatio,slotTopCrossings,slotTopC2,slotTopC3,slotTopC4,emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing')
     foreach ($r in $rows) {
         $m = $r.M
         $g1bCsv = if ($m.TexturedBlockCount -gt 0) { '{0:F4}' -f $m.TexturedBlockStdMedian } else { '' }
-        $null = $lines.Add(('{0},{1},{2},{3},{4},{5:F4},{6},{7},{8:F4},{9:F4},{10},{11:F2},{12:F2},{13},{14},{15},{16},{17:F5},{18},{19},{20},{21},{22},{23},{24},{25},{26},{27},{28},{29},{30},{31},{32},{33},{34:F4},{35},{36},{37},{38},{39},{40},{41},{42},{43}' -f `
+        $slotCsv = if ($m.SlotRoiProvided) {
+            '{0},1,{1},{2},{3},{4},{5},{6},{7},{8:F4},{9},{10},{11:F4},{12},{13},{14},{15}' -f `
+                $r.SlotVerdict, $m.SlotRoiX, $m.SlotRoiY, $m.SlotRoiW, $m.SlotRoiH, $m.SlotRoiBackgroundLum,
+                $m.SlotComponentCount, $m.SlotBandCount, $m.SlotColorPercent,
+                $m.SlotTopMajor, $m.SlotTopMinor, $m.SlotTopRatio, $m.SlotTopCrossings,
+                $(if ($m.SlotTopC2) { 1 } else { 0 }), $(if ($m.SlotTopC3) { 1 } else { 0 }), $(if ($m.SlotTopC4) { 1 } else { 0 })
+        } else {
+            # ROI 없음 — 숫자 칸을 전부 비운다.
+            'UNMEASURABLE,0,,,,,,,,,,,,,,'
+        }
+        $null = $lines.Add(('{0},{1},{2},{3},{4},{5:F4},{6},{7},{8:F4},{9:F4},{10},{11:F2},{12:F2},{13},{14},{15},{16},{17:F5},{18},{19},{20},{21},{22},{23},{24},{25},{26},{27},{28},{29},{30},{31},{32},{33},{44},{34:F4},{35},{36},{37},{38},{39},{40},{41},{42},{43}' -f `
             $m.Name, $m.Width, $m.Height, $m.TotalPixels, $(if ($r.Rep) { 1 } else { 0 }),
             $m.LocalStdMedian,
             $g1bCsv, $m.TexturedBlockCount, $m.TexturedBlockPercent,
@@ -602,7 +771,8 @@ if (-not $NoCsv) {
             $m.EmptyPlanePercent, $m.GoldPixels, $m.MagentaPixels,
             $(if ($r.G1) { 1 } else { 0 }), $(if ($r.G2) { 1 } else { 0 }), $(if ($r.G3) { 1 } else { 0 }),
             $(if ($r.G4) { 1 } else { 0 }), $(if ($r.G5) { 1 } else { 0 }), $(if ($r.Magenta) { 1 } else { 0 }),
-            ($r.Missing -join ' ')))
+            ($r.Missing -join ' '),
+            $slotCsv))
     }
     Write-Utf8Bom $csvPath $lines
 
@@ -649,6 +819,10 @@ if (-not $NoCsv) {
         $mtMin, $mtMax, $mtSpanMin))
     $null = $glines.Add(('출처,"측정 시점 HEAD","{0}","—",INFO,"{1} / {2}"' -f `
         $headSha, $headBranch, ($headSubject -replace '"', "'")))
+    $null = $glines.Add(('출처,"G-SLOT ROI 출처","{0}","—",INFO,"{1}"' -f `
+        $(switch ($roiSource) { 'csv' { 'BoardRoiCsv' } 'single' { 'BoardRoi' } default { '없음 — 측정 불가' } }), `
+        ($roiNote -replace '"', "'")))
+    $null = $glines.Add(('출처,"G-SLOT ROI 원점","{0}","—",INFO,"topleft = PNG 행 순서 · bottomleft = Unity 화면 좌표"' -f $BoardRoiOrigin))
     $null = $glines.Add(('출처,"포스트 세트 여부","{0}","—",INFO,"{1}"' -f `
         $(if ($isNoPostSet) { 'NoPost' } else { '포스트 켜짐(추정)' }), `
         $(if ($g1PostWarn) { $g1PostWarn } else { 'G-1 판정에 적합한 세트' })))
@@ -692,6 +866,17 @@ if ($Json) {
             sharpBlockStdMin    = $K.G1c_SharpBlockStd
             postWarning  = $g1PostWarn
         }
+        gslot     = [pscustomobject]@{
+            roiSource    = $roiSource
+            roiOrigin    = $BoardRoiOrigin
+            pass         = $slotPass.Count
+            fail         = $slotFail.Count
+            unmeasurable = $slotUnmeas.Count
+            measured     = $slotMeasured
+            bandMax      = $T.SlotA_BandMax
+            colorMaxPct  = $T.SlotB_ColorMaxPct
+            note         = $roiNote
+        }
         g4        = [pscustomobject]@{
             observed = $g4Observed.Count; unobserved = $g4Unobserved.Count; unmeasurable = $g4Unmeasurable.Count
             legacyObserved = $g4LegacyCount
@@ -716,6 +901,9 @@ if ($Json) {
                             flatRunsEq0 = $_.M.FlatRunCountEq; flatLongestEq0 = $_.M.FlatRunLongestEq
                             scanSpan = $_.M.ScanSpan
                             g4Verdict = $_.G4Verdict; g4LegacyObserved = $_.G4Legacy
+                            slotVerdict = $_.SlotVerdict
+                            slotBands = $(if ($_.M.SlotRoiProvided) { $_.M.SlotBandCount } else { $null })
+                            slotColorPct = $(if ($_.M.SlotRoiProvided) { [Math]::Round($_.M.SlotColorPercent, 4) } else { $null })
                             emptyPlanePct = [Math]::Round($_.M.EmptyPlanePercent, 4)
                             gold = $_.M.GoldPixels; magenta = $_.M.MagentaPixels
                             missing = @($_.Missing)

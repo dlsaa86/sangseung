@@ -543,6 +543,260 @@ Assert-Value '합산 히스토그램' '총 블록 (1024×2)' 2048 $sumAB
 Assert-Value '합산 히스토그램' '첫 칸 ≥ A 의 1024' $true ($histAB[0] -ge 1024)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# G-SLOT-A / G-SLOT-B — VISUAL_VERDICT.md §10
+#
+# ROI = 결과판 아홉 칸의 화면 AABB 합집합. ROI 밖은 세지 않는다.
+# A: ① |ΔL| ≥ 25 이진화 ② 장축/단축 ≥ 4 ③ 장축 ≥ ROI 폭의 35% ④ 칸 경계 2개 이상 횡단
+# B: R−B ≥ 60 · G−B ≥ 30 · max−min ≥ 55 · R ≥ 120
+#
+# ── 공통 기하 (전부 손으로 계산했다) ────────────────────────────────────────
+#   이미지 320×320 · ROI = 절대 (16,16,288,288) · 배경 회색 60 · 막대 회색 200
+#   회색 v 의 휘도는 정확히 v 이므로 |ΔL| = |200−60| = 140 ≥ 25 다.
+#   ROI 로컬 칸 경계: x = 96·192 · y = 96·192  (288/3 = 96)
+#   ③ 의 기준: 0.35 × ROI 폭 288 = **100.8 px**
+#   ROI 로컬 (lx,ly) → 절대 (16+lx, 16+ly)
+#
+#   「횡단」은 **엄격한 걸침**이다 — minX < 경계 그리고 maxX ≥ 경계.
+#   한 칸에 꼭 맞게 들어찬 성분은 횡단 0 이다.
+# ══════════════════════════════════════════════════════════════════════════════
+$RoiX = 16; $RoiY = 16; $RoiW = 288; $RoiH = 288
+$SlotBandMax = 0
+$SlotColorMax = 2.0
+function Invoke-Slot { param([string]$P, [int]$X = $RoiX, [int]$Y = $RoiY, [int]$W = $RoiW, [int]$H = $RoiH)
+    return [CaptureMetrics.Analyzer]::Analyze($P, 0.5, 0.0, 0, 1, 8, 4, 4.0, 8.0, $true, $X, $Y, $W, $H) }
+function Get-SlotV { param($M) return (Get-CaptureSlotVerdict -Metric $M -BandMax $SlotBandMax -ColorMaxPct $SlotColorMax) }
+
+# ── Z0 ROI 는 줬는데 막대가 없다 → 띠 **0** (측정 불가가 아니다) ──────────────
+#    배경이 균일하므로 |ΔL| = 0 < 25 → 이진화 결과가 비어 있다 → 성분 0 · 띠 0.
+#    **이 케이스가 「0」과 「측정 불가」를 가르는 기준점이다.**
+$pZ0 = Join-Path $work 'Z0_empty.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ0, 320, 320, 60, 0, 0, 0, 0, 200)
+$Z0 = Invoke-Slot $pZ0
+
+Assert-Value 'Z0 빈ROI' 'ROI 를 받았다'           $true $Z0.SlotRoiProvided
+Assert-Value 'Z0 빈ROI' 'ROI 화소 (288×288)'      82944 $Z0.SlotRoiPixels
+Assert-Value 'Z0 빈ROI' 'ROI 배경 휘도 = 60'      60 $Z0.SlotRoiBackgroundLum
+Assert-Value 'Z0 빈ROI' '연결 성분 0'             0 $Z0.SlotComponentCount
+Assert-Value 'Z0 빈ROI' '띠 0'                    0 $Z0.SlotBandCount
+Assert-Value 'Z0 빈ROI' '표시 = "0" (숫자다)'     '0' (Format-CaptureSlotBands $Z0)
+Assert-Value 'Z0 빈ROI' 'G-SLOT 판정 = 통과'      'PASS' (Get-SlotV $Z0)
+
+# ── Z1 가로 막대 하나 → 띠 **1** ─────────────────────────────────────────────
+#    ROI 로컬 x 72..215 (144px) · y 135..152 (18px) → 절대 (88,151,144,18)
+#    ② 장축 144 / 단축 18 = **8.0** ≥ 4                     ✓
+#    ③ 144 ≥ 100.8 (= ROI 폭의 35%)                          ✓
+#    ④ 세로 경계 96 (72<96, 215≥96) · 192 (72<192, 215≥192) → 2
+#       가로 경계 96 (135<96? 아니다) · 192 (152≥192? 아니다) → 0   합 **2** ≥ 2 ✓
+#    → 네 조건 전부 만족 = 띠 1
+$pZ1 = Join-Path $work 'Z1_band.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ1, 320, 320, 60, 88, 151, 144, 18, 200)
+$Z1 = Invoke-Slot $pZ1
+
+Assert-Value 'Z1 띠1' 'ROI 배경 휘도 = 60'        60 $Z1.SlotRoiBackgroundLum
+Assert-Value 'Z1 띠1' '연결 성분 1'               1 $Z1.SlotComponentCount
+Assert-Value 'Z1 띠1' '최대 성분 면적 (144×18)'   2592 $Z1.SlotTopArea
+Assert-Value 'Z1 띠1' '경계상자 폭'               144 $Z1.SlotTopBboxW
+Assert-Value 'Z1 띠1' '경계상자 높이'             18 $Z1.SlotTopBboxH
+Assert-Value 'Z1 띠1' '장축'                      144 $Z1.SlotTopMajor
+Assert-Value 'Z1 띠1' '단축'                      18 $Z1.SlotTopMinor
+Assert-Value 'Z1 띠1' '② 종횡비 = 144/18'         8.0 $Z1.SlotTopRatio 1e-9
+Assert-Value 'Z1 띠1' '① 평균 |ΔL| = 200−60'      140.0 $Z1.SlotTopMeanDelta 1e-9
+Assert-Value 'Z1 띠1' '④ 횡단 수'                 2 $Z1.SlotTopCrossings
+Assert-Value 'Z1 띠1' '② 통과'                    $true $Z1.SlotTopC2
+Assert-Value 'Z1 띠1' '③ 통과 (144 ≥ 100.8)'      $true $Z1.SlotTopC3
+Assert-Value 'Z1 띠1' '④ 통과'                    $true $Z1.SlotTopC4
+Assert-Value 'Z1 띠1' '띠 = 1'                    1 $Z1.SlotBandCount
+Assert-Value 'Z1 띠1' 'G-SLOT 판정 = 미달'        'FAIL' (Get-SlotV $Z1)
+
+# ── Z2a 같은 막대를 ROI 폭의 20% 로 줄임 → 띠 0 (③에서 걸린다) ───────────────
+#    로컬 x 72..129 (58px = 20.1%) · y 135..141 (7px) → 절대 (88,151,58,7)
+#    ② 58/7 = 8.29 ≥ 4                                        ✓
+#    ③ 58 < 100.8                                             ✗ ← 여기서 걸린다
+#    ④ 세로 96 만 걸침 → 1 < 2                                 ✗
+#    ⚠ 가로 막대로 폭 20% 를 만들면 ③ 과 ④ 가 **동시에** 깨진다.
+#      한 칸이 ROI 폭의 33.3% 이므로 20% 짜리는 경계선을 최대 하나밖에 못 넘는다.
+#      그래서 ③ 만 깨지는 경우를 Z2b 로 따로 만든다.
+$pZ2a = Join-Path $work 'Z2a_short.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ2a, 320, 320, 60, 88, 151, 58, 7, 200)
+$Z2a = Invoke-Slot $pZ2a
+
+Assert-Value 'Z2a 20%폭' '장축'               58 $Z2a.SlotTopMajor
+Assert-Value 'Z2a 20%폭' '단축'               7 $Z2a.SlotTopMinor
+Assert-Value 'Z2a 20%폭' '② 통과 (8.29≥4)'   $true $Z2a.SlotTopC2
+Assert-Value 'Z2a 20%폭' '③ 실패 (58<100.8)' $false $Z2a.SlotTopC3
+Assert-Value 'Z2a 20%폭' '④ 횡단 1개뿐'       1 $Z2a.SlotTopCrossings
+Assert-Value 'Z2a 20%폭' '④ 실패'             $false $Z2a.SlotTopC4
+Assert-Value 'Z2a 20%폭' '띠 = 0'             0 $Z2a.SlotBandCount
+Assert-Value 'Z2a 20%폭' 'G-SLOT 판정 = 통과' 'PASS' (Get-SlotV $Z2a)
+
+# ── Z2b ③ **만** 깨지는 세로 막대 ────────────────────────────────────────────
+#    로컬 x 140..151 (12px) · y 94..192 (99px) → 절대 (156,110,12,99)
+#    ② 99/12 = 8.25 ≥ 4                                        ✓
+#    ③ 99 < 100.8                                              ✗ ← 여기서만 걸린다
+#    ④ 가로 경계 96 (94<96, 192≥96) · 192 (94<192, 192≥192) → 2 ✓
+#       세로 경계는 x 140..151 이 한 칸 안이라 0
+$pZ2b = Join-Path $work 'Z2b_short_only3.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ2b, 320, 320, 60, 156, 110, 12, 99, 200)
+$Z2b = Invoke-Slot $pZ2b
+
+Assert-Value 'Z2b ③만실패' '장축'                99 $Z2b.SlotTopMajor
+Assert-Value 'Z2b ③만실패' '단축'                12 $Z2b.SlotTopMinor
+Assert-Value 'Z2b ③만실패' '② 통과 (8.25≥4)'    $true $Z2b.SlotTopC2
+Assert-Value 'Z2b ③만실패' '③ 실패 (99<100.8)'  $false $Z2b.SlotTopC3
+Assert-Value 'Z2b ③만실패' '④ 횡단 2 (가로경계)' 2 $Z2b.SlotTopCrossings
+Assert-Value 'Z2b ③만실패' '④ 통과'              $true $Z2b.SlotTopC4
+Assert-Value 'Z2b ③만실패' '띠 = 0'              0 $Z2b.SlotBandCount
+
+# ── Z3 같은 막대를 종횡비 3 으로 뭉툭하게 → 띠 0 (②에서 걸린다) ──────────────
+#    로컬 x 72..215 (144px) · y 120..167 (48px) → 절대 (88,136,144,48)
+#    ② 144/48 = **3.0** < 4                                    ✗ ← 여기서만 걸린다
+#    ③ 144 ≥ 100.8                                             ✓
+#    ④ 세로 96·192 둘 다 걸침 → 2                               ✓
+$pZ3 = Join-Path $work 'Z3_blunt.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ3, 320, 320, 60, 88, 136, 144, 48, 200)
+$Z3 = Invoke-Slot $pZ3
+
+Assert-Value 'Z3 종횡비3' '장축'                144 $Z3.SlotTopMajor
+Assert-Value 'Z3 종횡비3' '단축'                48 $Z3.SlotTopMinor
+Assert-Value 'Z3 종횡비3' '② 종횡비 = 144/48'   3.0 $Z3.SlotTopRatio 1e-9
+Assert-Value 'Z3 종횡비3' '② 실패 (3 < 4)'      $false $Z3.SlotTopC2
+Assert-Value 'Z3 종횡비3' '③ 통과 (144≥100.8)'  $true $Z3.SlotTopC3
+Assert-Value 'Z3 종횡비3' '④ 통과 (횡단 2)'     $true $Z3.SlotTopC4
+Assert-Value 'Z3 종횡비3' '띠 = 0'              0 $Z3.SlotBandCount
+
+# ── Z4 같은 막대를 칸 하나 안에 넣음 → 띠 0 (④에서 걸린다) ───────────────────
+#    한 칸은 ROI 폭의 33.3% 이므로 **정사각 ROI 에서는** 칸 안에 넣으면서 동시에
+#    ③(장축 ≥ 폭의 35%)을 만족시키는 것이 기하학적으로 불가능하다.
+#    그래서 세로로 긴 ROI 를 쓴다 — 이미지 320×896 · ROI 절대 (16,16,288,864).
+#    로컬 칸 경계: x = 96·192 · y = **288·576** (864/3 = 288)
+#    막대 로컬 x 140..151 (12px) · y 10..279 (270px) → 절대 (156,26,12,270)
+#    ② 270/12 = 22.5 ≥ 4                                       ✓
+#    ③ 270 ≥ 100.8 (기준은 ROI **폭** 288 이다)                 ✓
+#    ④ 세로 경계 0 (x 가 한 칸 안) · 가로 경계 0 (y 279 < 288)  → **0** < 2 ✗
+$pZ4 = Join-Path $work 'Z4_one_cell.png'
+[CaptureMetrics.TestImages]::RectOnGray($pZ4, 320, 896, 60, 156, 26, 12, 270, 200)
+$Z4 = Invoke-Slot $pZ4 16 16 288 864
+
+Assert-Value 'Z4 한칸안' 'ROI 화소 (288×864)'    248832 $Z4.SlotRoiPixels
+Assert-Value 'Z4 한칸안' '장축'                  270 $Z4.SlotTopMajor
+Assert-Value 'Z4 한칸안' '단축'                  12 $Z4.SlotTopMinor
+Assert-Value 'Z4 한칸안' '② 종횡비 = 270/12'     22.5 $Z4.SlotTopRatio 1e-9
+Assert-Value 'Z4 한칸안' '② 통과'                $true $Z4.SlotTopC2
+Assert-Value 'Z4 한칸안' '③ 통과 (270≥100.8)'    $true $Z4.SlotTopC3
+Assert-Value 'Z4 한칸안' '④ 횡단 0 (칸 하나 안)' 0 $Z4.SlotTopCrossings
+Assert-Value 'Z4 한칸안' '④ 실패'                $false $Z4.SlotTopC4
+Assert-Value 'Z4 한칸안' '띠 = 0'                0 $Z4.SlotBandCount
+
+# ── Z5 ROI 미지정 → **측정 불가** (0 이 아니다) ──────────────────────────────
+#    같은 Z1 이미지다. 띠가 실제로 1개 있는 그림인데도 ROI 가 없으면 도구는
+#    숫자를 내지 않는다. **이 구분이 이번 작업의 핵심이다** —
+#    ROI 를 추정해 낸 0 은 G-4 가 무지 면을 자동 통과시킨 것과 같은 거짓 그린이다.
+$Z5 = [CaptureMetrics.Analyzer]::Analyze($pZ1, 0.5, 0.0, 0)
+
+Assert-Value 'Z5 ROI없음' 'ROI 를 받지 않았다'      $false $Z5.SlotRoiProvided
+Assert-Value 'Z5 ROI없음' 'ROI 화소 0'              0 $Z5.SlotRoiPixels
+Assert-Value 'Z5 ROI없음' '띠 필드는 0 으로 남는다' 0 $Z5.SlotBandCount
+Assert-Value 'Z5 ROI없음' '표시 = 측정불가'         '측정불가' (Format-CaptureSlotBands $Z5)
+Assert-Value 'Z5 ROI없음' '색 표시 = 측정불가'      '측정불가' (Format-CaptureSlotColor $Z5)
+Assert-Value 'Z5 ROI없음' 'G-SLOT 판정 = 측정불가'  'UNMEASURABLE' (Get-SlotV $Z5)
+Assert-Value 'Z5 ROI없음' '한글 표기'               '측정불가' (Get-CaptureSlotVerdictLabel (Get-SlotV $Z5))
+# 그리고 그것은 **통과가 아니다** — Z0(진짜 0)과 판정이 갈려야 한다.
+Assert-Value 'Z5 ROI없음' '측정불가 ≠ 통과'         $true ((Get-SlotV $Z5) -ne (Get-SlotV $Z0))
+
+# ── ROI 밖은 세지 않는다 (천장등 배제 장치) ──────────────────────────────────
+#    Z1 의 띠를 그대로 두고 ROI 만 막대가 없는 쪽으로 옮기면 띠는 0 이어야 한다.
+#    ROI 절대 (16,16,288,100) 은 y 16..115 이고 막대는 y 151..168 이라 겹치지 않는다.
+$Z1out = Invoke-Slot $pZ1 16 16 288 100
+Assert-Value 'ROI 밖' 'ROI 밖의 띠는 세지 않는다' 0 $Z1out.SlotBandCount
+Assert-Value 'ROI 밖' '연결 성분도 0'             0 $Z1out.SlotComponentCount
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G-SLOT-B 색 조건 — 네 절의 경계를 하나씩 고정한다
+#   R−B ≥ 60 · G−B ≥ 30 · max−min ≥ 55 · R ≥ 120
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── ZB1 금색 (212,175,55) 이 ROI 의 정확히 25% ───────────────────────────────
+#    R−B=157 ≥60 ✓ · G−B=120 ≥30 ✓ · max−min=212−55=157 ≥55 ✓ · R=212 ≥120 ✓
+#    배경 회색 60 은 R−B=0 이라 걸리지 않는다.
+#    144×144 = 20,736 / 82,944 = **정확히 25.000%**
+$pZB1 = Join-Path $work 'ZB1_gold25.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB1, 320, 320, 60, 16, 16, 144, 144, 212, 175, 55)
+$ZB1 = Invoke-Slot $pZB1
+
+Assert-Value 'ZB1 금색25%' '색 화소 수'          20736 $ZB1.SlotColorPixels
+Assert-Value 'ZB1 금색25%' 'ROI 안 비율'         25.0 $ZB1.SlotColorPercent 1e-9
+Assert-Value 'ZB1 금색25%' 'G-SLOT 판정 = 미달'  'FAIL' (Get-SlotV $ZB1)
+
+# ── ZB2 어두운 따뜻한 색 (100,60,20) — `R ≥ 120` 이 실제로 거르는 것 ─────────
+#    R−B=80 ✓ · G−B=40 ✓ · max−min=80 ✓ · R=100 **< 120** ✗ → 0%
+#    14차 식(R−B·G−B 두 절)만으로는 이 화소가 걸렸다. 실제로 그것을 빼는 절은
+#    채도가 아니라 **밝기 하한**이다.
+$pZB2 = Join-Path $work 'ZB2_dark_warm.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB2, 320, 320, 60, 16, 16, 288, 288, 100, 60, 20)
+$ZB2 = Invoke-Slot $pZB2
+
+Assert-Value 'ZB2 어두운따뜻' 'R=100 < 120 → 0%' 0.0 $ZB2.SlotColorPercent 1e-9
+Assert-Value 'ZB2 어두운따뜻' 'G-SLOT 판정 = 통과' 'PASS' (Get-SlotV $ZB2)
+
+# ── ZB3 네 절의 하한을 정확히 만족 (120,90,60) → ROI 전체 100% ───────────────
+#    R−B=60 = 60 ✓ · G−B=30 = 30 ✓ · max−min=60 ≥55 ✓ · R=120 = 120 ✓
+$pZB3 = Join-Path $work 'ZB3_edge_pass.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB3, 320, 320, 60, 16, 16, 288, 288, 120, 90, 60)
+$ZB3 = Invoke-Slot $pZB3
+Assert-Value 'ZB3 경계통과' 'ROI 전체가 색 화소' 100.0 $ZB3.SlotColorPercent 1e-9
+
+# ── ZB4 R 하한 바로 아래 (119,89,59) → 0% ────────────────────────────────────
+#    R−B=60 ✓ · G−B=30 ✓ · max−min=60 ✓ · R=119 ✗
+$pZB4 = Join-Path $work 'ZB4_edge_R.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB4, 320, 320, 60, 16, 16, 288, 288, 119, 89, 59)
+$ZB4 = Invoke-Slot $pZB4
+Assert-Value 'ZB4 R하한' 'R=119 → 0%' 0.0 $ZB4.SlotColorPercent 1e-9
+
+# ── ZB5 R−B 하한 바로 아래 (120,89,61) → 0% ──────────────────────────────────
+#    R−B=59 ✗ (나머지 셋은 만족한다)
+$pZB5 = Join-Path $work 'ZB5_edge_RB.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB5, 320, 320, 60, 16, 16, 288, 288, 120, 89, 61)
+$ZB5 = Invoke-Slot $pZB5
+Assert-Value 'ZB5 R−B하한' 'R−B=59 → 0%' 0.0 $ZB5.SlotColorPercent 1e-9
+
+# ── ZB6 G−B 하한 바로 아래 (120,89,60) → 0% ──────────────────────────────────
+#    R−B=60 ✓ · G−B=29 ✗
+$pZB6 = Join-Path $work 'ZB6_edge_GB.png'
+[CaptureMetrics.TestImages]::ColorRectOnGray($pZB6, 320, 320, 60, 16, 16, 288, 288, 120, 89, 60)
+$ZB6 = Invoke-Slot $pZB6
+Assert-Value 'ZB6 G−B하한' 'G−B=29 → 0%' 0.0 $ZB6.SlotColorPercent 1e-9
+
+# ── 채도 절(max−min ≥ 55)은 **아무것도 걸러내지 못한다** ─────────────────────
+#    max ≥ R 이고 min ≤ B 이므로 max−min ≥ R−B 다. 따라서 `R−B ≥ 60` 을 통과한
+#    화소는 **반드시** max−min ≥ 60 > 55 이다. 즉 반증 케이스를 만들 수 없다 —
+#    「채도 조건이 정당한 광원을 살렸다」는 근거는 이 식에는 없고,
+#    실제로 어두운 따뜻한 색을 빼는 것은 `R ≥ 120` 이다 (ZB2 가 그것을 보인다).
+#    이 부등식이 유지되는 한 채도 절은 무효라는 사실을 검사로 고정한다.
+Assert-Value 'ZB 함의' '채도 하한 < R−B 하한 ⇒ 채도절 무효' $true `
+    ($script:CM_Classify.SlotB_SaturationMin -lt $script:CM_Classify.SlotB_RminusB)
+Assert-Value 'ZB 함의' 'ZB3 의 max−min = 60 (R−B 와 같다)' 60 (120 - 60)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROI 파싱 — 원점을 틀리면 조용히 다른 자리를 잰다
+# ══════════════════════════════════════════════════════════════════════════════
+$roiTL = ConvertTo-CaptureRoi -Text '16, 16, 288, 288' -Origin topleft
+Assert-Value 'ROI 파싱' 'x' 16 $roiTL.X
+Assert-Value 'ROI 파싱' 'y' 16 $roiTL.Y
+Assert-Value 'ROI 파싱' 'w' 288 $roiTL.W
+Assert-Value 'ROI 파싱' 'h' 288 $roiTL.H
+# 아래쪽 원점 (Unity WorldToScreenPoint) → 위쪽 원점: y = H − (y + h)
+# H=320 · y=10 · h=288  →  320 − 298 = **22**
+$roiBL = ConvertTo-CaptureRoi -Text '16,10,288,288' -Origin bottomleft -ImageHeight 320
+Assert-Value 'ROI 파싱' 'bottomleft → topleft y = 320−(10+288)' 22 $roiBL.Y
+Assert-Value 'ROI 파싱' 'bottomleft 는 x 를 바꾸지 않는다'      16 $roiBL.X
+
+function Test-RoiThrows { param([scriptblock] $B) try { & $B | Out-Null; return $false } catch { return $true } }
+Assert-Value 'ROI 파싱' '값 3개면 거부'      $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text '1,2,3' })
+Assert-Value 'ROI 파싱' '정수가 아니면 거부' $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text 'a,2,3,4' })
+Assert-Value 'ROI 파싱' '폭 0 이면 거부'     $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text '1,2,0,4' })
+Assert-Value 'ROI 파싱' '높이 음수면 거부'   $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text '1,2,3,-4' })
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 보고
 # ══════════════════════════════════════════════════════════════════════════════
 Write-Output ''
