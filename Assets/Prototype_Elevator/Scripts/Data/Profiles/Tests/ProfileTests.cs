@@ -2087,9 +2087,21 @@ namespace Ascend.Prototype.Data.Profiles.Tests
 
             if (entries != 11)
                 return $"에셋 항목이 {entries}종이다 — PRD §9.2 의 11종이어야 한다";
-            if (lines != 0 && lines != entries)
-                return $"대사가 {entries}종 중 {lines}종만 직렬화돼 있다 — 절반만 고친 상태다."
+
+            // **항목당 `Line:` 은 둘이다** — `Reaction.Line` 과 `Contrast.Line`.
+            // 처음엔 「0 또는 11」로 적었는데 실제 Reset 결과는 **22** 였다.
+            // 세는 대상을 확인하지 않고 기대값을 정한 것이고, 그 상태로 두면
+            // 처방을 실행한 순간 이 검사가 빨간불이 된다 — 고친 사람을 벌주는 검사다.
+            int expected = entries * 2;
+            if (lines != 0 && lines != expected)
+                return $"대사가 {expected}칸 중 {lines}칸만 직렬화돼 있다 — 절반만 고친 상태다."
                      + " 인스펙터에서 이 에셋의 톱니바퀴 ▸ Reset 을 눌러 전부 채울 것";
+
+            // 대조 반응도 함께 직렬화됐는지 본다. `Line` 만 차고 `Contrast` 가 비면
+            // §9.3 의 「상반된 반응」 채널이 여전히 코드 폴백이다.
+            int contrasts = CountOccurrences(text, "Contrast:");
+            if (lines == expected && contrasts != entries)
+                return $"대사는 찼는데 대조가 {entries}종 중 {contrasts}종이다 — 한쪽만 채워졌다";
             return null;
         }
 

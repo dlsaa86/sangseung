@@ -18,97 +18,174 @@ MonoBehaviour:
       Pose: 1
       Gaze: 1
       VoiceCue: npc_murmur_low
+      Line: "\uADF8\uAC78 \uC815\uB9D0 \uC2E3\uACA0\uB2E4\uACE0?"
       Duration: 1.6
       Intensity: 0.3
       Priority: 10
       Cooldown: 6
+    Contrast:
+      Pose: 4
+      Gaze: 2
+      VoiceCue: npc_murmur_doubt
+      Line: "\uB204\uAC00 \uACB0\uC815\uD588\uC9C0?"
+      Intensity: 0.35
   - Event: 2
     Reaction:
       Pose: 1
       Gaze: 1
       VoiceCue: npc_relief_short
+      Line: "\uD558\uB098 \uAC77\uD614\uB2E4."
       Duration: 0.9
       Intensity: 0.22
       Priority: 5
       Cooldown: 4
+    Contrast:
+      Pose: 4
+      Gaze: 1
+      VoiceCue: npc_tsk
+      Line: "\uACA8\uC6B0 \uD558\uB098\uC57C."
+      Intensity: 0.2
   - Event: 3
     Reaction:
       Pose: 6
       Gaze: 1
       VoiceCue: npc_awe
+      Line: "\uBA48\uCD94\uC9C8 \uC54A\uC544!"
       Duration: 2.2
       Intensity: 0.7
       Priority: 40
       Cooldown: 8
+    Contrast:
+      Pose: 5
+      Gaze: 5
+      VoiceCue: npc_gasp
+      Line: "\uC774\uAC74 \uB108\uBB34 \uB9CE\uC544."
+      Intensity: 0.75
   - Event: 4
     Reaction:
       Pose: 6
       Gaze: 1
       VoiceCue: npc_relief_long
+      Line: "\uC774\uC81C \uB0B4\uB824\uB3C4 \uB418\uB294 \uAC70\uC9C0?"
       Duration: 1.8
       Intensity: 0.55
       Priority: 35
       Cooldown: 8
+    Contrast:
+      Pose: 4
+      Gaze: 4
+      VoiceCue: npc_breath_hold
+      Line: "\uBB38\uC740 \uC544\uC9C1 \uC548 \uC5F4\uB838\uC5B4."
+      Intensity: 0.5
   - Event: 5
     Reaction:
       Pose: 4
       Gaze: 1
       VoiceCue: npc_gasp
+      Line: "\uC5EC\uAE30\uC11C \uADF8\uB9CC\uD558\uC790."
       Duration: 1.8
       Intensity: 0.65
       Priority: 45
       Cooldown: 8
+    Contrast:
+      Pose: 1
+      Gaze: 1
+      VoiceCue: npc_murmur_rise
+      Line: "\uC870\uAE08\uB9CC \uB354."
+      Intensity: 0.6
   - Event: 6
     Reaction:
       Pose: 5
       Gaze: 1
       VoiceCue: npc_awe_deep
+      Line: "\uC774\uAC74 \uC0AC\uB78C\uC774 \uB9CC\uC9C8 \uAC8C \uC544\uB2C8\uC57C."
       Duration: 2.4
       Intensity: 0.85
       Priority: 55
       Cooldown: 10
+    Contrast:
+      Pose: 6
+      Gaze: 1
+      VoiceCue: npc_awe
+      Line: "\uC774\uAC8C \uC6B0\uB9AC\uAC00 \uC6D0\uD55C \uAC70\uC796\uC544."
+      Intensity: 0.85
   - Event: 7
     Reaction:
       Pose: 4
       Gaze: 3
       VoiceCue: npc_murmur_rise
+      Line: "\uB36E\uAC1C\uAC00 \uC5F4\uB838\uC5B4."
       Duration: 2
       Intensity: 0.5
       Priority: 50
       Cooldown: 8
+    Contrast:
+      Pose: 3
+      Gaze: 4
+      VoiceCue: npc_whimper
+      Line: "\uC9C0\uAE08 \uB0B4\uB9AC\uAC8C \uD574 \uC918."
+      Intensity: 0.55
   - Event: 8
     Reaction:
       Pose: 5
       Gaze: 3
       VoiceCue: npc_breath_hold
+      Line: "\uC190 \uB5BC."
       Duration: 2.6
       Intensity: 0.8
       Priority: 70
       Cooldown: 6
+    Contrast:
+      Pose: 1
+      Gaze: 3
+      VoiceCue: npc_murmur_urge
+      Line: "\uB2F9\uACA8."
+      Intensity: 0.45
   - Event: 9
     Reaction:
       Pose: 3
       Gaze: 3
       VoiceCue: npc_yelp
+      Line: "\uB2F9\uACBC\uC5B4, \uB2F9\uACBC\uB2E4\uACE0!"
       Duration: 2.2
       Intensity: 0.9
       Priority: 75
       Cooldown: 7
+    Contrast:
+      Pose: 6
+      Gaze: 1
+      VoiceCue: npc_cheer_wild
+      Line: "\uD55C \uBC88 \uB354!"
+      Intensity: 0.9
   - Event: 10
     Reaction:
       Pose: 3
       Gaze: 5
       VoiceCue: npc_scream_short
+      Line: "\uCC9C\uC7A5\uC774 \uB0B4\uB824\uC628\uB2E4!"
       Duration: 3
       Intensity: 1
       Priority: 95
       Cooldown: 5
+    Contrast:
+      Pose: 5
+      Gaze: 4
+      VoiceCue: npc_scream_long
+      Line: "\uBB38, \uBB38\uC744 \uC5F4\uC5B4!"
+      Intensity: 1
   - Event: 11
     Reaction:
       Pose: 0
       Gaze: 4
       VoiceCue: npc_sigh
+      Line: "\uB05D\uB09C \uAC74\uAC00."
       Duration: 2.4
       Intensity: 0.45
       Priority: 60
       Cooldown: 6
+    Contrast:
+      Pose: 2
+      Gaze: 5
+      VoiceCue: npc_flinch_short
+      Line: "\uC544\uC9C1 \uC548 \uB05D\uB0AC\uC5B4."
+      Intensity: 0.5
