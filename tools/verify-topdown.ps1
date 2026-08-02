@@ -52,7 +52,17 @@
 param(
     [string] $Root,
     [switch] $Stats,
-    [switch] $Json
+    [switch] $Json,
+    # 배치 모드 — 「이 배치가 주장한 것을 실제로 했는가」만 막는다 (2026-08-02 사용자 승인).
+    #
+    # 왜 필요한가: Stop 훅이 매 턴 「Pass 4 전부 VERIFIED + 시각 ACCEPT」를 검사했다.
+    # 그건 프로토타입 전체 완주를 재는 자인데, 한 배치는 한 축만 바꾼다. 그래서 진짜
+    # 진전이 있는 턴에도 매번 「미완료」가 나왔고 그 판정을 해명하는 데 턴이 소모됐다.
+    # 규칙이 품질을 만들었고, 게이트의 발동 시점이 낭비를 만들었다.
+    #
+    # **요구를 지우지 않는다.** 미루는 것은 $BatchDeferrable 목록뿐이고 전부
+    # 「지금은 막지 않는다」 절에 ID 와 함께 출력된다. 최종 판정은 여전히 무인자 실행이다.
+    [switch] $Batch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,8 +117,25 @@ $Failures = New-Object System.Collections.ArrayList
 $Notes    = New-Object System.Collections.ArrayList
 $Deferred = New-Object System.Collections.ArrayList
 
+# 배치 모드에서만 「지금은 막지 않는다」로 내려가는 검사들.
+# 공통점은 하나다 — **한 배치가 혼자 충족시킬 수 없는 것**이다.
+#   C2   Pass 4 전부 VERIFIED : 승격은 독립 감사의 일이고 한 배치의 산출물이 아니다
+#   C10  시각 판정 ACCEPT     : 평가자가 별도 라운드로 낸다
+#   C10b Pass 4 지정 항목     : 위 둘의 파생
+# 나머지는 배치 모드에서도 그대로 막는다 — 컴파일·자체검증 신선도·트리 청결·분류 모순·
+# 진행 문서·PlayMode 결과. 그것들은 **이 배치가 책임질 수 있는 것**이다.
+$BatchDeferrable = @('C2 ', 'C10 ', 'C10b')
+
 function Add-Failure {
     param([string] $Check, [string] $Message, [string[]] $Detail)
+    if ($Batch) {
+        foreach ($p in $BatchDeferrable) {
+            if ($Check.StartsWith($p)) {
+                Add-Deferred "[$Check] $Message — 배치 모드라 지금은 막지 않는다 (최종 판정은 무인자 실행이 한다)"
+                return
+            }
+        }
+    }
     $null = $Failures.Add([pscustomobject]@{
         Check   = $Check
         Message = $Message
