@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45c6749c39bcaac459845a224ddd45e0, type: 3}
+  m_Name: RiskThresholdProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.RiskThresholdProfile
+  _absorberWeight: 1
+  _proliferatorWeight: 1.2
+  _overharvestWeight: 3.2
+  _overloadScore: 3
+  _shortfallScore: 4
+  _strainEnter: 3
+  _strainExit: 2
+  _criticalEnter: 7
+  _criticalExit: 5.5

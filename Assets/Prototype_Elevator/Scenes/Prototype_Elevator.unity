@@ -9871,10 +9871,10 @@ MonoBehaviour:
   _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
   _anteRatio: 0.12
   _anteEscalation: 0.35
-  _weightProfile: {fileID: 0}
-  _spinBalanceProfile: {fileID: 0}
-  _floorCurriculum: {fileID: 0}
-  _contractProfile: {fileID: 0}
+  _weightProfile: {fileID: 11400000, guid: c49681100d395d64db59e7cf7370eb33, type: 2}
+  _spinBalanceProfile: {fileID: 11400000, guid: ff97ba84c1849eb43987f5d4bc027d2d, type: 2}
+  _floorCurriculum: {fileID: 11400000, guid: f9b525d242d9b194abf91843cd059f40, type: 2}
+  _contractProfile: {fileID: 11400000, guid: 2a7c4166205095949a4c4ef693b26c7c, type: 2}
 --- !u!4 &998528528
 Transform:
   m_ObjectHideFlags: 0
@@ -9955,7 +9955,7 @@ MonoBehaviour:
   _purifyPulse: 0.55
   _emptyHold: 0.3
   _refillHold: 0.4
-  _presentation: {fileID: 0}
+  _presentation: {fileID: 11400000, guid: d83511426388ec241b2cfc1275a0fb4b, type: 2}
   _chainSpeedup: 0.86
   _minTempoScale: 0.35
 --- !u!114 &998528532
@@ -9974,7 +9974,7 @@ MonoBehaviour:
   _intensity: 1
   _feedbackProfile: {fileID: 11400000, guid: 59fe4646137260e40b5e518a582a068d, type: 2}
   _accessibility: {fileID: 11400000, guid: 2a8ae36728c81d444b724821347a3221, type: 2}
-  _thresholdProfile: {fileID: 0}
+  _thresholdProfile: {fileID: 11400000, guid: a8d744c41cdb4554f953562c87a3ad2a, type: 2}
   _cabinLight: {fileID: 684782632}
   _driveAmbient: 1
   _ambientBlend: 0.55

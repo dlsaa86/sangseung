@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f5be777bccb3c554e9846154675ffe7e, type: 3}
+  m_Name: ContractProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.ContractProfile
+  _absorberAppearance: 1.6
+  _absorberPurifyReward: 1.8
+  _absorberPatternBonus: 0.5
+  _absorberResidualPenalty: 1.8
+  _proliferatorAppearance: 1.5
+  _proliferatorPurifyReward: 1.5
+  _proliferatorPatternBonus: 1
+  _proliferatorResidualPenalty: 2

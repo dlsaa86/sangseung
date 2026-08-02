@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c1964f1a1e9cec7478ca459ee327ea33, type: 3}
+  m_Name: SpinBalanceProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.SpinBalanceProfile
+  _weightNormalSoul: 5
+  _weightAbsorber: 2.5
+  _weightProliferator: 2.5
+  _lineMultiplier: 2
+  _clusterMultiplier: 3
+  _fullBoardMultiplier: 10
+  _minimumCountToPurify: 3
+  _cascadeMultiplierStep: 0.5
+  _absorberResidualPowerLoss: 8
+  _proliferatorResidualWeightAdd: 0.6
