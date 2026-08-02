@@ -384,7 +384,14 @@ namespace Ascend.Prototype.EditorTools
         // ── 결정론적 노이즈 (전부 정수) ───────────────────────────────────────
 
         /// <summary>lowbias32 정수 해시. 부동소수가 없으므로 런타임·JIT 과 무관하게 같다.</summary>
-        private static uint Mix(uint v)
+        /// <remarks>
+        /// `private` → `internal` 로만 넓혔다(2026-08-02, 표면 텍스처 세트).
+        /// <see cref="AscendSurfaceSynth"/> 가 같은 난수·같은 타일링 규약을 쓰게 하려는 것이고,
+        /// **식은 한 글자도 바뀌지 않았다** — 기존 넷의 PNG 바이트는 그대로다.
+        /// 복사해 두 벌을 굴리면 한쪽만 고쳐지는 날이 오고, 그때 두 세트의 이음매가
+        /// 서로 다른 규칙으로 어긋난다.
+        /// </remarks>
+        internal static uint Mix(uint v)
         {
             unchecked
             {
@@ -398,7 +405,7 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>격자점 난수. 0~65535.</summary>
-        private static int Lattice(int x, int y, uint seed)
+        internal static int Lattice(int x, int y, uint seed)
         {
             unchecked
             {
@@ -407,13 +414,13 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>Q16 smoothstep — t*t*(3-2t). 입력·출력 모두 0~65536.</summary>
-        private static long Smooth(int t)
+        internal static long Smooth(int t)
         {
             long q = t;
             return (q * q * (196608L - 2L * q)) >> 32;
         }
 
-        private static int Wrap(int v, int period)
+        internal static int Wrap(int v, int period)
         {
             v %= period;
             return v < 0 ? v + period : v;
@@ -424,7 +431,7 @@ namespace Ascend.Prototype.EditorTools
         /// **격자가 텍스처 경계에서 이어진다**(타일링). 벽에 반복해 붙일 물건이라 이음매가
         /// 보이면 그 자체로 판독을 해친다. 0~65535 를 돌려준다.
         /// </summary>
-        private static int Noise(int px, int py, int cellX, int cellY, int size, uint seed)
+        internal static int Noise(int px, int py, int cellX, int cellY, int size, uint seed)
         {
             int periodX = size / cellX;
             int periodY = size / cellY;
@@ -446,7 +453,7 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>옥타브를 8:4:2:1 정수 가중으로 합친다. 나눗셈이 정수라 값이 흔들리지 않는다.</summary>
-        private static int Fbm(int px, int py, int cellX, int cellY, int size, uint seed, int octaves)
+        internal static int Fbm(int px, int py, int cellX, int cellY, int size, uint seed, int octaves)
         {
             int sum = 0, total = 0, weight = 8;
             for (int o = 0; o < octaves; o++)
@@ -460,7 +467,7 @@ namespace Ascend.Prototype.EditorTools
             return total == 0 ? 0 : sum / total;
         }
 
-        private static int Isqrt(int v)
+        internal static int Isqrt(int v)
         {
             if (v <= 0) return 0;
             int r = 0;
@@ -517,6 +524,82 @@ namespace Ascend.Prototype.EditorTools
             return png.ToArray();
         }
 
+        /// <summary>
+        /// 팔레트 인덱스 버퍼를 **색상 타입 3(indexed) PNG** 로 굽는다.
+        /// <see cref="AscendSurfaceSynth"/> 의 표면 세트가 이 경로를 쓴다.
+        ///
+        /// 왜 기존 <see cref="Encode(Spec)"/> 를 안 고치고 하나 더 두는가: 기존 넷의 PNG 는
+        /// 이미 디스크에 있고 골든 바이트로 쓰인다. 색상 타입을 바꾸면 픽셀이 같아도
+        /// 파일이 달라져 「결정론 위반」이 거짓으로 뜬다. 그래서 **기존 경로는 손대지 않는다.**
+        ///
+        /// 왜 새 세트는 indexed 인가: 스캔라인이 픽셀당 3바이트에서 1바이트로 줄어
+        /// 256×256 한 장이 192KB → 65KB 가 된다. 무압축 deflate 를 쓰는 이 인코더에서는
+        /// 그 차이가 그대로 저장소 크기다. 그리고 **팔레트가 파일 구조 자체에 박히므로**
+        /// 「12~24색」이 검사 항목이 아니라 형식 제약이 된다.
+        /// </summary>
+        /// <param name="width">폭. 2의 거듭제곱이어야 노이즈 타일링이 성립한다.</param>
+        /// <param name="height">높이.</param>
+        /// <param name="indices">길이 width*height, 값은 <paramref name="palette"/> 첨자.</param>
+        /// <param name="palette">0xRRGGBB 배열. 최대 256개.</param>
+        /// <param name="metaText">tEXt 청크 본문. 파일이 스스로 출처를 들고 다니게 한다.</param>
+        public static byte[] EncodeIndexed(int width, int height, byte[] indices, int[] palette,
+                                           string metaText)
+        {
+            if (indices == null || palette == null) throw new ArgumentNullException("indices/palette");
+            if (palette.Length == 0 || palette.Length > 256)
+                throw new ArgumentOutOfRangeException("palette", "팔레트는 1~256색이다.");
+            if (indices.Length != width * height)
+                throw new ArgumentException("indices 길이가 width*height 와 다르다.");
+
+            // 스캔라인 = [필터 0][인덱스 × width]
+            int stride = 1 + width;
+            var raw = new byte[stride * height];
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * stride;
+                raw[row] = 0;
+                Buffer.BlockCopy(indices, y * width, raw, row + 1, width);
+            }
+
+            var png = new MemoryStream(raw.Length + 1024);
+            byte[] signature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+            png.Write(signature, 0, signature.Length);
+
+            var ihdr = new byte[13];
+            WriteBigEndian(ihdr, 0, width);
+            WriteBigEndian(ihdr, 4, height);
+            ihdr[8] = 8;   // bit depth
+            ihdr[9] = 3;   // color type: indexed
+            ihdr[10] = 0;  // compression: deflate
+            ihdr[11] = 0;  // filter method 0
+            ihdr[12] = 0;  // no interlace
+            WriteChunk(png, "IHDR", ihdr);
+
+            var plte = new byte[palette.Length * 3];
+            for (int i = 0; i < palette.Length; i++)
+            {
+                plte[i * 3] = (byte)((palette[i] >> 16) & 0xFF);
+                plte[i * 3 + 1] = (byte)((palette[i] >> 8) & 0xFF);
+                plte[i * 3 + 2] = (byte)(palette[i] & 0xFF);
+            }
+            WriteChunk(png, "PLTE", plte);
+
+            if (!string.IsNullOrEmpty(metaText))
+            {
+                byte[] keyword = Latin1(TextKeyword);
+                byte[] body = Latin1(metaText);
+                var text = new byte[keyword.Length + 1 + body.Length];
+                Buffer.BlockCopy(keyword, 0, text, 0, keyword.Length);
+                text[keyword.Length] = 0;
+                Buffer.BlockCopy(body, 0, text, keyword.Length + 1, body.Length);
+                WriteChunk(png, "tEXt", text);
+            }
+
+            WriteChunk(png, "IDAT", ZlibStored(raw));
+            WriteChunk(png, "IEND", new byte[0]);
+            return png.ToArray();
+        }
+
         private static byte[] TextChunk(Spec spec)
         {
             // 숫자 → 문자열을 **전부 불변 문화권으로** 고정한다. `Append(int)` 는 현재 문화권을
@@ -545,7 +628,7 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>ASCII 만 쓴다 — tEXt 는 Latin-1 이고, 인코더에 자유도를 주지 않는 편이 안전하다.</summary>
-        private static byte[] Latin1(string text)
+        internal static byte[] Latin1(string text)
         {
             var bytes = new byte[text.Length];
             for (int i = 0; i < text.Length; i++)
@@ -561,7 +644,7 @@ namespace Ascend.Prototype.EditorTools
         /// 바이트가 달라져 골든 해시가 헛되이 깨진다. 대신 파일이 크다 — 128×128 이 약 49KB 다.
         /// 플레이스홀더 넷의 합이 100KB 대이므로 감수한다.
         /// </summary>
-        private static byte[] ZlibStored(byte[] data)
+        internal static byte[] ZlibStored(byte[] data)
         {
             var stream = new MemoryStream(data.Length + 64);
             stream.WriteByte(0x78); // CM=8, CINFO=7
@@ -590,7 +673,7 @@ namespace Ascend.Prototype.EditorTools
             return stream.ToArray();
         }
 
-        private static void WriteChunk(MemoryStream stream, string type, byte[] data)
+        internal static void WriteChunk(MemoryStream stream, string type, byte[] data)
         {
             var header = new byte[4];
             WriteBigEndian(header, 0, data.Length);
@@ -606,7 +689,7 @@ namespace Ascend.Prototype.EditorTools
             stream.Write(tail, 0, 4);
         }
 
-        private static void WriteBigEndian(byte[] target, int offset, int value)
+        internal static void WriteBigEndian(byte[] target, int offset, int value)
         {
             target[offset] = (byte)((value >> 24) & 0xFF);
             target[offset + 1] = (byte)((value >> 16) & 0xFF);

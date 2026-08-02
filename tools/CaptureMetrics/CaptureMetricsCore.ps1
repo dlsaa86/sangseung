@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     캡처 PNG 지표 계산 코어. `tools/capture-metrics.ps1` 과 `selftest.ps1` 이 공유한다.
 
@@ -8,7 +8,8 @@
       G-1  국소 분산   — 8×8 블록 휘도 표준편차의 중앙값
       G-2  휘도 분포   — 5 / 50 / 95 퍼센타일
       G-3  발광        — 휘도 ≥ 200 화소 비율
-      G-4  평탄 구간   — 지정 주사선에서 인접 화소 휘도차 ≤ 1 인 연속 구간 수·최장
+      G-4  평탄 구간   — 지정 주사선에서 인접 화소 휘도차 ≤ δ 인 연속 구간 수·최장
+                        (δ=1 기본. δ=0 도 항상 함께 낸다 — 아래 CM_DefaultFlatDelta 주석)
       G-5  빈 평면     — 32×32 블록 중 표준편차 < 4 인 블록 비율
       금색 화소        — R−B ≥ 60 그리고 G−B ≥ 30
       마젠타           — R>200 그리고 B>200 그리고 G<80 (셰이더 오류 색 회귀 감시)
@@ -57,6 +58,14 @@ $script:CM_DefaultScanYFraction = 0.435
 $script:CM_DefaultScanXFraction = 0.10
 $script:CM_DefaultScanLength    = 200
 
+# 평탄 판정의 허용 휘도차. 기본 1 = 「인접 화소 휘도차 ≤ 1」.
+#
+# ⚠ 이 값이 지표의 의미를 바꾼다. δ=1 은 8비트 양자화된 **매끄러운 그라디언트**도
+#   하나의 긴 평탄 구간으로 본다 (인접 레벨차가 0 또는 1 뿐이기 때문이다).
+#   δ=0 은 완전히 같은 값만 평탄으로 보므로 양자화 계단 하나하나를 센다.
+#   두 값 모두 항상 계산해 나란히 보고한다 — 어느 쪽을 판정에 쓰는지가 결론을 뒤집는다.
+$script:CM_DefaultFlatDelta = 1
+
 function Initialize-CaptureMetrics {
     <#
     .SYNOPSIS
@@ -90,8 +99,12 @@ namespace CaptureMetrics
         public int    ScanY;               // G-4  실제로 잰 주사선
         public int    ScanX0;
         public int    ScanLen;
-        public int    FlatRunCount;
+        public int    FlatDeltaUsed;       // 평탄 판정에 쓴 허용 휘도차
+        public int    FlatRunCount;        // 허용차 <= FlatDeltaUsed
         public int    FlatRunLongest;
+        public int    FlatRunCountEq;      // 허용차 = 0 (완전히 같은 값만 평탄)
+        public int    FlatRunLongestEq;
+        public int    ScanSpan;            // 주사선 휘도 최대 - 최소
 
         public double EmptyPlanePercent;   // G-5  32x32 블록 중 std < 4 인 블록 비율(%)
 
@@ -120,6 +133,11 @@ namespace CaptureMetrics
         }
 
         public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen)
+        {
+            return Analyze(path, scanYFrac, scanXFrac, scanLen, FlatDelta);
+        }
+
+        public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen, int flatDelta)
         {
             ImageResult r = new ImageResult();
             r.Path = path;
@@ -226,29 +244,49 @@ namespace CaptureMetrics
             // 휘도차는 **반올림한 정수 휘도**로 잰다. 화소값은 8비트 정수이고,
             // 배정밀도 그대로 비교하면 회색 v 의 휘도가 v 에서 1e-16 만큼 벗어나
             // 「차이가 정확히 1」인 경계가 부동소수 잔차로 갈린다.
-            int runs = 0;
-            int longest = 0;
+            int[] scan = new int[len];
+            int lo = 255, hi = 0;
             if (len > 0)
             {
                 int baseIdx = scanY * w + x0;
-                int cur = 1;
-                int prev = Q(lum[baseIdx]);
-                for (int i = 1; i < len; i++)
+                for (int i = 0; i < len; i++)
                 {
                     int q = Q(lum[baseIdx + i]);
-                    int d = q - prev;
-                    if (d < 0) d = -d;
-                    if (d <= FlatDelta) { cur++; }
-                    else { runs++; if (cur > longest) longest = cur; cur = 1; }
-                    prev = q;
+                    scan[i] = q;
+                    if (q < lo) lo = q;
+                    if (q > hi) hi = q;
                 }
-                runs++;
-                if (cur > longest) longest = cur;
             }
-            r.FlatRunCount = runs;
-            r.FlatRunLongest = longest;
+            else { lo = 0; hi = 0; }
+            r.ScanSpan = hi - lo;
+
+            int c1, l1, c0, l0;
+            FlatRuns(scan, flatDelta, out c1, out l1);
+            FlatRuns(scan, 0, out c0, out l0);
+            r.FlatDeltaUsed = flatDelta;
+            r.FlatRunCount = c1;
+            r.FlatRunLongest = l1;
+            r.FlatRunCountEq = c0;
+            r.FlatRunLongestEq = l0;
 
             return r;
+        }
+
+        // 인접 화소 휘도차가 delta 이하인 최대 연속 구간들. 개수와 최장 길이를 낸다.
+        private static void FlatRuns(int[] v, int delta, out int count, out int longest)
+        {
+            count = 0; longest = 0;
+            if (v == null || v.Length == 0) return;
+            int cur = 1;
+            for (int i = 1; i < v.Length; i++)
+            {
+                int d = v[i] - v[i - 1];
+                if (d < 0) d = -d;
+                if (d <= delta) { cur++; }
+                else { count++; if (cur > longest) longest = cur; cur = 1; }
+            }
+            count++;
+            if (cur > longest) longest = cur;
         }
 
         // 완전한 블록만 센다. 우측·하단 나머지는 버린다 — 부분 블록은 표본 수가 달라
@@ -418,10 +456,11 @@ function Measure-CaptureImage {
         [Parameter(Mandatory)][string] $Path,
         [double] $ScanYFraction = $script:CM_DefaultScanYFraction,
         [double] $ScanXFraction = $script:CM_DefaultScanXFraction,
-        [int]    $ScanLength    = $script:CM_DefaultScanLength
+        [int]    $ScanLength    = $script:CM_DefaultScanLength,
+        [int]    $FlatDelta     = $script:CM_DefaultFlatDelta
     )
     Initialize-CaptureMetrics
-    return [CaptureMetrics.Analyzer]::Analyze($Path, $ScanYFraction, $ScanXFraction, $ScanLength)
+    return [CaptureMetrics.Analyzer]::Analyze($Path, $ScanYFraction, $ScanXFraction, $ScanLength, $FlatDelta)
 }
 
 function Get-CaptureMedian {

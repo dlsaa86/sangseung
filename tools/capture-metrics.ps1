@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     캡처 PNG 세트를 기계적으로 채점한다 — docs/GRAPHICS_TARGET.md §2 의 측정 축.
 
