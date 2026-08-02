@@ -44,6 +44,10 @@ Shader "Ascend/Stylized"
         // 그 두 번 다 「바꾼 뒤에 비교」했다. 이번엔 **바꿔도 같은 상태**에서 시작해
         // 머티리얼 하나씩 텍스처를 물리며 매번 판정한다.
         _BaseMap ("표면 텍스처 (흰색이면 무지 — 기존과 동일)", 2D) = "white" {}
+
+        // 진단 전용. 0 = 정상. 1 = 직접광만. 2 = 앰비언트 항만.
+        // 기본이 0 이라 켜지 않는 한 그림에 영향이 없다.
+        _DebugOutput ("진단 출력 (0 정상 · 1 직접광 · 2 앰비언트)", Range(0, 2)) = 0
     }
 
     SubShader
@@ -88,6 +92,7 @@ Shader "Ascend/Stylized"
                 float  _RimStrength;
                 float4 _EmissionColor;
                 float4 _BaseMap_ST;
+                float  _DebugOutput;
             CBUFFER_END
 
             TEXTURE2D(_BaseMap);
@@ -212,6 +217,19 @@ Shader "Ascend/Stylized"
                 float3 ambientTerm = albedo * sh * _ShadowLift
                                    + _ShadowTint.rgb * 0.35 * saturate(Lum(sh) * 2.0);
                 float3 color = ambientTerm + lit;
+
+                // **진단용 스위치. 기본 0 이면 아무것도 안 바뀐다.**
+                //
+                // 좌벽이 위험 3단계에서 109.45 로 똑같이 나오는데, 원인이 둘 중
+                // 어느 쪽인지 추론으로는 안 갈렸다 — ①추가 광원이 프래그먼트에
+                // 실제로 안 들어온다 ②들어오는데 앰비언트 항이 덮는다.
+                // 실측한 것: `CabinLight` 는 1.6 → 0.54 로 변하고 좌벽 표면까지 1.20m,
+                // range 7.00 이라 **닿는다.** 그러니 ①의 「거리 때문」은 이미 기각됐다.
+                //
+                // 두 항을 따로 화면에 내보내면 한 번의 캡처로 갈린다.
+                // 1 = 직접광만 · 2 = 앰비언트 항만.
+                if (_DebugOutput > 0.5 && _DebugOutput < 1.5) color = lit;
+                else if (_DebugOutput >= 1.5) color = ambientTerm;
 
                 // **계단은 이미 걸려 있다 — 빛마다, 감쇠에.** 여기서 최종 휘도에 또 걸지 않는다.
                 //
