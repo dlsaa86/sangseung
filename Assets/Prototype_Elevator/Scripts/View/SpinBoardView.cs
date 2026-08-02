@@ -169,6 +169,18 @@ namespace Ascend.Prototype.View
         /// 하이라이트를 크기와 발광 **양쪽**에 건다. 발광만 쓰면 회색조에서 사라지고,
         /// 크기만 쓰면 밝은 장면에서 묻힌다(visual-criteria B-2.6).
         /// </summary>
+        /// <summary>
+        /// 점등 세기를 **32 단계로 끊는다.**
+        ///
+        /// 감쇠는 연속이라 매 프레임 값이 조금씩 달라지고, 그러면 「바뀌었으니 다시 칠한다」가
+        /// 매 프레임 참이 되어 `SetPropertyBlock` 27번이 계속 돈다 — 그것이 1,638 B 다.
+        /// 값을 끊으면 **대부분의 프레임에서 직전과 같은 값**이 나오고 통째로 건너뛴다.
+        ///
+        /// 32 단계는 눈에 안 보인다. 점등은 0→1 을 0.55 초에 지나가므로 한 단계가
+        /// 약 17 ms 이고, 그건 프레임 하나 남짓이다. 화면은 그대로고 쓰기만 사라진다.
+        /// </summary>
+        private static float Quantize(float amount) => Mathf.Round(amount * 32f) / 32f;
+
         /// <summary>직전에 실제로 칠한 하이라이트 값. 같은 값을 다시 쓰지 않기 위한 것이다.</summary>
         private float[] _highlightApplied;
 
@@ -197,16 +209,16 @@ namespace Ascend.Prototype.View
             {
                 bool changed = false;
                 for (int i = 0; i < _highlight.Length; i++)
-                    if (Mathf.Abs(_highlight[i] - _highlightApplied[i]) > 0.0005f) { changed = true; break; }
+                    if (Mathf.Abs(Quantize(_highlight[i]) - _highlightApplied[i]) > 0.0001f) { changed = true; break; }
                 if (!changed) return;
             }
             else _highlightApplied = new float[_highlight.Length];
 
-            for (int i = 0; i < _highlight.Length; i++) _highlightApplied[i] = _highlight[i];
+            for (int i = 0; i < _highlight.Length; i++) _highlightApplied[i] = Quantize(_highlight[i]);
 
             for (int i = 0; i < _slots.Length; i++)
             {
-                float amount = _highlight[i];
+                float amount = Quantize(_highlight[i]);
                 float scale = Mathf.Lerp(1f, _highlightScale, amount);
 
                 SymbolSlot[] slots = _slots[i];
@@ -219,7 +231,16 @@ namespace Ascend.Prototype.View
                     slot.Child.localScale = slot.BaseScale * scale;
 
                     if (slot.Renderer == null) continue;
-                    slot.Renderer.GetPropertyBlock(_block);
+                    // **`GetPropertyBlock` 을 부르지 않는다.** 그것이 할당의 실제 출처다.
+                    //
+                    // 처음엔 「매 프레임 무조건 도는 것」이 원인인 줄 알고 값이 안 바뀌면
+                    // 건너뛰게 했다. 그것만으로는 부족했다 — 유휴 국면에서는 0 B 가 됐지만
+                    // **정화 연출이 실제로 도는 동안에는 1,638 B 가 그대로**였다.
+                    // 즉 원인은 「얼마나 자주 부르는가」가 아니라 **부르는 것 자체**였다.
+                    //
+                    // 이 슬롯에 블록을 쓰는 곳은 여기뿐이고 우리가 쓰는 프로퍼티도
+                    // `_EmissionColor` 하나다. 기존 값을 읽어 올 이유가 없다 —
+                    // 읽어 오는 그 호출이 매번 새 저장소를 만든다.
                     _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
                     slot.Renderer.SetPropertyBlock(_block);
                 }

@@ -226,6 +226,25 @@ namespace Ascend.Prototype.Run.Tests
                         ? "  → **충족** (측정 구간의 모든 프레임이 0 B)"
                         : $"  → **미충족** ({valid - zero} 프레임이 0 B 가 아니다). " +
                           "빌드이므로 에디터·프로파일러 할당은 섞이지 않는다 — 이 수는 게임 코드다.");
+
+                    // **0 이 아닌 프레임이 언제 나왔는지 적는다.**
+                    // 「이벤트성 스파이크」와 「상시 누수」는 고칠 곳이 완전히 다른데
+                    // 개수만으로는 갈리지 않는다. 흩어져 있으면 상시, 뭉쳐 있으면 이벤트다.
+                    if (zero < valid)
+                    {
+                        var idx = new StringBuilder();
+                        int shown = 0, prev = -99; int runs = 0;
+                        for (int i = 0; i < gc.Length; i++)
+                        {
+                            if (gc[i] <= 0) continue;
+                            if (i != prev + 1) runs++;          // 연속 구간의 시작
+                            prev = i;
+                            if (shown < 25) { idx.Append(i).Append('(').Append(gc[i]).Append(") "); shown++; }
+                        }
+                        sb.AppendLine($"  0 이 아닌 프레임 위치(앞 {shown}개): {idx}");
+                        sb.AppendLine($"  **연속 구간 {runs}개** — 구간 수가 프레임 수보다 훨씬 적으면 " +
+                                      "이벤트성(한 사건이 여러 프레임에 걸침)이고, 비슷하면 흩어진 상시 할당이다.");
+                    }
                 }
                 else sb.AppendLine("  ProfilerRecorder 무효 — 측정 불가");
 
