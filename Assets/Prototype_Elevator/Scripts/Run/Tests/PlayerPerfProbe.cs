@@ -44,6 +44,12 @@ namespace Ascend.Prototype.Run.Tests
         private const int WarmupFrames = 720;
         private const int MeasureFrames = 600;  // 60 Hz 기준 10초
 
+        /// <summary>이만큼 연속으로 0 B 면 「안정화됐다」로 본다.</summary>
+        private const int SettleRunFrames = 60;
+
+        /// <summary>안정화를 기다리는 상한. 넘으면 「안정화되지 않는다」를 결과로 적는다.</summary>
+        private const int SettleTimeoutFrames = 3600;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
@@ -69,6 +75,29 @@ namespace Ascend.Prototype.Run.Tests
 
                 for (int i = 0; i < WarmupFrames; i++) yield return null;
 
+                // **프레임 수로 「워밍업 끝」을 정하면 실행마다 다른 답이 나온다.**
+                // 같은 빌드를 두 번 돌렸더니 하나는 1,638 B, 하나는 0 B 였다 —
+                // 차이는 코드가 아니라 그 순간 결과판이 도는 국면이었는가였다.
+                // 720 프레임이 끝난 시점이 어느 국면인지는 아무도 보장하지 않는다.
+                //
+                // 그래서 **관측으로 정한다** — 연속 60 프레임이 0 B 이면 안정화된 것으로 본다.
+                // 안정화가 관측되면 그 뒤를 재고, 끝내 안 되면 **그 사실 자체를 적는다.**
+                // 「안정화되지 않는다」도 판정이다. 못 재서 침묵하는 것보다 낫다.
+                bool settled = false;
+                int settleWaited = 0;
+                {
+                    var srec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+                    int run0 = 0;
+                    for (settleWaited = 0; settleWaited < SettleTimeoutFrames; settleWaited++)
+                    {
+                        yield return null;
+                        long v = srec.Valid ? srec.LastValue : -1;
+                        run0 = v == 0 ? run0 + 1 : 0;
+                        if (run0 >= SettleRunFrames) { settled = true; break; }
+                    }
+                    srec.Dispose();
+                }
+
                 // **버퍼를 recorder 보다 먼저 잡는다.** 뒤에 잡으면 그 할당이 첫 표본에 들어가
                 // 하네스가 자기 비용을 게임 비용으로 보고한다(같은 실수를 에디터 프로브에서 고쳤다).
                 var ms = new float[MeasureFrames];
@@ -83,7 +112,7 @@ namespace Ascend.Prototype.Run.Tests
                 }
                 recorder.Dispose();
 
-                Write(ms, gc);
+                Write(ms, gc, settled, settleWaited);
                 yield return Ablate();
                 Application.Quit(0);
             }
@@ -121,6 +150,21 @@ namespace Ascend.Prototype.Run.Tests
                     if (t.Namespace == null || !t.Namespace.StartsWith("Ascend")) continue;
                     targets.Add(mb);
                 }
+
+                // **먼저 `SpinBoardView` 안을 갈라 잰다.** 컴포넌트 단위 소거는 이미
+                // 그것을 지목했고, 안에서 어느 부분인지가 남은 질문이다.
+                long segAll = 0, segNoHi = 0, segNoUpdate = 0;
+                yield return Measure(Seg, v => segAll = v);
+                Ascend.Prototype.View.SpinBoardView.DiagnosticSkip = 1;
+                yield return Measure(Seg, v => segNoHi = v);
+                Ascend.Prototype.View.SpinBoardView.DiagnosticSkip = 2;
+                yield return Measure(Seg, v => segNoUpdate = v);
+                Ascend.Prototype.View.SpinBoardView.DiagnosticSkip = 0;
+                sb.AppendLine("[SpinBoardView 내부 분해]");
+                sb.AppendLine($"  정상                     {segAll} B/프레임");
+                sb.AppendLine($"  ApplyHighlights 만 끔    {segNoHi} B/프레임  (차이 {segAll - segNoHi})");
+                sb.AppendLine($"  Update 전체 끔           {segNoUpdate} B/프레임  (차이 {segAll - segNoUpdate})");
+                sb.AppendLine();
 
                 long baseAlloc = 0;
                 yield return Measure(Seg, v => baseAlloc = v);
@@ -164,7 +208,7 @@ namespace Ascend.Prototype.Run.Tests
                 done(buf[frames / 2]);
             }
 
-            private static void Write(float[] ms, long[] gc)
+            private static void Write(float[] ms, long[] gc, bool settled, int settleWaited)
             {
                 var sorted = (float[])ms.Clone();
                 System.Array.Sort(sorted);
@@ -203,6 +247,11 @@ namespace Ascend.Prototype.Run.Tests
                 sb.AppendLine($"해상도 {Screen.width}×{Screen.height} · vSync {QualitySettings.vSyncCount} · " +
                               $"targetFrameRate {Application.targetFrameRate}");
                 sb.AppendLine($"워밍업 {WarmupFrames} 프레임 버림 · 측정 {MeasureFrames} 프레임");
+                sb.AppendLine(settled
+                    ? $"**안정화 관측됨** — 워밍업 뒤 {settleWaited} 프레임 만에 연속 {SettleRunFrames} 프레임 0 B 도달. " +
+                      "이 뒤를 잰다."
+                    : $"**안정화되지 않았다** — {SettleTimeoutFrames} 프레임을 기다려도 연속 {SettleRunFrames} 프레임 " +
+                      "0 B 가 한 번도 안 나왔다. 아래 수치는 안정화 이전 상태를 잰 것이다.");
                 sb.AppendLine();
                 sb.AppendLine("[UP-TECH-04] 1080p 목표 90 FPS / 하드 플로어 60 FPS");
                 sb.AppendLine($"  프레임타임 중앙 {median:F2} ms ({1000f / Mathf.Max(0.01f, median):F0} FPS) / " +

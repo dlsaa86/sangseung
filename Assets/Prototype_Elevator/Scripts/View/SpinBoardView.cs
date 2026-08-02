@@ -110,9 +110,27 @@ namespace Ascend.Prototype.View
             }
         }
 
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        /// <summary>
+        /// **진단 전용 게이트.** 0 = 정상 · 1 = `ApplyHighlights` 만 건너뜀 ·
+        /// 2 = `Update` 전체 건너뜀.
+        ///
+        /// 소거 측정이 이 컴포넌트를 1,638 B 의 전부로 지목했는데, `ApplyHighlights` 를
+        /// 세 가지 방법으로 고쳐도 수치가 안 움직였다. 컴포넌트 단위로는 더 못 좁힌다.
+        /// **안을 갈라서 재야 한다** — 어느 쪽이 쓰는지 추측하지 않고.
+        /// 기본값 0 이라 켜지 않으면 아무 영향이 없다.
+        /// </summary>
+        public static int DiagnosticSkip;
+#endif
+
         private void Update()
         {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (DiagnosticSkip >= 2) return;
+            if (DiagnosticSkip < 1) ApplyHighlights();
+#else
             ApplyHighlights();
+#endif
             if (DrivenExternally) return;
 
             FloorSession floor = _run != null && _run.Session != null ? _run.Session.Current : null;
@@ -131,6 +149,7 @@ namespace Ascend.Prototype.View
 
             // 캐스케이드까지 끝난 뒤의 판을 보여준다. 비워진 칸은 "정화됐다"는 뜻이고,
             // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다.
+            _cleared = false;   // 판을 그렸으니 다음엔 다시 비울 수 있어야 한다
             ShowBoard(floor.History[spins - 1].FinalBoard);
         }
 
@@ -156,13 +175,34 @@ namespace Ascend.Prototype.View
             for (int i = 0; i < _highlight.Length; i++) _highlight[i] = 0f;
         }
 
+        /// <summary>이미 비어 있는가. 같은 일을 매 프레임 다시 하지 않기 위한 것이다.</summary>
+        private bool _cleared;
+
         public void ClearAll()
         {
+            // **이미 비었으면 아무것도 하지 않는다.**
+            //
+            // 이것이 `UP-TECH-05`(워밍업 후 매 프레임 0 B)를 혼자서 위반하고 있었다.
+            // 빌드 소거 측정이 `SpinBoardView` 를 1,638 B 전부로 지목했고,
+            // 그 안을 다시 갈라 재니 `ApplyHighlights` 의 기여는 **0** 이었다 —
+            // 세 번의 수정이 전부 엉뚱한 함수를 고치고 있었다. 남은 건 이 경로다.
+            //
+            // 왜 매 프레임 도는가: `Update` 는 층 세션이 없거나 스핀이 0 이면 여기로 온다.
+            // 그런데 이 함수가 끝에서 `_lastSpinCount = -1` 로 되돌려 **다음 프레임의
+            // 「바뀐 게 없으면 건너뛴다」 검사를 반드시 실패시킨다.** 스스로 자기를 다시
+            // 부르게 만드는 구조였다.
+            //
+            // 비용의 정체는 `SetCell` 의 `foreach (Transform child in cell)` 안에서
+            // 읽는 `child.name` 이다. Unity 의 `Object.name` 게터는 **호출마다 새 문자열을
+            // 만든다.** 9칸 × 자식 × 약 50 B 가 1,638 B 와 맞는다.
+            if (_cleared) return;
+
             ClearHighlights();
             for (int i = 0; i < _cells.Length; i++)
                 SetCell(_cells[i], SymbolKind.Empty);
             _lastSpinCount = -1;
             _lastFloor = -1;
+            _cleared = true;
         }
 
         /// <summary>
