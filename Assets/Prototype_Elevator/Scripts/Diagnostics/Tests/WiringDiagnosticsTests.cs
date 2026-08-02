@@ -385,6 +385,132 @@ namespace Ascend.Prototype.Diagnostics.Tests
             return null;
         }
 
+        // ── 종이 테이프가 기록을 쓰는가 (`UP-REC-03`) ─────────────────────────
+        //
+        // 요구는 「인게임 출력과 디버그가 **같은 데이터**를 쓴다」다. 위험은 두 표시가
+        // 각자 값을 **다시 계산**하는 것이고, 그러면 화면과 콘솔이 조용히 갈린다.
+        //
+        // 저장소에 이 요구를 검사하는 단정이 **0건**이었다. `UP-REC-04` 가 증거로 삼은
+        // 「인쇄된 줄 2」는 `_printed` 카운터인데 그 증가는 `Redraw()` **앞**에서 일어나므로
+        // 그릴 대상이 없어도 오른다 — 렌더링 요구를 카운터로 잰 것이다.
+        //
+        // `FeedRecord` 가 `private` 이라 반사로 부른다. **이 경우엔 정당하다** — 공개 API 로
+        // 부르려면 씬에 기록기를 배선하고 `Update` 를 돌려야 하는데, 그 배선이 바로 지금
+        // 비어 있는 것이라(`docs/runtime/DEAD_SCENE_WIRING.md`) 검사가 성립하지 않는다.
+        // 테스트를 위해 공개 API 를 늘리는 것보다 반사가 낫다고 판단했다.
+
+        private static string TestPrinterUsesRecordValues()
+        {
+            Ascend.Prototype.Run.FloorRecord record = FirstRecord();
+            if (record == null) return "런에서 층 기록을 하나도 못 만들었다 — 선행 조건 실패";
+
+            var go = new GameObject("PrinterProbe");
+            try
+            {
+                var printer = go.AddComponent<Ascend.Prototype.View.PaperTapePrinterView>();
+                MethodInfo feed = typeof(Ascend.Prototype.View.PaperTapePrinterView)
+                    .GetMethod("FeedRecord", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (feed == null) return "FeedRecord 를 못 찾았다 — 이름이 바뀌었나";
+                feed.Invoke(printer, new object[] { record });
+
+                string tape = PendingText(printer);
+                if (tape == null) return "_pending 을 못 읽었다";
+                if (tape.Length == 0) return "기록을 넣었는데 줄이 하나도 안 쌓였다";
+
+                // **기록의 바로 그 값**이 나와야 한다. 재계산하면 어긋난다.
+                string floor = record.Floor.ToString("D2");
+                if (!tape.Contains(floor + "층")) return $"층 번호 {floor} 가 테이프에 없다: {tape}";
+
+                string required = record.RequiredPower.ToString("F0");
+                string final = record.FinalPower.ToString("F0");
+                if (!tape.Contains(required)) return $"요구 전력 {required} 이 없다 — 재계산했나: {tape}";
+                if (!tape.Contains(final)) return $"최종 전력 {final} 이 없다: {tape}";
+
+                string weight = record.CarriedWeight.ToString("F0");
+                string capacity = record.WeightCapacity.ToString("F0");
+                if (!tape.Contains(weight + "/" + capacity))
+                    return $"무게 {weight}/{capacity} 가 없다 — 기록이 아니라 다른 출처를 봤나: {tape}";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// **카운터는 그렸다는 증거가 아니다.** `_printed` 는 `Redraw()` 앞에서 오르므로
+        /// 그릴 대상(`_tapeText`)이 없어도 증가한다 — 씬이 지금 정확히 그 상태다.
+        /// 이 검사는 그 사실을 고정한다: 다음 사람이 카운터를 다시 증거로 삼지 않도록.
+        /// </summary>
+        private static string TestPrinterCounterIsNotProofOfDrawing()
+        {
+            Ascend.Prototype.Run.FloorRecord record = FirstRecord();
+            if (record == null) return "런에서 층 기록을 하나도 못 만들었다 — 선행 조건 실패";
+
+            var go = new GameObject("PrinterProbe2");
+            try
+            {
+                var printer = go.AddComponent<Ascend.Prototype.View.PaperTapePrinterView>();
+                MethodInfo feed = typeof(Ascend.Prototype.View.PaperTapePrinterView)
+                    .GetMethod("FeedRecord", BindingFlags.Instance | BindingFlags.NonPublic);
+                MethodInfo redraw = typeof(Ascend.Prototype.View.PaperTapePrinterView)
+                    .GetMethod("Redraw", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (feed == null || redraw == null) return "FeedRecord/Redraw 를 못 찾았다";
+
+                feed.Invoke(printer, new object[] { record });
+                if (printer.PendingLines == 0) return "줄이 안 쌓였다";
+
+                // `_tapeText` 가 없는 채로 그려도 **터지지 않고 조용히 넘어간다.**
+                // 그게 씬의 현재 상태이고, 그래서 카운터만으로는 아무것도 증명되지 않는다.
+                redraw.Invoke(printer, null);
+                if (printer.PrintedLines.Count != 0)
+                    return "그릴 대상이 없는데 인쇄된 줄이 생겼다 — 검사가 상황을 재현하지 못했다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>10층 런을 돌려 첫 층 기록을 만든다. `RunSummaryBuilderTests` 와 같은 방식이다.</summary>
+        private static Ascend.Prototype.Run.FloorRecord FirstRecord()
+        {
+            var run = new Ascend.Prototype.Run.RunSession(1337, 0f, 0f);
+            for (int guard = 0; guard < 40; guard++)
+            {
+                Ascend.Prototype.Run.FloorSession floor = run.Current;
+                if (floor == null) return null;
+                if (floor.Phase == Ascend.Prototype.Run.FloorPhase.Boarding) run.FinishBoarding();
+                else if (floor.Phase == Ascend.Prototype.Run.FloorPhase.ContractSelection) run.SelectContract(0);
+                else if (floor.Phase == Ascend.Prototype.Run.FloorPhase.Spinning && floor.SpinsRemaining > 0) run.Spin();
+                else break;
+            }
+
+            Ascend.Prototype.Run.FloorSession current = run.Current;
+            if (current == null) return null;
+            Ascend.Prototype.Run.FloorResult result =
+                current.CanBank ? run.Bank() : current.SpinsRemaining == 0 ? run.ForceResolve() : null;
+            if (result == null) return null;
+
+            return Ascend.Prototype.Run.FloorRecord.Capture(
+                run.Seed, current, result,
+                result.Succeeded ? Ascend.Prototype.Risk.RiskLevel.Strain : Ascend.Prototype.Risk.RiskLevel.Collapse,
+                result.Succeeded ? "잔류 저항" : "층 실패", run.LastJettison);
+        }
+
+        /// <summary>큐에 쌓인 줄을 하나로 잇는다. `_pending` 은 private 이라 반사로 읽는다.</summary>
+        private static string PendingText(Ascend.Prototype.View.PaperTapePrinterView printer)
+        {
+            FieldInfo f = typeof(Ascend.Prototype.View.PaperTapePrinterView)
+                .GetField("_pending", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (f == null) return null;
+            var queue = f.GetValue(printer) as System.Collections.Generic.Queue<string>;
+            if (queue == null) return null;
+            return string.Join("\n", queue.ToArray());
+        }
+
         /// <summary>중괄호 균형으로 메서드 본문을 잘라낸다. 못 찾으면 null.</summary>
         private static string BodyOf(string source, string signature)
         {
