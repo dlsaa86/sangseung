@@ -66,6 +66,14 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("연쇄 압축이 하한 아래로 내려가지 않는다", TestPresentationTempoFloor, ref passed, ref failed, report);
             Run("Reset 직후 스냅샷이 기본 스냅샷과 같다", TestResetMatchesDefaults, ref passed, ref failed, report);
 
+            // ── 과적 3종 (`UP-TECH-09` ⑤) ────────────────────────────────────
+            Run("과적 프리셋이 FloorSession 상수와 같다", TestWeightPresetMatchesFloorSession, ref passed, ref failed, report);
+            Run("과적 수치를 바꾸면 허용 중량이 따라온다", TestWeightCapacityFollowsProfile, ref passed, ref failed, report);
+            Run("과적 수치를 바꾸면 요구 전력이 따라온다", TestRequiredPowerFollowsProfile, ref passed, ref failed, report);
+            Run("과적 배수가 과적일 때만 걸린다", TestOverloadMultiplierAppliesOnlyWhenOver, ref passed, ref failed, report);
+            Run("과적 폴백이 「코드 프리셋」으로 찍힌다", TestWeightFallbackIsNamed, ref passed, ref failed, report);
+            Run("과적 자기모순이 검출된다", TestWeightValidate, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -1427,6 +1435,135 @@ namespace Ascend.Prototype.Data.Profiles.Tests
                 UnityEngine.Object.DestroyImmediate(summary);
                 UnityEngine.Object.DestroyImmediate(presentation);
             }
+        }
+
+        // ── 과적 3종 (`UP-TECH-09` ⑤) ────────────────────────────────────────
+        //
+        // 이 여섯 건이 무엇을 막는가: 이 항목의 실패 양상은 「값을 데이터로 옮겼는데
+        // 게임이 옛 상수를 계속 읽는다」이다. 값 비교로는 안 잡힌다 — 프로파일의
+        // 기본값이 상수와 같은 수이기 때문이다(달라야 한다면 에셋을 만드는 순간
+        // 밸런스가 조용히 바뀐다). 그래서 **상수와 다른 수**를 넣고 런타임이
+        // 따라오는지 본다. 누군가 `_weight` 를 지우고 상수로 되돌리면 세 건이 깨진다.
+
+        /// <summary>상수와 프리셋이 갈라지면 에셋 유무로 다른 게임이 된다.</summary>
+        private static string TestWeightPresetMatchesFloorSession()
+        {
+            if (!Near(WeightProfile.DefaultAllowedWeight, Ascend.Prototype.Run.FloorSession.AllowedWeight))
+                return $"허용 중량 {WeightProfile.DefaultAllowedWeight} vs FloorSession {Ascend.Prototype.Run.FloorSession.AllowedWeight}";
+            if (!Near(WeightProfile.DefaultWeightPowerFactor, Ascend.Prototype.Run.FloorSession.WeightPowerFactor))
+                return $"무게당 요구 전력 {WeightProfile.DefaultWeightPowerFactor} vs FloorSession {Ascend.Prototype.Run.FloorSession.WeightPowerFactor}";
+            if (!Near(WeightProfile.DefaultOverloadRequiredPowerMultiplier,
+                      Ascend.Prototype.Run.FloorSession.OverloadRequiredPowerMultiplier))
+                return $"과적 배수 {WeightProfile.DefaultOverloadRequiredPowerMultiplier} vs FloorSession {Ascend.Prototype.Run.FloorSession.OverloadRequiredPowerMultiplier}";
+            return null;
+        }
+
+        /// <summary>코드 프리셋과 **다른** 수치 3종. 셋 다 프리셋과 달라야 의미가 있다.</summary>
+        private static WeightSnapshot ProbeWeights()
+        {
+            return new WeightSnapshot(37f, 5f, 3f, "테스트 프로브");
+        }
+
+        private static Ascend.Prototype.Run.RunSession ProbeRun(float startingWeight)
+        {
+            return new Ascend.Prototype.Run.RunSession(
+                1337, startingWeight, 0f, OverharvestProfile.DefaultSnapshot, ProbeWeights(), null);
+        }
+
+        private static string TestWeightCapacityFollowsProfile()
+        {
+            var run = ProbeRun(0f);
+            if (!Near(run.WeightCapacity, 37f))
+                return $"허용 중량이 {run.WeightCapacity} — 프로파일의 37 이 아니다 (상수 100 으로 되돌아갔나)";
+            if (run.Current == null) return "첫 층이 없다";
+            if (!Near(run.Current.Capacity, 37f))
+                return $"층의 허용 중량이 {run.Current.Capacity} — 프로파일의 37 이 아니다";
+            if (run.Current.Weight.SourceName != "테스트 프로브")
+                return $"층이 든 출처가 '{run.Current.Weight.SourceName}' — 넘긴 스냅샷이 도달하지 않았다";
+            return null;
+        }
+
+        private static string TestRequiredPowerFollowsProfile()
+        {
+            // 과적이 아닌 무게. 10 < 37 이므로 배수는 걸리지 않는다.
+            var run = ProbeRun(10f);
+            if (run.Current == null) return "첫 층이 없다";
+            if (run.Current.IsOverloaded) return "10kg 인데 과적으로 판정됐다 (허용 37)";
+
+            float expected = run.Current.Plan.RequiredPower + 10f * 5f;
+            if (!Near(run.Current.RequiredPower, expected))
+                return $"요구 전력 {run.Current.RequiredPower}, 기대 {expected}"
+                     + $" (기본 {run.Current.Plan.RequiredPower} + 10×5). 무게 계수가 상수 2 로 되돌아갔나";
+            return null;
+        }
+
+        private static string TestOverloadMultiplierAppliesOnlyWhenOver()
+        {
+            // 50 > 37 이므로 과적이고 배수 3 이 걸린다.
+            var over = ProbeRun(50f);
+            if (over.Current == null) return "첫 층이 없다";
+            if (!over.Current.IsOverloaded)
+                return $"50kg / 허용 {over.Current.Capacity} 인데 과적이 아니다";
+
+            float expectedOver = (over.Current.Plan.RequiredPower + 50f * 5f) * 3f;
+            if (!Near(over.Current.RequiredPower, expectedOver))
+                return $"과적 요구 전력 {over.Current.RequiredPower}, 기대 {expectedOver}"
+                     + " — 과적 배수가 상수 1.5 로 되돌아갔나";
+
+            // 경계 바로 아래에서는 배수가 걸리면 안 된다. 「>」를 「>=」로 바꾸는 실수를 잡는다.
+            var under = ProbeRun(37f);
+            if (under.Current.IsOverloaded)
+                return "정확히 허용 중량인데 과적으로 판정됐다 — 경계가 > 가 아니라 >= 다";
+            float expectedUnder = under.Current.Plan.RequiredPower + 37f * 5f;
+            if (!Near(under.Current.RequiredPower, expectedUnder))
+                return $"경계 요구 전력 {under.Current.RequiredPower}, 기대 {expectedUnder}";
+            return null;
+        }
+
+        private static string TestWeightFallbackIsNamed()
+        {
+            WeightSnapshot fallback = WeightProfile.SnapshotOrDefault(null, "테스트");
+            if (fallback.SourceName != WeightSnapshot.CodePresetName)
+                return $"폴백 출처가 '{fallback.SourceName}' — 「{WeightSnapshot.CodePresetName}」이어야 한다";
+            if (fallback.FromAsset)
+                return "폴백인데 FromAsset 이 참이다";
+
+            var profile = ScriptableObject.CreateInstance<WeightProfile>();
+            try
+            {
+                profile.name = "WeightProbe";
+                WeightSnapshot fromAsset = WeightProfile.SnapshotOrDefault(profile, "테스트");
+                if (fromAsset.SourceName != "WeightProbe")
+                    return $"에셋 출처가 '{fromAsset.SourceName}' — 에셋 이름이어야 한다";
+                if (!fromAsset.FromAsset)
+                    return "에셋에서 왔는데 FromAsset 이 거짓이다";
+                // 에셋 기본값은 프리셋과 같은 수여야 한다 — 그래야 에셋을 만드는 것만으로
+                // 밸런스가 바뀌지 않는다.
+                if (!Near(fromAsset.AllowedWeight, WeightProfile.DefaultAllowedWeight))
+                    return $"새 에셋의 허용 중량 {fromAsset.AllowedWeight} 이 프리셋과 다르다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(profile);
+            }
+        }
+
+        private static string TestWeightValidate()
+        {
+            if (WeightProfile.DefaultSnapshot.Validate() != null)
+                return $"기본값이 자기모순으로 판정됐다: {WeightProfile.DefaultSnapshot.Validate()}";
+
+            // 과적에 벌칙이 없어지는 조합 — 배수 1.0.
+            if (new WeightSnapshot(100f, 2f, 1f, "x").Validate() == null)
+                return "과적 배수 1.0 을 통과시켰다 — 과적 경고·사고가 의미를 잃는 값이다";
+            // 첫 적재부터 항상 과적인 조합.
+            if (new WeightSnapshot(0f, 2f, 1.5f, "x").Validate() == null)
+                return "허용 중량 0 을 통과시켰다";
+            // 무엇을 실어도 요구 전력이 그대로인 조합.
+            if (new WeightSnapshot(100f, 0f, 1.5f, "x").Validate() == null)
+                return "무게 계수 0 을 통과시켰다 — 적재 선택이 무의미해지는 값이다";
+            return null;
         }
     }
 }

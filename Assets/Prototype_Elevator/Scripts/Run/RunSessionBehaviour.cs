@@ -28,6 +28,12 @@ namespace Ascend.Prototype.Run
         [SerializeField] private float _anteRatio = FloorSession.DefaultAnteRatio;
         [SerializeField] private float _anteEscalation = FloorSession.DefaultAnteEscalation;
 
+        [Header("과적 (UP-TECH-09 ⑤)")]
+        [Tooltip("허용 중량·무게당 요구 전력·과적 배수. 비어 있으면 코드 프리셋으로 진행하고 " +
+                 "그 사실이 WeightSource 에 남는다. 밸런스는 어느 쪽이든 같다. " +
+                 "PrototypeConfig 의 allowedWeight 를 여기 옮기지 말 것 — 그쪽은 단위가 다른 레거시 경로의 값이다.")]
+        [SerializeField] private Data.Profiles.WeightProfile _weightProfile;
+
         public RunSession Session { get; private set; }
 
         /// <summary>
@@ -37,6 +43,15 @@ namespace Ascend.Prototype.Run
         /// 폴백이면 「코드 기본값」이 찍히므로 검사가 조용히 통과하지 못한다.
         /// </summary>
         public string OverharvestSource { get; private set; } = "미초기화";
+
+        /// <summary>
+        /// 과적 수치가 **어디서 왔는가** (`UP-TECH-09` ⑤). 폴백이면 「코드 프리셋」이 찍힌다.
+        ///
+        /// 값 비교로는 이 구분이 불가능하다 — `WeightProfile` 의 기본값이 코드 프리셋과
+        /// 같은 수이기 때문이다(같지 않으면 에셋을 만드는 순간 밸런스가 조용히 바뀐다).
+        /// 그래서 「어느 쪽을 읽었는가」를 따로 남긴다.
+        /// </summary>
+        public string WeightSource { get; private set; } = "미초기화";
 
         /// <summary>현재 런의 시드. 디버그 패널이 표시·재현에 쓴다.</summary>
         public int Seed => _seed;
@@ -91,7 +106,14 @@ namespace Ascend.Prototype.Run
                 OverharvestSource = "코드 기본값 + 인스펙터 판돈";
             }
 
-            Session = new RunSession(_seed, _startingWeight, _startingMoney, overharvest, floors);
+            // 에셋이 없는 것이 지금은 정상이다 — 배선은 씬 소유자의 일이고, 폴백해도
+            // 밸런스가 같다. 경고를 띄우지 않는 대신 출처를 남겨 검사가 구분할 수 있게 한다.
+            Data.Profiles.WeightSnapshot weight = Data.Profiles.WeightProfile.SnapshotOrDefault(
+                _weightProfile, nameof(RunSessionBehaviour));
+            WeightSource = weight.SourceName;
+
+            Session = new RunSession(_seed, _startingWeight, _startingMoney,
+                overharvest, weight, floors);
 
             // 캡 도달은 조용히 넘어가면 안 된다(MASTER_PRD §6). 엔진은 순수 C#이라
             // 로그 채널을 모르므로 Unity 어댑터인 여기서 붙인다.

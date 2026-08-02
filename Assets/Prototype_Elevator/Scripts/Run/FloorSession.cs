@@ -13,8 +13,17 @@ namespace Ascend.Prototype.Run
     /// </summary>
     public sealed class FloorSession
     {
-        // These are the defaults used by PrototypeConfig, kept here so the new
-        // headless loop does not take a dependency on UnityEngine/ScriptableObject.
+        // ── 과적 규칙 3종의 코드 프리셋 (`UP-TECH-09` ⑤) ──────────────────────
+        //
+        // **`PrototypeConfig` 의 기본값이 아니다.** 오래된 주석이 그렇게 적혀 있었으나
+        // 실측은 다르다 — 그쪽 `allowedWeight` 는 `682bbd0` 에서 8로 내려갔고(승객 수
+        // 단위였던 T-04·T-06 경로), 여기 100 은 kg 단위인 10층 경로의 값이다.
+        // 두 숫자는 어긋난 게 아니라 **다른 양**이다. 자세한 근거는
+        // <see cref="Data.Profiles.WeightProfile"/> 의 주석에 있다.
+        //
+        // 이 상수들은 이제 **폴백 프리셋**이다. 값의 정본은
+        // <see cref="Data.Profiles.WeightSnapshot"/> 이고, 에셋이 없으면 이 수로 돌아온다.
+        // `WeightProfile.Default*` 와 같은 수여야 하며 테스트가 그 일치를 대조한다.
         public const float WeightPowerFactor = 2f;
 
         /// <summary>짐꾼 계열의 보너스를 더하기 전 기본 허용 중량.</summary>
@@ -50,6 +59,12 @@ namespace Ascend.Prototype.Run
         /// **호출자 0곳**이었다 — 값을 바꿔도 게임이 그대로인 상태의 정확한 원인이다.
         /// </summary>
         private readonly OverharvestSnapshot _overharvest;
+
+        /// <summary>
+        /// 과적 규칙 3종의 값 사본 (`UP-TECH-09` ⑤). 에셋이 없으면 코드 프리셋이고
+        /// 그 사실이 <see cref="WeightSnapshot.SourceName"/> 에 남는다.
+        /// </summary>
+        private readonly WeightSnapshot _weight;
         private float _totalAnte;
         private float _extraSpinNetPower;
         private float _lastAnte;
@@ -115,6 +130,19 @@ namespace Ascend.Prototype.Run
         public FloorSession(FloorPlan plan, SpinEngine engine,
             PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
             OverharvestSnapshot overharvest, BuildLoadout loadout)
+            : this(plan, engine, thresholds, carriedWeight, carriedResidual,
+                overharvest, WeightProfile.DefaultSnapshot, loadout)
+        {
+        }
+
+        /// <summary>
+        /// <paramref name="weight"/>는 `WeightProfile.asset` 에서 온 값 사본이거나 에셋이
+        /// 없으면 코드 프리셋이다. 어느 쪽이든 과적 판정식은 하나다
+        /// (<see cref="WeightSnapshot.RequiredPowerFor"/>).
+        /// </summary>
+        public FloorSession(FloorPlan plan, SpinEngine engine,
+            PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
+            OverharvestSnapshot overharvest, WeightSnapshot weight, BuildLoadout loadout)
         {
             if (engine == null) throw new ArgumentNullException(nameof(engine));
             if (plan.Spins <= 0) throw new ArgumentOutOfRangeException(nameof(plan), "A floor needs at least one spin.");
@@ -124,6 +152,10 @@ namespace Ascend.Prototype.Run
             _thresholds = thresholds;
             _loadout = loadout;
             _baseWeight = Math.Max(0f, carriedWeight);
+            // 과적 수치는 `RecomputeLoad` 보다 **먼저** 들어와야 한다. 그 안의
+            // `Capacity`·`ComputeRequiredPower` 가 이 값을 읽으므로, 순서를 뒤집으면
+            // 첫 계산만 허용 중량 0(기본값 구조체)으로 돌아 층이 시작부터 과적이 된다.
+            _weight = weight;
             // 앞선 층에서 실은 것이 그대로 따라온다. 여기서 기본 무게만 쓰면 2층 이후
             // 적재가 요구 전력에 반영되지 않는다.
             RecomputeLoad();
@@ -179,7 +211,14 @@ namespace Ascend.Prototype.Run
         /// </summary>
         public float Capacity => _result != null
             ? _resolvedCapacity
-            : AllowedWeight + (_loadout != null ? _loadout.TotalCapacityBonus : 0f);
+            : _weight.CapacityWith(_loadout != null ? _loadout.TotalCapacityBonus : 0f);
+
+        /// <summary>
+        /// 과적 수치가 어디서 왔는가. 「배선됐는가」가 아니라 「읽혔는가」를 묻는 검사가
+        /// 이 값을 본다 — 에셋의 기본값이 코드 프리셋과 같으면 값 비교로는 두 경로를
+        /// 구분할 수 없기 때문이다.
+        /// </summary>
+        public WeightSnapshot Weight => _weight;
 
         public bool IsOverloaded => _carriedWeight > Capacity;
 
@@ -510,7 +549,7 @@ namespace Ascend.Prototype.Run
             // 확정 순간의 적재 상태를 뜬다. `_result` 를 세우기 **전에** 떠야 한다 —
             // `Capacity` 가 `_result != null` 로 분기하므로 순서를 뒤집으면
             // 아직 채우지 않은 `_resolvedCapacity`(0)를 읽는다.
-            _resolvedCapacity = AllowedWeight + (_loadout != null ? _loadout.TotalCapacityBonus : 0f);
+            _resolvedCapacity = _weight.CapacityWith(_loadout != null ? _loadout.TotalCapacityBonus : 0f);
             ResolvedLoadoutShort = _loadout != null ? _loadout.DescribeShort() : null;
             ResolvedLoadoutDetail = _loadout != null ? _loadout.Describe() : null;
 
@@ -543,12 +582,16 @@ namespace Ascend.Prototype.Run
             _loadout?.ApplyTo(_rules);
         }
 
-        private static float ComputeRequiredPower(in FloorPlan plan, float weight, float capacity)
+        /// <summary>
+        /// 판정식을 <see cref="WeightSnapshot.RequiredPowerFor"/> 로 넘긴다.
+        ///
+        /// 여기서 상수를 직접 읽던 판본은 값만 데이터로 옮겨도 소용이 없었다 —
+        /// 식이 옛 상수를 계속 보므로 「에셋을 바꿔도 게임이 그대로」가 유지된다.
+        /// `static` 을 뗀 것이 그 때문이다. 식은 값을 든 쪽에 있어야 한다.
+        /// </summary>
+        private float ComputeRequiredPower(in FloorPlan plan, float weight, float capacity)
         {
-            float required = plan.RequiredPower + weight * WeightPowerFactor;
-            if (weight > capacity)
-                required *= OverloadRequiredPowerMultiplier;
-            return required;
+            return _weight.RequiredPowerFor(plan.RequiredPower, weight, capacity);
         }
     }
 }

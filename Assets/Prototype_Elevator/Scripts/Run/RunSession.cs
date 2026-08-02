@@ -24,6 +24,12 @@ namespace Ascend.Prototype.Run
         /// <summary>층마다 그대로 넘어가는 과수확 수치 9종 (`UP-POWER-07`).</summary>
         private readonly OverharvestSnapshot _overharvest;
 
+        /// <summary>
+        /// 층마다 그대로 넘어가는 과적 수치 3종 (`UP-TECH-09` ⑤). 런 도중에 허용 중량이
+        /// 바뀌면 앞선 층의 기록과 뒤 층의 판정이 다른 규칙을 쓰게 되므로 런이 소유한다.
+        /// </summary>
+        private readonly WeightSnapshot _weight;
+
         public RunSession(int seed = 1337, float startingWeight = 0f, float startingMoney = 0f)
             : this(seed, startingWeight, startingMoney,
                 FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation)
@@ -62,6 +68,17 @@ namespace Ascend.Prototype.Run
         /// </summary>
         public RunSession(int seed, float startingWeight, float startingMoney,
             OverharvestSnapshot overharvest, IFloorPlanSource floors)
+            : this(seed, startingWeight, startingMoney, overharvest,
+                WeightProfile.DefaultSnapshot, floors)
+        {
+        }
+
+        /// <summary>
+        /// 과적 수치까지 받는 경로. `RunSessionBehaviour` 가 `WeightProfile.asset` 에서
+        /// 스냅샷을 떠 넘긴다. 에셋이 없으면 코드 프리셋이라 동작이 같다.
+        /// </summary>
+        public RunSession(int seed, float startingWeight, float startingMoney,
+            OverharvestSnapshot overharvest, WeightSnapshot weight, IFloorPlanSource floors)
         {
             _floors = floors ?? new TenFloorSource();
             _engine = new SpinEngine(seed);
@@ -70,6 +87,7 @@ namespace Ascend.Prototype.Run
             _baseWeight = Math.Max(0f, startingWeight);
             Money = startingMoney;
             _overharvest = overharvest;
+            _weight = weight;
 
             // 적재가 어느 경로로 바뀌든 현재 층이 즉시 안다. 호출부마다 갱신을 기억하게
             // 하면 하나만 빠져도 무게와 요구 전력이 조용히 어긋난다 — 실제로 그렇게 됐다.
@@ -168,7 +186,10 @@ namespace Ascend.Prototype.Run
         public float PeakCarriedWeight { get; private set; }
 
         /// <summary>허용 중량(짐꾼 보너스 포함). 넘으면 과적이다.</summary>
-        public float WeightCapacity => FloorSession.AllowedWeight + _loadout.TotalCapacityBonus;
+        public float WeightCapacity => _weight.CapacityWith(_loadout.TotalCapacityBonus);
+
+        /// <summary>과적 수치의 출처. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
+        public WeightSnapshot Weight => _weight;
 
         public bool IsOverloaded => CarriedWeight > WeightCapacity;
         public float Money { get; private set; }
@@ -261,7 +282,7 @@ namespace Ascend.Prototype.Run
             // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
             // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                _baseWeight, _residual, _overharvest, _loadout)
+                _baseWeight, _residual, _overharvest, _weight, _loadout)
             {
                 Events = Events,
             };
