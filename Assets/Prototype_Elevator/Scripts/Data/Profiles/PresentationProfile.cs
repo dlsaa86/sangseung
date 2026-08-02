@@ -55,10 +55,21 @@ namespace Ascend.Prototype.Data.Profiles
         public const float DefaultRefillHold = 0.40f;
         public const float DefaultChainSpeedup = 0.86f;
         public const float DefaultMinTempoScale = 0.35f;
+        /// <summary>
+        /// 아무 열도 열리기 전, 셔터가 전부 닫힌 판을 보여주는 시간.
+        /// 처음에 이 필드가 빠져 있었다 — `SpinPresenter` 의 템포 블록은 일곱 값인데
+        /// 프로파일이 여섯만 들고 있었다. 그대로 배선했으면 여섯은 에셋에서 오고
+        /// 하나는 씬에 굳은 채로 남는 **절반짜리 데이터화**가 된다.
+        /// </summary>
+        public const float DefaultSealedHold = 0.22f;
         public const float DefaultUnlockFlashSeconds = 0.18f;
         public const float DefaultUnlockSettleSeconds = 0.9f;
 
         [Header("⑪ 연출 속도 (초)")]
+        [Tooltip("아무 열도 열리기 전 닫힌 판을 보여주는 시간. 0이면 「닫힌 판」이라는 " +
+                 "시작 상태가 한 프레임도 안 남아 순차 공개가 1/3에서 시작하는 것처럼 보인다.")]
+        [SerializeField, Min(0f)] private float _sealedHold = DefaultSealedHold;
+
         [Tooltip("통관 한 열이 결과를 드러내는 간격.")]
         [SerializeField, Min(0f)] private float _columnRevealInterval = DefaultColumnRevealInterval;
 
@@ -137,6 +148,7 @@ namespace Ascend.Prototype.Data.Profiles
             _minTempoScale = DefaultMinTempoScale;
 
             _surfaceColor = DefaultSurfaceColor;
+            _sealedHold = DefaultSealedHold;
             _surfaceSmoothness = DefaultSurfaceSmoothness;
             _surfaceMetallic = DefaultSurfaceMetallic;
             _emissionIntensity = DefaultEmissionIntensity;
@@ -146,7 +158,7 @@ namespace Ascend.Prototype.Data.Profiles
         public PresentationSnapshot Snapshot()
         {
             return new PresentationSnapshot(
-                ParticleArray(),
+                ParticleArray(), _sealedHold,
                 _columnRevealInterval, _readPause, _purifyPulse, _emptyHold, _refillHold,
                 _chainSpeedup, _minTempoScale, _unlockFlashSeconds, _unlockSettleSeconds,
                 _surfaceColor, _surfaceSmoothness, _surfaceMetallic, _emissionIntensity, _grimeAmount);
@@ -173,6 +185,7 @@ namespace Ascend.Prototype.Data.Profiles
                         DefaultParticlesStable, DefaultParticlesStrain,
                         DefaultParticlesCritical, DefaultParticlesCollapse,
                     },
+                    DefaultSealedHold,
                     DefaultColumnRevealInterval, DefaultReadPause, DefaultPurifyPulse,
                     DefaultEmptyHold, DefaultRefillHold,
                     DefaultChainSpeedup, DefaultMinTempoScale,
@@ -195,6 +208,7 @@ namespace Ascend.Prototype.Data.Profiles
     {
         private readonly int[] _maxParticles;
 
+        public readonly float SealedHold;
         public readonly float ColumnRevealInterval;
         public readonly float ReadPause;
         public readonly float PurifyPulse;
@@ -211,7 +225,7 @@ namespace Ascend.Prototype.Data.Profiles
         public readonly float EmissionIntensity;
         public readonly float GrimeAmount;
 
-        public PresentationSnapshot(int[] maxParticles,
+        public PresentationSnapshot(int[] maxParticles, float sealedHold,
             float columnRevealInterval, float readPause, float purifyPulse,
             float emptyHold, float refillHold, float chainSpeedup, float minTempoScale,
             float unlockFlashSeconds, float unlockSettleSeconds,
@@ -219,6 +233,7 @@ namespace Ascend.Prototype.Data.Profiles
             float emissionIntensity, float grimeAmount)
         {
             _maxParticles = maxParticles;
+            SealedHold = sealedHold;
             ColumnRevealInterval = columnRevealInterval;
             ReadPause = readPause;
             PurifyPulse = purifyPulse;

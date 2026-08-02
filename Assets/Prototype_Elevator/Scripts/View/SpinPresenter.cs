@@ -85,6 +85,19 @@ namespace Ascend.Prototype.View
         [Tooltip("재충전된 판을 보여주는 시간. 다음 판정 전 정지.")]
         [SerializeField] private float _refillHold = 0.40f;
 
+        [Tooltip("연출 속도 8종의 교체 경로 (UP-TECH-09 ⑪). 물려 있으면 위의 Tempo 프리셋과 " +
+                 "이 블록의 값을 **덮어쓴다**. 비면 Tempo 프리셋으로 돌고 TempoSource 가 " +
+                 "「코드 프리셋 <이름>」을 찍는다.")]
+        [SerializeField] private Data.Profiles.PresentationProfile _presentation;
+
+        /// <summary>
+        /// 템포 값이 어디서 왔는가 (`UP-TECH-09` ⑪). 에셋 이름이거나 「코드 프리셋 Standard」다.
+        ///
+        /// 값 비교로는 구분할 수 없다 — 프로파일 프리셋과 `Standard` 분기가 같은 수이기
+        /// 때문이다(달라야 한다면 에셋을 만드는 순간 연출 속도가 조용히 바뀐다).
+        /// </summary>
+        public string TempoSource { get; private set; } = "미초기화";
+
         [Header("연쇄 압축")]
         [Tooltip("연쇄가 길어질수록 이 비율로 빨라진다. 1이면 압축 없음.")]
         [SerializeField, Range(0.3f, 1f)] private float _chainSpeedup = 0.86f;
@@ -137,8 +150,38 @@ namespace Ascend.Prototype.View
 
         private void OnValidate() => ApplyTempoPreset();
 
+        /// <summary>
+        /// 템포 여덟 값을 정한다 (`UP-TECH-09` ⑪). **에셋이 배선돼 있으면 그쪽이 이긴다** —
+        /// `RiskStateView` 가 `DangerFeedbackProfile` 을 다루는 규약과 같다.
+        ///
+        /// 왜 `Tempo` 열거형을 남기는가: 셋은 이름 붙은 프리셋이고(검증·캡처용 Readable,
+        /// 플레이 Standard, 압축 Brisk) 코드가 그것을 알아야 하네스가 캡처 전에 Readable 로
+        /// 바꿀 수 있다. 에셋은 그 위에 얹히는 교체 경로지 대체가 아니다.
+        ///
+        /// 세 값이 지금 전부 같은 수라 배선해도 화면이 안 바뀐다 — 씬의 직렬화 값,
+        /// `Standard` 분기, `PresentationProfile` 프리셋이 0.22/0.32/0.45/0.55/0.30/0.40 으로
+        /// 일치한다. 그래서 이 변경은 동작 중립이고, 바뀌는 것은 **어디서 왔는지 물을 수
+        /// 있게 된다는 것**뿐이다.
+        /// </summary>
         private void ApplyTempoPreset()
         {
+            if (_presentation != null)
+            {
+                Data.Profiles.PresentationSnapshot snap = _presentation.Snapshot();
+                _sealedHold           = snap.SealedHold;
+                _columnRevealInterval = snap.ColumnRevealInterval;
+                _readPause            = snap.ReadPause;
+                _purifyPulse          = snap.PurifyPulse;
+                _emptyHold            = snap.EmptyHold;
+                _refillHold           = snap.RefillHold;
+                // 연쇄 압축 둘은 `Tempo` 분기에 원래 없었다 — 프로파일이 생기면서 처음으로
+                // 데이터에서 온다. 여기서 빠뜨리면 여섯은 에셋, 둘은 씬인 절반짜리가 된다.
+                _chainSpeedup         = snap.ChainSpeedup;
+                _minTempoScale        = snap.MinTempoScale;
+                TempoSource = _presentation.name;
+                return;
+            }
+
             switch (_tempo)
             {
                 case Tempo.Readable:
@@ -157,6 +200,7 @@ namespace Ascend.Prototype.View
                     _emptyHold = 0.30f; _refillHold = 0.40f;
                     break;
             }
+            TempoSource = "코드 프리셋 " + _tempo;
         }
 
         public void Present(SpinResolution resolution)
