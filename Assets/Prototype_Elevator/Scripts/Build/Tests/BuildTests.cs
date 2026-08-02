@@ -824,7 +824,7 @@ namespace Ascend.Prototype.Build.Tests
         }
 
         /// <summary>
-        /// 장부(`RunSession.Money`)와 증인(`FloorAscent.MoneyCredited`)이 일치하는가.
+        /// 장부(`RunSession.Money`)와 증인(`FloorAscent.TotalMoney`)이 일치하는가.
         ///
         /// `TestNoDoubleSpendOfSurplus`는 증인만 검사한다. 정산이 `Money`에는 잉여 전액을
         /// 더하면서 기록에는 올바른 값을 남기는 회귀 — 즉 장부와 증인이 갈라지는 경우 —
@@ -839,7 +839,24 @@ namespace Ascend.Prototype.Build.Tests
                 var driven = Drive(seed, null);
                 float ledger = 0f;
                 foreach (RunSession.FloorAscent ascent in driven.run.Ascents)
-                    ledger += ascent.MoneyCredited;
+                {
+                    // **`TotalMoney` 를 합산한다 — `MoneyCredited` 만 세면 안 된다.**
+                    //
+                    // 남은 스핀 정산(`T-05` · `D-20260802-10`)이 들어오면서 소지금에
+                    // 더해지는 경로가 둘이 됐다. 이 검사가 한쪽만 세던 동안 실제로
+                    // **90.00 차이로 걸렸고**, 그것이 이 단정의 존재 이유다 —
+                    // 근거 없는 돈은 근거 없는 숫자다.
+                    ledger += ascent.TotalMoney;
+
+                    // 정산 자체의 불변식도 여기서 본다. 별도 테스트로 빼면
+                    // 이 런의 실제 값이 아니라 합성 입력을 검사하게 된다.
+                    if (ascent.SettlementMoney < -0.01f)
+                        return $"시드 {seed} {ascent.FromFloor}층: 정산이 음수다 ({ascent.SettlementMoney:F2})";
+                    if (ascent.SettledSpins < 0)
+                        return $"시드 {seed} {ascent.FromFloor}층: 정산 스핀 수가 음수다";
+                    if (ascent.SettledSpins == 0 && ascent.SettlementMoney > 0.01f)
+                        return $"시드 {seed} {ascent.FromFloor}층: 정산 스핀 0 인데 정산금 {ascent.SettlementMoney:F2} 이 나왔다";
+                }
 
                 // 화물 포기 구간(70~89%)이 소지금으로 대가를 물 수 있다. 무적재 런이라
                 // 버릴 화물이 없어 돈으로 낸다. 그 지출도 원장의 일부다 — 검사를

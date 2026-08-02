@@ -60,6 +60,10 @@ namespace Ascend.Prototype.EditorTools
             // 2.2 × 2.8」은 어느 상수에도 없는 **네 값의 결과**라 하나만 바꿔도
             // 조용히 깨지고, 깨지면 플레이어가 낀다.
             Art.Tests.ReferenceRoomSpecTests.RunAll(),
+            // 남은 스핀 운행 효율 정산 (`T-05` 2026-08-02). 「과수확을 고르면
+            // 정산이 사라진다」가 두 선택을 겨루게 만드는 축이라, 그 단정이
+            // 없으면 규칙이 조용히 무력해져도 아무도 모른다.
+            Data.Profiles.Tests.SettlementTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]

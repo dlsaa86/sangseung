@@ -27,8 +27,23 @@ namespace Ascend.Prototype.Run
         public float NetProfit { get; }
         public float PushYourLuckNetProfit => NetProfit;
 
+        /// <summary>
+        /// 남은 스핀 **운행 효율 정산**으로 얻은 돈 (`T-05` 2026-08-02 결정).
+        ///
+        /// 과수확을 한 번이라도 선택한 층에서는 **항상 0** 이다 — 그 결정이
+        /// 「그 층의 정산 권리 소멸」이기 때문이고, 그것이 두 선택을 겨루게 만드는 축이다.
+        /// </summary>
+        public float SettlementMoney { get; }
+
+        /// <summary>정산에 쓰인 남은 스핀 수. 0 이면 정산이 없었다.</summary>
+        public int SettledSpins { get; }
+
+        /// <summary>정산이 층당 상한에 걸렸는가. UI 가 「상한 도달」을 적을 근거다.</summary>
+        public bool SettlementCapped { get; }
+
         internal FloorResult(AscendResult ascent, float totalAnte = 0f,
-            int extraSpinsTaken = 0, float extraSpinNetPower = 0f, float netProfit = 0f)
+            int extraSpinsTaken = 0, float extraSpinNetPower = 0f, float netProfit = 0f,
+            float settlementMoney = 0f, int settledSpins = 0, bool settlementCapped = false)
         {
             if (ascent == null) throw new ArgumentNullException(nameof(ascent));
             Ascent = ascent;
@@ -43,6 +58,9 @@ namespace Ascend.Prototype.Run
             TotalAnte = totalAnte;
             ExtraSpinsTaken = extraSpinsTaken;
             ExtraSpinNetPower = extraSpinNetPower;
+            SettlementMoney = settlementMoney;
+            SettledSpins = settledSpins;
+            SettlementCapped = settlementCapped;
             NetProfit = netProfit;
         }
 

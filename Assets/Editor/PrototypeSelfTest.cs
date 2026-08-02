@@ -98,6 +98,7 @@ public static class PrototypeSelfTest
         FoldInSuite("절차적 메시", Ascend.Prototype.Art.Tests.ProcMeshTests.RunAll());
         FoldInSuite("원형 현창 3×3", Ascend.Prototype.Art.Tests.PortholeMeshTests.RunAll());
         FoldInSuite("레퍼런스 룸 치수 명세", Ascend.Prototype.Art.Tests.ReferenceRoomSpecTests.RunAll());
+        FoldInSuite("남은 스핀 정산", Ascend.Prototype.Data.Profiles.Tests.SettlementTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

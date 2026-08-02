@@ -73,6 +73,22 @@ namespace Ascend.Prototype.Run
         private readonly SpinBalanceSnapshot _balance;
         private float _totalAnte;
         private float _extraSpinNetPower;
+
+        /// <summary>
+        /// 남은 스핀 정산 수치 (`T-05` 2026-08-02). 에셋이 없으면 코드 프리셋을 쓴다.
+        /// </summary>
+        private Data.Profiles.RemainingSpinSettlementSnapshot _settlement =
+            Data.Profiles.RemainingSpinSettlementProfile.DefaultSnapshot;
+
+        /// <summary>
+        /// **과수확을 한 번이라도 선택하면 참이 되고 다시 거짓이 되지 않는다.**
+        ///
+        /// `T-05` — 「과수확 선택 시 해당 층의 정산 권리 소멸」. `ExtraSpinsTaken > 0`
+        /// 으로 대신 판정하지 않는 이유: 추가 스핀이 **실행되기 전에** 앤티를 이미
+        /// 냈고 선택은 그 시점에 끝났다. 둘을 같은 것으로 보면 「과수확을 골랐는데
+        /// 스핀이 실패해서 카운터가 안 오른」 경계에서 정산이 되살아난다.
+        /// </summary>
+        private bool _settlementForfeited;
         private float _lastAnte;
         private bool _activeSpinIsExtra;
 
@@ -360,6 +376,25 @@ namespace Ascend.Prototype.Run
         public float TotalStakedPower => _totalAnte;
         public float ExtraSpinNetPower => _extraSpinNetPower;
         public float NetProfit => _extraSpinNetPower - _totalAnte;
+
+        // ── 남은 스핀 정산 (`T-05`) ──────────────────────────────────────────
+
+        /// <summary>정산 권리가 남아 있는가. 과수확을 고르면 영구히 거짓이 된다.</summary>
+        public bool CanSettleRemainingSpins => !_settlementForfeited;
+
+        /// <summary>
+        /// 지금 안전 확정하면 받을 정산 금액. **`T-05` 완료 조건이 요구하는
+        /// 「조기 달성 시 예상 정산 가치」가 이 값이다** — 선택 전에 보여야 한다.
+        /// </summary>
+        public float PendingSettlementMoney =>
+            _settlementForfeited ? 0f : _settlement.SettlementMoney(SpinsRemaining, RequiredPower);
+
+        /// <summary>정산이 층당 상한에 걸렸는가.</summary>
+        public bool SettlementCapped =>
+            !_settlementForfeited && _settlement.IsCapped(SpinsRemaining, RequiredPower);
+
+        /// <summary>정산 수치의 출처. 「배선했다」와 「그 값이 쓰였다」를 가른다.</summary>
+        public string SettlementSource => _settlement.Source;
         public float LastAnte => _lastAnte;
         public ResistanceContract SelectedContract => _contract;
         public SpinRuleSet Rules => _rules;
@@ -394,6 +429,10 @@ namespace Ascend.Prototype.Run
 
             // The ante is paid at choice time, before the engine consumes another
             // random result. PendingAnte is therefore the exact amount removed here.
+            // **여기서 정산 권리가 소멸한다** (`T-05`). 스핀 결과가 아니라 **선택**이
+            // 권리를 버리는 것이므로, 앤티를 내는 이 순간에 함께 처리한다.
+            _settlementForfeited = true;
+
             float ante = PendingAnte;
             Power -= ante;
             _totalAnte += ante;
@@ -577,9 +616,21 @@ namespace Ascend.Prototype.Run
             ResolvedLoadoutShort = _loadout != null ? _loadout.DescribeShort() : null;
             ResolvedLoadoutDetail = _loadout != null ? _loadout.Describe() : null;
 
+            // ── 남은 스핀 정산 (`T-05`) ──
+            // **전력에 더하지 않는다.** 정산은 「캐스케이드·임계점·승객·부품 효과를
+            // 발동하지 않는다」가 규격이고, 전력에 더하면 임계점을 넘겨 상승 층수를
+            // 바꿔 버린다 — 그 순간 「안 돌린 스핀」이 「돌린 스핀」과 같아져
+            // 두 선택을 겨루게 만든다는 이 규칙의 목적 자체가 사라진다.
+            int settledSpins = _settlementForfeited ? 0 : SpinsRemaining;
+            float settlementMoney = _settlementForfeited
+                ? 0f : _settlement.SettlementMoney(settledSpins, RequiredPower);
+            bool settlementCapped = !_settlementForfeited
+                && _settlement.IsCapped(settledSpins, RequiredPower);
+
             AscendResult ascent = AscendResult.Calculate(Power, RequiredPower, _thresholds);
             _result = new FloorResult(ascent, _totalAnte, ExtraSpinsTaken,
-                _extraSpinNetPower, NetProfit);
+                _extraSpinNetPower, NetProfit,
+                settlementMoney, settledSpins, settlementCapped);
             Phase = FloorPhase.Resolved;
 
             Events?.Publish(GameEventKind.PowerBanked, Plan.Floor, SpinsUsed - 1,

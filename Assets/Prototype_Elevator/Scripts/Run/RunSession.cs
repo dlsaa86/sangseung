@@ -148,20 +148,45 @@ namespace Ascend.Prototype.Run
             public readonly int FloorsAscended;
             public readonly float ExcessPower;
             public readonly float PowerPerExtraFloor;
+            /// <summary>초과 전력을 환산해 준 돈.</summary>
             public readonly float MoneyCredited;
 
+            /// <summary>
+            /// 남은 스핀 **운행 효율 정산**으로 준 돈 (`T-05` · `D-20260802-10`).
+            ///
+            /// ⚠ `MoneyCredited` 와 **따로 적는다.** 둘은 서로 다른 것을 갚는다 —
+            /// 앞은 초과 전력, 뒤는 안 쓴 운행 여유. 합쳐 적으면 「초과 전력이
+            /// 얼마였나」를 사후에 복원할 수 없고, 정산 비율을 바꿨을 때
+            /// 어느 쪽이 움직였는지도 못 가른다.
+            ///
+            /// **그리고 이 필드가 없으면 장부가 안 맞는다.** 처음에 정산금을
+            /// `Money` 에만 더하고 기록을 안 남겼더니 「소지금이 지급 기록 합계와
+            /// 일치한다」 단정이 **90.00 차이로 즉시 걸렸다.** 그 단정이 옳았다 —
+            /// 근거 없는 돈은 근거 없는 숫자다.
+            /// </summary>
+            public readonly float SettlementMoney;
+
+            /// <summary>정산에 쓰인 남은 스핀 수. 0 이면 과수확을 골랐거나 다 썼다.</summary>
+            public readonly int SettledSpins;
+
             public FloorAscent(int fromFloor, int floorsAscended, float excessPower,
-                float powerPerExtraFloor, float moneyCredited)
+                float powerPerExtraFloor, float moneyCredited,
+                float settlementMoney = 0f, int settledSpins = 0)
             {
                 FromFloor = fromFloor;
                 FloorsAscended = floorsAscended;
                 ExcessPower = excessPower;
                 PowerPerExtraFloor = powerPerExtraFloor;
                 MoneyCredited = moneyCredited;
+                SettlementMoney = settlementMoney;
+                SettledSpins = settledSpins;
             }
 
             /// <summary>기본 1층을 넘어 추가로 산 층 수.</summary>
             public int ExtraFloors => Math.Max(0, FloorsAscended - 1);
+
+            /// <summary>이 층에서 받은 돈 전부. 장부 대조는 이 값을 합산한다.</summary>
+            public float TotalMoney => MoneyCredited + SettlementMoney;
         }
 
         /// <summary>
@@ -369,8 +394,19 @@ namespace Ascend.Prototype.Run
                                        result.Ascent.PowerPerExtraFloor;
             float credited = Math.Max(0f, result.ExcessPower - spentOnExtraFloors);
             Money += credited;
+
+            // 남은 스핀 **운행 효율 정산** (`T-05` 2026-08-02).
+            //
+            // 초과 전력 환산과 **따로** 더한다. 정산은 전력이 아니라 「안 쓴 운행
+            // 여유」의 대가이고, 초과 전력에 섞으면 위 `spentOnExtraFloors` 공제에
+            // 걸려 추가 층을 오른 만큼 정산이 깎인다 — 두 값은 서로 다른 것을 갚는다.
+            //
+            // 과수확을 고른 층에서는 `result.SettlementMoney` 가 0 이므로
+            // 여기서 다시 판정하지 않는다. 조건을 두 곳에 두면 반드시 갈라진다.
+            Money += result.SettlementMoney;
             _ascents.Add(new FloorAscent(from, ascended, result.ExcessPower,
-                result.Ascent.PowerPerExtraFloor, credited));
+                result.Ascent.PowerPerExtraFloor, credited,
+                result.SettlementMoney, result.SettledSpins));
             CreateCurrentFloor();
         }
 
