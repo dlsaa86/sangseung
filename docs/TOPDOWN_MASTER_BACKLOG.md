@@ -84,6 +84,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 후자는 판단이다. `⑤` 는 실측(「두 벌이 있다」)은 맞았는데 판단(「합치면 된다」)이
 틀렸고, 그 둘이 한 문장에 있어서 판단까지 실측처럼 읽혔다.
 
+> **카운터가 올라가는 것은 화면에 나온다는 뜻이 아니다 (2026-08-02 신설).**
+> `UP-REC-04` 는 「인쇄된 줄 2」를 렌더링 요구의 증거로 삼고 있었다. 그 카운터는
+> `_printed.Add(...)` 로 오르는데 그것이 `Redraw()` **앞**에 있고, `Redraw()` 는
+> 그릴 대상이 없으면 즉시 반환한다 — **테이프에 아무것도 안 뜬 채로 2가 찍힌다.**
+> 「무엇을 그렸는가」를 묻는 요구는 **카운터·로그 줄 수로 재지 않는다.** 화면을 보는
+> 증거(고정 캡처)나, 최소한 그릴 대상이 존재한다는 확인이 함께 있어야 한다.
+
 > **뷰에 기능을 붙이기 전에 그 필드가 씬에서 비어 있는지 먼저 센다 (2026-08-02 신설).**
 > `docs/runtime/DEAD_SCENE_WIRING.md` 가 전수 목록을 갖고 있고 `tools/dead-scene-wiring.py`
 > 로 다시 셀 수 있다. 이 규칙이 생긴 이유: 계약 시너지 줄을 `InstrumentPanelView` 의
@@ -1251,7 +1258,9 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `Ascend/Run Self Tests`
 - 증거: `Logs/editmode_tests.txt`
 - 의존: UP-REC-01
-- 남은 문제: **단일 원본은 진짜다 — 그러나 증거가 그것을 담고 있지 않다.** 코드 구조는 확인됐다: `AccidentRecorder.cs:65-67` 이 `FloorRecord` 하나를 만들고, `GameHudView.cs:220-227` 과 `PaperTapePrinterView.cs:154-183` 이 **씬에서 같은 fileID 998528534** 를 가리킨다 — 서로 다른 기록기를 볼 여지가 없다. **그런데** 증거로 건 `Logs/editmode_tests.txt` 226줄·10스위트·194 PASS 에 `AccidentRecorder`·`FloorRecord`·HUD·프린터 스위트가 **하나도 없다.** 「인게임 출력과 디버그가 같은 값을 말한다」를 확인하는 단정은 저장소에 0건이다. 게다가 프린터 쪽 유일한 디스크 관측(`Logs/waveb_runtime.txt`)의 「인쇄된 줄 2」는 `PaperTapePrinterView.cs:112-113` 의 **머리글**이지 `FeedRecord` 산물이 아니다 — 테이프는 층 기록을 한 줄도 찍은 적이 없다. `DEAD_IMPLEMENTATION_AUDIT` §7 의 「판정만 남았다」가 틀렸다. 남은 것은 판정이 아니라 **증거**다. 출처 `PRD §10.3` 도 동결 PRD 에 없다
+- 남은 문제: **단일 원본은 진짜다 — 그러나 증거가 그것을 담고 있지 않다.** 코드 구조는 확인됐다: `AccidentRecorder.cs:65-67` 이 `FloorRecord` 하나를 만들고, `GameHudView.cs:220-227` 과 `PaperTapePrinterView.cs:154-183` 이 **씬에서 같은 fileID 998528534** 를 가리킨다 — 서로 다른 기록기를 볼 여지가 없다. **그런데** 증거로 건 `Logs/editmode_tests.txt` 226줄·10스위트·194 PASS 에 `AccidentRecorder`·`FloorRecord`·HUD·프린터 스위트가 **하나도 없다.** 「인게임 출력과 디버그가 같은 값을 말한다」를 확인하는 단정은 저장소에 0건이다. 게다가 프린터 쪽 유일한 디스크 관측(`Logs/waveb_runtime.txt`)의 「인쇄된 줄 2」는 `PaperTapePrinterView.cs:112-113` 의 **머리글**이지 `FeedRecord` 산물이 아니다 — 테이프는 층 기록을 한 줄도 찍은 적이 없다. `DEAD_IMPLEMENTATION_AUDIT` §7 의 「판정만 남았다」가 틀렸다. 남은 것은 판정이 아니라 **증거**다.
+
+  > **왜 한 줄도 안 찍혔는지 원인을 찾았다 (2026-08-02).** 씬의 유일한 `PaperTapePrinterView` 인스턴스에서 `_tape` · `_tapeText` · `_printHead` 가 **셋 다 `{fileID: 0}`** 이다(`docs/runtime/DEAD_SCENE_WIRING.md`). `_recorder` 는 물려 있으므로 `PollNewRecords` → `FeedRecord` 는 돌고 줄이 큐에 쌓이지만, `Redraw()` 가 `:213` 에서 `_tapeText == null` 로 즉시 반환해 **그릴 대상이 없다.** `UP-REC-04` 가 증거로 삼은 「인쇄된 줄 2」는 `_printed` 카운터인데 그 증가는 `Redraw()` **앞**에서 일어나므로 화면과 무관하다. **두 항목이 같은 세 필드에 걸려 있었고 서로를 몰랐다.** 이 항목의 남은 일 ①(「같은 값을 말한다」 단정 0건)은 코드로 가능하지만, ②(테이프가 실제로 찍힌다)는 **씬 배선이 먼저다**. 출처 `PRD §10.3` 도 동결 PRD 에 없다
 
 ### UP-REC-04 — 기계식 프린터·종이 테이프 형태의 물리적 출력
 - 분류: Required · 출처: PRD §10.1 「단순 결과창 대신 엘리베이터 내부의 기계식 프린터, 종이 테이프 또는 펀치카드」
@@ -1261,7 +1270,9 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `WaveBRuntimeProbe` 의 인쇄 줄 수
 - 증거: `Logs/waveb_runtime.txt`
 - 의존: UP-REC-02
-- 남은 문제: 장치가 씬에 서 있고 **2줄을 실제로 찍었다.** **증거 정정**: 직전 판본이 검증 수단으로 적은 `EyeLevelCapture` 09번 각도는 **존재하지 않는다** — `Captures/eyelevel/` 에는 00~08 만 있다. 결함은 그대로다: `PaperTapePrinterView.cs` 가 테이프 폭 `0.28f` 에 `fontSize = 0.9f` 를 써서 글자가 1.16m 로 넘쳐 흐른다. 읽을 수 없다
+- 남은 문제: 장치가 씬에 서 있고 **2줄을 실제로 찍었다.** **증거 정정**: 직전 판본이 검증 수단으로 적은 `EyeLevelCapture` 09번 각도는 **존재하지 않는다** — `Captures/eyelevel/` 에는 00~08 만 있다. 결함은 그대로다: `PaperTapePrinterView.cs` 가 테이프 폭 `0.28f` 에 `fontSize = 0.9f` 를 써서 글자가 1.16m 로 넘쳐 흐른다. 읽을 수 없다.
+
+  > **증거가 공허했다 (2026-08-02 실측).** 씬에 `PaperTapePrinterView` 인스턴스는 **하나**이고 `_recorder` 만 물려 있다 — `_tape` · `_tapeText` · `_printHead` 가 **셋 다 `{fileID: 0}`** 이다(`docs/runtime/DEAD_SCENE_WIRING.md`). 그런데 `AdvancePrinting` 은 `_printed.Add(...)` 를 **`Redraw()` 앞에서** 하고, `Redraw()` 는 `:213` 에서 `_tapeText == null` 이면 즉시 반환한다. **그래서 「인쇄된 줄 2」는 그릴 대상이 하나도 없어도 올라간다.** 렌더링 요구를 카운터로 재고 있었던 것이고, 「2줄을 실제로 찍었다」는 화면에 관한 문장이 아니다. **글자 넘침도 지금은 관측될 수 없다** — 넘칠 `_tapeText` 자체가 씬에 없다. 폭·글자 크기 문제는 배선한 **뒤에** 다시 재야 한다. 실제 차단은 빈 필드 셋이고, 그건 `.unity` 수정이라 씬 오너의 일이다. `UP-REC-03` 이 「테이프가 층 기록을 한 줄도 찍은 적이 없다」로 적은 것과 **같은 뿌리다** — 두 항목이 서로를 모른 채 따로 적혀 있었다
 
 ### UP-REC-05 — 기록과 사고 후 상태가 한 장에 함께 보인다
 - 분류: Required · 출처: PRD §10.3 마지막
