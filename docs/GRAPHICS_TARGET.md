@@ -553,3 +553,69 @@ Logs/build_report.txt      (08-01 03:20)  result: Succeeded · totalErrors: 0
 
 > 판정 순서를 지킨다: 현창을 넣기 **전** 세트의 미달 7장이 기준선이다.
 > 넣은 뒤 같은 7장이 몇 장 남는지가 그 변경의 성적이다. 다른 축을 함께 바꾸지 않는다.
+
+---
+
+# 10. `UP-FIX-SHADOW` — 품질 프로파일이 품질을 제어하지 않는다
+
+감사자가 「`VisualQualityProfile` High `_shadowDistance: 30` 이 `PC_RPAsset` `m_ShadowDistance: 50`
+과 어긋난다」고 지적했다. 확인해 보니 **어긋난 정도가 아니라 한쪽이 아무 효력이 없다.**
+
+```
+VisualQualityProfile.cs:37   _shadowDistance = 30f   (직렬화)
+VisualQualityProfile.cs:61   public float ShadowDistance => _shadowDistance   (읽기)
+VisualQualityProfile.cs:117  new VisualQualitySnapshot(..., _shadowDistance, ...)  (스냅샷)
+```
+
+`ShadowDistance` 를 **URP 에셋에 써 넣는 코드가 없다.** 스냅샷으로 실려 다니기만 한다.
+따라서 실제로 렌더링되는 값은 언제나 `PC_RPAsset` 의 **50** 이고, 프로파일의 30 은 주장이다.
+
+## 왜 이것이 조명 축과 직결되는가
+
+이 세션 내내 콘솔에 이 경고가 떴다.
+
+```
+Reduced additional punctual light shadows resolution by 2 to make 6 shadow maps
+fit in the 2048x2048 shadow atlas
+```
+
+그림자 거리가 길수록 같은 아틀라스에 더 넓은 영역을 담아야 하므로 **해상도가 깎인다.**
+즉 50 은 의도한 30 보다 그림자를 **더 멀리, 더 거칠게** 그리고 있다. 레퍼런스가 요구하는
+「빠른 감쇠와 국소 조명」의 반대 방향이다 — 먼 그림자는 어차피 거의 검은 구석에 그려진다.
+
+## 판정
+
+이것은 「값이 다르다」가 아니라 **「제어 경로가 끊겨 있다」**이다. 값을 맞춰도 다음에
+누가 프로파일을 고치면 또 아무 일도 일어나지 않는다. 고칠 자리는 숫자가 아니라 적용부다.
+
+- 프로파일이 URP 에셋에 실제로 쓰도록 적용부를 만들거나,
+- 프로파일에서 이 필드를 **지우고** RP 에셋을 정본으로 삼거나.
+
+둘 중 하나여야 한다. 지금은 「둘 다 있는데 하나는 거짓」이다.
+
+## 10.1 나머지 필드도 같다 — 그리고 더 나쁜 방식으로
+
+같은 의심을 나머지 필드에 적용했다. 소비처를 세어 보면 이렇다.
+
+| 필드 | 프로파일 밖 참조 | 그 참조가 무엇인가 |
+|---|---|---|
+| `ShadowDistance` | 1 | `ProfileTests.cs:542` — **테스트** |
+| `MaxRealtimeLights` | 4 | 전부 `ProfileTests.cs` — **테스트** |
+| `OverdrawBudget` | 3 | 2건 테스트, 1건은 `AssetImportRules.cs:280` 의 **주석** |
+| `MaxSimultaneousParticles` | 4 | 전부 `ProfileTests.cs` — **테스트** |
+
+**비테스트 소비처가 하나도 없다.** 유일한 비테스트 등장이 「같은 방향이다」라고 적은
+주석 한 줄이다 — 참조가 아니라 의견이다.
+
+그리고 그 테스트들이 검사하는 것은 `low ≤ medium ≤ high` 같은 **내부 정합성**이다.
+값이 무엇을 제어하는지는 검사하지 않으므로, **제어 경로가 통째로 끊겨도 전부 통과한다.**
+`ProfileTests` 는 지금 초록이다. 그 초록이 「품질 프로파일이 동작한다」를 뜻하지 않는다.
+
+> 이것이 이 세션에서 반복해 만난 실패의 같은 모양이다 — G-4 의 거짓 통과, 등록되지 않은
+> 스위트, 타일링 모델. **지표가 재는 대상과 우리가 알고 싶은 대상이 다르면 초록은 정보가
+> 아니다.** 적용되지 않는 설정은 설정이 아니라 주석이다.
+
+> 기록 정정: 이 절의 첫 집계는 「참조 0건」이었고 그것은 틀렸다. grep 이 대소문자를
+> 구분해 `MaxRealtimeLights` 같은 프로퍼티를 놓쳤다. 결론은 같지만 이유가 다르다 —
+> **참조가 없는 것이 아니라 전부 테스트다.** 「없다」와 「테스트뿐이다」는 다른 결함이고,
+> 후자가 더 위험하다. 앞의 것은 눈에 띄지만 뒤의 것은 초록으로 위장한다.
