@@ -96,6 +96,11 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("에셋 대사가 코드 기본값을 이긴다", TestReactionLineOverrides, ref passed, ref failed, report);
             Run("출하 에셋의 대사 직렬화가 전부거나 전무다", TestShippedReactionAssetLineCoverage, ref passed, ref failed, report);
 
+            // ── 연출 속도 ⑪ (`UP-TECH-09`) ───────────────────────────────────
+            Run("템포 프리셋이 SpinPresenter Standard 와 같다", TestTempoPresetMatchesStandard, ref passed, ref failed, report);
+            Run("닫힌 판 정지가 프로파일에 있다", TestSealedHoldIsInProfile, ref passed, ref failed, report);
+            Run("템포 8종이 스냅샷에서 함께 움직인다", TestTempoValuesTravelTogether, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -2017,7 +2022,11 @@ namespace Ascend.Prototype.Data.Profiles.Tests
         /// </summary>
         private static string TestShippedReactionAssetLineCoverage()
         {
-            const string relative = "Prototype_Elevator/Data/Profiles/PassengerReactionSet.asset";
+            // `AbsoluteAssetPath` 는 **프로젝트 루트**(= `Assets` 의 부모)에 이어 붙인다.
+            // 그래서 경로가 `Assets/` 로 시작해야 한다 — `Root` 가 그 접두사를 가지고 있고
+            // 같은 파일의 플레이스홀더 검사도 전부 `Root` 를 거친다.
+            // 접두사 없이 적었을 때 이 검사는 **있는 에셋을 없다고 보고했다**(446 PASS / 1 FAIL).
+            const string relative = Root + "Data/Profiles/PassengerReactionSet.asset";
             string path = AbsoluteAssetPath(relative);
             if (!File.Exists(path))
                 return $"{relative} 가 없다 — 씬이 물고 있는 에셋이다";
@@ -2031,6 +2040,80 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             if (lines != 0 && lines != entries)
                 return $"대사가 {entries}종 중 {lines}종만 직렬화돼 있다 — 절반만 고친 상태다."
                      + " 인스펙터에서 이 에셋의 톱니바퀴 ▸ Reset 을 눌러 전부 채울 것";
+            return null;
+        }
+
+        // ── 연출 속도 ⑪ (`UP-TECH-09`) ──────────────────────────────────────
+        //
+        // ⑪ 의 값은 `SpinPresenter` 의 `[SerializeField]` 여덟 개였고, `ApplyTempoPreset`
+        // 의 switch 가 그중 여섯을 Awake·OnValidate 마다 덮어썼다. 즉 진짜 출처는 씬도
+        // 아니고 인스펙터도 아닌 **코드 switch** 였다.
+        //
+        // `PresentationProfile` 에는 ⑪ 칸이 이미 있었지만 **소비처가 0곳**이었다 —
+        // 이 저장소가 반복해 온 「만들어졌고 아무도 안 읽는다」다.
+
+        private static string TestTempoPresetMatchesStandard()
+        {
+            // 프로파일 프리셋과 `Tempo.Standard`(= switch 의 default) 가 같은 수여야 한다.
+            // 다르면 에셋을 물리는 순간 연출 속도가 조용히 바뀐다.
+            PresentationSnapshot snap = PresentationProfile.DefaultSnapshot;
+            if (!Near(snap.SealedHold, 0.22f)) return $"닫힌 판 정지 {snap.SealedHold}, Standard 0.22";
+            if (!Near(snap.ColumnRevealInterval, 0.32f)) return $"열 공개 간격 {snap.ColumnRevealInterval}, Standard 0.32";
+            if (!Near(snap.ReadPause, 0.45f)) return $"판독 정지 {snap.ReadPause}, Standard 0.45";
+            if (!Near(snap.PurifyPulse, 0.55f)) return $"정화 맥동 {snap.PurifyPulse}, Standard 0.55";
+            if (!Near(snap.EmptyHold, 0.30f)) return $"빈칸 정지 {snap.EmptyHold}, Standard 0.30";
+            if (!Near(snap.RefillHold, 0.40f)) return $"재충전 정지 {snap.RefillHold}, Standard 0.40";
+            if (!Near(snap.ChainSpeedup, 0.86f)) return $"연쇄 압축 {snap.ChainSpeedup}, 씬 값 0.86";
+            if (!Near(snap.MinTempoScale, 0.35f)) return $"압축 하한 {snap.MinTempoScale}, 씬 값 0.35";
+            return null;
+        }
+
+        private static string TestSealedHoldIsInProfile()
+        {
+            // `SpinPresenter` 의 템포 블록은 여덟 값인데 프로파일이 일곱만 들고 있었다.
+            // 그대로 배선했으면 일곱은 에셋에서 오고 하나는 씬에 굳은 채 남는다 —
+            // 그 절반짜리 상태가 「데이터로 옮겼다」를 참도 거짓도 아니게 만든다.
+            // 0.22 인지만 본다. 「0보다 큰가」를 따로 넣었더니 둘 다 컴파일 상수라 분기가
+            // 접혀 **아무것도 검사하지 않는 단언**이 됐다(CS0162). 이 세션에서 두 번째다 —
+            // 상수 대 상수 비교는 테스트가 아니다.
+            if (!Near(PresentationProfile.DefaultSealedHold, 0.22f))
+                return $"닫힌 판 정지 프리셋이 {PresentationProfile.DefaultSealedHold} 다";
+
+            var profile = ScriptableObject.CreateInstance<PresentationProfile>();
+            try
+            {
+                profile.Reset();
+                if (!Near(profile.Snapshot().SealedHold, PresentationProfile.DefaultSealedHold))
+                    return "Reset 이 닫힌 판 정지를 채우지 않는다";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(profile);
+            }
+        }
+
+        /// <summary>
+        /// 여덟 값이 **하나도 빠짐없이** 스냅샷을 통해 나오는지 본다. 프리셋과 다른 수를
+        /// 넣고 여덟이 전부 따라오는지 확인한다 — 하나라도 코드 값에 남아 있으면 잡힌다.
+        /// </summary>
+        private static string TestTempoValuesTravelTogether()
+        {
+            var probe = new PresentationSnapshot(
+                new[] { 1, 2, 3, 4 },
+                0.11f, 0.12f, 0.13f, 0.14f, 0.15f, 0.16f, 0.51f, 0.52f, 0.17f, 0.18f,
+                Color.white, 0.5f, 0.5f, 1f, 0f);
+
+            if (!Near(probe.SealedHold, 0.11f)) return $"닫힌 판 정지가 {probe.SealedHold}";
+            if (!Near(probe.ColumnRevealInterval, 0.12f)) return $"열 공개 간격이 {probe.ColumnRevealInterval}";
+            if (!Near(probe.ReadPause, 0.13f)) return $"판독 정지가 {probe.ReadPause}";
+            if (!Near(probe.PurifyPulse, 0.14f)) return $"정화 맥동이 {probe.PurifyPulse}";
+            if (!Near(probe.EmptyHold, 0.15f)) return $"빈칸 정지가 {probe.EmptyHold}";
+            if (!Near(probe.RefillHold, 0.16f)) return $"재충전 정지가 {probe.RefillHold}";
+            if (!Near(probe.ChainSpeedup, 0.51f)) return $"연쇄 압축이 {probe.ChainSpeedup}";
+            if (!Near(probe.MinTempoScale, 0.52f)) return $"압축 하한이 {probe.MinTempoScale}";
+            if (!Near(probe.UnlockFlashSeconds, 0.17f)) return $"해금 섬광이 {probe.UnlockFlashSeconds}";
+            if (!Near(probe.UnlockSettleSeconds, 0.18f)) return $"해금 안정이 {probe.UnlockSettleSeconds}";
             return null;
         }
 

@@ -87,8 +87,8 @@ namespace Ascend.Prototype.EditorTools
 
             var report = new StringBuilder("[상승] 표면 텍스처 배선\n");
 
-            // 1) 임포트 설정. **Repeat 이 아니면 타일링이 잘려 무지 면이 된다.**
-            int fixedWrap = EnsureRepeatWrap(report);
+            // 1) 임포트 설정. Repeat + Point 필터. 근거는 그 함수의 주석에 있다.
+            int fixedWrap = EnsureImportSettings(report);
 
             // 2) 머티리얼 이름 → 그 머티리얼을 쓰는 렌더러들의 실측 월드 크기
             var sizes = MeasureMaterialSizes();
@@ -153,7 +153,7 @@ namespace Ascend.Prototype.EditorTools
             AssetDatabase.SaveAssets();
 
             report.AppendLine($"  배선 {wired}장 / 규칙 {Rules.Length}개 · 머티리얼 없음 {missingMat} · 텍스처 없음 {missingTex} · " +
-                              $"Repeat 로 고친 텍스처 {fixedWrap}장");
+                              $"임포트 고친 텍스처 {fixedWrap}장");
             report.AppendLine("  ⚠ 「배선했다」는 머티리얼 수다. **화면에 보이는가는 화소가 답한다** — " +
                               "`tools/capture-metrics.ps1` 의 G-1 국소 분산으로 판정할 것.");
             Debug.Log(report.ToString());
@@ -162,11 +162,25 @@ namespace Ascend.Prototype.EditorTools
         private static float ValueOf(Color c) { Color.RGBToHSV(c, out _, out _, out float v); return v; }
 
         /// <summary>
-        /// 생성 텍스처 전부를 `Repeat` 으로 맞춘다. `Clamp` 면 타일링 &gt; 1 에서
-        /// 가장자리 화소가 늘어나 **면 대부분이 단색으로 채워진다** — 배선했는데도
-        /// 국소 분산이 안 오르는 전형적인 원인이다.
+        /// 생성 텍스처의 임포트 설정을 맞춘다. 둘 다 **국소 분산이 안 오르는 원인**이다.
+        ///
+        /// **① `Repeat`** — `Clamp` 면 타일링 &gt; 1 에서 가장자리 화소가 늘어나
+        /// 면 대부분이 단색으로 채워진다.
+        ///
+        /// **② `Point` 필터** — 이쪽이 실측으로 잡힌 진짜 원인이다.
+        /// 13장을 전부 배선한 뒤에도 포스트를 끈 진단 세트의 G-1 국소 분산 중앙값이
+        /// **2.41** 이었다(통과선 12.0). 0.00 에서는 올라왔지만 「텍스처가 보인다」에는
+        /// 한참 못 미친다.
+        ///
+        /// 산술이 원인을 지목한다 — 256px 텍스처를 0.50 회/m 로 깔면 **128 텍셀/m** 이고,
+        /// 1080p 에서 2.4m 벽이 화면 800px 을 차지하면 **333 화면px/m** 이다.
+        /// 즉 텍셀 하나가 화면 2.6px 로 **확대**되고, 그 사이를 bilinear 가 부드럽게 메운다.
+        /// 8×8 블록 표준편차는 그 보간에 그대로 먹힌다 — 텍스처는 있는데 화소는 평평하다.
+        ///
+        /// `Point` 는 그 보간을 없앤다. 그리고 이것은 우회가 아니라 **스타일 락 그 자체**다 —
+        /// `VISUAL_BIBLE` §2.1 의 PS1·초기 PS2 계열은 점 필터가 기본이다.
         /// </summary>
-        private static int EnsureRepeatWrap(StringBuilder report)
+        private static int EnsureImportSettings(StringBuilder report)
         {
             int changed = 0;
             foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { TexDir }))
@@ -174,11 +188,16 @@ namespace Ascend.Prototype.EditorTools
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 var imp = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (imp == null) continue;
-                if (imp.wrapMode == TextureWrapMode.Repeat) continue;
-                imp.wrapMode = TextureWrapMode.Repeat;
+
+                bool dirty = false;
+                if (imp.wrapMode != TextureWrapMode.Repeat) { imp.wrapMode = TextureWrapMode.Repeat; dirty = true; }
+                if (imp.filterMode != FilterMode.Point) { imp.filterMode = FilterMode.Point; dirty = true; }
+                if (imp.anisoLevel != 0) { imp.anisoLevel = 0; dirty = true; }
+                if (!dirty) continue;
+
                 imp.SaveAndReimport();
                 changed++;
-                report?.AppendLine($"  임포트 수정 — {System.IO.Path.GetFileName(path)} wrapMode → Repeat");
+                report?.AppendLine($"  임포트 수정 — {System.IO.Path.GetFileName(path)} wrap=Repeat filter=Point aniso=0");
             }
             return changed;
         }

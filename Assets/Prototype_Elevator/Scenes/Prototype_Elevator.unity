@@ -4679,7 +4679,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.34765983, g: 0.38, b: 0.36383006, a: 1}
+    - _BaseColor: {r: 0.3476599, g: 0.38, b: 0.36383012, a: 1}
     - _Color: {r: 0.0859999, g: 0.093999825, b: 0.08999988, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -9822,6 +9822,7 @@ MonoBehaviour:
   _anteRatio: 0.12
   _anteEscalation: 0.35
   _weightProfile: {fileID: 0}
+  _spinBalanceProfile: {fileID: 0}
 --- !u!4 &998528528
 Transform:
   m_ObjectHideFlags: 0
@@ -9920,6 +9921,7 @@ MonoBehaviour:
   _intensity: 1
   _feedbackProfile: {fileID: 11400000, guid: 59fe4646137260e40b5e518a582a068d, type: 2}
   _accessibility: {fileID: 11400000, guid: 2a8ae36728c81d444b724821347a3221, type: 2}
+  _thresholdProfile: {fileID: 0}
   _cabinLight: {fileID: 684782632}
   _driveAmbient: 1
   _ambientBlend: 0.55
@@ -14900,7 +14902,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.41842088, g: 0.45, b: 0.43421036, a: 1}
+    - _BaseColor: {r: 0.41842082, g: 0.45, b: 0.4342103, a: 1}
     - _Color: {r: 0.105999835, g: 0.11399985, b: 0.10999983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
