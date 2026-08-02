@@ -38,17 +38,45 @@ namespace Ascend.Prototype.EditorTools
     {
         public const string TexDir = "Assets/Prototype_Elevator/Art/Textures/Generated";
 
+        /// <summary>
+        /// `_BaseColor` 명도를 어떻게 정할 것인가. **이 구분이 판독성을 지킨다.**
+        ///
+        /// 셰이더는 `_BaseMap` 을 `_BaseColor` 에 **곱한다.** 그래서 텍스처를 물리면
+        /// 반사율이 텍스처 평균 밝기만큼 **떨어진다** — 아무것도 안 하면 텍스처판이
+        /// 그레이박스보다 어두워지고, 그것이 과거 두 번의 롤백 원인이다.
+        /// </summary>
+        private enum Tone
+        {
+            /// <summary>목표 명도로 **올린다.** 캐빈 껍데기용 — 어두운 회색을 벗긴다.</summary>
+            Lift,
+
+            /// <summary>
+            /// **현재 평균 반사율을 유지한다.** `V ← V / 텍스처평균` 으로 되돌린다.
+            ///
+            /// 계기판·게이지 배경·결과판처럼 **글자와 눈금이 그 위에 얹히는 면**은
+            /// 어두운 것이 기능이다. 밝게 올리면 흰 글자와의 대비가 무너진다 —
+            /// `VISUAL_SPEC` §8 「로우파이를 명분으로 판독성을 희생하지 않는다」.
+            /// G-1 이 재는 것은 **밝기가 아니라 분산**이라, 밝기를 그대로 두고도
+            /// 텍스처를 물리면 축은 올라간다.
+            /// </summary>
+            Preserve,
+        }
+
         /// <summary>배선 규칙 한 줄. 배율은 「월드 1m 당 텍스처 반복 수」다.</summary>
         private readonly struct Rule
         {
             public readonly string Material;   // 씬 내장 머티리얼 이름
             public readonly string Texture;    // TexDir 안의 파일 이름 (확장자 없이)
             public readonly float  PerMetre;   // 반복/m
-            public readonly float  Value;      // `_BaseColor` 목표 명도 (HSV 의 V)
+            public readonly float  Value;      // Tone.Lift 일 때의 목표 명도
             public readonly string Emission;   // 발광 마스크. 없으면 null
+            public readonly Tone   Tone;       // 명도 정책
+            public readonly bool   Stylize;    // URP/Lit → Ascend/Stylized 전환 여부
 
-            public Rule(string mat, string tex, float perMetre, float value, string emis = null)
-            { Material = mat; Texture = tex; PerMetre = perMetre; Value = value; Emission = emis; }
+            public Rule(string mat, string tex, float perMetre, float value,
+                        string emis = null, Tone tone = Tone.Lift, bool stylize = false)
+            { Material = mat; Texture = tex; PerMetre = perMetre; Value = value;
+              Emission = emis; Tone = tone; Stylize = stylize; }
         }
 
         // 텍스처 레인의 제안표를 그대로 옮긴 것이다. **배율만 옮겼고 타일링 수치는
@@ -74,7 +102,44 @@ namespace Ascend.Prototype.EditorTools
             // 명도는 낮게 유지한다 — 이 둘은 다른 목적이다.
             new Rule("CarShell_LobbyFloor",       "TEX_Grating_Steel",     1.00f, 0.45f),
             new Rule("CarShell_LobbyBack",        "TEX_Concrete_Shaft",    0.40f, 0.38f),
+
+            // ── 화면 **중앙** ─────────────────────────────────────────────────
+            //
+            // G-1 국소 분산이 0.00 → 2.41 에서 멈춘 이유를 세어서 찾았다:
+            // **머티리얼 13/31 배선인데 렌더러 슬롯은 102개 중 14개뿐**이었다.
+            // 위의 `CarShell_*` 13장은 캐빈 껍데기이고 프레임 **가장자리**다.
+            // 프레임 한가운데를 채우는 계기판·결과판·콘솔·레버는 전부
+            // 무지 `URP/Lit` 인 `M_Gray_*` / `TenFloor_*` 슬롯 60여 개였다.
+            //
+            // 그래서 여기를 배선한다. 두 가지를 함께 한다 —
+            // ① 텍스처 ② `URP/Lit` → `Ascend/Stylized`(안 쓰면 계단도 림도 안 걸린다).
+            //
+            // ⚠ **판독 면은 `Tone.Preserve` 다.** 아래 「글자·눈금이 얹히는 면」 넷은
+            // 어두운 것이 기능이라 명도를 올리지 않는다.
+            new Rule("M_Gray_Recessive",   "TEX_Machine_Housing", 1.20f, 0.88f, null, Tone.Lift,     true),
+            new Rule("M_Gray_Interactive", "TEX_Machine_Housing", 1.60f, 0.85f, null, Tone.Lift,     true),
+            new Rule("M_Gray_Button",      "TEX_Machine_Housing", 3.00f, 0.62f, null, Tone.Lift,     true),
+
+            // 판독 면 — 명도 유지
+            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",    1.40f, 0f,    null, Tone.Preserve, true),
+            new Rule("M_Gray_Console",     "TEX_Machine_Housing", 1.40f, 0f,    null, Tone.Preserve, true),
+            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",    2.00f, 0f,    null, Tone.Preserve, true),
+            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",    2.40f, 0f,    null, Tone.Preserve, true),
+
+            new Rule("TenFloor_212426",    "TEX_Machine_Housing", 1.20f, 0f,    null, Tone.Preserve, true),
+            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0.80f, 0f,   null, Tone.Preserve, true),
+            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",     1.00f, 0.86f, null, Tone.Lift,     true),
         };
+
+        // ── 손대지 않는 것과 그 이유 ─────────────────────────────────────────
+        //
+        //   M_Gray_BarFill        전력 게이지의 **채움 길이가 곧 수치**다. 텍스처를 물리면
+        //                        채움 경계가 흐려져 「얼마나 찼는가」가 안 읽힌다.
+        //   M_Gray_Light          상태 점등(녹색). 색 자체가 신호다.
+        //   TenFloor_5C9E8C       청록 강조색 — 심볼·상태 구분에 쓰일 수 있어 건드리지 않는다.
+        //   URP/Unlit (6슬롯)     조준 하이라이트. Unlit 이 의도다.
+        //   Lit (1슬롯)           소유가 불분명하다. 모르는 것은 안 바꾼다.
+        //   TMP 머티리얼          글자다.
 
         [MenuItem("Ascend/Graphics/Wire Surface Textures")]
         public static void WireTextures()
@@ -93,7 +158,11 @@ namespace Ascend.Prototype.EditorTools
             // 2) 머티리얼 이름 → 그 머티리얼을 쓰는 렌더러들의 실측 월드 크기
             var sizes = MeasureMaterialSizes();
 
-            int wired = 0, missingMat = 0, missingTex = 0;
+            Shader stylized = Shader.Find("Ascend/Stylized");
+            if (stylized == null) report.AppendLine("  ⚠ `Ascend/Stylized` 셰이더를 찾지 못했다 — 전환을 건너뛴다");
+
+            int wired = 0, missingMat = 0, missingTex = 0, stylizedCount = 0;
+            _meanCache.Clear();
             foreach (Rule rule in Rules)
             {
                 Material mat = FindSceneMaterial(rule.Material);
@@ -104,10 +173,43 @@ namespace Ascend.Prototype.EditorTools
 
                 Undo.RecordObject(mat, "Wire surface texture");
 
-                // ── 명도 먼저 (경고 1) ──
                 Color before = mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor") : Color.white;
-                Color.RGBToHSV(before, out float h, out float s, out float _);
-                Color lifted = Color.HSVToRGB(h, s, rule.Value);
+                string shaderBefore = mat.shader != null ? mat.shader.name : "null";
+
+                // ── 셰이더 전환 ────────────────────────────────────────────
+                //
+                // ⚠ **발광 상태를 먼저 붙잡는다.** `URP/Lit` 은 `_EMISSION` 키워드가 꺼져
+                // 있으면 `_EmissionColor` 에 값이 남아 있어도 화면에 안 나온다. 그런데
+                // `Ascend/Stylized` 는 키워드 없이 `color += _EmissionColor.rgb` 를 무조건
+                // 더한다(셰이더 615행). 그대로 전환하면 **꺼져 있던 발광이 갑자기 켜진다** —
+                // 계기판 32슬롯이 한꺼번에 빛나면 G-3 발광 상한(6%)이 즉시 깨진다.
+                if (rule.Stylize && stylized != null && mat.shader != stylized)
+                {
+                    bool emissionWasOn = mat.IsKeywordEnabled("_EMISSION");
+                    Color keptEmission = mat.HasProperty("_EmissionColor")
+                        ? mat.GetColor("_EmissionColor") : Color.black;
+
+                    mat.shader = stylized;
+
+                    mat.SetColor("_EmissionColor", emissionWasOn ? keptEmission : Color.black);
+                    stylizedCount++;
+                }
+
+                // ── 명도 (경고 1) ──
+                Color.RGBToHSV(before, out float h, out float s, out float v0);
+                float targetV;
+                if (rule.Tone == Tone.Lift)
+                {
+                    targetV = rule.Value;
+                }
+                else
+                {
+                    // 텍스처 평균만큼 되돌려 **평균 반사율을 보존**한다.
+                    // 1.0 을 넘으면 되돌릴 수 없으므로 자른다(그만큼은 어두워진다 — 적어 둔다).
+                    float mean = Mathf.Max(0.05f, TextureMean(tex));
+                    targetV = Mathf.Clamp01(v0 / mean);
+                }
+                Color lifted = Color.HSVToRGB(h, s, targetV);
                 lifted.a = before.a;
                 mat.SetColor("_BaseColor", lifted);
 
@@ -143,9 +245,10 @@ namespace Ascend.Prototype.EditorTools
                 EditorUtility.SetDirty(mat);
                 wired++;
                 sizes.TryGetValue(rule.Material, out Vector3 sz);
-                report.AppendLine($"  {rule.Material,-24} ← {rule.Texture,-24} " +
-                                  $"실측 {sz.x:F2}×{sz.y:F2}×{sz.z:F2} m · {rule.PerMetre:F2}회/m → tiling ({uv.x:F2}, {uv.y:F2}) · " +
-                                  $"_BaseColor V {ValueOf(before):F3} → {rule.Value:F2}");
+                report.AppendLine($"  {rule.Material,-22} ← {rule.Texture,-22} " +
+                                  $"{sz.x:F2}×{sz.y:F2}×{sz.z:F2} m · {rule.PerMetre:F2}회/m → tiling ({uv.x:F2},{uv.y:F2}) · " +
+                                  $"V {ValueOf(before):F3} → {targetV:F3} [{rule.Tone}] · " +
+                                  $"shader {shaderBefore} → {(mat.shader != null ? mat.shader.name : "null")}");
             }
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -153,13 +256,78 @@ namespace Ascend.Prototype.EditorTools
             AssetDatabase.SaveAssets();
 
             report.AppendLine($"  배선 {wired}장 / 규칙 {Rules.Length}개 · 머티리얼 없음 {missingMat} · 텍스처 없음 {missingTex} · " +
-                              $"임포트 고친 텍스처 {fixedWrap}장");
+                              $"셰이더 전환 {stylizedCount}장 · 임포트 고친 텍스처 {fixedWrap}장");
+            report.AppendLine($"  렌더러 슬롯 배선 — {CountWiredSlots()} (이 수가 G-1 을 움직인다. 머티리얼 수가 아니다)");
             report.AppendLine("  ⚠ 「배선했다」는 머티리얼 수다. **화면에 보이는가는 화소가 답한다** — " +
                               "`tools/capture-metrics.ps1` 의 G-1 국소 분산으로 판정할 것.");
             Debug.Log(report.ToString());
         }
 
         private static float ValueOf(Color c) { Color.RGBToHSV(c, out _, out _, out float v); return v; }
+
+        private static readonly Dictionary<Texture2D, float> _meanCache = new Dictionary<Texture2D, float>();
+
+        /// <summary>
+        /// 텍스처의 평균 밝기. `Tone.Preserve` 가 「곱해서 어두워진 만큼」을 되돌리는 데 쓴다.
+        ///
+        /// 하드코딩하지 않는다 — 텍스처 레인이 생성기를 고치면 평균이 바뀌고,
+        /// 상수는 그때 조용히 틀린 값이 된다. 읽을 수 없는 텍스처는 임포터를 잠깐
+        /// 열었다가 **원래대로 되돌린다**(남의 레인 에셋의 설정을 바꾼 채 두지 않는다).
+        /// </summary>
+        private static float TextureMean(Texture2D tex)
+        {
+            if (tex == null) return 1f;
+            if (_meanCache.TryGetValue(tex, out float cached)) return cached;
+
+            string path = AssetDatabase.GetAssetPath(tex);
+            var imp = AssetImporter.GetAtPath(path) as TextureImporter;
+            bool restore = false;
+            if (imp != null && !imp.isReadable)
+            {
+                imp.isReadable = true;
+                imp.SaveAndReimport();
+                restore = true;
+                tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            }
+
+            float mean = 1f;
+            try
+            {
+                Color[] px = tex.GetPixels();
+                if (px.Length > 0)
+                {
+                    double sum = 0;
+                    for (int i = 0; i < px.Length; i++)
+                        sum += 0.2126 * px[i].r + 0.7152 * px[i].g + 0.0722 * px[i].b;
+                    mean = (float)(sum / px.Length);
+                }
+            }
+            catch (System.Exception e)
+            {
+                // 조용히 1 을 쓰지 않는다 — 그러면 `Preserve` 가 아무것도 안 한 채 성공처럼 보인다.
+                Debug.LogWarning($"[상승] `{tex.name}` 평균을 읽지 못했다 ({e.GetType().Name}). " +
+                                 "명도 보존이 적용되지 않는다 — 그 면은 텍스처 평균만큼 어두워진다.");
+            }
+
+            if (restore && imp != null) { imp.isReadable = false; imp.SaveAndReimport(); }
+
+            _meanCache[tex] = mean;
+            return mean;
+        }
+
+        /// <summary>텍스처가 걸린 렌더러 슬롯 수 / 전체. G-1 을 움직이는 것은 이 수다.</summary>
+        private static string CountWiredSlots()
+        {
+            int wired = 0, total = 0;
+            foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                foreach (Material m in r.sharedMaterials)
+                {
+                    if (m == null) continue;
+                    total++;
+                    if (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") != null) wired++;
+                }
+            return $"{wired}/{total}";
+        }
 
         /// <summary>
         /// 생성 텍스처의 임포트 설정을 맞춘다. 둘 다 **국소 분산이 안 오르는 원인**이다.
