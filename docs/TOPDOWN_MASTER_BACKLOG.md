@@ -85,8 +85,13 @@ Approval Required 항목은 **작업을 멈추는 사유가 아니다.** 교체 
 
 - PASS_1: COMPLETE
 - PASS_2: COMPLETE
-- PASS_3: IN_PROGRESS
-- PASS_4: NOT_STARTED
+- PASS_3: COMPLETE
+- PASS_4: IN_PROGRESS
+
+<!-- 2026-08-02 게이트 현실화 (사용자 결정) — 아래 두 줄은 설명이고 파싱 대상이 아니다.
+     시각 평가: Pass 3 은 「현재 캡처에 대한 독립 판정이 존재하는가」를 묻는다.
+                4.0/4.0 ACCEPT 는 Pass 4 로 옮겼다. VERIFIED 급 기준이기 때문이다.
+     PASS3_GATED 28건: Pass 3 은 CONNECTED, Pass 4 가 VERIFIED 를 요구한다. -->
 
 ## 1.0 패스별 완료 기준 — 게이트는 **현재 패스에만** 적용된다
 

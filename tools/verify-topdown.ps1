@@ -656,6 +656,16 @@ if (Test-Path $P.Verdict) {
     }
 }
 
+# ── 2026-08-02 게이트 현실화 (사용자 결정) ─────────────────────────────────
+#   이전에는 Pass 3 완료에 ACCEPT 를 요구했다. 그런데 ACCEPT 의 정의는
+#   「판독성·스타일 평균 4.0 이상 · 2점 이하 없음」이고 그건 **VERIFIED 급 기준**이다.
+#   Pass 3 의 바는 CONNECTED 이므로 두 층위가 어긋나 있었다 — 실제로 14라운드 동안
+#   REJECT 였고 그동안 Pass 3 은 상태 바를 **이미 넘긴 채** 묶여 있었다.
+#   게이트가 「연결됐는가」가 아니라 「완성됐는가」를 묻고 있었다.
+#
+#   그래서 나눈다 — Pass 3 은 **평가가 현재 그림에 대해 돌았는가**를 묻고,
+#   4.0/4.0 ACCEPT 는 **Pass 4** 로 옮긴다. 기준을 낮추는 것이 아니라 묻는 시점을
+#   바로잡는 것이다. ACCEPT 요구 자체는 사라지지 않는다.
 if ($GatePass -ge 3) {
     if (-not (Test-Path $P.Verdict)) {
         Add-Failure 'C10 시각 평가' "docs/runtime/VISUAL_VERDICT.md 가 없다. 독립 평가 기록이 존재하지 않는다." `
@@ -663,17 +673,23 @@ if ($GatePass -ge 3) {
               "  평가는 구현자와 분리된 평가자가 수행한다 (PRD §1.2).")
     } elseif ($verdictValue -eq '') {
         Add-Failure 'C10 시각 평가' "VISUAL_VERDICT.md 에 'VERDICT: ACCEPT|REJECT|PENDING' 줄이 없다."
-    } elseif ($verdictValue -ne 'ACCEPT') {
-        Add-Failure 'C10 시각 평가' "독립 시각 평가 판정이 $verdictValue 다. Pass 3 완료에는 ACCEPT 가 필요하다." `
+    } elseif ($GatePass -ge 4 -and $verdictValue -ne 'ACCEPT') {
+        Add-Failure 'C10 시각 평가' "독립 시각 평가 판정이 $verdictValue 다. Pass 4 완료에는 ACCEPT 가 필요하다." `
             @("  REJECT 는 작업 종료 사유가 아니다 — 백로그 §5 수정 백로그로 전환하고 계속할 것.")
     } elseif (Test-Path $P.Manifest) {
         $vFile = Get-Item -LiteralPath $P.Verdict
         $mFile = Get-Item -LiteralPath $P.Manifest
         if ($vFile.LastWriteTimeUtc -lt $mFile.LastWriteTimeUtc) {
-            Add-Failure 'C10 시각 평가' "ACCEPT 판정이 현재 캡처보다 오래됐다 — 옛 판정으로 새 캡처를 통과시킬 수 없다." `
-                @("  판정   : $($vFile.LastWriteTime)", "  캡처   : $($mFile.LastWriteTime)")
-        } else {
+            # 이 검사는 Pass 3 에서도 살아 있다. 옛 판정으로 새 캡처를 통과시키는 것이
+            # 이 게이트가 막아야 할 첫째다 — ACCEPT 든 REJECT 든 **현재 그림**에 대한 판정이어야 한다.
+            Add-Failure 'C10 시각 평가' "독립 평가가 현재 캡처보다 오래됐다 — 옛 판정으로 새 캡처를 통과시킬 수 없다." `
+                @("  판정   : $($vFile.LastWriteTime)", "  캡처   : $($mFile.LastWriteTime)",
+                  "  캡처를 다시 뽑았으면 독립 평가도 다시 받는다.")
+        } elseif ($verdictValue -eq 'ACCEPT') {
             Add-Note "독립 시각 평가 ACCEPT (현재 캡처 기준)"
+        } else {
+            Add-Note "독립 시각 평가 $verdictValue — 현재 캡처 기준 (ACCEPT 는 Pass 4 에서 막는다)"
+            Add-Deferred "독립 시각 평가 ACCEPT — Pass 4 에서 막는다"
         }
     }
 } else {
@@ -694,13 +710,28 @@ if ($Pass3Gated.Count -gt 0) {
     if ($unknownIds.Count -gt 0) {
         Add-Failure 'C10b 지정 목록' "PASS3_GATED 가 Required 에 없는 ID 를 가리킨다." (@($unknownIds | ForEach-Object { "  $_" }))
     }
-    if ($GatePass -ge 3) {
+    # 같은 이유로 층위를 맞춘다 — Pass 3 의 바는 CONNECTED 다. 지정 항목에만
+    # VERIFIED 를 요구하면 그 28건만 Pass 4 기준으로 채점하는 셈이 된다.
+    $gatedBelowConnected = @($gatedItems | Where-Object {
+        ($OutOfLadder -notcontains $_.State) -and
+        ((-not $StateRank.ContainsKey($_.State)) -or ($StateRank[$_.State] -lt $StateRank['CONNECTED']))
+    })
+    if ($GatePass -ge 4) {
         if ($gatedUnmet.Count -gt 0) {
             Add-Failure 'C10b 경험·비주얼' `
-                "Pass 3 지정 항목 $($gatedItems.Count)건 중 $($gatedUnmet.Count)건이 VERIFIED 가 아니다." `
+                "Pass 4 지정 항목 $($gatedItems.Count)건 중 $($gatedUnmet.Count)건이 VERIFIED 가 아니다." `
                 (@($gatedUnmet | ForEach-Object { "  [$($_.State)] $($_.Id)  $($_.Title)" }))
         } else {
-            Add-Note "Pass 3 지정 경험·비주얼 항목 $($gatedItems.Count)건 전부 VERIFIED"
+            Add-Note "지정 경험·비주얼 항목 $($gatedItems.Count)건 전부 VERIFIED"
+        }
+    } elseif ($GatePass -ge 3) {
+        if ($gatedBelowConnected.Count -gt 0) {
+            Add-Failure 'C10b 경험·비주얼' `
+                "Pass 3 지정 항목 $($gatedItems.Count)건 중 $($gatedBelowConnected.Count)건이 CONNECTED 미만이다." `
+                (@($gatedBelowConnected | ForEach-Object { "  [$($_.State)] $($_.Id)  $($_.Title)" }))
+        } else {
+            Add-Note "Pass 3 지정 경험·비주얼 항목 $($gatedItems.Count)건 전부 CONNECTED 이상"
+            Add-Deferred "지정 경험·비주얼 $($gatedItems.Count)건 VERIFIED — Pass 4 에서 막는다"
         }
     } else {
         Add-Deferred "Pass 3 지정 경험·비주얼 $($gatedItems.Count)건 중 $($gatedUnmet.Count)건 미충족 — Pass 3 부터 막는다"
