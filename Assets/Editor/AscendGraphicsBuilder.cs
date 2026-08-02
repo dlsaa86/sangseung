@@ -69,7 +69,18 @@ namespace Ascend.Prototype.EditorTools
         // 프레임 좌상단이라 비네트를 정면으로 맞는데, 그 영역이 어두워지면서 위험
         // 4단계의 ΔL 이 17.13 → **9.56** 으로 주저앉았다(기준 15). 감쇠는 곱셈이라
         // 단계 사이의 절대 차이도 같은 비율로 줄어든다. 넓고 얕게 바꾼다.
-        public const float VignetteIntensity  = 0.26f;
+        //
+        // 0.26 은 **G-6 상한도 깼다.** 에디터 모드 스윕(120px 코너 블록, 비네트 0 대비)에서
+        // 최악 코너 감광이 **64.6%** 였다. 감광이 그레이딩 LUT **앞**에 적용되므로
+        // 대비 22 가 그 어두워짐을 한 번 더 증폭한다 — 그래서 어두운 좌측 코너(64.6%)와
+        // 밝은 우측 코너(35.1%)가 같은 반지름인데도 갈린다.
+        //
+        //   int/smooth  최악코너   int/smooth  최악코너
+        //   0.10/0.42    10.2%     0.18/0.42    35.4%   ← 채택
+        //   0.14/0.42    21.5%     0.22/0.42    50.7%   ← 이미 초과
+        //
+        // 0.18 로 내리면 좌벽 스트립도 함께 밝아져 ΔL 에는 **유리하다.**
+        public const float VignetteIntensity  = 0.18f;
         public const float VignetteSmoothness = 0.42f;
 
         // Film Grain — G-6 상한: 프레임 간 화소 차 표준편차 ≤ 6.
@@ -84,7 +95,9 @@ namespace Ascend.Prototype.EditorTools
         // p50 이 80 → 55 로 내려가 여러 장이 G-2 하한 36 아래로 떨어졌고
         // p95 는 133 → 106 으로 멀어졌다. 어두운 쪽은 비네트가 만들고
         // 밝은 쪽은 노출과 블룸이 만들어야 양쪽이 벌어진다.
-        public const float PostExposure = 0.45f;
+        // 0.45 → 0.30: 비네트를 0.26 → 0.18 로 내린 만큼 화면이 통째로 밝아진다.
+        // p50 상한 96 에 `02`(89)·`15`(92)가 이미 붙어 있어 그대로 두면 넘어간다.
+        public const float PostExposure = 0.30f;
         public const float Contrast     = 22f;
         public const float Saturation   = -12f;
 
