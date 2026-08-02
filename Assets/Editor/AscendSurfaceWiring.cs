@@ -62,63 +62,75 @@ namespace Ascend.Prototype.EditorTools
             Preserve,
         }
 
-        /// <summary>배선 규칙 한 줄. 배율은 「월드 1m 당 텍스처 반복 수」다.</summary>
+        /// <summary>
+        /// 배선 규칙 한 줄.
+        ///
+        /// ── 「미터당 반복 수」를 버린 이유 ────────────────────────────────────
+        ///
+        /// 이 표는 원래 `회/m` 를 들고 렌더러 실측 크기를 곱해 `_BaseMap_ST` 를 만들었다.
+        /// 그 설계는 **월드 등방성**(어느 벽에서나 무늬 크기가 같다)은 보장하지만
+        /// **화면 텍셀 밀도**는 보장하지 않는다. 화면 밀도는 카메라 거리와 시선각이 정한다.
+        ///
+        /// 그리고 캐빈을 4배로 키운 순간 같은 `회/m` 이 ρ(텍셀/화소)를 **2배**로 만들었다 —
+        /// 확대가 그 전제를 깨뜨린 것이다.
+        ///
+        /// 조사 결과가 결정적이다. 화면 px/텍셀별 알베도 12장의 국소 대비 중앙값:
+        ///
+        ///     px/텍셀  16      8      4      3      2     1.5    1.0   0.75    0.5
+        ///     relC   0.0000 0.0000 0.071  0.089  0.104  0.129  0.163  0.182  0.133
+        ///
+        /// **8 px/텍셀 이상에서 정확히 0** 이다 — 8×8 블록이 텍셀 하나 안에 들어가고
+        /// Point 필터라 그 블록의 값이 전부 같아진다. 표준편차가 원리적으로 0 이 된다.
+        /// 최적은 **0.75~1.0 px/텍셀 (ρ 1.0~1.33)**.
+        ///
+        /// 그래서 이제 `_BaseMap_ST` 를 **직접** 적는다. 아래 값은 확대 후 현재 씬에서
+        /// ρ 를 실측해 목표 max(ρ) ≈ 1.1 로 역산한 것이다(ρ 는 ST 에 선형 비례).
+        /// **크기에서 유도하지 않는다** — 유도는 화면 밀도를 모른다.
+        ///
+        /// ⚠ 캐빈 치수나 카메라 배치가 또 바뀌면 이 값들은 **다시 재야 한다.**
+        /// 자동으로 따라가지 않는다. 그것이 이 방식이 치르는 대가이고, 대신
+        /// 「화면에 무늬가 보이는가」를 직접 겨눈다.
+        /// </summary>
         private readonly struct Rule
         {
-            public readonly string Material;   // 씬 내장 머티리얼 이름
-            public readonly string Texture;    // TexDir 안의 파일 이름 (확장자 없이)
-            public readonly float  PerMetre;   // 반복/m
-            public readonly float  Value;      // Tone.Lift 일 때의 목표 명도
-            public readonly string Emission;   // 발광 마스크. 없으면 null
-            public readonly Tone   Tone;       // 명도 정책
-            public readonly bool   Stylize;    // URP/Lit → Ascend/Stylized 전환 여부
+            public readonly string  Material;  // 머티리얼 이름
+            public readonly string  Texture;   // TexDir 안의 파일 이름 (확장자 없이)
+            public readonly Vector2 ST;        // `_BaseMap_ST` 타일링 — 실측 역산값
+            public readonly float   Value;     // Tone.Lift 일 때의 목표 명도 / Preserve 의 설계 원본
+            public readonly string  Emission;  // 발광 마스크. 없으면 null
+            public readonly Tone    Tone;      // 명도 정책
+            public readonly bool    Stylize;   // URP/Lit → Ascend/Stylized 전환 여부
 
-            /// <summary>
-            /// 0 보다 크면 **크기에서 유도하지 않고 이 값을 그대로** `_BaseMap_ST` 로 쓴다.
-            ///
-            /// 공유 머티리얼에 필요하다. `_BaseMap_ST` 는 **머티리얼 하나에 하나**인데
-            /// `M_Gray_Readout` 은 크기가 제각각인 렌더러 **32개**가 함께 쓴다.
-            /// 「가장 큰 렌더러의 실측 크기 × 회/m」로 정하면 나머지 31개는 전부 틀리고,
-            /// 실제로 (0.36, 0.72) — **한 바퀴도 안 도는** 타일링이 나와 32슬롯이 통째로
-            /// 평평한 색 덩어리가 됐다. 그것이 배선을 5.7배 늘리고도 G-1 이
-            /// 2.71 → 2.87 밖에 안 움직인 이유다.
-            ///
-            /// Unity 기본 큐브는 면마다 UV 가 0..1 이라, 고정 타일링은 크기와 무관하게
-            /// 모든 면에 같은 **반복 수**를 준다. 텍셀 밀도는 물체마다 달라지지만
-            /// 「무늬가 보인다」는 전부에서 성립한다.
-            /// </summary>
-            public readonly float  FixedUV;
-
-            public Rule(string mat, string tex, float perMetre, float value,
-                        string emis = null, Tone tone = Tone.Lift, bool stylize = false,
-                        float fixedUv = 0f)
-            { Material = mat; Texture = tex; PerMetre = perMetre; Value = value;
-              Emission = emis; Tone = tone; Stylize = stylize; FixedUV = fixedUv; }
+            public Rule(string mat, string tex, float stU, float stV, float value,
+                        string emis = null, Tone tone = Tone.Lift, bool stylize = false)
+            { Material = mat; Texture = tex; ST = new Vector2(stU, stV); Value = value;
+              Emission = emis; Tone = tone; Stylize = stylize; }
         }
 
-        // 텍스처 레인의 제안표를 그대로 옮긴 것이다. **배율만 옮겼고 타일링 수치는
-        // 옮기지 않았다** — 제안표의 「6.4m 벽 환산」 열은 확대 후 치수를 가정한
-        // 값이고, 이 씬의 실측 벽은 그것과 다르다(폭 2.40 · 깊이 3.00 · 높이 3.20).
-        // 미터당 반복 수만이 치수와 무관한 불변량이다.
+        // ⚠ **ST 값은 확대 후 현재 씬에서 ρ(텍셀/화소)를 실측해 역산한 것이다.**
+        // 목표 max(ρ) ≈ 1.1. 「그대로」라고 적힌 것은 이미 최적 구간(ρ ≈ 1.1)이라 안 건드린다.
+        // 「미측정」은 조사 표에 없던 면이라 직전 값을 그대로 옮겨 적은 것이다 —
+        // **최적이라는 뜻이 아니라 아직 안 쟀다는 뜻이다.**
         private static readonly Rule[] Rules =
         {
-            new Rule("CarShell_Floor",            "TEX_FloorPlate_Rust",   0.75f, 0.90f),
-            new Rule("CarShell_Ceiling",          "TEX_WallPanel_Riveted", 0.50f, 0.88f),
-            new Rule("CarShell_WallL",            "TEX_WallPanel_Riveted", 0.50f, 0.92f),
-            new Rule("CarShell_WallR",            "TEX_WallPanel_Riveted", 0.50f, 0.92f),
-            new Rule("CarShell_BackWall_Left",    "TEX_WallPanel_Riveted", 0.50f, 0.92f),
-            new Rule("CarShell_BackWall_Right",   "TEX_WallPanel_Riveted", 0.50f, 0.92f),
-            new Rule("CarShell_FrontWall",        "TEX_WallPaint_Peeled",  0.50f, 0.92f),
-            new Rule("CarShell_BackWall_Lintel",  "TEX_Stencil_Warning",   0.50f, 0.95f),
-            new Rule("CarShell_Handrail_R",       "TEX_Conduit_Cable",     2.00f, 0.90f),
-            new Rule("CarShell_Handrail_B",       "TEX_Conduit_Cable",     2.00f, 0.90f),
-            new Rule("CarShell_TankStand",        "TEX_Machine_Housing",   1.50f, 0.90f, "TEX_Machine_Housing_Emis"),
+            //                                                            ST u      ST v    명도   (측정 ρ → 목표)
+            new Rule("CarShell_Floor",           "TEX_FloorPlate_Rust",   0.22f,   0.27f,  0.90f),   // ρ 19.76 — 최악
+            new Rule("CarShell_WallL",           "TEX_WallPanel_Riveted", 6.60f,   5.67f,  0.92f),   // ρ 0.533 — 너무 성겼다
+            new Rule("CarShell_WallR",           "TEX_WallPanel_Riveted", 6.60f,   5.67f,  0.92f),   // ρ 0.533
+            new Rule("CarShell_FrontWall",       "TEX_WallPaint_Peeled",  5.66f,   5.99f,  0.92f),   // ρ 0.505
+            new Rule("CarShell_BackWall_Left",   "TEX_WallPanel_Riveted", 1.375f,  2.75f,  0.92f),   // ρ 1.111 — 그대로 (최적)
+            new Rule("CarShell_BackWall_Right",  "TEX_WallPanel_Riveted", 0.725f,  2.75f,  0.92f),   // 미측정
+            new Rule("CarShell_Ceiling",         "TEX_WallPanel_Riveted", 2.60f,   3.20f,  0.88f),   // 미측정
+            new Rule("CarShell_BackWall_Lintel", "TEX_Stencil_Warning",   0.50f,   1.725f, 0.95f),   // 미측정
+            new Rule("CarShell_Handrail_R",      "TEX_Conduit_Cable",     0.12f,   3.80f,  0.90f),   // 미측정
+            new Rule("CarShell_Handrail_B",      "TEX_Conduit_Cable",     0.14f,   0.01f,  0.90f),   // ρ 18.58
+            new Rule("CarShell_TankStand",       "TEX_Machine_Housing",   0.24f,   1.02f,  0.90f, "TEX_Machine_Housing_Emis"), // 미측정
 
             // 로비는 **문 밖**이다. 캐빈과 같은 명도로 올리면 출입구의 깊이가 사라지고
             // 「안이 어둡고 밖이 밝다」는 공간 판독이 뒤집힌다. 텍스처는 물리되
             // 명도는 낮게 유지한다 — 이 둘은 다른 목적이다.
-            new Rule("CarShell_LobbyFloor",       "TEX_Grating_Steel",     1.00f, 0.45f),
-            new Rule("CarShell_LobbyBack",        "TEX_Concrete_Shaft",    0.40f, 0.38f),
+            new Rule("CarShell_LobbyFloor",      "TEX_Grating_Steel",     0.19f,   0.22f,  0.45f),   // ρ 17.71
+            new Rule("CarShell_LobbyBack",       "TEX_Concrete_Shaft",    1.20f,   2.20f,  0.38f),   // 미측정
 
             // ── 화면 **중앙** ─────────────────────────────────────────────────
             //
@@ -143,9 +155,10 @@ namespace Ascend.Prototype.EditorTools
             // 심볼 실루엣 대비까지 무너졌다. 명도는 위계이지 장식이 아니다.
             //
             // 값은 배선 전 씬 실측이고 `HumanScaleLayout` 의 상수와 같은 계열이다.
-            new Rule("M_Gray_Recessive",   "TEX_Machine_Housing",  0f, 0.170f, null, Tone.Preserve, true, 3f),
-            new Rule("M_Gray_Interactive", "TEX_Machine_Housing",  0f, 0.657f, null, Tone.Preserve, true, 2f),
-            new Rule("M_Gray_Button",      "TEX_Machine_Housing",  0f, 0.320f, null, Tone.Preserve, true, 2f),
+            //                                                       ST u    ST v   설계명도                       (측정 ρ)
+            new Rule("M_Gray_Recessive",   "TEX_Machine_Housing", 0.11f, 0.11f, 0.170f, null, Tone.Preserve, true), // ρ 28.85 — 전체 최악
+            new Rule("M_Gray_Interactive", "TEX_Machine_Housing", 0.46f, 0.46f, 0.657f, null, Tone.Preserve, true), // ρ 4.82
+            new Rule("M_Gray_Button",      "TEX_Machine_Housing", 0.17f, 0.17f, 0.320f, null, Tone.Preserve, true), // ρ 13.28
 
             // 판독 면 — 명도 유지.
             // `Value` 는 **설계 원본 명도**(HSV 의 V)다. 배선 전 씬에서 실측한 값이고,
