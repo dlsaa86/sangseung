@@ -742,20 +742,18 @@ if (-not $NoCsv) {
     # g1bTexturedStdMedian 은 텍스처 블록이 0개면 **빈 칸**이다 (0 을 쓰면 집계에 섞인다).
     # slotBands / slotColorPct 는 ROI 를 받지 못한 장에서 **빈 칸**이다.
     # 0 을 쓰면 「띠가 없다」로 읽히고, 그것이 이 축을 공백으로 만든 실수의 재생산이다.
-    $null = $lines.Add('file,width,height,totalPixels,representative,localStdMedian,g1bTexturedStdMedian,g1bTexturedBlocks,g1bTexturedPct,g1cSharpPct,g1cSharpBlocks,g1bBlockStdMin,g1cBlockStdMin,blockCount8,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatDelta,stepMinLength,boundaryMinDelta,stepCount,boundaryCount,stepLongest,flatRunCount,flatRunLongest,flatRunCountEq0,flatRunLongestEq0,scanSpan,g4Verdict,g4LegacyObserved,slotVerdict,slotRoiProvided,slotRoiX,slotRoiY,slotRoiW,slotRoiH,slotRoiBgLum,slotComponents,slotBands,slotColorPct,slotTopMajor,slotTopMinor,slotTopRatio,slotTopCrossings,slotTopC2,slotTopC3,slotTopC4,emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing')
+    $slotHeader = Get-CaptureSlotCsvHeader
+    $null = $lines.Add(('file,width,height,totalPixels,representative,localStdMedian,g1bTexturedStdMedian,g1bTexturedBlocks,g1bTexturedPct,g1cSharpPct,g1cSharpBlocks,g1bBlockStdMin,g1cBlockStdMin,blockCount8,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatDelta,stepMinLength,boundaryMinDelta,stepCount,boundaryCount,stepLongest,flatRunCount,flatRunLongest,flatRunCountEq0,flatRunLongestEq0,scanSpan,g4Verdict,g4LegacyObserved,{0},emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing' -f ($slotHeader -join ',')))
     foreach ($r in $rows) {
         $m = $r.M
         $g1bCsv = if ($m.TexturedBlockCount -gt 0) { '{0:F4}' -f $m.TexturedBlockStdMedian } else { '' }
-        $slotCsv = if ($m.SlotRoiProvided) {
-            '{0},1,{1},{2},{3},{4},{5},{6},{7},{8:F4},{9},{10},{11:F4},{12},{13},{14},{15}' -f `
-                $r.SlotVerdict, $m.SlotRoiX, $m.SlotRoiY, $m.SlotRoiW, $m.SlotRoiH, $m.SlotRoiBackgroundLum,
-                $m.SlotComponentCount, $m.SlotBandCount, $m.SlotColorPercent,
-                $m.SlotTopMajor, $m.SlotTopMinor, $m.SlotTopRatio, $m.SlotTopCrossings,
-                $(if ($m.SlotTopC2) { 1 } else { 0 }), $(if ($m.SlotTopC3) { 1 } else { 0 }), $(if ($m.SlotTopC4) { 1 } else { 0 })
-        } else {
-            # ROI 없음 — 숫자 칸을 전부 비운다.
-            'UNMEASURABLE,0,,,,,,,,,,,,,,'
+        # 헤더와 값이 같은 출처(코어)에서 나온다. 분기마다 칸 수가 어긋나 열이 밀리는
+        # 사고를 막기 위한 것이다 — 밀린 값은 오류가 아니라 조용히 틀린 숫자가 된다.
+        $slotFields = @(Format-CaptureSlotCsvFields -Metric $m -Verdict $r.SlotVerdict)
+        if ($slotFields.Count -ne $slotHeader.Count) {
+            throw "G-SLOT CSV 칸 수 불일치: 헤더 $($slotHeader.Count) · 값 $($slotFields.Count) ($($m.Name))"
         }
+        $slotCsv = ($slotFields -join ',')
         $null = $lines.Add(('{0},{1},{2},{3},{4},{5:F4},{6},{7},{8:F4},{9:F4},{10},{11:F2},{12:F2},{13},{14},{15},{16},{17:F5},{18},{19},{20},{21},{22},{23},{24},{25},{26},{27},{28},{29},{30},{31},{32},{33},{44},{34:F4},{35},{36},{37},{38},{39},{40},{41},{42},{43}' -f `
             $m.Name, $m.Width, $m.Height, $m.TotalPixels, $(if ($r.Rep) { 1 } else { 0 }),
             $m.LocalStdMedian,

@@ -1278,6 +1278,51 @@ function Format-CaptureSlotColor {
     return ('{0:F2}' -f $Metric.SlotColorPercent)
 }
 
+function Get-CaptureSlotCsvHeader {
+    <#
+    .SYNOPSIS
+        metrics.csv 의 G-SLOT 열 이름들. 헤더와 값이 **같은 출처**에서 나오게 한다.
+    #>
+    return @(
+        'slotVerdict', 'slotRoiProvided', 'slotRoiX', 'slotRoiY', 'slotRoiW', 'slotRoiH',
+        'slotRoiBgLum', 'slotComponents', 'slotBands', 'slotColorPct',
+        'slotTopMajor', 'slotTopMinor', 'slotTopRatio', 'slotTopCrossings',
+        'slotTopC2', 'slotTopC3', 'slotTopC4'
+    )
+}
+
+function Format-CaptureSlotCsvFields {
+    <#
+    .SYNOPSIS
+        한 장의 G-SLOT CSV 칸들을 만든다. **칸 수는 어느 분기에서든 같아야 한다.**
+
+    .DESCRIPTION
+        ROI 가 없는 장은 숫자 칸을 **비운다** — 0 을 쓰면 「띠가 없다」로 읽힌다.
+        비우는 쪽 분기에서 쉼표 하나를 빠뜨리면 그 뒤 열이 통째로 밀리고,
+        그렇게 밀린 값은 문법 오류가 아니라 **조용히 틀린 숫자**가 된다.
+        그래서 문자열을 손으로 쓰지 않고 배열로 만들어 길이를 검사로 고정한다.
+    #>
+    param([Parameter(Mandatory)] $Metric, [Parameter(Mandatory)][string] $Verdict)
+    if (-not $Metric.SlotRoiProvided) {
+        $out = New-Object 'string[]' 17
+        $out[0] = 'UNMEASURABLE'
+        $out[1] = '0'
+        for ($i = 2; $i -lt 17; $i++) { $out[$i] = '' }
+        return $out
+    }
+    return @(
+        $Verdict, '1',
+        "$($Metric.SlotRoiX)", "$($Metric.SlotRoiY)", "$($Metric.SlotRoiW)", "$($Metric.SlotRoiH)",
+        "$($Metric.SlotRoiBackgroundLum)", "$($Metric.SlotComponentCount)", "$($Metric.SlotBandCount)",
+        ('{0:F4}' -f $Metric.SlotColorPercent),
+        "$($Metric.SlotTopMajor)", "$($Metric.SlotTopMinor)",
+        ('{0:F4}' -f $Metric.SlotTopRatio), "$($Metric.SlotTopCrossings)",
+        $(if ($Metric.SlotTopC2) { '1' } else { '0' }),
+        $(if ($Metric.SlotTopC3) { '1' } else { '0' }),
+        $(if ($Metric.SlotTopC4) { '1' } else { '0' })
+    )
+}
+
 function Format-CaptureG1b {
     <#
     .SYNOPSIS

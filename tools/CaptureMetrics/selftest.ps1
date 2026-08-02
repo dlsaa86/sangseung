@@ -790,6 +790,27 @@ $roiBL = ConvertTo-CaptureRoi -Text '16,10,288,288' -Origin bottomleft -ImageHei
 Assert-Value 'ROI 파싱' 'bottomleft → topleft y = 320−(10+288)' 22 $roiBL.Y
 Assert-Value 'ROI 파싱' 'bottomleft 는 x 를 바꾸지 않는다'      16 $roiBL.X
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CSV 칸 수 — **분기마다 어긋나면 열이 통째로 밀린다**
+#
+# ROI 있는 장과 없는 장이 서로 다른 개수의 칸을 내면, 그 뒤의 모든 열이 한 칸씩
+# 밀린 채 저장된다. 이것은 문법 오류가 아니라 **조용히 틀린 숫자**이고,
+# 실제로 이 작업 중에 한 번 났다 (측정불가 행의 slotTopC4 칸에 빈평면% 가 들어갔다).
+# ══════════════════════════════════════════════════════════════════════════════
+$slotHdr = Get-CaptureSlotCsvHeader
+Assert-Value 'CSV 칸수' '헤더 칸 수'                    17 $slotHdr.Count
+$fldMeasured = @(Format-CaptureSlotCsvFields -Metric $Z1 -Verdict 'FAIL')
+$fldUnmeas   = @(Format-CaptureSlotCsvFields -Metric $Z5 -Verdict 'UNMEASURABLE')
+Assert-Value 'CSV 칸수' 'ROI 있는 장 = 헤더와 같다'      17 $fldMeasured.Count
+Assert-Value 'CSV 칸수' 'ROI 없는 장 = 헤더와 같다'      17 $fldUnmeas.Count
+Assert-Value 'CSV 칸수' '두 분기가 서로 같다'            $true ($fldMeasured.Count -eq $fldUnmeas.Count)
+Assert-Value 'CSV 칸수' '측정불가 첫 칸'                 'UNMEASURABLE' $fldUnmeas[0]
+Assert-Value 'CSV 칸수' '측정불가 roiProvided = 0'       '0' $fldUnmeas[1]
+Assert-Value 'CSV 칸수' '측정불가 띠 칸은 **비어 있다**' '' $fldUnmeas[8]
+Assert-Value 'CSV 칸수' '측정불가 색 칸은 비어 있다'     '' $fldUnmeas[9]
+Assert-Value 'CSV 칸수' 'Z1 띠 칸 = 1'                  '1' $fldMeasured[8]
+Assert-Value 'CSV 칸수' 'Z1 roiProvided = 1'            '1' $fldMeasured[1]
+
 function Test-RoiThrows { param([scriptblock] $B) try { & $B | Out-Null; return $false } catch { return $true } }
 Assert-Value 'ROI 파싱' '값 3개면 거부'      $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text '1,2,3' })
 Assert-Value 'ROI 파싱' '정수가 아니면 거부' $true (Test-RoiThrows { ConvertTo-CaptureRoi -Text 'a,2,3,4' })
