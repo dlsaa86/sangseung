@@ -43,6 +43,8 @@ namespace Ascend.Prototype.Diagnostics.Tests
             Run("플레이어 3종에 필수 표시가 남아 있다", TestPlayerComponentsStayMarked, ref passed, ref failed, report);
             Run("에디터에서 디버그 도구가 허용된다", TestDebugToolsAllowedInEditor, ref passed, ref failed, report);
             Run("릴리스 가드가 Start 와 Update 둘 다에 걸려 있다", TestDebugPanelGuardsBothEntryPoints, ref passed, ref failed, report);
+            Run("테이프가 기록의 값을 그대로 쓴다 (재계산하지 않는다)", TestPrinterUsesRecordValues, ref passed, ref failed, report);
+            Run("그릴 대상이 없으면 줄이 쌓여도 그려지지 않는다", TestPrinterCounterIsNotProofOfDrawing, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Diagnostics (필수 참조 배선) Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
