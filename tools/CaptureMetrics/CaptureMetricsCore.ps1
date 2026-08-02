@@ -54,6 +54,9 @@ $script:CM_Thresholds = [ordered]@{
     G4_StairFramesMin   = 12     # G-4 24장 중 계단이 관측되는 장 ≥ 12
     G5_EmptyPlaneMaxPct = 18.0   # G-5 빈 평면 비율 ≤ 18%
     MagentaMax          = 0      # 셰이더 오류 색은 0 이어야 한다
+    # ── G-SLOT (VISUAL_VERDICT.md §10 — 16차 독립 평가자가 정한 정의) ──────────
+    SlotA_BandMax       = 0      # G-SLOT-A 「띠」 개수 = 0 (전 24장)
+    SlotB_ColorMaxPct   = 2.0    # G-SLOT-B ROI 안 색 화소 ≤ 2%
 }
 
 # ── 분류 임계 — **통과선이 아니다** (GRAPHICS_TARGET §5 축 정정 2026-08-02) ────
@@ -74,6 +77,25 @@ $script:CM_Classify = [ordered]@{
     # 그 장은 「미관측」이 아니라 **「측정 불가」**다 — 평평한 언릿 면 위이거나 완전 단색이라
     # 계단이 원리적으로 만들어질 수 없다 (GRAPHICS_TARGET §5.4: 19장 중 9장이 Unlit TubeFrame).
     G4_MeasurableMinSpan = 8
+
+    # ── G-SLOT-A 형상 조건 (VISUAL_VERDICT.md §10) ────────────────────────────
+    # ROI = 결과판 아홉 칸의 화면 AABB 합집합. **ROI 밖은 세지 않는다** —
+    # 이것이 천장등을 배제하는 장치이고, PD-22(천장등 유지)와 충돌하지 않는 이유다.
+    SlotA_ContrastMinDelta  = 25     # ① 주변 대비 |ΔL| ≥ 25 로 이진화
+    SlotA_AspectMin         = 4.0    # ② 연결 성분 장축/단축 ≥ 4
+    SlotA_MajorMinFraction  = 0.35   # ③ 장축 길이 ≥ ROI 폭의 35%
+    SlotA_CrossingsMin      = 2      # ④ 칸 경계를 2개 이상 횡단
+
+    # ── G-SLOT-B 색 조건 ──────────────────────────────────────────────────────
+    # ⚠ `max−min ≥ 55` 는 `R−B ≥ 60` 에 **수학적으로 함의된다** (max ≥ R, min ≤ B
+    #   이므로 max−min ≥ R−B ≥ 60 > 55). 즉 이 절은 **아무것도 걸러내지 못한다.**
+    #   14차 식과 실제로 달라지는 것은 `R ≥ 120` 하나뿐이다 — 어두운 따뜻한 회색벽을
+    #   빼는 것은 채도가 아니라 밝기 하한이다. 정의대로 넷 다 구현하되 이 사실을 보고한다.
+    #   (자체 검사 케이스가 이 함의를 반증 형태로 고정한다.)
+    SlotB_RminusB           = 60
+    SlotB_GminusB           = 30
+    SlotB_SaturationMin     = 55
+    SlotB_RedMin            = 120
 }
 
 # ── 제안 (적용하지 않는다) ────────────────────────────────────────────────────
@@ -186,6 +208,30 @@ namespace CaptureMetrics
 
         public int    BlockCount8;
         public int    BlockCount32;
+
+        // ── G-SLOT (VISUAL_VERDICT.md §10) ────────────────────────────────
+        // ROI 를 **주지 않으면 추정하지 않는다.** SlotRoiProvided=false 는
+        // 「띠 0」이 아니라 **「측정 불가」**다. 둘을 같은 값으로 내보내면
+        // 재지 않은 축이 초록으로 읽힌다 — G-4 가 무지 면을 자동 통과시킨 것과
+        // 정확히 같은 구조의 거짓 그린이 된다.
+        public bool   SlotRoiProvided;
+        public int    SlotRoiX, SlotRoiY, SlotRoiW, SlotRoiH;
+        public long   SlotRoiPixels;
+        public int    SlotRoiBackgroundLum;   // ROI 휘도 중앙값 = 「주변」의 기준값
+
+        public int    SlotComponentCount;     // 이진화 후 연결 성분 수 (8-이웃)
+        public int    SlotBandCount;          // G-SLOT-A 네 조건을 **모두** 만족한 성분 수
+        public long   SlotColorPixels;        // G-SLOT-B 조건 화소 수
+        public double SlotColorPercent;       // ROI 대비 비율(%)
+
+        // 최대 면적 성분의 진단값 — 「왜 띠가 아닌가」를 조건별로 볼 수 있게 낸다.
+        public int    SlotTopArea;
+        public int    SlotTopBboxW, SlotTopBboxH;
+        public int    SlotTopMajor, SlotTopMinor;
+        public double SlotTopRatio;
+        public double SlotTopMeanDelta;       // ① 의 여유를 보이는 값
+        public int    SlotTopCrossings;
+        public bool   SlotTopC2, SlotTopC3, SlotTopC4;
     }
 
     public static class Analyzer
@@ -205,6 +251,17 @@ namespace CaptureMetrics
         // 블록 std 히스토그램: 폭 0.5 로 [0,32) 를 64칸, 마지막 1칸이 >= 32 넘침.
         public const double HistBinWidth = 0.5;
         public const int    HistBins     = 65;
+
+        // ── G-SLOT (VISUAL_VERDICT.md §10) ────────────────────────────────
+        public const int    SlotContrastMinDelta = 25;
+        public const double SlotAspectMin        = 4.0;
+        public const double SlotMajorMinFraction = 0.35;
+        public const int    SlotCrossingsMin     = 2;
+        public const int    SlotCellsPerAxis     = 3;   // 3×3 결과판
+        public const int    SlotColorRminusB     = 60;
+        public const int    SlotColorGminusB     = 30;
+        public const int    SlotColorSaturation  = 55;
+        public const int    SlotColorRedMin      = 120;
 
         // 0~255 로 반올림·클램프한 정수 휘도.
         public static int Q(double L)
@@ -236,6 +293,17 @@ namespace CaptureMetrics
                                           int flatDelta, int stepMinLength, int boundaryMinDelta,
                                           double texturedBlockStd, double sharpBlockStd)
         {
+            // ROI 를 주지 않은 호출이다 → G-SLOT 은 **측정 불가**로 남는다.
+            // 여기서 ROI 를 추정하면 그 순간 「재지 않은 축」이 숫자를 갖게 된다.
+            return Analyze(path, scanYFrac, scanXFrac, scanLen, flatDelta, stepMinLength, boundaryMinDelta,
+                           texturedBlockStd, sharpBlockStd, false, 0, 0, 0, 0);
+        }
+
+        public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen,
+                                          int flatDelta, int stepMinLength, int boundaryMinDelta,
+                                          double texturedBlockStd, double sharpBlockStd,
+                                          bool hasRoi, int roiX, int roiY, int roiW, int roiH)
+        {
             ImageResult r = new ImageResult();
             r.Path = path;
             r.Name = System.IO.Path.GetFileNameWithoutExtension(path);
@@ -245,6 +313,11 @@ namespace CaptureMetrics
             long gold = 0;
             long magenta = 0;
             long[] hist = new long[256];
+
+            // G-SLOT 용 ROI 절편. ROI 를 주지 않으면 전부 null 로 남는다.
+            double[] roiLum = null;
+            byte[] roiR = null, roiG = null, roiB = null;
+            int rw = 0, rh = 0;
 
             // 파일 잠금을 남기지 않으려고 바이트로 먼저 읽는다.
             byte[] fileBytes = File.ReadAllBytes(path);
@@ -292,6 +365,44 @@ namespace CaptureMetrics
                         if (rr - b >= 60 && g - b >= 30) gold++;
                         if (rr > 200 && b > 200 && g < 80) magenta++;
                     }
+                }
+
+                // ── G-SLOT ROI 절편 ─────────────────────────────────────────
+                // 프레임 밖으로 나간 ROI 는 **잘라서** 쓴다. 잘린 뒤 넓이가 0 이면
+                // 「ROI 를 받았지만 화면에 없다」이므로 역시 측정 불가로 남긴다.
+                if (hasRoi)
+                {
+                    int rx = roiX, ry = roiY;
+                    rw = roiW; rh = roiH;
+                    if (rx < 0) { rw += rx; rx = 0; }
+                    if (ry < 0) { rh += ry; ry = 0; }
+                    if (rx + rw > w) rw = w - rx;
+                    if (ry + rh > h) rh = h - ry;
+                    if (rw > 0 && rh > 0)
+                    {
+                        r.SlotRoiProvided = true;
+                        r.SlotRoiX = rx; r.SlotRoiY = ry; r.SlotRoiW = rw; r.SlotRoiH = rh;
+                        roiLum = new double[rw * rh];
+                        roiR = new byte[rw * rh];
+                        roiG = new byte[rw * rh];
+                        roiB = new byte[rw * rh];
+                        int k2 = 0;
+                        for (int y = 0; y < rh; y++)
+                        {
+                            int row = (ry + y) * stride;
+                            for (int x = 0; x < rw; x++)
+                            {
+                                int p = row + ((rx + x) << 2);
+                                byte bch = buf[p];
+                                byte gch = buf[p + 1];
+                                byte rch = buf[p + 2];
+                                roiB[k2] = bch; roiG[k2] = gch; roiR[k2] = rch;
+                                roiLum[k2] = 0.2126 * rch + 0.7152 * gch + 0.0722 * bch;
+                                k2++;
+                            }
+                        }
+                    }
+                    else { rw = 0; rh = 0; }
                 }
             }
 
@@ -416,7 +527,177 @@ namespace CaptureMetrics
             r.BoundaryCount = boundN;
             r.StepLongest = stepLong;
 
+            // ── G-SLOT ─────────────────────────────────────────────────────
+            // ROI 가 없으면 **아무것도 채우지 않는다.** SlotRoiProvided=false 가
+            // 「측정 불가」의 단일 신호다.
+            if (r.SlotRoiProvided) ComputeSlots(r, roiLum, roiR, roiG, roiB, rw, rh);
+
             return r;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // G-SLOT-A / G-SLOT-B — VISUAL_VERDICT.md §10 (16차 독립 평가자 정의)
+        //
+        // ROI = 결과판 아홉 칸의 화면 AABB 합집합. ROI 밖은 세지 않는다 —
+        // 이것이 천장등을 배제하는 장치이고 PD-22(천장등 유지)와 충돌하지 않는 이유다.
+        //
+        // A(형상·주지표): ① |ΔL| ≥ 25 이진화 ② 장축/단축 ≥ 4
+        //                 ③ 장축 ≥ ROI 폭의 35% ④ 칸 경계 2개 이상 횡단
+        //                 넷을 **모두** 만족한 성분이 「띠」다. 통과선 = 0개.
+        // B(색·보조):     R−B ≥ 60 · G−B ≥ 30 · max−min ≥ 55 · R ≥ 120. 통과선 ≤ 2%.
+        //
+        // ── 정의가 비워 둔 자리를 어떻게 메웠는가 (숨기지 않는다) ───────────
+        // 「주변 대비」의 **주변**이 무엇인지 정의에 없다. 두 읽기가 가능하다.
+        //   (a) ROI 자체의 배경 수준   (b) 각 화소 주변의 국소 고리
+        // (b) 는 두꺼운 띠의 **가장자리만** 잡아 ③(장축 길이)을 구조적으로 못 넘게
+        // 만든다 — 즉 정의가 잡으려는 대상을 스스로 놓친다. 그래서 (a) 를 쓰고,
+        // 기준값은 **ROI 휘도 중앙값**이다. 그 값을 결과에 함께 내보내므로
+        // 나중에 이 선택을 검증할 수 있다.
+        //
+        // 장축/단축은 성분의 **축정렬 경계상자** 긴 변/짧은 변이다. 대각선 띠는
+        // 경계상자가 정사각형에 가까워져 비율이 과소평가된다 — 알려진 한계이고
+        // 도구가 이것을 숨기지 않도록 채움률 대신 경계상자 값을 그대로 내보낸다.
+        // ══════════════════════════════════════════════════════════════════
+        public static void ComputeSlots(ImageResult r, double[] lum, byte[] rr, byte[] gg, byte[] bb,
+                                        int rw, int rh)
+        {
+            ComputeSlots(r, lum, rr, gg, bb, rw, rh,
+                         SlotContrastMinDelta, SlotAspectMin, SlotMajorMinFraction,
+                         SlotCrossingsMin, SlotCellsPerAxis);
+        }
+
+        public static void ComputeSlots(ImageResult r, double[] lum, byte[] rr, byte[] gg, byte[] bb,
+                                        int rw, int rh,
+                                        int contrastMinDelta, double aspectMin, double majorMinFraction,
+                                        int crossingsMin, int cellsPerAxis)
+        {
+            int n = rw * rh;
+            r.SlotRoiPixels = n;
+            if (n <= 0) return;
+
+            // 「주변」의 기준값 = ROI 휘도 중앙값.
+            long[] rhist = new long[256];
+            for (int i = 0; i < n; i++) rhist[Q(lum[i])]++;
+            int bg = Percentile(rhist, n, 0.50);
+            r.SlotRoiBackgroundLum = bg;
+
+            // ① 이진화
+            bool[] mask = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                int d = Q(lum[i]) - bg;
+                if (d < 0) d = -d;
+                mask[i] = (d >= contrastMinDelta);
+            }
+
+            // 칸 경계 (ROI 로컬 좌표). 3×3 이면 축마다 내부 경계선 2개, 합 4개.
+            if (cellsPerAxis < 2) cellsPerAxis = 2;
+            int[] vx = new int[cellsPerAxis - 1];
+            int[] hy = new int[cellsPerAxis - 1];
+            for (int k = 1; k < cellsPerAxis; k++)
+            {
+                vx[k - 1] = (int)Math.Round((double)rw * k / cellsPerAxis, MidpointRounding.AwayFromZero);
+                hy[k - 1] = (int)Math.Round((double)rh * k / cellsPerAxis, MidpointRounding.AwayFromZero);
+            }
+
+            // ③ 은 ROI **폭** 기준이다 (높이가 아니다) — 세로로 긴 띠도 같은 잣대로 잰다.
+            double majorMin = majorMinFraction * rw;
+
+            bool[] seen = new bool[n];
+            int[] stack = new int[n];
+            int comps = 0, bands = 0, topArea = 0;
+
+            for (int start = 0; start < n; start++)
+            {
+                if (!mask[start] || seen[start]) continue;
+
+                int sp = 0;
+                stack[sp++] = start;
+                seen[start] = true;
+
+                int minX = rw, maxX = -1, minY = rh, maxY = -1, area = 0;
+                double sumDelta = 0.0;
+
+                while (sp > 0)
+                {
+                    int p = stack[--sp];
+                    int py = p / rw;
+                    int px = p - py * rw;
+                    area++;
+                    if (px < minX) minX = px;
+                    if (px > maxX) maxX = px;
+                    if (py < minY) minY = py;
+                    if (py > maxY) maxY = py;
+                    int dd = Q(lum[p]) - bg;
+                    if (dd < 0) dd = -dd;
+                    sumDelta += dd;
+
+                    // 8-이웃
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        int ny = py + dy;
+                        if (ny < 0 || ny >= rh) continue;
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dy == 0) continue;
+                            int nx = px + dx;
+                            if (nx < 0 || nx >= rw) continue;
+                            int q = ny * rw + nx;
+                            if (mask[q] && !seen[q]) { seen[q] = true; stack[sp++] = q; }
+                        }
+                    }
+                }
+
+                comps++;
+
+                int bw = maxX - minX + 1;
+                int bh = maxY - minY + 1;
+                int major = bw > bh ? bw : bh;
+                int minor = bw > bh ? bh : bw;
+                double ratio = (minor > 0) ? ((double)major / minor) : 0.0;
+
+                // ④ 「횡단」은 **엄격한 걸침**이다 — 경계선 왼쪽(위)에 화소가 있고
+                //    동시에 경계선 위치 이상에도 화소가 있어야 한다. 한 칸에 꼭 맞게
+                //    들어찬 성분은 횡단 0 이다.
+                int cross = 0;
+                for (int k = 0; k < vx.Length; k++) if (minX < vx[k] && maxX >= vx[k]) cross++;
+                for (int k = 0; k < hy.Length; k++) if (minY < hy[k] && maxY >= hy[k]) cross++;
+
+                bool c2 = (ratio >= aspectMin);
+                bool c3 = (major >= majorMin);
+                bool c4 = (cross >= crossingsMin);
+                if (c2 && c3 && c4) bands++;
+
+                if (area > topArea)
+                {
+                    topArea = area;
+                    r.SlotTopArea = area;
+                    r.SlotTopBboxW = bw;
+                    r.SlotTopBboxH = bh;
+                    r.SlotTopMajor = major;
+                    r.SlotTopMinor = minor;
+                    r.SlotTopRatio = ratio;
+                    r.SlotTopMeanDelta = sumDelta / area;
+                    r.SlotTopCrossings = cross;
+                    r.SlotTopC2 = c2; r.SlotTopC3 = c3; r.SlotTopC4 = c4;
+                }
+            }
+
+            r.SlotComponentCount = comps;
+            r.SlotBandCount = bands;
+
+            // ── G-SLOT-B ────────────────────────────────────────────────────
+            long col = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int R = rr[i], G = gg[i], B = bb[i];
+                int mx = R > G ? R : G; if (B > mx) mx = B;
+                int mn = R < G ? R : G; if (B < mn) mn = B;
+                if (R - B >= SlotColorRminusB && G - B >= SlotColorGminusB &&
+                    (mx - mn) >= SlotColorSaturation && R >= SlotColorRedMin) col++;
+            }
+            r.SlotColorPixels = col;
+            r.SlotColorPercent = 100.0 * col / n;
         }
 
         // 인접 화소 휘도차가 delta 이하인 최대 연속 구간들. 개수와 최장 길이를 낸다.
@@ -663,6 +944,48 @@ namespace CaptureMetrics
                 {
                     if (x < noiseStartX) Put(buf, w, x, y, gray, gray, gray);
                     else Put(buf, w, x, y, (byte)rnd.Next(256), (byte)rnd.Next(256), (byte)rnd.Next(256));
+                }
+            }
+            WriteBgra(path, w, h, buf);
+        }
+
+        // 균일 회색 바탕에 회색 사각 하나. G-SLOT-A 의 「띠」를 손으로 설계할 때 쓴다.
+        // 좌표는 **이미지 좌상단 원점**이다 (PNG 행 순서와 같다).
+        public static void RectOnGray(string path, int w, int h, byte bg,
+                                      int rx, int ry, int rw, int rh, byte fg)
+        {
+            byte[] buf = Alloc(w, h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    Put(buf, w, x, y, bg, bg, bg);
+            for (int y = ry; y < ry + rh; y++)
+            {
+                if (y < 0 || y >= h) continue;
+                for (int x = rx; x < rx + rw; x++)
+                {
+                    if (x < 0 || x >= w) continue;
+                    Put(buf, w, x, y, fg, fg, fg);
+                }
+            }
+            WriteBgra(path, w, h, buf);
+        }
+
+        // 균일 회색 바탕에 임의 RGB 사각 하나. G-SLOT-B 의 색 조건을 손으로 설계할 때 쓴다.
+        public static void ColorRectOnGray(string path, int w, int h, byte bg,
+                                           int rx, int ry, int rw, int rh,
+                                           byte cr, byte cg, byte cb)
+        {
+            byte[] buf = Alloc(w, h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    Put(buf, w, x, y, bg, bg, bg);
+            for (int y = ry; y < ry + rh; y++)
+            {
+                if (y < 0 || y >= h) continue;
+                for (int x = rx; x < rx + rw; x++)
+                {
+                    if (x < 0 || x >= w) continue;
+                    Put(buf, w, x, y, cr, cg, cb);
                 }
             }
             WriteBgra(path, w, h, buf);
