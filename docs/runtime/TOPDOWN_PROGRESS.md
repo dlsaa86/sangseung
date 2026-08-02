@@ -2605,3 +2605,42 @@ Unity 소유권이 두 에이전트 사이에서 몇 분 단위로 오간다. �
 
 두 번째 동시 작업 사고가 「배선 → 재조사 → 검증 → 문서」 사이의 창에서 났다.
 Unity 작업은 **끝나는 즉시 경로를 명시해 커밋**하고, 문서는 그다음에 쓴다.
+
+---
+
+# 2026-08-02 16:0x — UP-TECH-03 ①: 개발 빌드가 이미 있었다 (여덟 번째 낡은 기록)
+
+PlayMode 런이 도는 동안 `Logs/` 를 훑다가 **`build_report_dev.txt`** 를 봤다.
+`UP-TECH-03` 은 「개발 빌드가 없어서 증거가 전부 에디터 쪽」이라 막혀 있었다.
+
+세 문장을 하나씩 쟀다.
+
+| 적혀 있던 것 | 실측 |
+|---|---|
+| `WindowsBuildTask.cs:85` 가 `BuildOptions.None` | `:128` 에 `Development \| ConnectWithProfiler` **경로가 있다**. `:33` 에 `DevOutputDirectory = "Builds/WindowsDev"` |
+| 개발 빌드가 없다 | `build_report_dev.txt`(11:49:30) — 「development: True (DEVELOPMENT_BUILD 정의됨) · Succeeded · totalErrors 0」. `Builds/WindowsDev/Upandup_DDD.exe` 실재 |
+| 현존 exe 가 소스보다 낡아 코드가 없다 | `SceneWiringValidator.cs` 마지막 수정 **01:50:03** < 빌드 **11:49** — **코드가 들어 있다** |
+
+셋 다 사실이 아니다. **누군가 개발 빌드 태스크를 만들고 돌렸는데 백로그가 안 따라왔다.**
+
+`UP-TECH-07`(렌더 예산)과 같은 형태다 — 내가 고친 게 아니라 **상태가 움직였는데 기록이
+멈춰 있었다.** §0.35 가 「날짜를 함께 적으라」고 한 이유가 이것이고, 이번에도 날짜가
+없어서 「그 뒤에 뭔가 돌았나」를 묻지 못했다.
+
+## 남은 것
+
+② 표시 범위 — `[RequiredReference]` 가 붙은 필드가 실측 10개다(`CollapseSequence` 1 +
+`RouletteInteractionBridge` 4 + 이번 세션에 추가한 `FirstPersonController` 2 ·
+`CrosshairInteractor` 1 · `CrosshairView` 2). 「넓히면 좋다」는 판단이지 결함은 아니다.
+
+**승격은 `Logs/tenfloor_playmode.txt` 를 보고 정한다** — 지금 상대가 10층 런을 돌리는
+중이라 그 파일이 없다(C4 가 29건을 그것 때문에 빨간불로 잡고 있다). 런이 끝나면
+「씬 배선」 검사 결과를 읽고 §0.4 세 다리를 대조한다.
+
+## 이 세션의 낡은 기록 여덟 건
+
+⑤ · ⑨ · `UP-POWER-07` · `UP-TEST-06` · `UP-RISK-08` · `UP-NPC-02` · `UP-TECH-07` ·
+`UP-TECH-03`. **여덟 건 중 둘은 다른 사람이 고쳐서 사실이 바뀐 경우**다
+(`UP-TECH-07` 의 렌더 프로브, `UP-TECH-03` 의 개발 빌드).
+
+병렬 작업에서는 「내가 안 고쳤으니 그대로겠지」가 성립하지 않는다.
