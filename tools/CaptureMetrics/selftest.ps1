@@ -22,6 +22,19 @@
     조용히 바뀌어도 아무도 모른다. G 는 동시에 δ=1 과 δ=0 이 **다른 답을 낸다**는
     사실을 고정한다 — 실제 캡처에서 이 둘이 결론을 뒤집기 때문이다.
 
+    ── G-4 계단·단차 반증 케이스 (I~N) ─────────────────────────────────────────
+    직전 G-4 정의(「평탄구간 ≤ 24개 그리고 최장 ≥ 20px」)는 **완전히 평평한 벽을
+    자동으로 통과시켰다.** 무지 벽의 주사선은 평탄 구간 1개·최장 200px 이라 두 조건을
+    여유롭게 만족한다. 아래 45건은 그 결함을 하나도 잡지 못했다 — 계단 수만 셌지
+    「계단 사이에 단차가 있는가」를 묻지 않았기 때문이다.
+
+      I  완전 무지 주사선 (A 재사용)   계단 1 · 단차 0 · **관측 안 됨**  ← 이번 결함의 회귀 방지선
+      J  4단 계단 64간격 (C 재사용)    계단 4 · 단차 3 · **관측됨**
+      K  매끄러운 선형 램프 (화소당 +1) δ≤1 계단 1 · 단차 0 / δ=0 계단 0 · **관측 안 됨**
+      L  단차가 작은 4단 (H 재사용)     계단 4 · 단차 0 · **관측 안 됨** (구간은 나뉘었으나 안 보인다)
+      M  4px 폭 64단                    계단 0 (전부 8px 미만) · **관측 안 됨**
+      N  64px + 3px 조각 + 64px         계단 2 · 단차 1 — 짧은 조각을 건너뛰고 이웃 계단끼리 비교한다
+
 .PARAMETER KeepImages
     생성한 합성 PNG 를 지우지 않는다 (눈으로 확인할 때).
 
@@ -207,6 +220,108 @@ Assert-Value 'C 부분주사선' '평탄 구간 수'    2 $C2.FlatRunCount
 Assert-Value 'C 부분주사선' '최장 (64..127)'  64 $C2.FlatRunLongest
 $C3 = [CaptureMetrics.Analyzer]::Analyze($pC, 0.435, 0.0, 0)
 Assert-Value 'C 주사선 y'   'y = round(0.435×256)' 111 $C3.ScanY
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G-4 계단·단차 — 「계단은 경계가 있는 평탄면이다」
+#
+# 계단 = 인접 휘도차 ≤ δ 인 연속 구간 중 길이 ≥ 8px
+# 단차 = 인접한 두 계단의 평균 휘도차 절대값 ≥ 4
+# 관측 = 계단 ≥ 3 그리고 단차 ≥ 2
+#
+# 기댓값은 전부 손으로 계산했다. 회색 v 의 휘도는 정확히 v 다(가중치 합 = 1.0).
+# ══════════════════════════════════════════════════════════════════════════════
+$G4_StepMin  = 8
+$G4_BoundMin = 4
+$G4_StepsMin = 3
+$G4_BoundsMin= 2
+function Test-Observed { param($M) return (($M.StepCount -ge $G4_StepsMin) -and ($M.BoundaryCount -ge $G4_BoundsMin)) }
+
+# ── I 완전 무지 주사선 (A 재사용: 256px 전부 회색 128) ────────────────────────
+#    구간은 하나뿐이다 → 계단 1 (256px ≥ 8), 비교할 이웃이 없다 → 단차 0.
+#    직전 정의(평탄 ≤24개 · 최장 ≥20px)는 이것을 **통과**시켰다. 지금은 아니다.
+Assert-Value 'I 무지벽' '계단 수 (구간 1개)'        1 $A.StepCount
+Assert-Value 'I 무지벽' '최장 계단 = 폭'            256 $A.StepLongest
+Assert-Value 'I 무지벽' '단차 수 (이웃 없음)'       0 $A.BoundaryCount
+Assert-Value 'I 무지벽' '계단 관측 (1<3)'           $false (Test-Observed $A)
+Assert-Value 'I 무지벽' '계단 최소 길이 반영'       $G4_StepMin $A.StepMinLengthUsed
+Assert-Value 'I 무지벽' '단차 임계 반영'            $G4_BoundMin $A.BoundaryMinDeltaUsed
+
+# ── J 4단 계단 (C 재사용: 0/64/128/192, 각 64px) ──────────────────────────────
+#    경계 휘도차 64 > δ 라 4구간으로 끊긴다. 각 64px ≥ 8 → 계단 4.
+#    평균 0·64·128·192 의 이웃 차 64 ≥ 4 → 단차 3.
+Assert-Value 'J 4단계단' '계단 수'              4 $C.StepCount
+Assert-Value 'J 4단계단' '최장 계단 (폭/4)'     64 $C.StepLongest
+Assert-Value 'J 4단계단' '단차 수 (4단 → 3)'    3 $C.BoundaryCount
+Assert-Value 'J 4단계단' '계단 관측 (4≥3, 3≥2)' $true (Test-Observed $C)
+
+# ── K 매끄러운 선형 램프 256px, 화소당 +1 (0..255) ────────────────────────────
+#    δ≤1 에서는 인접 차가 정확히 1 이라 끊기지 않는다 → 구간 1개(256px) = 계단 1.
+#    δ=0 에서는 화소마다 끊겨 길이 1 짜리 조각 256개 → 8px 미만이므로 계단 0.
+#    두 경우 모두 단차 0, 관측 안 됨 — 그라디언트는 계단이 아니다.
+$pK = Join-Path $work 'K_ramp.png'
+[CaptureMetrics.TestImages]::LinearRamp($pK, 256, 64, 0, 1)
+$K  = [CaptureMetrics.Analyzer]::Analyze($pK, 0.5, 0.0, 0)      # δ≤1
+$K0 = [CaptureMetrics.Analyzer]::Analyze($pK, 0.5, 0.0, 0, 0)   # δ=0
+
+Assert-Value 'K 그라디언트' '평탄 구간 수 (δ≤1)'      1 $K.FlatRunCount
+Assert-Value 'K 그라디언트' '계단 수 (δ≤1, 구간 1개)' 1 $K.StepCount
+Assert-Value 'K 그라디언트' '단차 수 (δ≤1)'           0 $K.BoundaryCount
+Assert-Value 'K 그라디언트' '계단 관측 (δ≤1)'         $false (Test-Observed $K)
+Assert-Value 'K 그라디언트' '평탄 구간 수 (δ=0)'      256 $K0.FlatRunCount
+Assert-Value 'K 그라디언트' '계단 수 (δ=0, 전부 1px)' 0 $K0.StepCount
+Assert-Value 'K 그라디언트' '단차 수 (δ=0)'           0 $K0.BoundaryCount
+Assert-Value 'K 그라디언트' '계단 관측 (δ=0)'         $false (Test-Observed $K0)
+Assert-Value 'K 그라디언트' '주사선 휘도 폭 (0..255)' 255 $K.ScanSpan
+
+# ── L 단차가 작은 4단 (H 재사용: 0/2/4/6, 각 64px) ────────────────────────────
+#    경계 차 2 > δ=1 이라 4구간으로 나뉜다 → 계단 4.
+#    그러나 평균 차가 2 < 4 라 사람 눈에 단차로 보이지 않는다 → 단차 0, 관측 안 됨.
+#    「구간은 나뉘었는데 눈에 안 보이는」 경우를 가른다.
+Assert-Value 'L 약한단차' '계단 수 (구간은 4개)'   4 $H.StepCount
+Assert-Value 'L 약한단차' '단차 수 (2 < 4)'        0 $H.BoundaryCount
+Assert-Value 'L 약한단차' '계단 관측 (단차 0)'     $false (Test-Observed $H)
+
+# ── M 4px 폭 64단 (레벨 0,4,8,…,252) ──────────────────────────────────────────
+#    경계 차 4 > δ 라 4px 마다 끊긴다. 모든 구간이 8px 미만 → 계단 0.
+#    계단 최소 길이 필터가 실제로 동작하는지 고정한다.
+$pM = Join-Path $work 'M_step4px.png'
+[CaptureMetrics.TestImages]::StepGradient($pM, 256, 64, 64, 4)
+$M = [CaptureMetrics.Analyzer]::Analyze($pM, 0.5, 0.0, 0)
+
+Assert-Value 'M 4px계단' '평탄 구간 수 (256/4)'    64 $M.FlatRunCount
+Assert-Value 'M 4px계단' '최장 평탄 구간'          4 $M.FlatRunLongest
+Assert-Value 'M 4px계단' '계단 수 (4px < 8px)'     0 $M.StepCount
+Assert-Value 'M 4px계단' '최장 계단'               0 $M.StepLongest
+Assert-Value 'M 4px계단' '단차 수'                 0 $M.BoundaryCount
+Assert-Value 'M 4px계단' '계단 관측'               $false (Test-Observed $M)
+
+# ── N 64px(0) + 3px(100) + 64px(8) ────────────────────────────────────────────
+#    가운데 3px 조각은 8px 미만이라 계단이 아니다. 채택된 계단은 평균 0 과 8 뿐이고
+#    그 차 8 ≥ 4 → 단차 1. 조각을 계단으로 셌다면 단차가 2 가 나온다 — 그것을 가른다.
+$pN = Join-Path $work 'N_scrap.png'
+$valsN = New-Object byte[] 131
+for ($i = 0;  $i -lt 64;  $i++) { $valsN[$i] = 0 }
+for ($i = 64; $i -lt 67;  $i++) { $valsN[$i] = 100 }
+for ($i = 67; $i -lt 131; $i++) { $valsN[$i] = 8 }
+[CaptureMetrics.TestImages]::Columns($pN, 16, $valsN)
+$N = [CaptureMetrics.Analyzer]::Analyze($pN, 0.5, 0.0, 0)
+
+Assert-Value 'N 짧은조각' '평탄 구간 수 (64/3/64)'  3 $N.FlatRunCount
+Assert-Value 'N 짧은조각' '계단 수 (3px 조각 제외)' 2 $N.StepCount
+Assert-Value 'N 짧은조각' '최장 계단'               64 $N.StepLongest
+Assert-Value 'N 짧은조각' '단차 수 (|8−0| ≥ 4)'     1 $N.BoundaryCount
+Assert-Value 'N 짧은조각' '계단 관측 (2 < 3)'       $false (Test-Observed $N)
+
+# ── 계단·단차 임계가 실제로 전달되는가 ────────────────────────────────────────
+# H(0/2/4/6) 를 단차 임계 2 로 다시 읽으면 단차 3 이 나와야 한다 (2 ≥ 2).
+$H2 = [CaptureMetrics.Analyzer]::Analyze($pH, 0.5, 0.0, 0, 1, 8, 2)
+Assert-Value 'H 단차임계2' '단차 임계 반영'  2 $H2.BoundaryMinDeltaUsed
+Assert-Value 'H 단차임계2' '단차 수 (2 ≥ 2)' 3 $H2.BoundaryCount
+# M(4px 폭) 을 계단 최소 길이 4 로 다시 읽으면 계단 64 · 단차 63 이 나와야 한다.
+$M4 = [CaptureMetrics.Analyzer]::Analyze($pM, 0.5, 0.0, 0, 1, 4, 4)
+Assert-Value 'M 최소길이4' '계단 최소 길이 반영' 4 $M4.StepMinLengthUsed
+Assert-Value 'M 최소길이4' '계단 수'             64 $M4.StepCount
+Assert-Value 'M 최소길이4' '단차 수 (64−1)'      63 $M4.BoundaryCount
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 보고

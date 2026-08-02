@@ -91,6 +91,11 @@ public static class PrototypeSelfTest
         FoldInSuite("런 요약 9종", Ascend.Prototype.UI.Tests.RunSummaryBuilderTests.RunAll());
         FoldInSuite("연출 프로파일 배선", Ascend.Prototype.Effects.Tests.PresentationBindingTests.RunAll());
         FoldInSuite("과수확 5단계 연출", Ascend.Prototype.View.Tests.OverharvestStageTests.RunAll());
+        // 표현 계층 물리. 등록처가 둘인 것은 실수가 아니라 구조다 —
+        // `AscendTestMenu` 는 사람이 누르는 전체 실행, 이쪽은 커밋 게이트가 부르는
+        // 스모크다. 한쪽에만 넣으면 게이트가 못 보는 테스트가 생긴다.
+        FoldInSuite("표현 계층 물리", Ascend.Prototype.Physics.Tests.PresentationPhysicsTests.RunAll());
+        FoldInSuite("절차적 메시", Ascend.Prototype.Art.Tests.ProcMeshTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

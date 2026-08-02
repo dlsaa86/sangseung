@@ -11,7 +11,7 @@
       G-1  국소 분산    8×8 블록 휘도 표준편차의 중앙값        대표 8장 중앙값 ≥ 12.0
       G-2  휘도 분포    5 / 50 / 95 퍼센타일                   p5 ≤ 24 · p50 36~96 · p95 ≥ 170 · 8/8
       G-3  발광         휘도 ≥ 200 화소 비율                   1.0% ~ 6.0% · 8/8
-      G-4  평탄 구간    주사선의 인접 휘도차 ≤ 1 연속 구간     ≤ 24개 · 최장 ≥ 20px · 24장 중 ≥ 12장
+      G-4  계단 셰이딩  계단(≥8px 평탄) 과 단차(평균차 ≥4)     계단 ≥3 · 단차 ≥2 인 장이 24장 중 ≥ 12장
       G-5  빈 평면      32×32 블록 중 표준편차 < 4 인 비율     대표 8장 중앙값 ≤ 18%
       금색 화소         R−B ≥ 60 그리고 G−B ≥ 30               기록만 (통과선 없음)
       마젠타            R>200 그리고 B>200 그리고 G<80         전 장 0 (셰이더 오류 색)
@@ -33,6 +33,11 @@
 
 .PARAMETER ScanLength
     G-4 주사선 길이(px). 기본 200. 0 이면 오른쪽 끝까지.
+
+.PARAMETER FlatDelta
+    G-4 평탄 판정의 허용 휘도차. 기본 1 (「인접 화소 휘도차 ≤ 1」).
+    δ=0 결과는 지정값과 **무관하게 항상 함께** 계산해 표에 나란히 찍는다.
+    계단(step) 판정도 이 δ 를 쓴다.
 
 .PARAMETER Json
     판정 결과를 JSON 한 줄로도 낸다.
@@ -56,6 +61,7 @@ param(
     [double] $ScanYFraction = 0.435,
     [double] $ScanXFraction = 0.10,
     [int]    $ScanLength    = 200,
+    [int]    $FlatDelta     = 1,
     [switch] $Json,
     [switch] $NoCsv
 )
@@ -102,6 +108,9 @@ if ($files.Count -eq 0) {
 
 Initialize-CaptureMetrics
 
+# 통과선은 코어의 단일 출처를 쓴다. G-4 계단·단차 임계도 여기서 나와 측정에 그대로 들어간다.
+$T = $script:CM_Thresholds
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 측정
 # ══════════════════════════════════════════════════════════════════════════════
@@ -111,7 +120,8 @@ $readErrors = New-Object System.Collections.ArrayList
 
 foreach ($f in $files) {
     try {
-        $m = [CaptureMetrics.Analyzer]::Analyze($f.FullName, $ScanYFraction, $ScanXFraction, $ScanLength)
+        $m = [CaptureMetrics.Analyzer]::Analyze($f.FullName, $ScanYFraction, $ScanXFraction, $ScanLength,
+                                                $FlatDelta, $T.G4_StepMinLength, $T.G4_BoundaryMinDelta)
         $null = $results.Add($m)
     } catch {
         $null = $readErrors.Add("$($f.Name) — $($_.Exception.Message)")
@@ -128,15 +138,16 @@ if ($results.Count -eq 0) {
     exit 1
 }
 
-$T = $script:CM_Thresholds
-
 # ── 장별 판정 ─────────────────────────────────────────────────────────────────
 $rows = @($results | ForEach-Object {
     $rep = Test-CaptureRepresentative $_.Name
     $g2 = ($_.LumP5 -le $T.G2_P5Max) -and ($_.LumP95 -ge $T.G2_P95Min) -and
           ($_.LumP50 -ge $T.G2_P50Min) -and ($_.LumP50 -le $T.G2_P50Max)
     $g3 = ($_.GlowPercent -ge $T.G3_GlowMinPct) -and ($_.GlowPercent -le $T.G3_GlowMaxPct)
-    $g4 = ($_.FlatRunCount -le $T.G4_FlatRunCountMax) -and ($_.FlatRunLongest -ge $T.G4_FlatRunLongMin)
+    # G-4 「계단이 관측된다」 = 계단 ≥ 3개 **그리고** 단차 ≥ 2개.
+    # 평탄 구간 수·최장으로는 판정하지 않는다 — 무지 벽이 평탄 1개·최장 200px 로
+    # 자동 통과했기 때문이다. 계단은 「경계가 있는 평탄면」이다.
+    $g4 = ($_.StepCount -ge $T.G4_StepsMinPerFrame) -and ($_.BoundaryCount -ge $T.G4_BoundsMinPerFrame)
     $g5 = ($_.EmptyPlanePercent -le $T.G5_EmptyPlaneMaxPct)
     $g1 = ($_.LocalStdMedian -ge $T.G1_LocalStdMedian)
     $mg = ($_.MagentaPixels -le $T.MagentaMax)
@@ -174,8 +185,8 @@ Write-Output ''
 Write-Output '══════════════════════════ 캡처 지표 ══════════════════════════'
 Write-Output "세트      $setPath"
 Write-Output "장수      $($results.Count) 장 (대표 $($repRows.Count) 장 · 해상도 $($sizes -join ', '))"
-Write-Output ("주사선    y={0}px (높이의 {1:P1}) · x {2}..{3} ({4}px)" -f `
-    $sample.ScanY, $ScanYFraction, $sample.ScanX0, ($sample.ScanX0 + $sample.ScanLen - 1), $sample.ScanLen)
+Write-Output ("주사선    y={0}px (높이의 {1:P1}) · x {2}..{3} ({4}px) · 평탄 허용차 δ≤{5}" -f `
+    $sample.ScanY, $ScanYFraction, $sample.ScanX0, ($sample.ScanX0 + $sample.ScanLen - 1), $sample.ScanLen, $FlatDelta)
 Write-Output ("블록      G-1 8×8 {0}개 · G-5 32×32 {1}개 · 휘도 0.2126R+0.7152G+0.0722B" -f `
     $sample.BlockCount8, $sample.BlockCount32)
 Write-Output ("측정      {0:F2} 초" -f $elapsed)
@@ -185,9 +196,9 @@ if ($readErrors.Count -gt 0) {
 }
 Write-Output ''
 
-$fmt = '{0,-24} {1,-4} {2,8} {3,5} {4,5} {5,5} {6,8} {7,7} {8,6} {9,9} {10,10} {11,7}  {12}'
-Write-Output ($fmt -f '파일','대표','국소분산','L5','L50','L95','발광%','평탄수','최장','빈평면%','금색px','마젠타','미달')
-Write-Output ('-' * 132)
+$fmt = '{0,-23} {1,-3} {2,7} {3,4} {4,4} {5,4} {6,7} {7,5} {8,5} {9,6} {10,5} {11,6} {12,5} {13,5} {14,8} {15,9} {16,6}  {17}'
+Write-Output ($fmt -f '파일','대표','국소분산','L5','L50','L95','발광%','계단수','단차수','평탄수','최장','평탄수0','최장0','휘도폭','빈평면%','금색px','마젠타','미달')
+Write-Output ('-' * 166)
 foreach ($r in $rows) {
     $m = $r.M
     Write-Output ($fmt -f `
@@ -196,11 +207,18 @@ foreach ($r in $rows) {
         ('{0:F2}' -f $m.LocalStdMedian),
         $m.LumP5, $m.LumP50, $m.LumP95,
         ('{0:F3}' -f $m.GlowPercent),
+        $m.StepCount, $m.BoundaryCount,
         $m.FlatRunCount, $m.FlatRunLongest,
+        $m.FlatRunCountEq, $m.FlatRunLongestEq, $m.ScanSpan,
         ('{0:F1}' -f $m.EmptyPlanePercent),
         $m.GoldPixels, $m.MagentaPixels,
         $(if ($r.Missing.Count -eq 0) { '통과' } else { ($r.Missing -join ' ') }))
 }
+Write-Output ("  계단수 = 길이 ≥ {0}px 인 평탄 구간(δ≤{1}) · 단차수 = 인접 계단 평균 휘도차 ≥ {2} 인 경계" -f `
+    $T.G4_StepMinLength, $FlatDelta, $T.G4_BoundaryMinDelta)
+Write-Output ("  → 계단 ≥ {0} 그리고 단차 ≥ {1} 이어야 그 장에서 계단이 관측된 것이다 (무지 벽은 계단 1·단차 0)" -f `
+    $T.G4_StepsMinPerFrame, $T.G4_BoundsMinPerFrame)
+Write-Output ("  평탄수/최장 = 허용차 δ≤{0} · 평탄수0/최장0 = 허용차 δ=0 · 휘도폭 = 주사선 최대−최소 (진단용, 판정 아님)" -f $FlatDelta)
 Write-Output ''
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -245,10 +263,27 @@ Add-Gate 'G-3' '발광 화소 비율 (대표 전장)' ("$g3ok/$($repRows.Count) 
     (($g3ok -eq $script:CM_RepresentativePrefixes.Count) -and -not $repMissing) $repNote
 
 # G-4 — 24장 중 계단이 관측되는 장 수
+#
+# 계단 = 길이 ≥ 8px 인 평탄 구간, 단차 = 인접 계단의 평균 휘도차 ≥ 4.
+# 관측 = 계단 ≥ 3 그리고 단차 ≥ 2. 「평탄면이 하나뿐」인 장은 여기서 걸러진다.
 $stair = @($rows | Where-Object { $_.G4 }).Count
+
+# 무지 면 진단 — 계단이 1개 이하이면서 단차가 0 인 장은 사실상 한 값으로 칠해진 벽이다.
+# 직전 정의(평탄구간 ≤24 · 최장 ≥20px)는 **이 장들을 전부 통과시켰다.**
+$blankFrames = @($rows | Where-Object { $_.M.StepCount -le 1 -and $_.M.BoundaryCount -eq 0 })
+$g4Note = ''
+if ($blankFrames.Count -gt 0) {
+    $g4Note = "계단 ≤1 · 단차 0 인 장 $($blankFrames.Count)/$($rows.Count) — 주사선이 사실상 한 값이다 (무지 면)"
+}
 Add-Gate 'G-4' '계단이 관측되는 장 (전장)' "$stair/$($rows.Count) 장" `
-    ("평탄구간 ≤ {0}개 그리고 최장 ≥ {1}px 인 장 ≥ {2}" -f $T.G4_FlatRunCountMax, $T.G4_FlatRunLongMin, $T.G4_StairFramesMin) `
-    ($stair -ge $T.G4_StairFramesMin)
+    ("계단 ≥ {0}개(각 ≥ {1}px) 그리고 단차 ≥ {2}개(평균차 ≥ {3}) 인 장 ≥ {4}" -f `
+        $T.G4_StepsMinPerFrame, $T.G4_StepMinLength, $T.G4_BoundsMinPerFrame, $T.G4_BoundaryMinDelta, $T.G4_StairFramesMin) `
+    ($stair -ge $T.G4_StairFramesMin) $g4Note
+
+# 계단·단차의 세트 중앙값 — 통과선은 없고 기록만 한다. 「몇 장이 통과했나」만으로는
+# 세트가 얼마나 평평한지 보이지 않는다.
+$stepMed  = Get-CaptureMedian @($rows | ForEach-Object { [double]$_.M.StepCount })
+$boundMed = Get-CaptureMedian @($rows | ForEach-Object { [double]$_.M.BoundaryCount })
 
 # G-5 — 대표 8장의 빈 평면 비율 중앙값
 if ($repRows.Count -gt 0) {
@@ -280,7 +315,19 @@ foreach ($g in $gates) {
     if ($g.Note) { Write-Output ("      └ {0}" -f $g.Note) }
 }
 Write-Output ($gfmt -f '기록', '금색 화소 (통과선 없음)', "$goldTotal px · $goldFrames/$($rows.Count) 장", '—', '—')
+Write-Output ($gfmt -f '기록', 'G-4 계단·단차 중앙값', ("계단 {0:F1} · 단차 {1:F1}" -f $stepMed, $boundMed), '통과선 없음 (판정은 장 수로 한다)', '—')
 Write-Output ''
+
+if ($blankFrames.Count -gt 0) {
+    Write-Output '── ⚠ 무지 면 경보 ──'
+    Write-Output ("  계단 ≤1 · 단차 0 인 장이 {0}/{1} 장이다 — 주사선 {2}px 이 사실상 한 값이다." -f `
+        $blankFrames.Count, $rows.Count, $sample.ScanLen)
+    Write-Output ("  해당 장: {0}" -f (($blankFrames | ForEach-Object { $_.M.Name }) -join ', '))
+    Write-Output '  직전 G-4 정의(평탄구간 ≤24개 · 최장 ≥20px)는 이 장들을 **전부 통과시켰다.**'
+    Write-Output '  무지 벽의 주사선은 평탄 구간 1개 · 최장 200px 이라 두 조건을 여유롭게 만족한다.'
+    Write-Output '  계단은 「경계가 있는 평탄면」이므로 지금은 계단 ≥3 · 단차 ≥2 를 함께 요구한다.'
+    Write-Output ''
+}
 
 Write-Output '── 이 도구가 판정하지 않는 것 ──'
 Write-Output '  · G-1 텍스처 배선 비율(47개 머티리얼) — 에셋을 세는 축이라 PNG 에 없다'
@@ -296,13 +343,16 @@ $csvPath = Join-Path $setPath 'metrics.csv'
 $gatePath = Join-Path $setPath 'metrics-gates.csv'
 if (-not $NoCsv) {
     $lines = New-Object System.Collections.ArrayList
-    $null = $lines.Add('file,width,height,totalPixels,representative,localStdMedian,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatRunCount,flatRunLongest,emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing')
+    $null = $lines.Add('file,width,height,totalPixels,representative,localStdMedian,lumP5,lumP50,lumP95,glowPct,scanY,scanX0,scanLen,flatDelta,stepMinLength,boundaryMinDelta,stepCount,boundaryCount,stepLongest,flatRunCount,flatRunLongest,flatRunCountEq0,flatRunLongestEq0,scanSpan,emptyPlanePct,goldPixels,magentaPixels,g1,g2,g3,g4,g5,magentaOk,missing')
     foreach ($r in $rows) {
         $m = $r.M
-        $null = $lines.Add(('{0},{1},{2},{3},{4},{5:F4},{6},{7},{8},{9:F5},{10},{11},{12},{13},{14},{15:F4},{16},{17},{18},{19},{20},{21},{22},{23},{24}' -f `
+        $null = $lines.Add(('{0},{1},{2},{3},{4},{5:F4},{6},{7},{8},{9:F5},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23},{24:F4},{25},{26},{27},{28},{29},{30},{31},{32},{33}' -f `
             $m.Name, $m.Width, $m.Height, $m.TotalPixels, $(if ($r.Rep) { 1 } else { 0 }),
             $m.LocalStdMedian, $m.LumP5, $m.LumP50, $m.LumP95, $m.GlowPercent,
-            $m.ScanY, $m.ScanX0, $m.ScanLen, $m.FlatRunCount, $m.FlatRunLongest,
+            $m.ScanY, $m.ScanX0, $m.ScanLen, $m.FlatDeltaUsed,
+            $m.StepMinLengthUsed, $m.BoundaryMinDeltaUsed, $m.StepCount, $m.BoundaryCount, $m.StepLongest,
+            $m.FlatRunCount, $m.FlatRunLongest,
+            $m.FlatRunCountEq, $m.FlatRunLongestEq, $m.ScanSpan,
             $m.EmptyPlanePercent, $m.GoldPixels, $m.MagentaPixels,
             $(if ($r.G1) { 1 } else { 0 }), $(if ($r.G2) { 1 } else { 0 }), $(if ($r.G3) { 1 } else { 0 }),
             $(if ($r.G4) { 1 } else { 0 }), $(if ($r.G5) { 1 } else { 0 }), $(if ($r.Magenta) { 1 } else { 0 }),
@@ -317,6 +367,8 @@ if (-not $NoCsv) {
             $g.Axis, $g.Name, $g.Measured, $g.Line, $(if ($g.Ok) { 'PASS' } else { 'FAIL' }), $g.Note))
     }
     $null = $glines.Add(('기록,"금색 화소","{0} px / {1} 장","—",INFO,""' -f $goldTotal, $goldFrames))
+    $null = $glines.Add(('기록,"G-4 계단·단차 중앙값","계단 {0:F1} / 단차 {1:F1}","—",INFO,"계단 ≤1 · 단차 0 인 무지 면 {2}/{3} 장"' -f `
+        $stepMed, $boundMed, $blankFrames.Count, $rows.Count))
     Write-Utf8Bom $gatePath $glines
 
     Write-Output "CSV       $csvPath"
@@ -342,7 +394,11 @@ if ($Json) {
                             file = $_.M.Name; localStdMedian = [Math]::Round($_.M.LocalStdMedian, 4)
                             p5 = $_.M.LumP5; p50 = $_.M.LumP50; p95 = $_.M.LumP95
                             glowPct = [Math]::Round($_.M.GlowPercent, 5)
+                            steps = $_.M.StepCount; boundaries = $_.M.BoundaryCount
+                            stepLongest = $_.M.StepLongest
                             flatRuns = $_.M.FlatRunCount; flatLongest = $_.M.FlatRunLongest
+                            flatRunsEq0 = $_.M.FlatRunCountEq; flatLongestEq0 = $_.M.FlatRunLongestEq
+                            scanSpan = $_.M.ScanSpan
                             emptyPlanePct = [Math]::Round($_.M.EmptyPlanePercent, 4)
                             gold = $_.M.GoldPixels; magenta = $_.M.MagentaPixels
                             missing = @($_.Missing)

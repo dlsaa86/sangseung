@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using Ascend.Prototype.Build;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Risk;
@@ -204,6 +205,9 @@ namespace Ascend.Prototype.Run.Tests
 
         /// <summary>고정 프레임 시간. manifest 머리말에 적어 재현 조건을 남긴다.</summary>
         public const float CaptureDeltaTime = 1f / 60f;
+
+        /// <summary>`UnityEngine.Random` 시드. Film Grain 오프셋이 여기에 걸려 있다.</summary>
+        public const int RandomSeed = 20260802;
         private int _restoreVSync = -1;
 
         /// <summary>세운 시계를 되돌린다. 안 되돌리면 다음 Play 세션이 캡처 시계로 돈다.</summary>
@@ -227,6 +231,14 @@ namespace Ascend.Prototype.Run.Tests
             _restoreVSync = QualitySettings.vSyncCount;
             QualitySettings.vSyncCount = 0;
             Time.captureDeltaTime = CaptureDeltaTime;
+
+            // **`UnityEngine.Random` 도 못박는다.** 판정 코어는 시드된 `System.Random` 을
+            // 쓰므로 여기 영향을 받지 않지만(`TECH_SPEC` 결정론), **URP 의 Film Grain 은
+            // 프레임마다 `Random.value` 로 노이즈 텍스처를 오프셋한다.** 그레인을 켠 채
+            // 시드를 안 박으면 같은 시드의 두 캡처 런이 화소 단위로 갈리고, 이 세트의
+            // 전제인 "같은 입력이면 같은 그림"이 깨진다. 프레임 수가 고정이므로
+            // 시드를 박으면 소비 순서까지 같아진다.
+            UnityEngine.Random.InitState(RandomSeed);
 
             var run = FindAnyObjectByType<RunSessionBehaviour>();
             var bridge = FindAnyObjectByType<RouletteInteractionBridge>();
@@ -857,6 +869,31 @@ namespace Ascend.Prototype.Run.Tests
                 _camera.nearClipPlane = source.nearClipPlane;
                 _camera.farClipPlane = source.farClipPlane;
             }
+            // ── 포스트 처리를 **이 카메라에도** 건다 ──────────────────────────
+            //
+            // 이 카메라는 `Camera.main` 의 복사본이 아니라 **새로 만든 것**이고, 위에서
+            // 옮겨 적는 것은 clearFlags·배경색·컬링·클립 넷뿐이다. URP 의 포스트 설정은
+            // `Camera` 가 아니라 `UniversalAdditionalCameraData` 라는 **다른 컴포넌트**에
+            // 있어서 그 넷에 딸려 오지 않는다. 새 카메라의 기본값은 `renderPostProcessing
+            // = false` 다.
+            //
+            // 그래서 씬 카메라에 포스트를 켜도 **이 경로로 찍는 스무 장에는 한 픽셀도
+            // 반영되지 않는다.** 화면 캡처(`ScreenShot`) 넉 장만 달라져서, 같은 세트 안에서
+            // 네 장과 스무 장이 서로 다른 렌더 파이프를 통과한 그림이 된다 —
+            // 그 상태로 비교하면 "포스트가 좋아졌나"를 판정할 수 없다.
+            var srcData = source != null ? source.GetUniversalAdditionalCameraData() : null;
+            var camData = _camera.GetUniversalAdditionalCameraData();
+            if (camData != null)
+            {
+                camData.renderPostProcessing = srcData == null || srcData.renderPostProcessing;
+                camData.antialiasing         = srcData != null ? srcData.antialiasing : AntialiasingMode.None;
+                camData.antialiasingQuality  = srcData != null ? srcData.antialiasingQuality : AntialiasingQuality.High;
+                camData.dithering            = srcData == null || srcData.dithering;
+                camData.renderShadows        = srcData == null || srcData.renderShadows;
+                camData.volumeLayerMask      = srcData != null ? srcData.volumeLayerMask : camData.volumeLayerMask;
+            }
+            _camera.allowHDR = source == null || source.allowHDR;
+
             _camera.fieldOfView = Fov;
             // 화면비를 **못박는다.** RenderTexture 가 1920×1080 이므로 자동값도 같지만,
             // 매니페스트의 프레임 실측이 `WorldToViewportPoint` 로 화면 위치를 계산하는데
@@ -2101,6 +2138,39 @@ namespace Ascend.Prototype.Run.Tests
                 yield return null;
         }
 
+        /// <summary>
+        /// 이 런이 실제로 통과한 포스트 체인. 주장하지 않고 **씬과 볼륨 스택에서 읽는다.**
+        /// </summary>
+        private string PostChainFacts()
+        {
+            var sb = new StringBuilder("포스트 체인 실측 — ");
+            var data = _camera != null ? _camera.GetUniversalAdditionalCameraData() : null;
+            sb.Append(data == null
+                ? "전용 카메라 데이터 없음"
+                : $"전용 카메라 post {(data.renderPostProcessing ? "ON" : "OFF")} · AA {data.antialiasing}");
+
+            Camera screen = Camera.main;
+            var sdata = screen != null ? screen.GetUniversalAdditionalCameraData() : null;
+            sb.Append(sdata == null
+                ? " / 화면 카메라 없음"
+                : $" / 화면 카메라 post {(sdata.renderPostProcessing ? "ON" : "OFF")} · AA {sdata.antialiasing}");
+
+            var rp = UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
+            sb.Append(rp == null ? " / RP 없음" : $" / RP {rp.name} colorGrading {rp.colorGradingMode} · MSAA {rp.msaaSampleCount}");
+
+            var vols = FindObjectsByType<UnityEngine.Rendering.Volume>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            sb.Append($" / 씬 Volume {vols.Length}개");
+            foreach (var v in vols)
+            {
+                if (v.sharedProfile == null) { sb.Append($" [{v.gameObject.name}: 프로파일 없음]"); continue; }
+                sb.Append($" [{v.gameObject.name} global {v.isGlobal} pri {v.priority:F0} → {v.sharedProfile.name}:");
+                foreach (var c in v.sharedProfile.components) sb.Append(' ').Append(c.GetType().Name).Append(c.active ? "" : "(off)");
+                sb.Append(']');
+            }
+            sb.Append($" / UnityRandom seed {RandomSeed}");
+            return sb.ToString();
+        }
+
         private void Header(RunSessionBehaviour run)
         {
             _manifest.AppendLine("=== 10층 고정 캡처 세트 ===");
@@ -2115,6 +2185,11 @@ namespace Ascend.Prototype.Run.Tests
             // 찍혀 블렌딩 진행도가 달라진다 — 두 캡처가 바이트 단위로 갈라진다.
             _manifest.AppendLine($"captureDeltaTime {CaptureDeltaTime:F5} (vSync off) — " +
                                  "대기는 벽시계가 아니라 게임 시간으로 잰다");
+            // **포스트 체인 상태를 적는다.** 2026-08-02 정찰 전까지 이 씬은 포스트가 통째로
+            // 꺼진 채였는데(`m_RenderPostProcessing: 0` · 씬 Volume 0개) 매니페스트에는
+            // 그 사실이 한 줄도 없었다. 14라운드 동안 평가자는 「포스트가 걸린 그림」이라고
+            // 가정하고 채점했다. 재는 것만이 주장을 대신한다.
+            _manifest.AppendLine(PostChainFacts());
             // **촬영 경로가 둘이라는 사실을 정확히 적는다.** 예전 머리말은 「전용 카메라의
             // RenderTexture 렌더다」 한 줄이었는데 세트에는 게임 뷰 화면 캡처도 섞여 있다.
             // 각 줄이 스스로 어느 경로인지 밝히고, 장수는 파일 끝에서 **센 값**을 적는다.

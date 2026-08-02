@@ -8,8 +8,11 @@
       G-1  국소 분산   — 8×8 블록 휘도 표준편차의 중앙값
       G-2  휘도 분포   — 5 / 50 / 95 퍼센타일
       G-3  발광        — 휘도 ≥ 200 화소 비율
-      G-4  평탄 구간   — 지정 주사선에서 인접 화소 휘도차 ≤ δ 인 연속 구간 수·최장
-                        (δ=1 기본. δ=0 도 항상 함께 낸다 — 아래 CM_DefaultFlatDelta 주석)
+      G-4  계단 셰이딩 — 지정 주사선에서 「경계가 있는 평탄면」을 센다
+                        계단 = 인접 휘도차 ≤ δ 인 연속 구간 중 길이 ≥ 8px
+                        단차 = 인접한 두 계단의 평균 휘도차 절대값 ≥ 4
+                        관측 = 계단 ≥ 3 그리고 단차 ≥ 2
+                        (평탄 구간 수·최장은 진단용으로 계속 낸다 — 판정에는 쓰지 않는다)
       G-5  빈 평면     — 32×32 블록 중 표준편차 < 4 인 블록 비율
       금색 화소        — R−B ≥ 60 그리고 G−B ≥ 30
       마젠타           — R>200 그리고 B>200 그리고 G<80 (셰이더 오류 색 회귀 감시)
@@ -41,8 +44,10 @@ $script:CM_Thresholds = [ordered]@{
     G2_P95Min           = 170    # G-2 휘도 95퍼센타일 ≥ 170
     G3_GlowMinPct       = 1.0    # G-3 발광 화소 비율 1.0% ~ 6.0%
     G3_GlowMaxPct       = 6.0
-    G4_FlatRunCountMax  = 24     # G-4 평탄 구간 ≤ 24개
-    G4_FlatRunLongMin   = 20     # G-4 최장 평탄 구간 ≥ 20px
+    G4_StepMinLength    = 8      # G-4 계단 한 칸의 최소 길이 8px
+    G4_BoundaryMinDelta = 4      # G-4 단차로 인정하는 인접 계단 평균 휘도차 ≥ 4
+    G4_StepsMinPerFrame = 3      # G-4 한 장에서 계단 ≥ 3개
+    G4_BoundsMinPerFrame= 2      # G-4 한 장에서 단차 ≥ 2개
     G4_StairFramesMin   = 12     # G-4 24장 중 계단이 관측되는 장 ≥ 12
     G5_EmptyPlaneMaxPct = 18.0   # G-5 빈 평면 비율 ≤ 18%
     MagentaMax          = 0      # 셰이더 오류 색은 0 이어야 한다
@@ -65,6 +70,19 @@ $script:CM_DefaultScanLength    = 200
 #   δ=0 은 완전히 같은 값만 평탄으로 보므로 양자화 계단 하나하나를 센다.
 #   두 값 모두 항상 계산해 나란히 보고한다 — 어느 쪽을 판정에 쓰는지가 결론을 뒤집는다.
 $script:CM_DefaultFlatDelta = 1
+
+# ── G-4 가 「평탄 구간 수·최장」이 아닌 이유 ──────────────────────────────────
+# 직전 정의는 「평탄 구간 ≤ 24개 그리고 최장 ≥ 20px」였다. 이 조건은 **완전히 평평한
+# 벽을 자동으로 통과시킨다** — 무지 벽의 주사선은 평탄 구간 1개, 최장 200px 이라
+# 두 조건을 여유롭게 만족한다. 실제로 TenFloor 24장이 「23/24 장에서 계단 관측」으로
+# 통과했는데, 같은 세트의 국소 분산 중앙값은 0.00 이었고 14차 사람 판정은
+# 「24장 중 계단이 관측된 장 0장」이었다 (docs/runtime/VISUAL_VERDICT.md, UP-FIX-35).
+# 거짓 그린이었다.
+#
+# 계단이 존재한다는 것은 **평탄면이 여럿 있고 그 사이에 뚜렷한 단차가 있다**는 뜻이다.
+# 그래서 평탄면 하나만으로는 계단이 아니고, 매끄러운 그라디언트도 계단이 아니다.
+$script:CM_DefaultStepMinLength    = 8
+$script:CM_DefaultBoundaryMinDelta = 4
 
 function Initialize-CaptureMetrics {
     <#
@@ -106,6 +124,12 @@ namespace CaptureMetrics
         public int    FlatRunLongestEq;
         public int    ScanSpan;            // 주사선 휘도 최대 - 최소
 
+        public int    StepMinLengthUsed;   // G-4 계단으로 인정한 최소 길이(px)
+        public int    BoundaryMinDeltaUsed;// G-4 단차로 인정한 평균 휘도차
+        public int    StepCount;           // 길이 >= StepMinLengthUsed 인 평탄 구간 수
+        public int    StepLongest;         // 그중 최장 길이
+        public int    BoundaryCount;       // 인접 계단 평균 휘도차 >= BoundaryMinDeltaUsed 인 경계 수
+
         public double EmptyPlanePercent;   // G-5  32x32 블록 중 std < 4 인 블록 비율(%)
 
         public long   GoldPixels;
@@ -122,6 +146,8 @@ namespace CaptureMetrics
         public const double EmptyPlaneStdThreshold = 4.0;
         public const int GlowLuminance = 200;
         public const int FlatDelta = 1;
+        public const int StepMinLength = 8;      // G-4 계단 한 칸의 최소 길이(px)
+        public const int BoundaryMinDelta = 4;   // G-4 단차로 인정하는 평균 휘도차
 
         // 0~255 로 반올림·클램프한 정수 휘도.
         public static int Q(double L)
@@ -138,6 +164,12 @@ namespace CaptureMetrics
         }
 
         public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen, int flatDelta)
+        {
+            return Analyze(path, scanYFrac, scanXFrac, scanLen, flatDelta, StepMinLength, BoundaryMinDelta);
+        }
+
+        public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen,
+                                          int flatDelta, int stepMinLength, int boundaryMinDelta)
         {
             ImageResult r = new ImageResult();
             r.Path = path;
@@ -269,6 +301,14 @@ namespace CaptureMetrics
             r.FlatRunCountEq = c0;
             r.FlatRunLongestEq = l0;
 
+            int stepN, boundN, stepLong;
+            StairRuns(scan, flatDelta, stepMinLength, boundaryMinDelta, out stepN, out boundN, out stepLong);
+            r.StepMinLengthUsed = stepMinLength;
+            r.BoundaryMinDeltaUsed = boundaryMinDelta;
+            r.StepCount = stepN;
+            r.BoundaryCount = boundN;
+            r.StepLongest = stepLong;
+
             return r;
         }
 
@@ -287,6 +327,51 @@ namespace CaptureMetrics
             }
             count++;
             if (cur > longest) longest = cur;
+        }
+
+        // ── G-4 계단·단차 ────────────────────────────────────────────────────
+        // 계단 = 인접 화소 휘도차 <= delta 인 연속 구간 중 길이 >= minLen 인 것.
+        // 단차 = **인접한 두 계단**의 평균 휘도차 절대값 >= minBoundary 인 경계.
+        //        minLen 에 못 미쳐 버려진 짧은 조각은 계단이 아니므로 건너뛰고,
+        //        채택된 계단끼리 이어서 비교한다.
+        //
+        // 이 두 값을 함께 봐야 하는 이유: 무지 벽은 계단 1·단차 0, 매끄러운 그라디언트는
+        // 계단 1(또는 0)·단차 0, 진짜 4단 계단만 계단 4·단차 3 이 된다.
+        private static void StairRuns(int[] v, int delta, int minLen, int minBoundary,
+                                      out int stepCount, out int boundaryCount, out int stepLongest)
+        {
+            stepCount = 0; boundaryCount = 0; stepLongest = 0;
+            if (v == null || v.Length == 0) return;
+            if (minLen < 1) minLen = 1;
+
+            bool hasPrev = false;
+            double prevMean = 0.0;
+            int start = 0;
+            double sum = v[0];
+
+            for (int i = 1; i <= v.Length; i++)
+            {
+                bool cont = false;
+                if (i < v.Length)
+                {
+                    int d = v[i] - v[i - 1];
+                    if (d < 0) d = -d;
+                    cont = (d <= delta);
+                }
+                if (cont) { sum += v[i]; continue; }
+
+                int len = i - start;
+                if (len >= minLen)
+                {
+                    double mean = sum / len;
+                    stepCount++;
+                    if (len > stepLongest) stepLongest = len;
+                    if (hasPrev && Math.Abs(mean - prevMean) >= minBoundary) boundaryCount++;
+                    prevMean = mean;
+                    hasPrev = true;
+                }
+                if (i < v.Length) { start = i; sum = v[i]; }
+            }
         }
 
         // 완전한 블록만 센다. 우측·하단 나머지는 버린다 — 부분 블록은 표본 수가 달라
@@ -428,6 +513,36 @@ namespace CaptureMetrics
             WriteBgra(path, w, h, buf);
         }
 
+        // 열마다 회색값을 직접 지정한다. values.Length 가 폭이 된다.
+        // 손으로 설계한 주사선을 그대로 이미지로 만들 때 쓴다.
+        public static void Columns(string path, int h, byte[] values)
+        {
+            int w = values.Length;
+            byte[] buf = Alloc(w, h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    Put(buf, w, x, y, values[x], values[x], values[x]);
+            WriteBgra(path, w, h, buf);
+        }
+
+        // x 방향 매끄러운 선형 램프. 화소 x 의 회색값 = clamp(start + x*slope).
+        // slope=1 이면 인접 화소 휘도차가 정확히 1 이다 — 「계단이 아닌 그라디언트」의 정본.
+        public static void LinearRamp(string path, int w, int h, int start, int slope)
+        {
+            byte[] buf = Alloc(w, h);
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int val = start + x * slope;
+                    if (val < 0) val = 0; else if (val > 255) val = 255;
+                    byte v = (byte)val;
+                    Put(buf, w, x, y, v, v, v);
+                }
+            }
+            WriteBgra(path, w, h, buf);
+        }
+
         // 완전 검정 바탕에 좌상단 흰 사각. 비율은 호출자가 정수로 떨어지게 고른다.
         public static void BlackWithWhiteRect(string path, int w, int h, int rw, int rh)
         {
@@ -457,10 +572,13 @@ function Measure-CaptureImage {
         [double] $ScanYFraction = $script:CM_DefaultScanYFraction,
         [double] $ScanXFraction = $script:CM_DefaultScanXFraction,
         [int]    $ScanLength    = $script:CM_DefaultScanLength,
-        [int]    $FlatDelta     = $script:CM_DefaultFlatDelta
+        [int]    $FlatDelta     = $script:CM_DefaultFlatDelta,
+        [int]    $StepMinLength = $script:CM_DefaultStepMinLength,
+        [int]    $BoundaryMinDelta = $script:CM_DefaultBoundaryMinDelta
     )
     Initialize-CaptureMetrics
-    return [CaptureMetrics.Analyzer]::Analyze($Path, $ScanYFraction, $ScanXFraction, $ScanLength, $FlatDelta)
+    return [CaptureMetrics.Analyzer]::Analyze($Path, $ScanYFraction, $ScanXFraction, $ScanLength,
+                                              $FlatDelta, $StepMinLength, $BoundaryMinDelta)
 }
 
 function Get-CaptureMedian {

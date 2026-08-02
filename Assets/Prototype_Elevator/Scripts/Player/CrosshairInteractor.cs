@@ -181,7 +181,11 @@ namespace Ascend.Prototype.Player
                 return null;
 
             Ray ray = new Ray(_viewCamera.transform.position, _viewCamera.transform.forward);
-            int hitCount = Physics.SphereCastNonAlloc(
+            // `UnityEngine.` 을 붙여야 한다. 2026-08-02 에 `Ascend.Prototype.Physics`
+            // 네임스페이스가 생기면서, `Ascend.Prototype.*` 안에 있는 이 파일에서
+            // 짧은 이름 `Physics` 가 **그 네임스페이스**로 먼저 해석돼 컴파일이 깨졌다
+            // (CS0234). asmdef 이 없어 이 한 줄이 저장소 전체를 막았다.
+            int hitCount = UnityEngine.Physics.SphereCastNonAlloc(
                 ray,
                 Mathf.Max(0.01f, _sphereCastRadius),
                 _hits,

@@ -41,6 +41,16 @@ namespace Ascend.Prototype.EditorTools
             UI.Tests.RunSummaryBuilderTests.RunAll(),
             Effects.Tests.PresentationBindingTests.RunAll(),
             View.Tests.OverharvestStageTests.RunAll(),
+            // 표현 계층 물리(관성 반응자·고정 스텝 적분). 등록을 빼먹으면
+            // **합계가 그대로라서 「테스트가 없다」와 「테스트가 통과했다」가 구분되지 않는다** —
+            // 실제로 이번에 그 상태로 한 번 돌았다(350 → 350). 이 저장소는
+            // `WiringDiagnosticsTests`·`RunSummaryBuilderTests` 에서 같은 일을 이미 겪었고,
+            // 그때의 결론이 「등록되지 않은 테스트는 통과가 아니라 미검증이다」였다.
+            Physics.Tests.PresentationPhysicsTests.RunAll(),
+            // 절차적 메시(모따기·그레이팅·파이프·프롭). 등록 누락이 같은 배치에서
+            // **두 번** 났다 — 레인은 자기 소유 경로 밖인 이 파일을 고칠 수 없고,
+            // 통합자가 넣지 않으면 합계가 안 움직인다. 그 침묵이 곧 미검증이다.
+            Art.Tests.ProcMeshTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]
