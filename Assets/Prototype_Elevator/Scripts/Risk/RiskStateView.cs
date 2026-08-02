@@ -27,6 +27,11 @@ namespace Ascend.Prototype.Risk
         [Tooltip("셰이크·섬광 접근성 배율. 비면 기본값(감쇠 없음).")]
         [SerializeField] private Data.Profiles.AccessibilityProfile _accessibility;
 
+        [Tooltip("위험 판정 임계값 9종 (UP-TECH-09 ⑦). 위의 DangerFeedbackProfile 이 " +
+                 "「위험해 보이는 방법」이라면 이쪽은 「무엇이 위험인가」다. 비면 코드 프리셋을 " +
+                 "쓰고 그 사실이 ThresholdSource 에 남는다.")]
+        [SerializeField] private Data.Profiles.RiskThresholdProfile _thresholdProfile;
+
         [Header("조명")]
         [SerializeField] private Light _cabinLight;
 
@@ -171,6 +176,13 @@ namespace Ascend.Prototype.Risk
                 ? _accessibility.name
                 : "코드 기본값";
 
+            // 위험 **판정** 값 (`UP-TECH-09` ⑦). 위 `_feedbackProfile`(⑧)이 「위험해
+            // 보이는 방법」이라면 이쪽은 「무엇이 위험인가」다. 둘을 한 에셋에 두면
+            // 「연출이 약해 보인다」는 이유로 임계값을 내리는 일이 생긴다 —
+            // 그건 연출 조정이 아니라 난이도 변경이다.
+            _evaluator.Apply(Data.Profiles.RiskThresholdProfile.SnapshotOrDefault(
+                _thresholdProfile, nameof(RiskStateView)));
+
             BuildAmbientLadder();
         }
 
@@ -206,6 +218,13 @@ namespace Ascend.Prototype.Risk
 
         /// <summary>지금 쓰고 있는 연출 값의 출처. 검증 하네스가 「에셋이 실제로 읽혔는가」를 묻는다.</summary>
         public string ProfileSource => _profileSource;
+
+        /// <summary>
+        /// 위험 **판정** 값의 출처 (`UP-TECH-09` ⑦). 연출 값 출처인
+        /// <see cref="ProfileSource"/> 와 다른 축이다 — 둘이 같은 문자열을 쓰면
+        /// 「연출은 에셋, 판정은 코드」인 절반 배선을 구분할 수 없다.
+        /// </summary>
+        public string ThresholdSource => _evaluator.ThresholdSource;
 
         /// <summary>
         /// 접근성 값의 출처. **`ProfileSource` 와 따로 있어야 한다.**

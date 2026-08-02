@@ -86,6 +86,38 @@ namespace Ascend.Prototype.Risk
         public float CriticalEnter = 7.0f;
         public float CriticalExit = 5.5f;
 
+        /// <summary>
+        /// 아홉 값을 밖에서 받는다 (`UP-TECH-09` ⑦). `RiskThresholdProfile.asset` 이
+        /// 물려 있으면 그 값이, 없으면 코드 프리셋이 온다 — 프리셋은 위 초기값과 같은
+        /// 수라 **동작이 바뀌지 않는다.**
+        ///
+        /// 생성자가 아니라 메서드인 이유: `RiskStateView` 가 `readonly` 필드로 인라인
+        /// 생성한다. 그 초기화 순서를 바꾸는 것보다 만든 뒤 덮어쓰는 편이 안전하다.
+        ///
+        /// **아홉 개를 전부 덮어쓴다.** 일부만 옮기면 에셋을 물려도 나머지가 코드 값을
+        /// 계속 쓰는 절반짜리 데이터화가 된다.
+        /// </summary>
+        public void Apply(in Data.Profiles.RiskThresholdSnapshot thresholds)
+        {
+            AbsorberWeight     = thresholds.AbsorberWeight;
+            ProliferatorWeight = thresholds.ProliferatorWeight;
+            OverharvestWeight  = thresholds.OverharvestWeight;
+            OverloadScore      = thresholds.OverloadScore;
+            ShortfallScore     = thresholds.ShortfallScore;
+            StrainEnter        = thresholds.StrainEnter;
+            StrainExit         = thresholds.StrainExit;
+            CriticalEnter      = thresholds.CriticalEnter;
+            CriticalExit       = thresholds.CriticalExit;
+            ThresholdSource    = thresholds.SourceName;
+        }
+
+        /// <summary>
+        /// 임계값이 어디서 왔는가. <see cref="Apply"/> 를 부르지 않았으면 「필드 초기값」이다 —
+        /// 「코드 프리셋」과 구분한다. 둘은 같은 수지만 **다른 경로**이고, 그 구분이
+        /// 「배선했는가」를 묻는 검사가 실제로 답할 수 있게 하는 것이다.
+        /// </summary>
+        public string ThresholdSource { get; private set; } = "필드 초기값";
+
         /// <summary>직전에 산출한 단계. 히스테리시스의 유일한 상태다.</summary>
         public RiskLevel Current { get; private set; } = RiskLevel.Stable;
 

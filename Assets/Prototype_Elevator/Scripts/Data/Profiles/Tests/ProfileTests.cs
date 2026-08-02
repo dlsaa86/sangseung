@@ -83,6 +83,13 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("스핀 밸런스 자기모순이 검출된다", TestSpinBalanceValidate, ref passed, ref failed, report);
             Run("연쇄 하드 캡은 프로파일에 없다", TestCascadeCapIsNotADial, ref passed, ref failed, report);
 
+            // ── 위험 임계값 ⑦ (`UP-TECH-09`) ─────────────────────────────────
+            Run("위험 프리셋이 RiskEvaluator 초기값과 같다", TestRiskPresetMatchesEvaluator, ref passed, ref failed, report);
+            Run("임계값을 바꾸면 단계 판정이 따라온다", TestRiskThresholdsFollowProfile, ref passed, ref failed, report);
+            Run("Apply 이전과 이후의 출처가 구분된다", TestRiskThresholdSourceDistinguishes, ref passed, ref failed, report);
+            Run("히스테리시스 역전이 검출된다", TestRiskHysteresisValidate, ref passed, ref failed, report);
+            Run("과수확 한 번이 방을 못 바꾸는 값이 검출된다", TestOverharvestMustLeaveStable, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Data Profile Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -1744,6 +1751,148 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             // `RequiredFieldCount != 10` 을 여기서 검사하려 했으나 둘 다 컴파일 상수라
             // 분기가 접혀 **아무것도 검사하지 않는 단언**이 된다(CS0162 가 그걸 알려 줬다).
             // 캡이 프로파일로 새어 들어갔는지는 위 한 줄이 실제로 잡는다.
+            return null;
+        }
+
+        // ── 위험 임계값 ⑦ (`UP-TECH-09`) ────────────────────────────────────
+
+        /// <summary>잔류·과수확·과적 없이 점수만 만드는 입력.</summary>
+        private static RiskInputs Residuals(int absorbers, int extraSpins)
+        {
+            return new RiskInputs(absorbers, 0, extraSpins, false, 3, 0.5f, false);
+        }
+
+        private static string TestRiskPresetMatchesEvaluator()
+        {
+            var fresh = new RiskEvaluator();
+            if (!Near(RiskThresholdProfile.DefaultAbsorberWeight, fresh.AbsorberWeight))
+                return $"흡수체 가중치 {RiskThresholdProfile.DefaultAbsorberWeight} vs 평가기 {fresh.AbsorberWeight}";
+            if (!Near(RiskThresholdProfile.DefaultProliferatorWeight, fresh.ProliferatorWeight))
+                return $"증식체 가중치 {RiskThresholdProfile.DefaultProliferatorWeight} vs 평가기 {fresh.ProliferatorWeight}";
+            if (!Near(RiskThresholdProfile.DefaultOverharvestWeight, fresh.OverharvestWeight))
+                return $"과수확 점수 {RiskThresholdProfile.DefaultOverharvestWeight} vs 평가기 {fresh.OverharvestWeight}";
+            if (!Near(RiskThresholdProfile.DefaultOverloadScore, fresh.OverloadScore))
+                return $"과적 점수 {RiskThresholdProfile.DefaultOverloadScore} vs 평가기 {fresh.OverloadScore}";
+            if (!Near(RiskThresholdProfile.DefaultShortfallScore, fresh.ShortfallScore))
+                return $"미달 점수 {RiskThresholdProfile.DefaultShortfallScore} vs 평가기 {fresh.ShortfallScore}";
+            if (!Near(RiskThresholdProfile.DefaultStrainEnter, fresh.StrainEnter)
+                || !Near(RiskThresholdProfile.DefaultStrainExit, fresh.StrainExit)
+                || !Near(RiskThresholdProfile.DefaultCriticalEnter, fresh.CriticalEnter)
+                || !Near(RiskThresholdProfile.DefaultCriticalExit, fresh.CriticalExit))
+                return $"임계값 {fresh.StrainExit}→{fresh.StrainEnter} / {fresh.CriticalExit}→{fresh.CriticalEnter}"
+                     + " 가 프리셋과 다르다";
+
+            // Apply 로 프리셋을 넣어도 값이 그대로여야 한다 — 그래야 에셋을 만드는 것만으로
+            // 난이도가 바뀌지 않는다.
+            var applied = new RiskEvaluator();
+            applied.Apply(RiskThresholdProfile.DefaultSnapshot);
+            if (!Near(applied.StrainEnter, fresh.StrainEnter) || !Near(applied.OverharvestWeight, fresh.OverharvestWeight))
+                return "프리셋을 Apply 했더니 값이 달라졌다";
+            return null;
+        }
+
+        private static string TestRiskThresholdsFollowProfile()
+        {
+            // 프리셋(흡수 1.0 · Strain 진입 3.0)과 다른 수. 흡수체 하나가 2.5점이고
+            // Strain 진입이 2.0 이면 **하나만으로 Strain** 이다 — 프리셋이면 Stable 이다.
+            var tuned = new RiskEvaluator();
+            tuned.Apply(new RiskThresholdSnapshot(2.5f, 1.2f, 3.2f, 3.0f, 4.0f,
+                2.0f, 1.0f, 7.0f, 5.5f, "테스트 프로브"));
+
+            if (!Near(tuned.Score(Residuals(1, 0)), 2.5f))
+                return $"흡수체 1개 점수 {tuned.Score(Residuals(1, 0))} — 프로파일의 2.5 가 아니다";
+
+            RiskLevel level = tuned.Evaluate(Residuals(1, 0));
+            if (level != RiskLevel.Strain)
+                return $"흡수체 1개에서 단계가 {level} — 임계값 2.0 이면 Strain 이어야 한다"
+                     + " (프리셋 3.0 으로 되돌아갔나)";
+
+            // 같은 입력을 프리셋 평가기에 주면 Stable 이어야 한다. 두 결과가 갈려야
+            // 「임계값이 실제로 판정을 움직인다」가 증명된다.
+            var preset = new RiskEvaluator();
+            preset.Apply(RiskThresholdProfile.DefaultSnapshot);
+            RiskLevel presetLevel = preset.Evaluate(Residuals(1, 0));
+            if (presetLevel != RiskLevel.Stable)
+                return $"프리셋에서 흡수체 1개가 {presetLevel} — 1.0점 < 진입 3.0 이라 Stable 이어야 한다";
+            return null;
+        }
+
+        private static string TestRiskThresholdSourceDistinguishes()
+        {
+            var untouched = new RiskEvaluator();
+            if (untouched.ThresholdSource != "필드 초기값")
+                return $"Apply 전 출처가 '{untouched.ThresholdSource}'";
+
+            var fromPreset = new RiskEvaluator();
+            fromPreset.Apply(RiskThresholdProfile.DefaultSnapshot);
+            if (fromPreset.ThresholdSource != RiskThresholdSnapshot.CodePresetName)
+                return $"프리셋 Apply 후 출처가 '{fromPreset.ThresholdSource}'";
+
+            // 같은 수인데 경로가 다르다. 그 구분이 「배선했는가」를 답할 수 있게 한다.
+            if (untouched.ThresholdSource == fromPreset.ThresholdSource)
+                return "필드 초기값과 코드 프리셋의 출처가 같은 문자열이다 — 배선 여부를 구분할 수 없다";
+
+            var profile = ScriptableObject.CreateInstance<RiskThresholdProfile>();
+            try
+            {
+                profile.name = "RiskProbe";
+                var fromAsset = new RiskEvaluator();
+                fromAsset.Apply(RiskThresholdProfile.SnapshotOrDefault(profile, "테스트"));
+                if (fromAsset.ThresholdSource != "RiskProbe")
+                    return $"에셋 Apply 후 출처가 '{fromAsset.ThresholdSource}'";
+                return null;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(profile);
+            }
+        }
+
+        private static string TestRiskHysteresisValidate()
+        {
+            if (RiskThresholdProfile.DefaultSnapshot.Validate() != null)
+                return $"기본값이 자기모순으로 판정됐다: {RiskThresholdProfile.DefaultSnapshot.Validate()}";
+
+            // 이탈 == 진입. 경계에서 단계가 떨린다.
+            if (new RiskThresholdSnapshot(1f, 1.2f, 3.2f, 3f, 4f, 3f, 3f, 7f, 5.5f, "x").Validate() == null)
+                return "Strain 이탈 == 진입을 통과시켰다";
+            if (new RiskThresholdSnapshot(1f, 1.2f, 3.2f, 3f, 4f, 3f, 2f, 7f, 7f, "x").Validate() == null)
+                return "Critical 이탈 == 진입을 통과시켰다";
+            // 단계 순서 역전 — Strain 을 건너뛴다.
+            if (new RiskThresholdSnapshot(1f, 1.2f, 9f, 3f, 4f, 8f, 2f, 7f, 5.5f, "x").Validate() == null)
+                return "Strain 진입 > Critical 진입을 통과시켰다";
+            // 저항체를 남겨도 위험해지지 않는 값.
+            if (new RiskThresholdSnapshot(0f, 0f, 3.2f, 3f, 4f, 3f, 2f, 7f, 5.5f, "x").Validate() == null)
+                return "잔류 가중치가 둘 다 0인 값을 통과시켰다";
+            return null;
+        }
+
+        /// <summary>
+        /// `MASTER_PRD.md` §7 — 과수확은 「공간적 사건」이어야 한다. 한 번 당겼는데
+        /// 방이 그대로 Stable 이면 그 문장이 거짓이 된다. 값 검사와 실제 판정 둘 다 본다.
+        /// </summary>
+        private static string TestOverharvestMustLeaveStable()
+        {
+            // 과수확 점수 2.0 < Strain 진입 3.0 — 한 번 당겨도 Stable 이다.
+            var bad = new RiskThresholdSnapshot(1f, 1.2f, 2f, 3f, 4f, 3f, 2f, 7f, 5.5f, "x");
+            if (bad.Validate() == null)
+                return "과수확 점수 < Strain 진입을 통과시켰다 — PRD §7 이 거짓이 되는 값이다";
+
+            // 검사만 있고 실제로 그렇게 도는지 안 보면 반쪽이다. 그 값을 실제 평가기에
+            // 넣어 한 번 당긴 상태가 정말 Stable 로 나오는지 확인한다 — 검사가 막으려는
+            // 것이 무엇인지 이 단언이 보여 준다.
+            var loose = new RiskEvaluator();
+            loose.Apply(bad);
+            if (loose.Evaluate(Residuals(0, 1)) != RiskLevel.Stable)
+                return "과수확 1회가 Stable 이 아니다 — 이 테스트가 막으려는 상황을 재현하지 못했다";
+
+            // 프리셋은 반대여야 한다. 한 번 당기면 방이 바뀐다.
+            var preset = new RiskEvaluator();
+            preset.Apply(RiskThresholdProfile.DefaultSnapshot);
+            RiskLevel pulled = preset.Evaluate(Residuals(0, 1));
+            if (pulled == RiskLevel.Stable)
+                return $"프리셋에서 과수확 1회가 Stable 이다 (점수 {preset.Score(Residuals(0, 1))},"
+                     + $" 진입 {preset.StrainEnter}) — PRD §7 위반";
             return null;
         }
     }
