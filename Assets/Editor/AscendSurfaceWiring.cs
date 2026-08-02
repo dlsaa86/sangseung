@@ -164,16 +164,15 @@ namespace Ascend.Prototype.EditorTools
             // `Value` 는 **설계 원본 명도**(HSV 의 V)다. 배선 전 씬에서 실측한 값이고,
             // `Tone.Preserve` 가 이것을 텍스처 평균으로 나눠 평균 반사율을 되돌린다.
             // 현재 값이 아니라 이 상수를 쓰기 때문에 몇 번을 돌려도 같은 결과가 나온다.
-            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",     0f, 0.120f, null, Tone.Preserve, true, 3f),
-            new Rule("M_Gray_Console",     "TEX_Machine_Housing",  0f, 0.180f, null, Tone.Preserve, true, 3f),
-            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",     0f, 0.100f, null, Tone.Preserve, true, 2f),
-            // 결과판 32슬롯. 심볼 실루엣이 얹히는 면이라 **명도를 유지하고** 무늬는 잘게 —
-            // 큰 무늬는 심볼 윤곽과 경쟁한다.
-            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",     0f, 0.901f, null, Tone.Preserve, true, 4f),
+            new Rule("M_Gray_Panel",       "TEX_Gauge_Enamel",    1.77f, 1.77f, 0.120f, null, Tone.Preserve, true), // ρ 1.86 — 이미 거의 최적
+            new Rule("M_Gray_Console",     "TEX_Machine_Housing", 0.30f, 0.30f, 0.180f, null, Tone.Preserve, true), // ρ 11.08
+            new Rule("M_Gray_BarBg",       "TEX_Gauge_Enamel",    0.20f, 0.20f, 0.100f, null, Tone.Preserve, true), // ρ 11.05
+            // 결과판 32슬롯. 심볼 실루엣이 얹히는 면이라 **명도를 유지한다.**
+            new Rule("M_Gray_Readout",     "TEX_Gauge_Enamel",    0.59f, 0.59f, 0.901f, null, Tone.Preserve, true), // ρ 7.47
 
-            new Rule("TenFloor_212426",    "TEX_Machine_Housing",  0f, 0.150f, null, Tone.Preserve, true, 2f),
-            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0f, 0.210f, null, Tone.Preserve, true, 2f),
-            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",      0f, 0.460f, null, Tone.Preserve, true, 2f),
+            new Rule("TenFloor_212426",    "TEX_Machine_Housing", 1.18f, 1.18f, 0.150f, null, Tone.Preserve, true), // ρ 1.86
+            new Rule("TenFloor_333633",    "TEX_WallPanel_Riveted",0.48f, 0.48f, 0.210f, null, Tone.Preserve, true), // ρ 4.54
+            new Rule("TenFloor_756B4C",    "TEX_Pallet_Wood",     0.12f, 0.12f, 0.460f, null, Tone.Preserve, true), // ρ 17.87
         };
 
         // ── 손대지 않는 것과 그 이유 ─────────────────────────────────────────
@@ -200,7 +199,9 @@ namespace Ascend.Prototype.EditorTools
             // 1) 임포트 설정. Repeat + Point 필터. 근거는 그 함수의 주석에 있다.
             int fixedWrap = EnsureImportSettings(report);
 
-            // 2) 머티리얼 이름 → 그 머티리얼을 쓰는 렌더러들의 실측 월드 크기
+            // 2) 실측 월드 크기 — 이제 타일링에 쓰지 않는다. **보고에만 쓴다.**
+            //    크기 유도는 화면 텍셀 밀도를 모른다(위 `Rule` 주석). 그래도 크기를
+            //    함께 찍어 두면 다음에 ρ 를 다시 잴 때 무엇이 변했는지 알 수 있다.
             var sizes = MeasureMaterialSizes();
 
             Shader stylized = Shader.Find("Ascend/Stylized");
@@ -263,8 +264,8 @@ namespace Ascend.Prototype.EditorTools
                 lifted.a = before.a;
                 mat.SetColor("_BaseColor", lifted);
 
-                // ── 타일링은 실측 크기 × 미터당 반복 수 (경고 2) ──
-                Vector2 uv = TilingFor(sizes, rule.Material, rule.PerMetre, rule.FixedUV);
+                // ── 타일링은 **실측 ρ 에서 역산한 절대값**이다 (위 `Rule` 주석) ──
+                Vector2 uv = rule.ST;
                 mat.SetTexture("_BaseMap", tex);
                 mat.SetTextureScale("_BaseMap", uv);
                 mat.SetTextureOffset("_BaseMap", Vector2.zero);
@@ -296,7 +297,7 @@ namespace Ascend.Prototype.EditorTools
                 wired++;
                 sizes.TryGetValue(rule.Material, out Vector3 sz);
                 report.AppendLine($"  {rule.Material,-22} ← {rule.Texture,-22} " +
-                                  $"{sz.x:F2}×{sz.y:F2}×{sz.z:F2} m · {rule.PerMetre:F2}회/m → tiling ({uv.x:F2},{uv.y:F2}) · " +
+                                  $"ST ({uv.x:F3},{uv.y:F3}) · 실측 {sz.x:F2}×{sz.y:F2}×{sz.z:F2} m · " +
                                   $"V {ValueOf(before):F3} → {targetV:F3} [{rule.Tone}] · " +
                                   $"shader {shaderBefore} → {(mat.shader != null ? mat.shader.name : "null")}");
             }
@@ -437,30 +438,16 @@ namespace Ascend.Prototype.EditorTools
             return map;
         }
 
-        /// <summary>
-        /// 실측 크기에서 UV 타일링을 만든다.
-        ///
-        /// 가장 얇은 축을 두께로 보고 나머지 둘을 면으로 쓴다. 바닥·천장이면 (x, z),
-        /// 벽이면 (수평, 높이)다. Unity 기본 Cube 는 각 면이 UV 0..1 이므로
-        /// **면의 미터 크기 × 미터당 반복 수**가 곧 타일링이다.
-        /// </summary>
-        private static Vector2 TilingFor(Dictionary<string, Vector3> sizes, string material, float perMetre, float fixedUv)
-        {
-            // 공유 머티리얼은 크기 유도가 성립하지 않는다 — `Rule.FixedUV` 주석 참조.
-            if (fixedUv > 0f) return new Vector2(fixedUv, fixedUv);
-
-            if (!sizes.TryGetValue(material, out Vector3 s) || s == Vector3.zero)
-                return Vector2.one;   // 못 재면 1×1 — 조용히 틀린 수를 쓰지 않는다
-
-            float u, v;
-            if (s.y <= s.x && s.y <= s.z) { u = s.x; v = s.z; }        // 바닥·천장
-            else if (s.x <= s.y && s.x <= s.z) { u = s.z; v = s.y; }   // 좌우 벽
-            else { u = s.x; v = s.y; }                                  // 앞뒤 벽
-
-            return new Vector2(
-                Mathf.Max(0.01f, u * perMetre),
-                Mathf.Max(0.01f, v * perMetre));
-        }
+        // `TilingFor` 를 지웠다 — 크기에서 타일링을 유도하던 함수다.
+        //
+        // 왜 지웠나: 그 함수는 **월드 등방성**을 지켰고, 그건 틀린 목표였다.
+        // G-1 이 재는 것은 화면 8×8 블록의 표준편차이고 그건 **화면 텍셀 밀도**가 정한다.
+        // 8 px/텍셀 이상이면 블록 전체가 텍셀 하나 안에 들어가 Point 필터로 값이 하나가 되고
+        // 표준편차가 **원리적으로 0** 이 된다 — 텍스처가 아무리 잘 배선돼 있어도.
+        // 캐빈을 4배로 키운 순간 같은 rep/m 이 ρ 를 2배로 만들어 그 구간에 들어갔다.
+        //
+        // 대체물은 `Rule.ST` 의 실측 역산 절대값이다. 대가는 자동 추종을 잃는 것이고,
+        // 그래서 치수·카메라가 바뀌면 **다시 재야 한다**고 `Rule` 주석에 적어 뒀다.
 
         /// <summary>씬 내장 머티리얼은 에셋 경로가 없다. 렌더러를 훑어서 찾는다.</summary>
         private static Material FindSceneMaterial(string name)

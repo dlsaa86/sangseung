@@ -2240,6 +2240,62 @@ namespace Ascend.Prototype.Run.Tests
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 이 캡처가 어느 커밋에서 나왔는가. `.git` 을 직접 읽는다 — 에디터 전용 경로라
+        /// 프로세스를 띄우지 않는다(빌드에 들어가지 않도록 `UNITY_EDITOR` 로 감싼다).
+        ///
+        /// **더러운 워킹 트리는 커밋 해시로 표현되지 않는다.** 해시만 적으면 「그 커밋
+        /// 상태」라고 오해되므로, 씬 파일이 커밋보다 새로우면 그 사실을 함께 적는다.
+        /// </summary>
+        private static string BuildStamp()
+        {
+#if UNITY_EDITOR
+            try
+            {
+                string root = Directory.GetParent(Application.dataPath).FullName;
+                string gitDir = Path.Combine(root, ".git");
+                string head = Path.Combine(gitDir, "HEAD");
+                if (!File.Exists(head)) return "빌드 스탬프 — .git 없음";
+
+                string headText = File.ReadAllText(head).Trim();
+                string sha;
+                if (headText.StartsWith("ref:"))
+                {
+                    string refPath = headText.Substring(4).Trim();
+                    string refFile = Path.Combine(gitDir, refPath.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(refFile)) sha = File.ReadAllText(refFile).Trim();
+                    else
+                    {
+                        sha = "unknown";
+                        string packed = Path.Combine(gitDir, "packed-refs");
+                        if (File.Exists(packed))
+                            foreach (string line in File.ReadAllLines(packed))
+                                if (line.EndsWith(" " + refPath)) { sha = line.Substring(0, 40); break; }
+                    }
+                    headText = refPath + " @ " + sha;
+                }
+                else { sha = headText; headText = "detached @ " + sha; }
+
+                string scenePath = Path.Combine(root, "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity");
+                string dirty = "";
+                if (File.Exists(scenePath) && File.Exists(head))
+                {
+                    System.DateTime sceneTime = File.GetLastWriteTimeUtc(scenePath);
+                    System.DateTime headTime = File.GetLastWriteTimeUtc(head);
+                    if (sceneTime > headTime)
+                        dirty = "  ⚠ **씬 파일이 HEAD 보다 새롭다** — 커밋되지 않은 편집분이 이 캡처에 들어 있다";
+                }
+                return "빌드 스탬프 — " + headText + dirty;
+            }
+            catch (System.Exception e)
+            {
+                return "빌드 스탬프 — 읽지 못했다 (" + e.GetType().Name + ")";
+            }
+#else
+            return "빌드 스탬프 — 에디터가 아니다";
+#endif
+        }
+
         private void Header(RunSessionBehaviour run)
         {
             _manifest.AppendLine("=== 10층 고정 캡처 세트 ===");
@@ -2259,6 +2315,11 @@ namespace Ascend.Prototype.Run.Tests
             // 그 사실이 한 줄도 없었다. 14라운드 동안 평가자는 「포스트가 걸린 그림」이라고
             // 가정하고 채점했다. 재는 것만이 주장을 대신한다.
             _manifest.AppendLine(PostChainFacts());
+            // **어느 빌드에서 찍었는지 적는다.** 지금까지는 파일 mtime 으로만 역추적했고,
+            // 그래서 `TenFloor_NoPost`(13:06)와 `TenFloor`(14:01) 사이에 캐빈 확대와
+            // M_Gray 배선이 끼어든 것을 아무도 즉시 알아채지 못했다 — 두 세트를
+            // 「포스트만 다른 대조군」이라고 믿고 결론을 냈고 그 근거가 무효였다(`UP-FIX-48`).
+            _manifest.AppendLine(BuildStamp());
             // **촬영 경로가 둘이라는 사실을 정확히 적는다.** 예전 머리말은 「전용 카메라의
             // RenderTexture 렌더다」 한 줄이었는데 세트에는 게임 뷰 화면 캡처도 섞여 있다.
             // 각 줄이 스스로 어느 경로인지 밝히고, 장수는 파일 끝에서 **센 값**을 적는다.

@@ -5,13 +5,16 @@
 .DESCRIPTION
     docs/GRAPHICS_TARGET.md §2 의 측정 축을 픽셀에서 직접 잰다.
 
-      G-1  국소 분산   — 8×8 블록 휘도 표준편차의 중앙값
+      G-1a 국소 분산   — 8×8 블록 휘도 표준편차의 **전체** 중앙값 (직전 정의 그대로)
+      G-1b 텍스처 블록 — 블록 std ≥ 4.0 인 블록만 모은 중앙값 (무지 면을 분모에서 뺀다)
+      G-1c 선명 블록   — 전체 블록 중 std ≥ 8.0 인 것의 비율(%)
       G-2  휘도 분포   — 5 / 50 / 95 퍼센타일
       G-3  발광        — 휘도 ≥ 200 화소 비율
       G-4  계단 셰이딩 — 지정 주사선에서 「경계가 있는 평탄면」을 센다
                         계단 = 인접 휘도차 ≤ δ 인 연속 구간 중 길이 ≥ 8px
                         단차 = 인접한 두 계단의 평균 휘도차 절대값 ≥ 4
-                        관측 = 계단 ≥ 3 그리고 단차 ≥ 2
+                        관측 = **측정 가능** 그리고 계단 ≥ 3 그리고 단차 ≥ 2
+                        측정 불가 = 주사선 휘도 동적 범위(max−min) < 8
                         (평탄 구간 수·최장은 진단용으로 계속 낸다 — 판정에는 쓰지 않는다)
       G-5  빈 평면     — 32×32 블록 중 표준편차 < 4 인 블록 비율
       금색 화소        — R−B ≥ 60 그리고 G−B ≥ 30
@@ -37,7 +40,7 @@ $ErrorActionPreference = 'Stop'
 # ── 통과선 (docs/GRAPHICS_TARGET.md §2) ───────────────────────────────────────
 # 스크립트 안에 상수로 두되 출처를 함께 적는다. 통과선을 바꾸려면 문서를 먼저 바꾼다.
 $script:CM_Thresholds = [ordered]@{
-    G1_LocalStdMedian   = 12.0   # G-1 대표 8장의 국소 분산 중앙값 ≥ 12.0
+    G1_LocalStdMedian   = 12.0   # G-1a 대표 8장의 국소 분산 중앙값 ≥ 12.0
     G2_P5Max            = 24     # G-2 휘도 5퍼센타일 ≤ 24
     G2_P50Min           = 36     # G-2 휘도 중앙값 36 ~ 96
     G2_P50Max           = 96
@@ -51,6 +54,32 @@ $script:CM_Thresholds = [ordered]@{
     G4_StairFramesMin   = 12     # G-4 24장 중 계단이 관측되는 장 ≥ 12
     G5_EmptyPlaneMaxPct = 18.0   # G-5 빈 평면 비율 ≤ 18%
     MagentaMax          = 0      # 셰이더 오류 색은 0 이어야 한다
+}
+
+# ── 분류 임계 — **통과선이 아니다** (GRAPHICS_TARGET §5 축 정정 2026-08-02) ────
+#
+# 아래 셋은 「무엇을 무엇으로 셀 것인가」를 정할 뿐, 그 자체로 합격/불합격을 만들지 않는다.
+# G-1b·G-1c 의 통과선은 **아직 없다** — 실측을 보고 사용자가 정한다. 근거 없는 숫자를
+# 먼저 박아 넣지 않는다(이 저장소가 UP-FIX-35 에서 거짓 그린을 만든 경로가 그것이다).
+$script:CM_Classify = [ordered]@{
+    # G-1b 텍스처 블록으로 인정하는 8×8 블록 std 하한.
+    # 실측 근거: 무지 표면 위 블록은 구조적으로 std ≈ 1.75 에 고정되고(대표 8장의 28.6%),
+    # 텍스처 표면 위 블록은 그보다 위에 분포한다 (GRAPHICS_TARGET §5.1).
+    # 4.0 이 실제로 두 집단을 가르는지는 블록 std 히스토그램으로 매번 확인한다.
+    G1b_TexturedBlockStd = 4.0
+    # G-1c 「선명 블록」으로 인정하는 하한. GRAPHICS_TARGET §2 G-1 의
+    # 「조명 그라디언트만으로는 8을 못 넘는다」에서 온 값이다.
+    G1c_SharpBlockStd    = 8.0
+    # G-4 「측정 가능」의 하한. 주사선 구간의 휘도 동적 범위(max−min)가 이 값 미만이면
+    # 그 장은 「미관측」이 아니라 **「측정 불가」**다 — 평평한 언릿 면 위이거나 완전 단색이라
+    # 계단이 원리적으로 만들어질 수 없다 (GRAPHICS_TARGET §5.4: 19장 중 9장이 Unlit TubeFrame).
+    G4_MeasurableMinSpan = 8
+}
+
+# ── 제안 (적용하지 않는다) ────────────────────────────────────────────────────
+# 도구는 이 값으로 판정하지 않는다. 보고서에 「이렇게 바꾸는 것을 제안한다」로만 찍는다.
+$script:CM_Proposals = [ordered]@{
+    G4_ObservedRatioMin = 0.50   # 관측됨 / (관측됨 + 미관측) ≥ 50%
 }
 
 # 대표 8장 — GRAPHICS_TARGET §2 「대표 8장은 01·02·06·09·12·15·18·21」
@@ -108,7 +137,27 @@ namespace CaptureMetrics
         public int    Height;
         public long   TotalPixels;
 
-        public double LocalStdMedian;      // G-1  8x8 블록 표준편차의 중앙값
+        public double LocalStdMedian;      // G-1a 8x8 블록 표준편차의 **전체** 중앙값
+
+        // ── G-1b / G-1c (2026-08-02 축 정정) ──────────────────────────────
+        // G-1a 는 「화면의 몇 %가 텍스처인가」를 재고 있었다. 무지 표면 위 블록이
+        // 28.6% 를 차지하고 그 std 가 ~1.75 로 고정되므로, 전체 중앙값은 커버리지에
+        // 지배된다. G-1b 는 그 무지 블록을 **분모에서 빼고** 텍스처가 얼마나 잘
+        // 보이는지만 잰다. G-1c 는 반대로 「얼마나 넓은 면적이 선명한가」를 잰다.
+        public double TexturedBlockStdMedian; // G-1b std >= G1bBlockStdMin 인 블록의 중앙값. 블록 0개면 NaN
+        public int    TexturedBlockCount;     // G-1b 의 분모
+        public double TexturedBlockPercent;   // 전체 블록 중 텍스처 블록 비율(%)
+        public double SharpBlockPercent;      // G-1c std >= G1cBlockStdMin 인 블록 비율(%)
+        public int    SharpBlockCount;
+        public double G1bBlockStdMin;         // 실제로 쓴 텍스처 블록 임계
+        public double G1cBlockStdMin;         // 실제로 쓴 선명 블록 임계
+
+        // 블록 std 히스토그램 — 임계 4.0 이 실제로 두 집단을 가르는지 눈으로 확인하는 근거.
+        // 마지막 칸은 넘침(>= BinWidth*(Bins-1)) 이다.
+        public long[]  BlockStdHist;
+        public double  BlockStdHistBinWidth;
+        public int     BlockStdHistBins;
+
         public int    LumP5;               // G-2
         public int    LumP50;
         public int    LumP95;
@@ -149,6 +198,14 @@ namespace CaptureMetrics
         public const int StepMinLength = 8;      // G-4 계단 한 칸의 최소 길이(px)
         public const int BoundaryMinDelta = 4;   // G-4 단차로 인정하는 평균 휘도차
 
+        // G-1b / G-1c 분류 임계. 통과선이 아니라 **집단을 가르는 선**이다.
+        public const double TexturedBlockStd = 4.0;
+        public const double SharpBlockStd    = 8.0;
+
+        // 블록 std 히스토그램: 폭 0.5 로 [0,32) 를 64칸, 마지막 1칸이 >= 32 넘침.
+        public const double HistBinWidth = 0.5;
+        public const int    HistBins     = 65;
+
         // 0~255 로 반올림·클램프한 정수 휘도.
         public static int Q(double L)
         {
@@ -170,6 +227,14 @@ namespace CaptureMetrics
 
         public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen,
                                           int flatDelta, int stepMinLength, int boundaryMinDelta)
+        {
+            return Analyze(path, scanYFrac, scanXFrac, scanLen, flatDelta, stepMinLength, boundaryMinDelta,
+                           TexturedBlockStd, SharpBlockStd);
+        }
+
+        public static ImageResult Analyze(string path, double scanYFrac, double scanXFrac, int scanLen,
+                                          int flatDelta, int stepMinLength, int boundaryMinDelta,
+                                          double texturedBlockStd, double sharpBlockStd)
         {
             ImageResult r = new ImageResult();
             r.Path = path;
@@ -247,11 +312,53 @@ namespace CaptureMetrics
             for (int v = GlowLuminance; v < 256; v++) glow += hist[v];
             r.GlowPercent = total > 0 ? (100.0 * glow / total) : 0.0;
 
-            // ── G-1 국소 분산 ───────────────────────────────────────────────
+            // ── G-1a 국소 분산 (전체 블록 중앙값) ───────────────────────────
             int n8;
             double[] std8 = BlockStdDevs(lum, w, h, BlockG1, out n8);
             r.BlockCount8 = n8;
             r.LocalStdMedian = Median(std8, n8);
+
+            // ── G-1b 텍스처 블록 중앙값 · G-1c 선명 블록 비율 ───────────────
+            // 무지 표면 위 블록(std ≈ 1.75)을 분모에서 빼야 「텍스처가 잘 보이는가」가
+            // 「화면의 몇 %가 텍스처인가」와 분리된다 (GRAPHICS_TARGET §5.1).
+            r.G1bBlockStdMin = texturedBlockStd;
+            r.G1cBlockStdMin = sharpBlockStd;
+            int texN = 0, sharpN = 0;
+            for (int i = 0; i < n8; i++)
+            {
+                if (std8[i] >= texturedBlockStd) texN++;
+                if (std8[i] >= sharpBlockStd) sharpN++;
+            }
+            r.TexturedBlockCount = texN;
+            r.SharpBlockCount = sharpN;
+            r.TexturedBlockPercent = n8 > 0 ? (100.0 * texN / n8) : 0.0;
+            r.SharpBlockPercent = n8 > 0 ? (100.0 * sharpN / n8) : 0.0;
+            if (texN > 0)
+            {
+                double[] tex = new double[texN];
+                int tk = 0;
+                for (int i = 0; i < n8; i++) if (std8[i] >= texturedBlockStd) tex[tk++] = std8[i];
+                r.TexturedBlockStdMedian = Median(tex, texN);
+            }
+            else
+            {
+                // 텍스처 블록이 하나도 없으면 중앙값은 **정의되지 않는다.**
+                // 0 을 내면 「텍스처가 있는데 아주 평평하다」와 구분되지 않는다.
+                r.TexturedBlockStdMedian = double.NaN;
+            }
+
+            // 블록 std 히스토그램 — 임계가 실제로 두 집단을 가르는지 확인하는 근거.
+            r.BlockStdHistBinWidth = HistBinWidth;
+            r.BlockStdHistBins = HistBins;
+            long[] bh = new long[HistBins];
+            for (int i = 0; i < n8; i++)
+            {
+                int bin = (int)(std8[i] / HistBinWidth);
+                if (bin < 0) bin = 0;
+                if (bin > HistBins - 1) bin = HistBins - 1;
+                bh[bin]++;
+            }
+            r.BlockStdHist = bh;
 
             // ── G-5 빈 평면 ─────────────────────────────────────────────────
             int n32;
@@ -543,6 +650,24 @@ namespace CaptureMetrics
             WriteBgra(path, w, h, buf);
         }
 
+        // 좌측 noiseStartX 화소는 균일 회색(=무지 면), 그 오른쪽은 화소별 난수(=텍스처 면).
+        // 「무지 블록이 분모에 섞이면 전체 중앙값이 눌린다」를 손으로 계산 가능하게 만든다.
+        // 블록 경계가 noiseStartX 에 정렬되도록 호출자가 8·32 의 배수를 고른다.
+        public static void SolidWithNoiseRight(string path, int w, int h, byte gray, int noiseStartX, int seed)
+        {
+            Random rnd = new Random(seed);
+            byte[] buf = Alloc(w, h);
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    if (x < noiseStartX) Put(buf, w, x, y, gray, gray, gray);
+                    else Put(buf, w, x, y, (byte)rnd.Next(256), (byte)rnd.Next(256), (byte)rnd.Next(256));
+                }
+            }
+            WriteBgra(path, w, h, buf);
+        }
+
         // 완전 검정 바탕에 좌상단 흰 사각. 비율은 호출자가 정수로 떨어지게 고른다.
         public static void BlackWithWhiteRect(string path, int w, int h, int rw, int rh)
         {
@@ -574,11 +699,168 @@ function Measure-CaptureImage {
         [int]    $ScanLength    = $script:CM_DefaultScanLength,
         [int]    $FlatDelta     = $script:CM_DefaultFlatDelta,
         [int]    $StepMinLength = $script:CM_DefaultStepMinLength,
-        [int]    $BoundaryMinDelta = $script:CM_DefaultBoundaryMinDelta
+        [int]    $BoundaryMinDelta = $script:CM_DefaultBoundaryMinDelta,
+        [double] $TexturedBlockStd = $script:CM_Classify.G1b_TexturedBlockStd,
+        [double] $SharpBlockStd    = $script:CM_Classify.G1c_SharpBlockStd
     )
     Initialize-CaptureMetrics
     return [CaptureMetrics.Analyzer]::Analyze($Path, $ScanYFraction, $ScanXFraction, $ScanLength,
-                                              $FlatDelta, $StepMinLength, $BoundaryMinDelta)
+                                              $FlatDelta, $StepMinLength, $BoundaryMinDelta,
+                                              $TexturedBlockStd, $SharpBlockStd)
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G-4 세 갈래 판정 (2026-08-02 축 정정 — GRAPHICS_TARGET §5.4)
+#
+# 직전 판정은 두 갈래였다: 관측됨 / 미관측. 그래서 **조명이 없는 면 위를 지나는
+# 주사선**이 「미관측」으로 세어졌다. 언릿 면에서 계단은 원리적으로 만들어지지
+# 않으므로 그것은 「고치면 되는 것」이 아니라 「이 축으로는 잴 수 없는 것」이다.
+# 둘을 한 숫자에 합치면 개선이 어디서 왔는지 알 수 없다.
+#
+# 측정 가능 판정은 **주사선 구간의 휘도 동적 범위**로 한다 — 조명 유무를 PNG 에서
+# 직접 알 수는 없지만, 범위가 없는 구간에는 어떤 정의로도 계단이 없다.
+# ══════════════════════════════════════════════════════════════════════════════
+function Get-CaptureG4Verdict {
+    <#
+    .SYNOPSIS
+        한 장의 G-4 판정을 'OBSERVED' | 'UNOBSERVED' | 'UNMEASURABLE' 로 낸다.
+    #>
+    param(
+        [Parameter(Mandatory)] $Metric,
+        [int] $StepsMin  = 3,
+        [int] $BoundsMin = 2,
+        [int] $MinSpan   = 8
+    )
+    # 측정 가능 여부를 **먼저** 본다. 동적 범위가 없는 구간에서 계단·단차가 우연히
+    # 조건을 만족하는 경우까지 「관측됨」으로 세면 정정의 의미가 사라진다.
+    if ($Metric.ScanSpan -lt $MinSpan) { return 'UNMEASURABLE' }
+    if (($Metric.StepCount -ge $StepsMin) -and ($Metric.BoundaryCount -ge $BoundsMin)) { return 'OBSERVED' }
+    return 'UNOBSERVED'
+}
+
+function Get-CaptureG4VerdictLabel {
+    param([string] $Verdict)
+    switch ($Verdict) {
+        'OBSERVED'     { return '관측됨' }
+        'UNOBSERVED'   { return '미관측' }
+        'UNMEASURABLE' { return '측정불가' }
+        default        { return $Verdict }
+    }
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 블록 std 히스토그램 — G-1b 임계가 실제로 두 집단을 가르는가
+# ══════════════════════════════════════════════════════════════════════════════
+function Get-CaptureBlockStdHistogram {
+    <#
+    .SYNOPSIS
+        여러 장의 블록 std 히스토그램을 합산한다. 결과는 long[] (칸 수는 코어 상수).
+    #>
+    param([Parameter(Mandatory)] $Metrics)
+    $arr = @($Metrics)
+    if ($arr.Count -eq 0) { return @() }
+    $bins = [int]$arr[0].BlockStdHistBins
+    $acc = New-Object 'long[]' $bins
+    foreach ($m in $arr) {
+        $h = $m.BlockStdHist
+        if ($null -eq $h) { continue }
+        for ($i = 0; $i -lt $bins -and $i -lt $h.Length; $i++) { $acc[$i] += $h[$i] }
+    }
+    return $acc
+}
+
+function Get-CaptureHistogramValley {
+    <#
+    .SYNOPSIS
+        히스토그램에서 봉우리 둘과 그 사이 골을 찾는다. 쌍봉이 아니면 IsBimodal=$false.
+
+    .DESCRIPTION
+        임계 4.0 을 「내가 정한 값」이 아니라 「실측이 가리키는 값」으로 검증하기 위한 것이다.
+        골이 4.0 근처가 아니거나 쌍봉이 아니면 그 사실을 보고해야 한다 —
+        임계를 결과에 맞춰 조용히 옮기지 않는다.
+    #>
+    param(
+        [Parameter(Mandatory)][long[]] $Hist,
+        [double] $BinWidth = 0.5,
+        [int]    $SearchMaxBin = 40,      # 0 ~ 20.0 구간에서 찾는다
+        [int]    $MinPeakSeparation = 4,  # 봉우리끼리 최소 2.0 떨어져 있어야 별개다
+        [double] $SecondPeakMinRatio = 0.05
+    )
+    $n = [Math]::Min($SearchMaxBin + 1, $Hist.Length)
+    if ($n -le 2) { return $null }
+
+    $p1 = 0
+    for ($i = 1; $i -lt $n; $i++) { if ($Hist[$i] -gt $Hist[$p1]) { $p1 = $i } }
+
+    $p2 = -1
+    for ($i = 0; $i -lt $n; $i++) {
+        if ([Math]::Abs($i - $p1) -lt $MinPeakSeparation) { continue }
+        if ($p2 -lt 0 -or $Hist[$i] -gt $Hist[$p2]) { $p2 = $i }
+    }
+    if ($p2 -lt 0) { return $null }
+
+    $lo = [Math]::Min($p1, $p2); $hi = [Math]::Max($p1, $p2)
+    $valley = $lo
+    for ($i = $lo; $i -le $hi; $i++) { if ($Hist[$i] -lt $Hist[$valley]) { $valley = $i } }
+
+    $bimodal = ($Hist[$p1] -gt 0) -and (($Hist[$p2] / [double]$Hist[$p1]) -ge $SecondPeakMinRatio) -and
+               ($Hist[$valley] -lt $Hist[$p2])
+
+    return [pscustomobject]@{
+        Peak1Bin    = $p1
+        Peak1Value  = $p1 * $BinWidth
+        Peak1Count  = $Hist[$p1]
+        Peak2Bin    = $p2
+        Peak2Value  = $p2 * $BinWidth
+        Peak2Count  = $Hist[$p2]
+        ValleyBin   = $valley
+        ValleyValue = $valley * $BinWidth
+        ValleyCount = $Hist[$valley]
+        IsBimodal   = $bimodal
+    }
+}
+
+function Format-CaptureBlockStdHistogram {
+    <#
+    .SYNOPSIS
+        히스토그램을 콘솔 표 문자열 배열로 만든다. 표시 상한 위쪽은 한 칸으로 묶는다.
+    #>
+    param(
+        [Parameter(Mandatory)][long[]] $Hist,
+        [double] $BinWidth = 0.5,
+        [int]    $DetailMaxBin = 24,      # 0 ~ 12.0 까지는 0.5 폭 그대로 보여준다
+        [double[]] $Marks = @(4.0, 8.0),
+        [int]    $BarWidth = 46
+    )
+    $lines = New-Object System.Collections.ArrayList
+    $total = 0L
+    foreach ($v in $Hist) { $total += $v }
+    if ($total -le 0) { $null = $lines.Add('  (블록 없음)'); return $lines }
+
+    $detail = [Math]::Min($DetailMaxBin, $Hist.Length - 1)
+    $peak = 0L
+    for ($i = 0; $i -le $detail; $i++) { if ($Hist[$i] -gt $peak) { $peak = $Hist[$i] } }
+    $rest = 0L
+    for ($i = $detail + 1; $i -lt $Hist.Length; $i++) { $rest += $Hist[$i] }
+    if ($rest -gt $peak) { $peak = $rest }
+    if ($peak -le 0) { $peak = 1 }
+
+    $null = $lines.Add(('  {0,-13} {1,12} {2,8}   {3}' -f 'std 구간', '블록수', '비율', '분포'))
+    $null = $lines.Add('  ' + ('-' * 88))
+    for ($i = 0; $i -le $detail; $i++) {
+        $lo = $i * $BinWidth
+        $hi = $lo + $BinWidth
+        $bar = '#' * [int][Math]::Round($BarWidth * $Hist[$i] / $peak)
+        $mark = ''
+        foreach ($mk in $Marks) { if ([Math]::Abs($lo - $mk) -lt 1e-9) { $mark = ' ← 임계 ' + ('{0:F1}' -f $mk) } }
+        $null = $lines.Add(('  {0,5:F1}~{1,-6:F1} {2,12} {3,7:F2}%   {4}{5}' -f `
+            $lo, $hi, $Hist[$i], (100.0 * $Hist[$i] / $total), $bar, $mark))
+    }
+    $restLo = ($detail + 1) * $BinWidth
+    $bar = '#' * [int][Math]::Round($BarWidth * $rest / $peak)
+    $null = $lines.Add(('  {0,5:F1}~{1,-6} {2,12} {3,7:F2}%   {4}' -f $restLo, '위', $rest, (100.0 * $rest / $total), $bar))
+    $null = $lines.Add(('  총 블록 {0:N0} 개' -f $total))
+    return $lines
 }
 
 function Get-CaptureMedian {
