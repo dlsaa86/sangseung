@@ -57,5 +57,48 @@ namespace Ascend.Prototype.Spin
                    (PatternBonusAdd > 0f ? $" / 패턴 +{PatternBonusAdd:0.##}" : string.Empty) +
                    $" / 잔류 대가 ×{ResidualPenaltyMultiplier:0.##}";
         }
+
+        /// <summary>
+        /// **현재 빌드와 관련된 시너지 한 줄** (`UP-CONTRACT-05`).
+        ///
+        /// `NotionSyncReport.md:166` 이 계약 UI 필수 4정보를 못박는다 — 등장 확률 증가폭 ·
+        /// 정화 보상 증가폭 · 남았을 때의 대가 · **현재 빌드 관련 시너지 한 줄**.
+        /// 앞의 셋은 <see cref="Preview"/> 가 이미 낸다. 넷째가 없었다.
+        ///
+        /// **문구를 지어내지 않는다.** 적재된 부품의 효과 중 **이 계약과 같은 저항을
+        /// 겨냥한 것**만 세어 그대로 말한다. 규칙에 없는 관계를 쓰면 플레이어가 UI 를
+        /// 근거로 잘못된 선택을 하고, 그건 정보 공개가 아니라 오정보다.
+        ///
+        /// 대상 없는 효과(연쇄 증분·잔류 완화 등)는 세지 않는다 — 어느 계약을 고르든
+        /// 똑같이 걸리므로 「이 계약과의」 시너지가 아니다. 그것까지 세면 모든 계약이
+        /// 같은 줄을 달게 되어 비교에 쓸모가 없어진다.
+        /// </summary>
+        public string SynergyWith(Build.BuildLoadout loadout)
+        {
+            if (IsNone) return "적재와 무관 — 규칙을 바꾸지 않는다";
+            if (loadout == null || loadout.Count == 0) return "적재 없음 — 시너지 없다";
+
+            int matched = 0;
+            string first = null;
+            System.Collections.Generic.IReadOnlyList<Build.BuildItem> items = loadout.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                Build.BuildEffect[] effects = items[i].Effects;
+                if (effects == null) continue;
+                for (int e = 0; e < effects.Length; e++)
+                {
+                    // 대상이 이 계약의 저항과 같은 것만. `SymbolKind.Empty` 는 「대상 없음」이다.
+                    if (effects[e].Target != Target) continue;
+                    matched++;
+                    if (first == null) first = items[i].Label;
+                }
+            }
+
+            if (matched == 0)
+                return $"적재 {loadout.Count}칸 중 {Target.DisplayName()} 를 겨냥한 것 없음 — 시너지 없다";
+            if (matched == 1)
+                return $"{first} 이(가) 같은 {Target.DisplayName()} 를 겨냥한다 — 효과가 겹친다";
+            return $"{first} 외 {matched - 1}개가 같은 {Target.DisplayName()} 를 겨냥한다 — 효과가 겹친다";
+        }
     }
 }

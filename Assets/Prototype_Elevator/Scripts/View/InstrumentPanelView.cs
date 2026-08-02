@@ -385,16 +385,21 @@ namespace Ascend.Prototype.View
             _contractSelectedLabel = selectedLabel;
 
             _text.Clear();
+            // 시너지 줄은 **선택 전**에 가장 필요하다 (`UP-CONTRACT-05`) — 고른 뒤에 알려
+            // 주면 「공개」가 아니라 사후 설명이다. `NotionSyncReport.md:166` 의 필수
+            // 4정보 중 넷째이고, 앞의 셋은 `Preview()` 가 낸다.
             if (selecting)
             {
                 _text.Append("계약 ").Append(shown + 1).Append('/').Append(choices.Length)
                      .Append("   ").Append(choices[shown].Label).AppendLine();
-                _text.Append(choices[shown].Preview());
+                _text.Append(choices[shown].Preview()).AppendLine();
+                _text.Append(choices[shown].SynergyWith(floor.Loadout));
             }
             else
             {
                 _text.Append("확정 — ").Append(floor.SelectedContract.Label).AppendLine();
-                _text.Append(floor.SelectedContract.Preview());
+                _text.Append(floor.SelectedContract.Preview()).AppendLine();
+                _text.Append(floor.SelectedContract.SynergyWith(floor.Loadout));
             }
             Apply(_contractLabel, _text);
         }

@@ -69,6 +69,8 @@ namespace Ascend.Prototype.Build.Tests
             Run("동일 시드·동일 선택이 동일 결과", TestTenFloorDeterminism, ref passed, ref failed, report);
             Run("서로 다른 두 빌드가 결과를 바꾼다", TestTwoBuildsDiverge, ref passed, ref failed, report);
             Run("계약을 실제로 건 런도 10층을 완주한다", TestContractedRunCompletes, ref passed, ref failed, report);
+            Run("시너지 한 줄이 같은 저항을 겨냥한 부품만 센다", TestContractSynergyCountsOnlyMatchingTarget, ref passed, ref failed, report);
+            Run("적재가 비면 시너지 줄이 그렇게 말한다", TestContractSynergyWithEmptyLoadout, ref passed, ref failed, report);
 
             // ── 월드 라벨 배치 (그룹 C · UP-FIX-12·14·21) ──
             //
@@ -485,6 +487,66 @@ namespace Ascend.Prototype.Build.Tests
             for (int i = 0; identical && i < a.Length; i++)
                 if (a[i].Id != other[i].Id) identical = false;
             if (identical) return "층이 달라도 후보가 같음 — 좌표가 시드에 안 섞임";
+            return null;
+        }
+
+        // ── 계약 시너지 한 줄 (`UP-CONTRACT-05`) ─────────────────────────────
+        //
+        // `NotionSyncReport.md:166` 이 계약 UI 필수 4정보를 못박는다 — 등장 확률 증가폭 ·
+        // 정화 보상 증가폭 · 남았을 때의 대가 · **현재 빌드 관련 시너지 한 줄**.
+        // 앞의 셋은 `Preview()` 가 이미 냈고 넷째가 없었다.
+        //
+        // 이 검사의 핵심은 「몇 개를 세는가」가 아니라 **「무엇을 세지 않는가」**다.
+        // 대상 없는 효과(연쇄 증분·잔류 완화)까지 세면 어느 계약을 골라도 같은 줄이
+        // 나와 비교에 쓸모가 없어진다 — 그 상태를 이 테스트가 실패로 잡는다.
+
+        private static string TestContractSynergyCountsOnlyMatchingTarget()
+        {
+            var loadout = new BuildLoadout();
+            // 광신자 — 증식체를 겨냥한 효과 둘(패턴 가산 · 등장 배율).
+            loadout.Add(BuildCatalog.ById("PSG_ZEALOT"));
+            // 연쇄 조속기 — 대상 없는 효과 하나. 어느 계약에도 똑같이 걸린다.
+            loadout.Add(BuildCatalog.ById("PRT_CASCADE_GOVERNOR"));
+
+            string proliferator = PrototypeCurriculum.ProliferatorContract.SynergyWith(loadout);
+            if (proliferator.Contains("시너지 없다"))
+                return $"증식체 계약에 광신자가 실려 있는데 「시너지 없다」로 나왔다: {proliferator}";
+            if (!proliferator.Contains("광신자"))
+                return $"겨냥한 부품 이름이 안 나온다: {proliferator}";
+
+            // 흡수체 계약에는 겨냥한 것이 **없다** — 연쇄 조속기는 대상이 없으므로
+            // 세지 않는다. 여기서 「시너지 있다」가 나오면 대상 없는 효과를 센 것이다.
+            string absorber = PrototypeCurriculum.AbsorberContract.SynergyWith(loadout);
+            if (!absorber.Contains("시너지 없다"))
+                return $"흡수체를 겨냥한 부품이 없는데 시너지가 있다고 한다: {absorber}"
+                     + " — 대상 없는 효과(연쇄 조속기)를 셌나";
+
+            // 두 계약이 **서로 다른 줄**을 내야 비교에 쓸모가 있다.
+            if (proliferator == absorber)
+                return "두 계약이 같은 시너지 줄을 낸다 — 비교에 쓸모가 없다";
+
+            // 겨냥한 부품이 둘이면 「외 N개」로 센다.
+            loadout.Add(BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));   // 흡수·증식 둘 다 겨냥
+            string both = PrototypeCurriculum.AbsorberContract.SynergyWith(loadout);
+            if (both.Contains("시너지 없다"))
+                return $"과수확 변압기가 흡수체를 겨냥하는데 없다고 한다: {both}";
+            return null;
+        }
+
+        private static string TestContractSynergyWithEmptyLoadout()
+        {
+            var empty = new BuildLoadout();
+            string line = PrototypeCurriculum.AbsorberContract.SynergyWith(empty);
+            if (string.IsNullOrEmpty(line)) return "빈 적재에서 시너지 줄이 비었다 — 네 번째 정보가 사라진다";
+            if (!line.Contains("적재 없음")) return $"빈 적재인데 '{line}' 로 나왔다";
+
+            // null 을 넘겨도 터지지 않아야 한다 — Hero Slice 는 적재가 없는 경로다.
+            string nullLine = PrototypeCurriculum.AbsorberContract.SynergyWith(null);
+            if (string.IsNullOrEmpty(nullLine)) return "적재가 null 일 때 줄이 비었다";
+
+            // 무계약은 규칙을 안 바꾸므로 그렇게 말해야 한다.
+            string none = ResistanceContract.None.SynergyWith(empty);
+            if (!none.Contains("무관")) return $"무계약 줄이 '{none}' 다";
             return null;
         }
 
