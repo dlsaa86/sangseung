@@ -52,6 +52,11 @@ Shader "Ascend/Stylized"
         _AmbientFloor   ("주변광 바닥 (⚠ 미사용 — 죽은 값)", Range(0, 0.6)) = 0.35
 
         _ShadowLift     ("그림자에 남는 기본색 비율", Range(0, 1)) = 0.55
+
+        // 계단 0 번 칸의 바닥. **0 = 종전과 수식적으로 동일**(기본값 불변 규약).
+        // 실내 점광에서 첫 칸이 0 이 되어 직접광이 통째로 사라지는 것을 막는다.
+        // 자세한 근거는 아래 `Quantize` 주석에 있다.
+        _BandFloor      ("계단 0번 칸 바닥 (0 = 기존과 동일)", Range(0, 1)) = 0
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
 
         // **이 프로퍼티가 없으면 이 셰이더는 어디에도 채택할 수 없다.**
@@ -194,6 +199,7 @@ Shader "Ascend/Stylized"
                 float  _FalloffPower;
                 float  _AmbientFloor;
                 float  _ShadowLift;
+                float  _BandFloor;
                 float  _RimStrength;
                 float4 _EmissionColor;
                 float4 _BaseMap_ST;
@@ -299,10 +305,32 @@ Shader "Ascend/Stylized"
             // **기본값 불변 규약에 걸린다** — 여기서 고치지 않고 기록만 한다.
             // 발생 조건: `saturate(ndotl * atten) == 1`, 즉 광원을 정면으로 받고
             // 감쇠가 1 인 면. 현재 씬에서는 주광 `ndotl` 최대가 0.749(뒷벽)라 미발생.
+            //
+            // ── `_BandFloor` — 0 번 칸이 「빛 없음」이 되는 것을 막는다 (2026-08-02) ──
+            //
+            // **이 함수는 실내 점광을 화면에서 지우고 있었다.** 발견 경위:
+            // 사용자 명세로 4.0 × 4.6 × 2.9 m 방을 세우고 천장 케이지 전구 하나를
+            // 주광으로 두자 화면이 **p50 = 0, p75 = 0** 으로 나왔다. 통제 실험 5회 —
+            // 감쇠 지수, 알베도, 광원 range, 광원 그림자, `_ShadeGamma` 를 각각 바꿔도
+            // p50 이 0 에서 안 움직였고, **앰비언트만** 즉시 작동했다.
+            //
+            // 산술이 그대로 설명한다. URP 점광의 `distanceAttenuation` 은 역제곱이라
+            // 거리 2.7 m 에서 약 **0.137** 이다. `_Steps 4` 의 첫 칸 경계는 0.25 이므로
+            // `floor(0.137 * 4) = 0` → 결과 **정확히 0**. 즉 이 방의 거의 모든 표면에서
+            // 직접광 항이 통째로 사라진다. `range` 를 22 로 늘려도 역제곱이 지배해서
+            // 넘지 못한다 — 실측으로 확인했다.
+            //
+            // 「빠른 감쇠」는 스타일 락이지만 **「빛이 0」은 감쇠가 아니라 소등**이다.
+            // 그래서 칸 값의 바닥만 들어 올린다. 계단의 개수도 간격도 그대로다.
+            //
+            // ⚠ **기본값 0 에서 수식이 종전과 완전히 동일하다** — `(band + 0) / (steps - 1 + 0)`.
+            // 이 파일의 「기본값 불변 규약」이 요구하는 것이 그것이고, 그래서 기존
+            // 머티리얼 23장의 그림은 비트 단위로 안 바뀐다. 새 방의 머티리얼만 켠다.
             float Quantize(float value, float steps)
             {
                 steps = max(2.0, steps);
-                return floor(saturate(value) * steps) / (steps - 1.0);
+                float band = floor(saturate(value) * steps);
+                return (band + _BandFloor) / (steps - 1.0 + _BandFloor);
             }
 
             // **계단 축 재분배 — `UP-FIX-35` / G-4 의 손잡이.**

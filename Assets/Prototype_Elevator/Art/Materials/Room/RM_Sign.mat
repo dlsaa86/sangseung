@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: RM_Sign
+  m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
+  - _COLORDEPTH_ON
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _BaseMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _AffineAmount: 0
+    - _AmbientFloor: 0.35
+    - _BandFloor: 0.55
+    - _ColorDepth: 20
+    - _ColorDepthEnabled: 1
+    - _DebugOutput: 0
+    - _DetailMapEnabled: 0
+    - _DetailScale: 8
+    - _DetailStrength: 1
+    - _DitherStrength: 1
+    - _EmissionMapEnabled: 0
+    - _FalloffPower: 1
+    - _PS1DistortEnabled: 0
+    - _RimStrength: 0.18
+    - _ShadeGamma: 3
+    - _ShadeGammaEnabled: 0
+    - _ShadowLift: 0.75
+    - _Steps: 4
+    - _TriplanarBlend: 4
+    - _TriplanarEnabled: 0
+    - _TriplanarScale: 0.5
+    - _VertexSnap: 0
+    m_Colors:
+    - _BaseColor: {r: 0.76, g: 0.716, b: 0.592, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

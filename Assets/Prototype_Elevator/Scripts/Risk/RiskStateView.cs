@@ -62,6 +62,38 @@ namespace Ascend.Prototype.Risk
         [SerializeField] private Renderer _lampRenderer;
         [SerializeField, Min(0f)] private float _baseLightIntensity = 1.6f;
 
+        // ── 전구는 방과 함께 꺼지지 않는다 ──────────────────────────────────
+        //
+        // `GRAPHICS_TARGET.md` §8.1 이 이 결함을 이름까지 붙여 놨다:
+        //
+        //   > 등을 화각에 넣는 것은 필요조건이지 충분조건이 아니다 —
+        //   > **방이 어두워질 때 등이 밝은 채로 남아야 한다.**
+        //
+        // 직전 판본은 등 발광을 `LightColor × 2.4 × LightIntensity × flicker` 로
+        // 계산했다. `LightIntensity` 는 위험 사다리라 **위험이 오를수록 등이 어두워진다.**
+        // 그래서 밝은 장(`01`·`02`)만 p95 를 넘기고 정작 위험 장(`06` 113→72,
+        // `09` 105→53)이 뒤로 갔다. 등이 프레임 안에 있는데도 G-2 p95 가 **0/8** 인
+        // 것의 물리적 원인이 이 한 줄이었다(§12.2).
+        //
+        // 백열 필라멘트는 방 조명이 나빠진다고 어두워지지 않는다. 어두워지는 것은
+        // **방**이고, 그건 앰비언트 사다리(`ApplyAmbient`)가 이미 따로 나른다.
+        // 그래서 등에만 바닥을 준다 — 위험이 등을 **끄지는** 못하고 **물들이기만** 한다.
+        [Header("전구 (레퍼런스 §2 — 철망 씌운 백열등)")]
+        [Tooltip("등 발광에 적용되는 위험 배율의 하한. 1 이면 위험이 등을 전혀 어둡게 하지 " +
+                 "못하고, 0 이면 직전 판본과 같다(방이 어두워질 때 등도 함께 꺼진다).")]
+        [SerializeField, Range(0f, 1f)] private float _lampIntensityFloor = 0.82f;
+
+        [Tooltip("전구 자체의 필라멘트 색(호박색). 위험 색과 이 색을 섞어 등 색을 만든다. " +
+                 "레퍼런스는 등이 **따뜻하고** 장치 발광이 **붉다** — 두 채널이 분리돼야 한다.")]
+        [SerializeField] private Color _lampFilamentColor = new Color(1.00f, 0.78f, 0.46f, 1f);
+
+        [Tooltip("등 색이 위험 색을 따라가는 비율. 0 이면 등이 항상 필라멘트 색, " +
+                 "1 이면 직전 판본과 같다(등이 위험 색 그대로).")]
+        [SerializeField, Range(0f, 1f)] private float _lampRiskTint = 0.35f;
+
+        [Tooltip("등 발광 세기 배율. 블룸 임계(0.80)를 넘겨야 번진다.")]
+        [SerializeField, Min(0f)] private float _lampEmissionScale = 3.4f;
+
         [Header("경고등")]
         [SerializeField] private Renderer _warningLight;
 
@@ -434,20 +466,33 @@ namespace Ascend.Prototype.Risk
                 flicker = 1f - depth * Mathf.InverseLerp(-1f, 1f, wave);
             }
 
+            // 전구가 실제로 내는 빛의 색. 필라멘트 색에 위험 색을 `_lampRiskTint` 만큼만 섞는다.
+            // 레퍼런스 §2·§3 — 「따뜻한 호박색」 등과 「붉은」 장치 발광은 **서로 다른 채널**이다.
+            // 등까지 위험 색으로 갈아 끼우면 두 채널이 한 색으로 뭉쳐 위험이 안 읽힌다.
+            Color lampColor = Color.Lerp(_lampFilamentColor, _blended.LightColor, _lampRiskTint);
+
             if (_cabinLight != null)
             {
+                // **세기는 손대지 않는다.** 이것이 좌벽 ΔL(회귀 감시선 ≥ 15)을 나르는 축이고,
+                // 여기에 하한을 주면 위험 4단계가 벽에서 눌린다. 등이 「꺼지지 않는다」는
+                // 요구는 아래 **발광**(자체 발광이라 벽을 밝히지 않는다)이 담당한다.
                 _cabinLight.intensity = _baseLightIntensity * _blended.LightIntensity * flicker
                                         * Mathf.Clamp01(CabinLightMultiplier);
-                _cabinLight.color = _blended.LightColor;
+                _cabinLight.color = lampColor;
             }
 
             ApplyAmbient(flicker);
 
             if (_lampRenderer != null)
             {
+                // **여기에만 하한을 건다.** 발광은 자기 화소만 밝히고 다른 표면에 빛을
+                // 더하지 않으므로, 바닥을 줘도 좌벽 ΔL 은 구조적으로 움직이지 않는다.
+                // 움직이는 것은 「등이 프레임 안에서 밝은가」(G-2 p95) 하나다.
+                float lampLevel = Mathf.Max(_lampIntensityFloor, _blended.LightIntensity);
+
                 _lampRenderer.GetPropertyBlock(_block);
-                _block.SetColor(BaseColorId, _blended.LightColor);
-                _block.SetColor(EmissionColorId, _blended.LightColor * (2.4f * _blended.LightIntensity * flicker));
+                _block.SetColor(BaseColorId, lampColor);
+                _block.SetColor(EmissionColorId, lampColor * (_lampEmissionScale * lampLevel * flicker));
                 _lampRenderer.SetPropertyBlock(_block);
             }
         }

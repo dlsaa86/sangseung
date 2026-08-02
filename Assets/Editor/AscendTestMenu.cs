@@ -55,6 +55,11 @@ namespace Ascend.Prototype.EditorTools
             // 지켜지는지를 기하에서 직접 잰다 — 가로 리브가 더 두껍고, 세로 리브가
             // 끊겨 있고, 아홉 개 구멍이 실제로 뚫려 있다는 것. 산문 주장이 아니다.
             Art.Tests.PortholeMeshTests.RunAll(),
+            // 사용자 명세(2026-08-02 「산업용 화물 엘리베이터 내부」)의 치수 불변식.
+            // 상수는 틀려도 컴파일되므로 여기서만 잡힌다. 특히 「중앙 이동 공간
+            // 2.2 × 2.8」은 어느 상수에도 없는 **네 값의 결과**라 하나만 바꿔도
+            // 조용히 깨지고, 깨지면 플레이어가 낀다.
+            Art.Tests.ReferenceRoomSpecTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]
