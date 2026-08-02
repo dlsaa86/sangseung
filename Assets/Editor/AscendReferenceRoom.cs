@@ -101,6 +101,7 @@ namespace Ascend.Prototype.EditorTools
             BuildLeverColumn(root);
             BuildPowerMeter(root);
             BuildStorage(root);
+            AddColliders(root);
             PlaceCamera();
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -174,17 +175,68 @@ namespace Ascend.Prototype.EditorTools
             Mat("Grease",    new Color(0.190f, 0.180f, 0.166f));   // ⑦ 검은 고무·기름때
         }
 
+        /// <summary>
+        /// 재질별 (거칠기 보정, 금속성). 명세 §10 「거칠기 대체로 0.70~0.95 ·
+        /// 모서리와 손이 닿은 부분만 부분적으로 매끄럽게 마모」.
+        ///
+        /// URP 는 거칠기가 아니라 **매끄러움**을 받으므로 `1 - roughness` 를 넣는다.
+        /// 0.70~0.95 거칠기 = 0.05~0.30 매끄러움이다.
+        /// </summary>
+        private static (float smoothness, float metallic) Finish(string key)
+        {
+            switch (key)
+            {
+                case "Steel":     return (0.16f, 0.75f);   // 도장된 철판 — 약하게 반사
+                case "BareSteel": return (0.30f, 0.90f);   // 노출 강철 — 손이 닿는 곳
+                case "Rust":      return (0.05f, 0.15f);   // 녹은 금속이 아니다
+                case "Glass":     return (0.62f, 0.10f);   // 긁힌 두꺼운 유리
+                case "RedPaint":  return (0.22f, 0.30f);   // 도장
+                case "Sign":      return (0.10f, 0.00f);   // 종이·에나멜 표지판
+                case "Grease":    return (0.08f, 0.35f);   // 기름때 낀 고무·금속
+                default:          return (0.15f, 0.50f);
+            }
+        }
+
+        /// <summary>
+        /// 🔴 **`Ascend/Stylized` 를 쓰지 않는다 — URP/Lit 을 쓴다.** (2026-08-02 사용자 지시)
+        ///
+        /// 사용자가 레퍼런스 이미지를 기준으로 못박으면서 「현재 비주얼 우선순위는
+        /// 기존 PS1 스타일 문구보다 레퍼런스의 공간 구조·조명·재질·배치를 우선한다」고
+        /// 지시했다. 그 지시가 이 한 줄을 바꾼다.
+        ///
+        /// 왜 이것이 결정적인가: `Ascend/Stylized` 의 `Quantize` 는
+        /// `v &lt; 1/steps` 를 **정확히 0** 으로 만든다. URP 점광의 감쇠는 역제곱이라
+        /// 실내 거리에서 0.05~0.3 에 몰리고, 결과는 두 가지 중 하나뿐이었다 —
+        /// **완전한 검정**(`_BandFloor` 없이) 또는 **완전히 평평한 조명**(`_BandFloor` 로
+        /// 첫 칸을 들어 올리면 모든 표면이 같은 칸에 들어간다). 이 세션에서 다섯 번
+        /// 측정했고 다섯 번 다 그 둘 사이였다.
+        ///
+        /// 레퍼런스가 요구하는 것은 그 중간이 아니라 **연속적인 감쇠**다 — 등 아래는
+        /// 밝고 구석은 죽는다. 그건 계단 셰이더가 원리적으로 못 만든다.
+        /// 산업 금속의 무게감도 마찬가지로 거칠기·금속성 반사에서 나오는데
+        /// 그 셰이더는 비물리라 그 축이 아예 없다.
+        ///
+        /// PS1 감각이 필요하면 **포스트 처리**로 건다(해상도·디더·그레인).
+        /// 표면 셰이딩에 섞으면 이번처럼 둘 다 잃는다.
+        /// </summary>
         private static Material Mat(string key, Color color)
         {
             string path = $"{MaterialDir}/RM_{key}.mat";
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            Material m = existing ?? AscendMaterialFactory.Create($"RM_{key}", color, true, out _);
+            Material m = existing ?? AscendMaterialFactory.Create($"RM_{key}", color, false, out _);
+
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit != null && m.shader != lit) m.shader = lit;
+
+            (float smoothness, float metallic) f = Finish(key);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", f.smoothness);
+            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", f.metallic);
+            // 스펙큘러 하이라이트와 환경 반사를 켠다 — 이게 금속을 금속으로 보이게 한다.
+            if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", 1f);
+            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 1f);
 
             // **항상 전 필드를 다시 쓴다.** 재사용하되 상태는 새로 만든 것과 같아야 한다.
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
-            if (m.HasProperty("_ShadowTint")) m.SetColor("_ShadowTint", new Color(0.20f, 0.26f, 0.24f, 1f));
-            if (m.HasProperty("_Steps")) m.SetFloat("_Steps", 4f);
-            if (m.HasProperty("_RimStrength")) m.SetFloat("_RimStrength", 0.18f);
 
             // ── 이 두 줄이 없으면 방이 검게 나온다 ──────────────────────────
             //
@@ -1095,6 +1147,83 @@ namespace Ascend.Prototype.EditorTools
 
             _report.AppendLine($"  {ShelfName} — {len} × {dep} · 상판 {top} · 하단 {low} · 지지대 {legs}×2 " +
                                $"· {PropsName} 상판 7 / 하단 6 · {SignsName} 3");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  §12 콜라이더 — **이게 없으면 플레이어가 바닥을 뚫고 떨어진다**
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 🔴 **이 함수가 없어서 게임이 시작하자마자 플레이어가 떨어졌다.**
+        ///
+        /// 구 셸(`GrayboxWorld/Car/Floor` 등)을 비활성화하면서 그 콜라이더도 같이
+        /// 사라졌는데, 새 방에는 콜라이더를 붙이지 않았다. 진행 문서에 「콜라이더는
+        /// 아직」이라고 **적어 두기까지 했으면서** 그것이 「미완성 항목」이 아니라
+        /// **「게임이 즉시 망가지는 결함」**이라는 것을 못 봤다.
+        ///
+        /// 증상이 「화면이 검다」로 나타나는 것이 이 결함의 고약한 점이다 —
+        /// 플레이어가 방 밖 허공으로 떨어지면 보이는 것은 조명 없는 빈 공간이고,
+        /// 그건 「조명이 잘못됐다」와 화면에서 구분되지 않는다. 나는 이 세션에서
+        /// 조명·재질·셰이더를 다섯 번 고쳤고, 그중 어느 것도 원인이 아니었다.
+        /// **사용자가 직접 플레이해서 찾았다.**
+        ///
+        /// 명세 §12 를 그대로 따른다 —
+        ///   · 벽과 선반에는 **단순한 Box Collider**
+        ///   · 원형 관찰창에는 복잡한 메시 콜라이더를 쓰지 않는다
+        ///   · 작은 볼트와 장식에는 개별 콜라이더를 만들지 않는다
+        ///   · 중앙 이동 공간에는 보이지 않는 충돌체가 남아 있으면 안 된다
+        /// </summary>
+        private static void AddColliders(GameObject root)
+        {
+            // 이름으로 고른다. 「렌더러가 있으면 전부」로 하면 볼트 수백 개에
+            // 콜라이더가 붙고, 그건 명세가 명시적으로 금지한다.
+            var solid = new HashSet<string>
+            {
+                // 셸 — 바닥·벽·천장. 바닥이 이 목록의 존재 이유다.
+                "Wall_Left", "Wall_Right", "Wall_Rear", "Wall_Front", "Ceiling",
+                "Border_Left", "Border_Right", "Border_Front", "Border_Rear",
+                // 장치 — 통과해 들어갈 수 없어야 한다
+                "BackPlate", "Frame_Top", "Frame_Bottom", "Frame_Left", "Frame_Right",
+                // 레버 컬럼과 전력 표시기
+                "Housing", "Back",
+                // 선반 — 명세 §7 「벽과 선반에는 단순한 Box Collider」
+                "TopPlate", "LowerShelf",
+                // 가위문 — 문틀과 격자
+                "Jamb_Front", "Jamb_Rear", "Header", "Lattice",
+            };
+
+            int added = 0, floors = 0;
+            foreach (MeshFilter mf in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (!solid.Contains(mf.gameObject.name)) continue;
+                if (mf.gameObject.GetComponent<Collider>() != null) continue;
+                var bc = mf.gameObject.AddComponent<BoxCollider>();
+                // `AddComponent<BoxCollider>` 는 메시 경계로 자동 맞춰지지만,
+                // 명시적으로 다시 써서 멱등성을 지킨다.
+                if (mf.sharedMesh != null)
+                {
+                    bc.center = mf.sharedMesh.bounds.center;
+                    bc.size = mf.sharedMesh.bounds.size;
+                }
+                added++;
+            }
+
+            // ── 바닥은 **따로, 확실하게** ──
+            // 타공판(`FloorCenterGrate/Plate`)은 0.018m 낮게 앉아 있고 테두리는 별개다.
+            // 둘 사이의 이음매로 빠질 여지를 없애기 위해 방 전체를 덮는 바닥 콜라이더를
+            // 하나 더 둔다. 보이지 않는 판이지만 **중앙 이동 공간을 막지 않는다** —
+            // 바닥면 아래에 있기 때문이다(명세 §12 마지막 줄).
+            var floor = new GameObject("FloorCollider");
+            floor.transform.SetParent(root.transform, false);
+            floor.transform.localPosition = new Vector3(0f, -ReferenceRoomSpec.ShellThickness * 0.5f, 0f);
+            var fc = floor.AddComponent<BoxCollider>();
+            fc.size = new Vector3(ReferenceRoomSpec.InteriorWidth,
+                                  ReferenceRoomSpec.ShellThickness,
+                                  ReferenceRoomSpec.InteriorDepth);
+            floors++;
+
+            _report.AppendLine($"  콜라이더 — 구조물 {added}개 + 바닥 전면 {floors}개 " +
+                               "(볼트·장식·관찰창에는 붙이지 않는다 — 명세 §12)");
         }
 
         // ══════════════════════════════════════════════════════════════════════
