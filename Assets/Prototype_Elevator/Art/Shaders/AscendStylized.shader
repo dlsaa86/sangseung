@@ -170,9 +170,13 @@ Shader "Ascend/Stylized"
                 // Forward+ 에서는 광원 순회를 `LIGHT_LOOP_BEGIN` 이 맡는다. 그 매크로가
                 // `inputData.normalizedScreenSpaceUV` 로 화면 클러스터를 찾으므로
                 // 아래 두 필드를 반드시 채워야 한다 — 안 채우면 조용히 0 개가 나온다.
-                InputData lightInput = (InputData)0;
-                lightInput.positionWS = input.positionWS;
-                lightInput.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
+                // **이름이 `inputData` 여야 한다.** `LIGHT_LOOP_BEGIN` 매크로가 그 이름을
+                // 그대로 참조한다 — 다른 이름을 쓰면 매크로 전개가
+                // `undeclared identifier 'inputData'` 로 깨진다. 실제로 깨뜨렸고,
+                // 그 뒤의 캡처가 전부 **마젠타 오류 셰이더**였다.
+                InputData inputData = (InputData)0;
+                inputData.positionWS = input.positionWS;
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
 
                 uint pixelLightCount = GetAdditionalLightsCount();
                 LIGHT_LOOP_BEGIN(pixelLightCount)
