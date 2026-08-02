@@ -1216,13 +1216,15 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-NPC-03 — PassengerReactionSet 데이터화
 - 분류: Required · 출처: PRD §9.4 「반응은 `PassengerReactionSet` 데이터로 이벤트별 교체 가능」
-- 상태: CONNECTED · 패스: P2
-- 구현: `Scripts/Npc/PassengerReactionSet.cs` + `Data/Profiles/PassengerReactionSet.asset`(11종 채움) + 씬 `PassengerReactionView` 배선
+- 상태: VERIFIED · 패스: P2
+- 구현: `Scripts/Npc/PassengerReactionSet.cs` + `Data/Profiles/PassengerReactionSet.asset`(11종 · 대사 22칸 · 대조 11칸 전부 직렬화) + 씬 `PassengerReactionView` 배선(`Prototype_Elevator.unity` 참조 1곳)
 - 접근: 해당 없음
-- 검증: 에셋 항목 수 11 확인 + `Ascend/Run All EditMode Tests` 14건
-- 증거: `Logs/editmode_tests.txt`
+- 검증: `Ascend/Run All EditMode Tests` → 「Reset 이 11종을 대사까지 채운다」·「빈 대사는 코드 기본값으로 채워진다」·「에셋 대사가 코드 기본값을 이긴다」·「출하 에셋의 대사 직렬화가 전부거나 전무다」
+- 증거: `Logs/editmode_tests.txt` (2026-08-02 14:59 · 451 PASS / 0 FAIL · 244번째 줄), `.claude/state/last-selftest.txt` (470 PASS / 0 FAIL)
 - 의존: UP-NPC-02
-- 남은 문제: 에셋이 실재하고 11종이 서로 다른 자세·시선·우선순위(5~55)로 채워져 있으며 뷰에 배선됐다. **데이터 교체가 실제로 반응을 바꾸는지는 미확인** — 승객이 탄 런이 아직 없다(부록 E)
+- 남은 문제: 에셋이 실재하고 11종이 서로 다른 자세·시선·우선순위(5~55)로 채워져 있으며 뷰에 배선됐다. ~~**데이터 교체가 실제로 반응을 바꾸는지는 미확인** — 승객이 탄 런이 아직 없다(부록 E)~~ → **둘 다 해소됐다 (2026-08-02).** ⓐ **대사·대조가 이제 에셋에 있다.** 그전에는 항목 11종은 있는데 `Line` 필드가 **0개**라 대사가 전부 코드로 폴백했다 — 그 필드가 에셋보다 늦게 생겼기 때문이다. `Reset()` 을 걸어 대사 **22칸**(항목마다 `Reaction.Line` + `Contrast.Line`)과 대조 **11칸**을 직렬화했다. 이제 §9.4 의 「데이터로 이벤트별 교체 가능」이 네 채널 전부에 성립한다. ⓑ **데이터 교체가 반응을 바꾸는 것은 단정으로 고정돼 있다** — 「에셋 대사가 코드 기본값을 이긴다」가 그것이고, 승객이 탄 런을 기다릴 필요가 없다(값 층위에서 반증 가능하다). 「빈 대사는 코드 기본값으로 채워진다」가 반대 방향을 잡아 **폴백을 지우지 않았다는 것**도 함께 증명한다.
+
+  > **검사 자체가 한 번 틀렸다.** 「출하 에셋의 대사 직렬화가 **0 또는 11**」로 적었는데 실제 Reset 결과는 **22** 다 — 세는 대상(`Line:` 이 항목마다 둘)을 확인하지 않고 기대값을 정했다. 그대로 뒀으면 **처방을 실행한 순간 빨간불이 되어 고친 사람을 벌준다.** `entries * 2` 로 고치고 대조가 함께 찼는지 보는 줄을 더했다
 
 ### UP-NPC-04 — 표현 채널 (시선·자세·짧은 대사·비언어 음성)
 - 분류: Required · 출처: PRD §9.3
