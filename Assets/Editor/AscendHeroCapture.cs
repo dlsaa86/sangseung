@@ -66,11 +66,13 @@ namespace Ascend.Prototype.EditorTools
                 new Pose("device_oblique", new Vector3(mx + 1.05f, gy + 0.28f, face - 1.15f),
                          new Vector3(6f, -34f, 0f), 40f),
                 // 레버 — 사람이 실제로 서서 보는 눈높이·거리
-                // ⚠ 레버는 **정면에서** 본다. 비스듬한 각도로 잡았더니 프레임에
-                // 벽만 들어오고 레버가 빠졌다 — 위치를 눈대중으로 맞추지 않는다.
+                // ⚠ **온축(정면)으로 잡지 않는다.** 레버 팔이 방 쪽을 향하므로
+                // 정면에서는 전체가 그립 끝면 하나로 압축되어 **붉은 원반**으로만
+                // 보인다 — 실제로 그렇게 찍혔다. 팔 길이와 회전축이 읽히려면
+                // 옆에서 비스듬히 봐야 한다. 사람이 레버 앞에 설 때의 자세다.
                 new Pose("lever",
-                         new Vector3(lx, ReferenceRoomSpec.LeverPivotY + 0.16f, face - 1.05f),
-                         new Vector3(7f, 0f, 0f), 42f),
+                         new Vector3(lx + 0.62f, ReferenceRoomSpec.EyeHeight, face - 1.05f),
+                         new Vector3(18f, -38f, 0f), 50f),
                 // 레버 근접 — 잠금핀·스토퍼·허브가 개별 부품으로 읽히는지
                 new Pose("lever_macro",
                          new Vector3(lx + 0.26f, ReferenceRoomSpec.LeverPivotY + 0.10f, face - 0.52f),
