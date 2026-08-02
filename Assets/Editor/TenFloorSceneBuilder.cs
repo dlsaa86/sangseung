@@ -270,17 +270,40 @@ namespace Ascend.Prototype.EditorTools
         //  정반대로 읽힌다. 게다가 z=-1.70 면에는 벽 오브젝트가 아예 없어서
         //  뒤를 돌면 상자 밖이 보였다.
         //
-        //  목표: 폭 2.40 × 깊이 3.00 × 높이 3.20. 좁고, 깊고, 높다.
-        //  1960년대 화물 엘리베이터의 실제 비례에 가깝고, 승객 6명과 화물이
-        //  둘레에 서도 가운데 통로가 남는다.
+        //  1차 목표였던 폭 2.40 × 깊이 3.00 × 높이 3.20 은 **달성했고 실측으로 확인했다**
+        //  (렌더러 월드 바운드: 안쪽 폭 2.400 · 깊이 3.000 · 높이 3.200 · 바닥 7.20 m²).
+        //
+        //  ── 2026-08-02 확대 (사용자 결정 · `DECISION_LOG.md`) ──────────────────
+        //
+        //  「승객이 탑승해야 하니까 지금 바닥 공간이 기존에 3개 더 붙은 정도 사이즈로」
+        //  → 바닥 면적 **4배**(선형 2배) · 천장 **5.5m**.
+        //
+        //      바닥  2.400 × 3.000 m (7.20 m²)  →  **4.800 × 6.000 m (28.80 m²)**
+        //      천장  3.200 m                    →  **5.500 m**
+        //
+        //  바닥만 4배로 하면 `VISUAL_SPEC` §1 「좁고 높고 기능적」이 「넓고 낮은 창고」가
+        //  된다. 천장을 함께 올려야 `UP-SPACE-04` 가 지키는 정체성이 남는다.
+        //
+        //  ⚠ **치수를 주장하는 곳이 세 군데였고 셋이 서로 달랐다.**
+        //  `DEVICE_DESIGN_SPEC.md` 와 `HumanScaleLayout.cs` 주석은 「3.2 × 3.2 × 2.5」라고
+        //  적혀 있었는데 실제 씬은 이 함수가 덮어쓴 2.40 × 3.00 × 3.20 이었다 —
+        //  이 함수가 나중에 도는데 두 문서를 아무도 갱신하지 않았다. 그래서 하루에
+        //  세 번 틀린 치수로 계획이 섰다. **이 상수를 고칠 때는 그 둘도 함께 고친다.**
         //
         //  좌표를 코드에 두는 이유는 `Build()`와 같다 — 왜 여기인지 설명이 붙어야 한다.
         // ══════════════════════════════════════════════════════════════════════
 
-        private const float InnerHalfWidth = 1.20f;   // 벽 안쪽 면
+        private const float InnerHalfWidth = 2.40f;   // 벽 안쪽 면 (실내 폭 4.80)
         private const float WallThickness = 0.20f;
-        private const float InnerHeight = 3.20f;
-        private const float FrontWallZ = -1.60f;      // 앞벽 중심 (안쪽 면 -1.50)
+        private const float InnerHeight = 5.50f;      // 바닥 윗면 y=0 기준
+        private const float InnerHalfDepth = 3.00f;   // 실내 깊이 6.00
+
+        /// <summary>앞뒤 벽 중심 z. 안쪽 면이 ∓<see cref="InnerHalfDepth"/> 에 오도록 둔다.</summary>
+        private const float BackWallZ  =  InnerHalfDepth + WallThickness * 0.5f;   // +3.10
+        private const float FrontWallZ = -(InnerHalfDepth + WallThickness * 0.5f); // −3.10
+
+        /// <summary>바닥·천장·좌우벽의 z 길이. 앞뒤 벽의 **바깥 면까지** 덮는다.</summary>
+        private const float ShellDepth = (InnerHalfDepth + WallThickness) * 2f;    // 6.40
 
         [MenuItem("Ascend/Reproportion Elevator Car")]
         public static void Reproportion()
@@ -306,20 +329,25 @@ namespace Ascend.Prototype.EditorTools
             float shellWidth = outer * 2f;                  // 2.80
 
             // ── 껍데기 ──
-            Place(car, "Floor",   new Vector3(0f, -0.10f, -0.05f), new Vector3(shellWidth, 0.20f, 3.20f), report);
-            Place(car, "Ceiling", new Vector3(0f, InnerHeight + 0.10f, -0.05f), new Vector3(shellWidth, 0.20f, 3.20f), report);
-            Place(car, "WallL",   new Vector3(-(InnerHalfWidth + WallThickness * 0.5f), InnerHeight * 0.5f, -0.05f),
-                new Vector3(WallThickness, InnerHeight, 3.20f), report);
-            Place(car, "WallR",   new Vector3( InnerHalfWidth + WallThickness * 0.5f, InnerHeight * 0.5f, -0.05f),
-                new Vector3(WallThickness, InnerHeight, 3.20f), report);
+            //
+            // z 중심을 0 으로 둔다. 예전에는 −0.05 였고 깊이도 3.20 리터럴이라
+            // 바닥이 뒷벽 바깥 면(1.70)까지 닿지 않았다. 이제 앞뒤가 대칭이라
+            // 실내가 z −3.00…+3.00 으로 정확히 6.00 m 다.
+            Place(car, "Floor",   new Vector3(0f, -0.10f, 0f), new Vector3(shellWidth, 0.20f, ShellDepth), report);
+            Place(car, "Ceiling", new Vector3(0f, InnerHeight + 0.10f, 0f), new Vector3(shellWidth, 0.20f, ShellDepth), report);
+            Place(car, "WallL",   new Vector3(-(InnerHalfWidth + WallThickness * 0.5f), InnerHeight * 0.5f, 0f),
+                new Vector3(WallThickness, InnerHeight, ShellDepth), report);
+            Place(car, "WallR",   new Vector3( InnerHalfWidth + WallThickness * 0.5f, InnerHeight * 0.5f, 0f),
+                new Vector3(WallThickness, InnerHeight, ShellDepth), report);
 
-            // 출입구는 폭 1.00, 높이 2.05를 유지한다. 사람이 드나드는 치수라 함부로 못 바꾼다.
-            // 좌우 벽면만 새 폭에 맞춰 줄인다.
-            Place(car, "BackWall_Left",  new Vector3((-outer + 0.15f) * 0.5f, InnerHeight * 0.5f, 1.60f),
+            // 출입구는 폭 1.00, 높이 2.05를 유지한다. **사람이 드나드는 치수라 확대에서 제외한다** —
+            // 방이 4배가 되어도 문은 사람 크기여야 하고, 그 대비가 오히려 공간을 커 보이게 한다.
+            // 좌우 벽면만 새 폭에 맞춰 늘린다.
+            Place(car, "BackWall_Left",  new Vector3((-outer + 0.15f) * 0.5f, InnerHeight * 0.5f, BackWallZ),
                 new Vector3(outer + 0.15f, InnerHeight, WallThickness), report);
-            Place(car, "BackWall_Right", new Vector3((1.15f + outer) * 0.5f, InnerHeight * 0.5f, 1.60f),
+            Place(car, "BackWall_Right", new Vector3((1.15f + outer) * 0.5f, InnerHeight * 0.5f, BackWallZ),
                 new Vector3(outer - 1.15f, InnerHeight, WallThickness), report);
-            Place(car, "BackWall_Lintel", new Vector3(0.65f, (2.05f + InnerHeight) * 0.5f, 1.60f),
+            Place(car, "BackWall_Lintel", new Vector3(0.65f, (2.05f + InnerHeight) * 0.5f, BackWallZ),
                 new Vector3(1.00f, InnerHeight - 2.05f, WallThickness), report);
 
             // ── 앞벽 신설 ──
@@ -336,29 +364,49 @@ namespace Ascend.Prototype.EditorTools
             front.localPosition = new Vector3(0f, InnerHeight * 0.5f, FrontWallZ);
             front.localScale = new Vector3(shellWidth, InnerHeight, WallThickness);
 
-            // ── 장치: 새 벽 안쪽으로 당긴다 ──
+            // ── 장치: **벽을 따라가지 않는다. 플레이어 쪽에 남긴다** ──────────────
+            //
+            // 확대의 함정이 여기 있다. 장치를 새 벽에 붙이면 결과판이 플레이어에게서
+            // 1.2 m 더 멀어지고, 그러면 **이 게임의 핵심이 화면에서 작아진다** —
+            // 「방만 넓히고 읽을 것은 작아졌다」가 된다. `B-5 #15`(결과판과 전력 계기가
+            // 한 화면에서 읽히는가)를 겨우 붙잡아 둔 상태라 그 여유가 없다.
+            //
+            // 그래서 조작·판독 장치는 **좌표를 그대로 둔다.** 넓어진 바닥은 장치 뒤가
+            // 아니라 장치 **바깥**으로 생기고, 그 자리가 사용자가 지정한
+            // 「승객 대기 구역 / 화물 팔레트 구역」이 된다.
+            //
+            // ⚠ 남는 것: 통관과 좌벽 사이에 1.45 m 의 빈 공간이 생긴다. 지금은 장치가
+            // 허공에 선 것처럼 보인다 — **다음 패스에서 뒷판(파티션)을 세워야 한다.**
+            // 숨기지 않고 적는다.
             MoveX(car, "PowerTank", 0.95f, report);
             MoveX(car, "TankTick_0", 0.95f, report);
             MoveX(car, "TankTick_1", 0.95f, report);
             MoveX(car, "TankTick_2", 0.95f, report);
             MoveX(car, "TankTick_3", 0.95f, report);
             MoveX(car, "TankStand", 0.95f, report);
-            MoveX(car, "Handrail_R", 1.14f, report);
-            Place(car, "Handrail_B", new Vector3(-0.55f, 0.92f, 1.45f), new Vector3(1.20f, 0.06f, 0.06f), report);
+
+            // 손잡이는 구조물이라 벽을 따라간다 — 잡는 것은 벽이다.
+            MoveX(car, "Handrail_R", InnerHalfWidth - 0.06f, report);
+            Place(car, "Handrail_B", new Vector3(-0.55f, 0.92f, InnerHalfDepth - 0.05f),
+                new Vector3(1.20f, 0.06f, 0.06f), report);
             Place(car, "CeilingLamp", new Vector3(0f, InnerHeight - 0.06f, 0f), new Vector3(0.85f, 0.05f, 0.45f), report);
 
-            // 통관은 왼쪽 벽에 붙어 있다. 벽이 0.50 안으로 들어왔으므로 같이 들어온다.
+            // 통관도 **벽을 따라가지 않는다.** x=-0.95 는 플레이어 눈앞의 판독 거리이고
+            // 확대로 그 거리를 늘리면 결과판이 작아진다(위 주석과 같은 이유).
             // 높이는 건드리지 않는다 — 결과판 중심 y=1.60이 눈높이 1.62와 맞아 있고,
-            // 그건 `visual-criteria` B-1.2가 요구하는 조건이다.
+            // 그건 `visual-criteria` B-1.2가 요구하는 조건이다. **천장이 5.5m 로 올라가도
+            // 눈높이는 안 변하므로 이 값도 안 변한다.**
+            const float TubeX = -0.95f;
             Transform tubes = Find("TubesRoot");
             if (tubes != null)
             {
                 foreach (Transform tube in tubes)
                 {
                     Vector3 p = tube.position;
-                    if (p.x < -1.0f) { tube.position = new Vector3(-0.95f, p.y, p.z); }
+                    if (p.x < -0.5f) { tube.position = new Vector3(TubeX, p.y, p.z); }
                 }
-                report.AppendLine("  TubesRoot: 세 통관을 x=-0.95 로 이동");
+                report.AppendLine($"  TubesRoot: 세 통관을 x={TubeX:F2} 로 고정 (벽 안쪽면 {-InnerHalfWidth:F2} 에서 " +
+                                  $"{TubeX - -InnerHalfWidth:F2} m 떨어져 선다 — 뒷판이 필요하다)");
             }
 
             // ── 계기판을 새 폭 안으로 ──
@@ -425,16 +473,22 @@ namespace Ascend.Prototype.EditorTools
             // Notion 「자동 룰렛 프로토타입 3D 리소스 제작 타겟」 §4가 문 밖 공간을 3~5m로
             // 요구하는데 현재는 1.4m다. 후보 승객이 서 있을 자리도, 문이 열릴 때 보여줄
             // 장면도 그 깊이에서는 만들어지지 않는다.
+            // 뒷벽이 z=1.60 → 3.10 으로 물러났으므로 로비도 그만큼 따라간다.
+            // 안 옮기면 로비 바닥이 **차체 안으로 파고든다.**
             Transform lobby = Find("GrayboxWorld/Lobby");
             if (lobby != null)
             {
-                Place(lobby, "LobbyFloor", new Vector3(0.65f, -0.10f, 3.40f), new Vector3(3.00f, 0.20f, 3.60f), report);
-                Place(lobby, "LobbyBack",  new Vector3(0.65f,  1.60f, 5.30f), new Vector3(3.00f, 3.20f, 0.20f), report);
+                float lobbyNear = BackWallZ + WallThickness * 0.5f;   // 뒷벽 바깥 면 3.20
+                Place(lobby, "LobbyFloor", new Vector3(0.65f, -0.10f, lobbyNear + 1.80f),
+                    new Vector3(3.00f, 0.20f, 3.60f), report);
+                Place(lobby, "LobbyBack",  new Vector3(0.65f, InnerHeight * 0.5f, lobbyNear + 3.70f),
+                    new Vector3(3.00f, InnerHeight, 0.20f), report);
             }
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            report.AppendLine($"  → 내부 폭 {InnerHalfWidth * 2f:F2} × 깊이 3.00 × 높이 {InnerHeight:F2}");
+            report.AppendLine($"  → 내부 폭 {InnerHalfWidth * 2f:F2} × 깊이 {InnerHalfDepth * 2f:F2} × 높이 {InnerHeight:F2} " +
+                              $"(바닥 {InnerHalfWidth * 2f * InnerHalfDepth * 2f:F2} m²)");
             Debug.Log(report.ToString());
         }
 

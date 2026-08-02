@@ -4679,7 +4679,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.3476599, g: 0.38, b: 0.36383027, a: 1}
+    - _BaseColor: {r: 0.3476599, g: 0.38, b: 0.36383033, a: 1}
     - _Color: {r: 0.0859999, g: 0.093999825, b: 0.08999988, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -8469,7 +8469,7 @@ Material:
     m_TexEnvs:
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
-        m_Scale: {x: 0.20799999, y: 0.272}
+        m_Scale: {x: 2, y: 2}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -8725,7 +8725,7 @@ Material:
     m_TexEnvs:
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: 46ce0e647c479fa4592767e7a3b0b23a, type: 3}
-        m_Scale: {x: 0.528, y: 0.97200006}
+        m_Scale: {x: 2, y: 2}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -14918,7 +14918,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.41842067, g: 0.45, b: 0.43421012, a: 1}
+    - _BaseColor: {r: 0.4184206, g: 0.45, b: 0.43421006, a: 1}
     - _Color: {r: 0.105999835, g: 0.11399985, b: 0.10999983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -15312,7 +15312,7 @@ Material:
     m_TexEnvs:
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: 968612d9f6e07d143b06985ef3078d2e, type: 3}
-        m_Scale: {x: 0.22711147, y: 0.16509008}
+        m_Scale: {x: 2, y: 2}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -15426,7 +15426,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.86, g: 0.7852175, b: 0.56086963, a: 1}
+    - _BaseColor: {r: 0.99384105, g: 0.9074203, b: 0.64815736, a: 1}
     - _Color: {r: 0.45999992, g: 0.41999996, b: 0.29999998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.19999996, g: 0.25999996, b: 0.23999995, a: 1}
