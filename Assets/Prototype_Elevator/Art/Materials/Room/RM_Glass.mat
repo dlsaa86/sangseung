@@ -135,7 +135,7 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _Metallic: 0.1
+    - _Metallic: 0.05
     - _OcclusionStrength: 1
     - _PS1DistortEnabled: 0
     - _Parallax: 0.005
@@ -145,7 +145,7 @@ Material:
     - _ShadeGamma: 2.6
     - _ShadeGammaEnabled: 0
     - _ShadowLift: 0.75
-    - _Smoothness: 0.62
+    - _Smoothness: 0.9
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1

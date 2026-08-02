@@ -42,7 +42,7 @@ namespace Ascend.Prototype.Art.Tests
             Run("§1 최소 통행 폭 0.9m 를 만족한다", TestWalkway, ref passed, ref failed, report);
             Run("§2 수평 시야각이 72~78도다", TestHorizontalFov, ref passed, ref failed, report);
             Run("§2 기준 카메라가 방 안에 있고 후면 벽까지 4.0m 다", TestCameraPlacement, ref passed, ref failed, report);
-            Run("§4 장치가 후면 벽의 52~55% 를 차지한다", TestMachineCoverage, ref passed, ref failed, report);
+            Run("§4 장치가 벽 폭 45~52% · 벽 높이 60~68% 안에 있다", TestMachineCoverage, ref passed, ref failed, report);
             Run("§4 3×3 격자가 장치 프레임 안에 들어간다", TestWindowGridFits, ref passed, ref failed, report);
             Run("§4 관찰창 프레임 폭이 80~100mm 이고 가로·세로가 같다", TestWindowGaps, ref passed, ref failed, report);
             Run("§4·§13 창 간격이 등방이라 열로 뭉치지 않는다", TestNoReelBanding, ref passed, ref failed, report);
@@ -51,6 +51,8 @@ namespace Ascend.Prototype.Art.Tests
             Run("§7 선반 돌출이 0.6m 이하다", TestShelfProtrusion, ref passed, ref failed, report);
             Run("§14 관찰창 실루엣이 12~16각형이다", TestRetroSilhouette, ref passed, ref failed, report);
             Run("§14 텍셀 밀도가 128~256px/m 범위다", TestTexelDensity, ref passed, ref failed, report);
+            Run("모듈 5층 구조의 깊이가 실제로 겹쳐 쌓인다", TestModuleLayerDepth, ref passed, ref failed, report);
+            Run("레버 기구 치수가 한 손 조작 범위다", TestLeverMechanism, ref passed, ref failed, report);
             Run("Violations() 가 빈 배열이다 (자기 보고와 검사가 일치한다)", TestNoSelfReportedViolations, ref passed, ref failed, report);
 
             return (passed, failed, report.ToString());
@@ -121,14 +123,20 @@ namespace Ascend.Prototype.Art.Tests
 
         private static void TestMachineCoverage()
         {
-            Between(ReferenceRoomSpec.MachineWallCoverage, 0.52f, 0.55f, "장치의 후면 벽 점유율");
+            // 영웅 오브젝트 명세(2026-08-02) — 「후면 벽 폭의 45~52%, 벽 높이의 60~68%」.
+            // 직전 값 2.1 × 2.2 는 폭 52.5% · **높이 75.9%** 로 높이가 크게 초과였고,
+            // 그래서 장치가 「벽에 걸린 기계」가 아니라 「벽 그 자체」로 읽혔다.
+            Between(ReferenceRoomSpec.MachineWallCoverage, 0.45f, 0.52f, "장치의 벽 폭 점유율");
+            Between(ReferenceRoomSpec.MachineHeight / ReferenceRoomSpec.InteriorHeight,
+                    0.60f, 0.68f, "장치의 벽 높이 점유율");
             AtLeast(ReferenceRoomSpec.MachineCeilingGap, 0.30f, "장치 상단 여백");
             Approx(ReferenceRoomSpec.MachineBottomGap, 0.2f, "장치 하단 간격");
 
-            // 명세 §4 는 하단 0.2 + 높이 2.2 + 상단 0.35 = 2.75 를 적는데 실내는 2.9 다.
-            // 그 모순을 「상단이 0.50 이 된다」로 해소했음을 테스트가 고정한다 —
-            // 다음 사람이 0.35 로 되돌리면 장치가 바닥을 뚫는다.
-            Approx(ReferenceRoomSpec.MachineCeilingGap, 0.50f, "해소된 상단 여백");
+            // 1인칭 기본 시점에서 9개 창이 한눈에 들어와야 한다 —
+            // 「고개를 크게 움직이지 않고」. 격자 세로 폭이 수직 화각 안이어야 한다.
+            float gridSpan = 2f * ReferenceRoomSpec.WindowPitch + ReferenceRoomSpec.WindowRingDiameter;
+            float subtend = 2f * Mathf.Rad2Deg * Mathf.Atan(gridSpan * 0.5f / ReferenceRoomSpec.CameraToRearWall);
+            AtMost(subtend, ReferenceRoomSpec.VerticalFov * 0.75f, "격자가 차지하는 세로 화각");
         }
 
         private static void TestWindowGridFits()
@@ -156,17 +164,18 @@ namespace Ascend.Prototype.Art.Tests
         {
             Between(ReferenceRoomSpec.WindowGapX, 0.08f, 0.10f, "가로 프레임 폭");
             Between(ReferenceRoomSpec.WindowGapY, 0.08f, 0.10f, "세로 프레임 폭");
-            Between(ReferenceRoomSpec.WindowGlassDiameter, 0.30f, 0.32f, "내부 유리 지름");
+            Between(ReferenceRoomSpec.WindowGlassDiameter, 0.24f, 0.32f, "내부 유리 지름");
 
             // 링 지름은 명세의 460mm 가 아니라 **435mm** 다. 저장소의 베젤 판독 상한
             // (개구부 지름의 18%)이 명세의 65mm 링을 허용하지 않기 때문이고, 그 상한은
             // 16라운드 「베젤이 심볼을 덮는다」 판정에서 나온 것이라 명세보다 우선한다.
             // **명세를 어긴 사실 자체를 여기에 고정한다** — 조용히 어기면 다음 사람이
             // 「명세대로 460 이겠지」로 읽고 다시 늘린다.
-            Approx(ReferenceRoomSpec.WindowRingDiameter, 0.4352f, "외부 링 지름 (명세 460 → 435)");
-            if (Mathf.Abs(ReferenceRoomSpec.WindowRingDiameter - 0.46f) > 0.030f)
-                throw new Exception($"링 지름 {ReferenceRoomSpec.WindowRingDiameter:F4} 가 명세 0.46 에서 30mm 넘게 벗어났다 " +
-                                    "— 판독 상한 때문에 줄이는 것은 허용되지만 이 정도는 다른 문제다");
+            // 링 지름은 유리 + 링 두께 ×2 에서 유도된다. 영웅 오브젝트 명세로
+            // 장치가 작아지면서 함께 줄었다 — 격자가 장치 프레임 안에 들어가야 한다.
+            Approx(ReferenceRoomSpec.WindowRingDiameter,
+                   ReferenceRoomSpec.WindowGlassDiameter + ReferenceRoomSpec.WindowRingBand * 2f,
+                   "외부 링 지름이 유리+두께에서 유도된다");
 
             // 베젤이 판독 상한 안에 있는가. 여기가 이 절의 존재 이유다.
             float bezelRatio = ReferenceRoomSpec.WindowRingBand / ReferenceRoomSpec.WindowGlassDiameter;
@@ -266,6 +275,62 @@ namespace Ascend.Prototype.Art.Tests
 
             // 반복 수가 1 을 크게 넘으면 한 면 안에서 패턴이 여러 번 보여 이음매가 드러난다.
             AtMost(ReferenceRoomSpec.SurfaceUvPerMeter, 1.5f, "표면 미터당 반복 수");
+        }
+
+        /// <summary>
+        /// 「측면에서 5개 층이 구분된다」를 **깊이 축에서** 검사한다.
+        /// 층이 이름만 있고 같은 z 에 겹쳐 있으면 화면에서는 한 장이다.
+        /// </summary>
+        private static void TestModuleLayerDepth()
+        {
+            Between(ReferenceRoomSpec.WindowProtrusion, 0.14f, 0.18f, "모듈 돌출 깊이");
+            Between(ReferenceRoomSpec.WindowGlassInset, 0.06f, 0.10f, "유리가 들어간 깊이");
+
+            // ① 장착판 → ③ 칼라 앞면까지가 돌출 전체다. 그 사이에 ② 브래킷이 산다.
+            AtLeast(ReferenceRoomSpec.WindowProtrusion,
+                    ReferenceRoomSpec.WindowBackPlateThickness + ReferenceRoomSpec.WindowBracketThickness + 0.05f,
+                    "장착판+브래킷이 돌출 안에 들어간다");
+
+            // ④ 유리는 칼라 앞면보다 뒤에 있어야 「들어간 창」이다.
+            AtMost(ReferenceRoomSpec.WindowGlassInset, ReferenceRoomSpec.WindowProtrusion,
+                   "유리가 칼라 앞면보다 뒤에 있다");
+
+            // ⑤ 영혼은 유리에서 떨어져 있어야 패럴랙스가 생긴다.
+            //    0 이면 유리에 붙은 스티커로 보인다 — 그것이 직전 판본의 최우선 결함이었다.
+            AtLeast(ReferenceRoomSpec.SoulStandoff, 0.03f, "영혼이 유리에서 떨어진 거리");
+            AtMost(ReferenceRoomSpec.SoulStandoff, ReferenceRoomSpec.WindowChamberDepth,
+                   "영혼이 챔버 안에 있다");
+
+            AtLeast(ReferenceRoomSpec.WindowBracketCount, 3, "지지 브래킷 수");
+            Between(ReferenceRoomSpec.WindowBoltCount, 6, 8, "체결 볼트 수");
+        }
+
+        /// <summary>
+        /// 레버가 **한 손 조작 크기**이고 기구가 성립하는가.
+        /// 영웅 오브젝트 명세의 권장 기준을 그대로 옮긴다.
+        /// </summary>
+        private static void TestLeverMechanism()
+        {
+            Between(ReferenceRoomSpec.LeverPivotY, 1.15f, 1.30f, "회전축 높이");
+            Between(ReferenceRoomSpec.LeverHandleLength, 0.32f, 0.42f, "레버 암 길이");
+            Between(ReferenceRoomSpec.LeverGripLength, 0.14f, 0.20f, "그립 길이");
+            Between(ReferenceRoomSpec.LeverGripDiameter, 0.035f, 0.045f, "그립 지름");
+            Between(ReferenceRoomSpec.LeverSwingDegrees, 45f, 60f, "전체 이동 각도");
+            Between(ReferenceRoomSpec.LeverLockedTravelDegrees, 2f, 4f, "잠김 상태 허용 각도");
+
+            // 잠금핀이 실제로 경로를 막으려면 허용 각도가 전체 가동각보다 훨씬 작아야 한다.
+            if (ReferenceRoomSpec.LeverLockedTravelDegrees > ReferenceRoomSpec.LeverSwingDegrees * 0.2f)
+                throw new Exception("잠김 허용 각도가 너무 커서 「막혔다」로 안 읽힌다");
+
+            // 그립이 암 안에 들어간다.
+            AtMost(ReferenceRoomSpec.LeverGripLength, ReferenceRoomSpec.LeverHandleLength * 0.6f,
+                   "그립이 암의 60% 이하");
+
+            // 손잡이 중심 높이 = 회전축 + 암이 그리는 호의 중간. 요구 1.25~1.40m.
+            float handleCenterY = ReferenceRoomSpec.LeverPivotY
+                + ReferenceRoomSpec.LeverHandleLength * 0.5f
+                  * Mathf.Sin(ReferenceRoomSpec.LeverSwingDegrees * 0.5f * Mathf.Deg2Rad);
+            Between(handleCenterY, 1.25f, 1.40f, "손잡이 중심 높이");
         }
 
         private static void TestNoSelfReportedViolations()

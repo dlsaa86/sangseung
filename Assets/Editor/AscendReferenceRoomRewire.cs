@@ -365,70 +365,108 @@ namespace Ascend.Prototype.EditorTools
                 {
                     Transform module = grid.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
                     Transform soul = module != null ? module.Find(AscendReferenceRoom.SoulName) : null;
-                    arr.GetArrayElementAtIndex(row).objectReferenceValue = soul != null ? soul.GetComponent<Renderer>() : null;
+                    // ⚠ **핵만 점화한다. 껍질은 건드리지 않는다.**
+                    //
+                    // `MachineImpactView` 는 배열 전체에 **같은** `MaterialPropertyBlock`
+                    // 을 쓴다. 껍질까지 넣으면 두 겹이 같은 밝기가 되어, 어둡고 반투명한
+                    // 껍질 안에 뜨거운 핵이 있다는 구조가 발동하는 순간 무너진다 —
+                    // 없애려던 「균일한 분홍 덩어리」로 정확히 되돌아간다.
+                    //
+                    // 핵만 밝아지면 껍질을 통과해 번지므로 밝기 대비가 오히려 커진다.
+                    Transform core = soul != null ? soul.Find("Core") : null;
+                    Transform target = core != null ? core : soul;
+                    arr.GetArrayElementAtIndex(row).objectReferenceValue =
+                        target != null ? target.GetComponent<Renderer>() : null;
                 }
             }
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(impact);
 
-            // ── 발동 배선 ──
-            // `LeverPhysics` 가 붙어 있으면 그 `onBottomedOut` 에 건다. 없으면 적어 둔다 —
-            // 조용히 안 걸리면 「연출을 만들었는데 아무 일도 안 일어난다」가 된다.
-            int hooked = 0;
-            foreach (Physics.LeverPhysics lp in Object.FindObjectsByType<Physics.LeverPhysics>(FindObjectsInactive.Include))
+            // ── 발동 배선 ──────────────────────────────────────────────────
+            //
+            // 코드가 아니라 **배선**으로 건다. 그래야 소유 경로를 넘지 않고,
+            // 인스펙터에서 무엇이 무엇을 부르는지 눈으로 확인된다.
+            //
+            // 걸어야 하는 사슬은 셋이다. 하나라도 빠지면 조용히 아무 일도
+            // 일어나지 않으므로 **각각을 개수로 보고한다.**
+            //   ① 사람 입력  InteractableLever.onPulled  → 레버가 움직인다
+            //   ② 잠긴 입력  InteractableLever.onBlocked → 핀에 부딪혀 튕긴다
+            //   ③ 걸린 순간  LeverStateMachine.onLatched → 장치가 반응한다
+            int pulled = 0, blocked = 0, latched = 0;
+
+            foreach (View.LeverStateMachine fsm in
+                     Object.FindObjectsByType<View.LeverStateMachine>(FindObjectsInactive.Include))
             {
-                var lso = new SerializedObject(lp);
-                SerializedProperty ev = lso.FindProperty("onBottomedOut");
-                if (ev == null) continue;
-                SerializedProperty calls = ev.FindPropertyRelative("m_PersistentCalls.m_Calls");
-                if (calls == null) continue;
-
-                // 이미 걸려 있으면 또 걸지 않는다 — 두 번 걸면 두 번 때린다.
-                bool already = false;
-                for (int i = 0; i < calls.arraySize; i++)
+                var fso = new SerializedObject(fsm);
+                SerializedProperty latch = Calls(fso, "onLatched");
+                if (latch != null)
                 {
-                    SerializedProperty t = calls.GetArrayElementAtIndex(i).FindPropertyRelative("m_Target");
-                    if (t != null && t.objectReferenceValue == impact) { already = true; break; }
+                    // 레버가 걸린 그 순간이 「당겼다」의 정의다. 타격과 릴이 같이 돈다.
+                    Hook(latch, impact, typeof(View.MachineImpactView), "Strike");
+                    Hook(latch, reel, typeof(View.SoulReelView), "Spin");
+                    latched++;
                 }
-                if (already) { hooked++; continue; }
+                SerializedProperty denied = Calls(fso, "onLockBlocked");
+                if (denied != null)
+                    Hook(denied, impact, typeof(View.MachineImpactView), "Deny");
+                fso.ApplyModifiedProperties();
+                EditorUtility.SetDirty(fsm);
 
-                calls.arraySize++;
-                SerializedProperty call = calls.GetArrayElementAtIndex(calls.arraySize - 1);
-                call.FindPropertyRelative("m_Target").objectReferenceValue = impact;
-                call.FindPropertyRelative("m_TargetAssemblyTypeName").stringValue =
-                    typeof(View.MachineImpactView).AssemblyQualifiedName;
-                call.FindPropertyRelative("m_MethodName").stringValue = "Strike";
-                call.FindPropertyRelative("m_Mode").intValue = 1;           // Void
-                call.FindPropertyRelative("m_CallState").intValue = 2;      // RuntimeOnly
-                // 릴도 같은 순간에 돈다. 레버가 바닥에 닿는 그 프레임이 「당겼다」의 정의다.
-                bool reelHooked = false;
-                for (int i = 0; i < calls.arraySize; i++)
+                // 사람 입력 → 레버. 같은 기둥에 있는 `InteractableLever` 를 찾는다.
+                // **없으면 레버는 영원히 움직이지 않는다** — 실측으로 지금까지
+                // 그 상태였다(`Pull()` 의 런타임 호출자 0개).
+                foreach (Player.InteractableLever il in
+                         Object.FindObjectsByType<Player.InteractableLever>(FindObjectsInactive.Include))
                 {
-                    SerializedProperty t2 = calls.GetArrayElementAtIndex(i).FindPropertyRelative("m_Target");
-                    if (t2 != null && t2.objectReferenceValue == reel) { reelHooked = true; break; }
+                    var iso = new SerializedObject(il);
+                    SerializedProperty onPulled = Calls(iso, "onPulled");
+                    if (onPulled != null && Hook(onPulled, fsm, typeof(View.LeverStateMachine), "Pull")) pulled++;
+                    SerializedProperty onBlocked = Calls(iso, "onBlocked");
+                    if (onBlocked != null && Hook(onBlocked, fsm, typeof(View.LeverStateMachine), "Blocked")) blocked++;
+                    iso.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(il);
                 }
-                if (!reelHooked)
-                {
-                    calls.arraySize++;
-                    SerializedProperty rc = calls.GetArrayElementAtIndex(calls.arraySize - 1);
-                    rc.FindPropertyRelative("m_Target").objectReferenceValue = reel;
-                    rc.FindPropertyRelative("m_TargetAssemblyTypeName").stringValue =
-                        typeof(View.SoulReelView).AssemblyQualifiedName;
-                    rc.FindPropertyRelative("m_MethodName").stringValue = "Spin";
-                    rc.FindPropertyRelative("m_Mode").intValue = 1;
-                    rc.FindPropertyRelative("m_CallState").intValue = 2;
-                }
-
-                lso.ApplyModifiedProperties();
-                EditorUtility.SetDirty(lp);
-                hooked++;
             }
 
             _report.AppendLine($"  타격 연출 — 전구 {(lamp != null ? "○" : "×")} · 경고등 {(warn != null ? "○" : "×")} " +
-                               $"· 통관 3열 × 3 · LeverPhysics {hooked}개에 onBottomedOut 배선");
-            if (hooked == 0)
-                _report.AppendLine("     ⚠ `LeverPhysics` 가 씬에 없다 — 타격이 발동하지 않는다. " +
-                                   "레버 손잡이에 붙이고 다시 돌린다.");
+                               $"· 통관 3열 × 3");
+            _report.AppendLine($"  발동 사슬 — onPulled→Pull {pulled} · onBlocked→Blocked {blocked} · onLatched→Strike/Spin {latched}");
+            if (latched == 0)
+                _report.AppendLine("     ⚠ `LeverStateMachine` 이 씬에 없다 — 타격이 발동하지 않는다.");
+            if (pulled == 0)
+                _report.AppendLine("     ⚠ `InteractableLever` 와 연결되지 않았다 — **레버가 움직이지 않는다.**");
+        }
+
+        /// <summary>UnityEvent 의 영구 호출 목록을 꺼낸다. 없으면 null.</summary>
+        private static SerializedProperty Calls(SerializedObject so, string eventField)
+        {
+            SerializedProperty ev = so.FindProperty(eventField);
+            return ev?.FindPropertyRelative("m_PersistentCalls.m_Calls");
+        }
+
+        /// <summary>
+        /// 인스펙터 배선을 하나 건다. **이미 같은 대상·같은 메서드가 있으면 걸지 않는다** —
+        /// 조립기는 여러 번 돌므로, 중복을 막지 않으면 돌린 횟수만큼 때린다.
+        /// </summary>
+        /// <returns>걸려 있게 되었으면 true(이번에 새로 걸었든, 이미 있었든).</returns>
+        private static bool Hook(SerializedProperty calls, Object target, System.Type type, string method)
+        {
+            if (target == null) return false;
+            for (int i = 0; i < calls.arraySize; i++)
+            {
+                SerializedProperty c = calls.GetArrayElementAtIndex(i);
+                if (c.FindPropertyRelative("m_Target").objectReferenceValue == target &&
+                    c.FindPropertyRelative("m_MethodName").stringValue == method)
+                    return true;
+            }
+            calls.arraySize++;
+            SerializedProperty n = calls.GetArrayElementAtIndex(calls.arraySize - 1);
+            n.FindPropertyRelative("m_Target").objectReferenceValue = target;
+            n.FindPropertyRelative("m_TargetAssemblyTypeName").stringValue = type.AssemblyQualifiedName;
+            n.FindPropertyRelative("m_MethodName").stringValue = method;
+            n.FindPropertyRelative("m_Mode").intValue = 1;        // Void
+            n.FindPropertyRelative("m_CallState").intValue = 2;   // RuntimeOnly
+            return true;
         }
 
         private static void Set(SerializedObject so, string field, Object value)

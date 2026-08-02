@@ -52,8 +52,13 @@ namespace Ascend.Prototype.EditorTools
             ("RedPaint",  "TEX_Machine_Housing.png",   "TEX_Machine_Housing_Emis.png"),
             // ⑥ 낡은 크림색 표지판
             ("Sign",      "TEX_Stencil_Warning.png",   null),
-            // ⑦ 검은 고무·기름때 — 타공판·우물·롤러
+            // ⑦ 검은 고무·기름때 — 타공판·챔버·롤러
             ("Grease",    "TEX_Grating_Steel.png",     null),
+            // ⑧ 모듈 칼라 — **무쇠**다. `TEX_WallPaint_Peeled` 는 근접에서 자갈로
+            // 읽혀 「산화 강철」이 아니라 「콘크리트 덩어리」로 보였다.
+            ("Collar",    "TEX_Machine_Housing.png",   null),
+            // ⑨ 챔버 내부 — 텍스처는 붙이되 **틴트로 눌러** 거의 검게 만든다.
+            ("ChamberDark", "TEX_Grating_Steel.png",   null),
         };
 
         [MenuItem("Ascend/Room/Wire Reference Room Textures")]
@@ -141,7 +146,12 @@ namespace Ascend.Prototype.EditorTools
             switch (mat)
             {
                 // 철판 — 올리브가 섞인 차콜 방향으로 아주 살짝
-                case "Steel":     return new Color(0.94f, 0.93f, 0.87f);
+                // 🔴 **벽은 배경이다.** 0.94 로 두면 벽 화소가 장치만큼 밝아
+                // 아홉 창이 배경에 묻힌다 — 캡처에서 방 전체가 균일한 베이지로
+                // 읽혔고, 그 상태에서는 무엇을 봐야 하는지가 화면에 없다.
+                // 칼라(1.00)와 벌리는 것이 목적이므로 **칼라를 올리지 않고
+                // 벽을 내린다** — 올리면 블룸이 붙고 §11 이 그걸 금지한다.
+                case "Steel":     return new Color(0.58f, 0.57f, 0.53f);
                 // 노출 강철 — 중립
                 case "BareSteel": return new Color(0.96f, 0.96f, 0.95f);
                 // 녹 — 탁한 적갈색 쪽으로
@@ -149,11 +159,22 @@ namespace Ascend.Prototype.EditorTools
                 // 유리 — 어둡게 눌러 「어두운 유리 안의 빛」이 읽히게 한다 (명세 §4)
                 case "Glass":     return new Color(0.55f, 0.57f, 0.56f);
                 // 붉은 도장 — 바랜 적색
-                case "RedPaint":  return new Color(1.00f, 0.66f, 0.58f);
+                // 🔴 **붉어야 붉다.** 0.66/0.58 은 회색 무쇠 텍스처 위에서 갈색으로
+                // 읽혔다 — 근접 캡처에서 레버 그립이 「나무 손잡이」처럼 보였고,
+                // 명세는 「붉은 원통형 그립」을 요구한다. 녹색·청색 채널을 크게
+                // 눌러야 무채색 텍스처가 실제로 붉어진다.
+                case "RedPaint":  return new Color(1.00f, 0.34f, 0.26f);
                 // 표지판 — 누렇게 변색된 크림
                 case "Sign":      return new Color(1.00f, 0.97f, 0.88f);
                 // 기름때 — 어둡게
-                case "Grease":    return new Color(0.72f, 0.71f, 0.69f);
+                // 챔버 내부다. **밝으면 안쪽이 얕아 보인다** — 근접 캡처에서 챔버가
+                // 갈색으로 밝게 떠 영혼 뒤의 「깊이」가 사라졌다.
+                // 챔버 안. 0.16 은 이 방에서 가장 어두운 값이고, 그래야 영혼이
+                // 「어둠 속의 빛」으로 읽힌다.
+                case "ChamberDark": return new Color(0.16f, 0.15f, 0.15f);
+                case "Grease":    return new Color(0.46f, 0.45f, 0.43f);
+                // 칼라는 벽보다 **밝다** — 명세의 재질 계층에서 유일하게 밝은 금속이다.
+                case "Collar":    return new Color(1.00f, 0.96f, 0.90f);
                 default:          return Color.white;
             }
         }

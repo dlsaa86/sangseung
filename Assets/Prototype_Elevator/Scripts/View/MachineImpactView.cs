@@ -126,6 +126,27 @@ namespace Ascend.Prototype.View
             _shakeEnergy = k;
         }
 
+        /// <summary>
+        /// **거부** — 잠긴 레버를 당겼을 때. 경고등만 한 번 번쩍인다.
+        ///
+        /// `Strike()` 를 대신 쓰면 안 된다. 그쪽은 전구·흔들림·통관 점화까지
+        /// 전부 돌려서 **아무 일도 일어나지 않은 입력이 성공처럼 보인다.**
+        /// 거부는 거부로 보여야 한다 — 경고 채널 하나만 쓰고, 나머지 채널의
+        /// 에너지는 0 으로 둔다.
+        ///
+        /// 이미 타격이 진행 중이면 무시한다. 진행 중인 성공 연출을 거부 연출이
+        /// 덮으면 그 프레임의 화면은 거짓말이 된다.
+        /// </summary>
+        public void Deny()
+        {
+            if (_strikeAge >= 0f) return;
+            EnsureHome();
+            _strikeAge = 0f;
+            _lampEnergy = 0f;
+            _shakeEnergy = 0f;
+            _warningEnergy = 1f;
+        }
+
         /// <summary>헤드리스 테스트 전용. 씬 없이 감쇠와 순서를 확인한다.</summary>
         public void StepForTest(float dt, int steps)
         {

@@ -41,6 +41,7 @@ namespace Ascend.Prototype.EditorTools
             UI.Tests.RunSummaryBuilderTests.RunAll(),
             Effects.Tests.PresentationBindingTests.RunAll(),
             View.Tests.OverharvestStageTests.RunAll(),
+            View.Tests.LeverStateMachineTests.RunAll(),
             // 표현 계층 물리(관성 반응자·고정 스텝 적분). 등록을 빼먹으면
             // **합계가 그대로라서 「테스트가 없다」와 「테스트가 통과했다」가 구분되지 않는다** —
             // 실제로 이번에 그 상태로 한 번 돌았다(350 → 350). 이 저장소는

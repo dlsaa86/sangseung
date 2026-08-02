@@ -146,13 +146,13 @@ namespace Ascend.Prototype.Art
         // ══════════════════════════════════════════════════════════════════════
 
         /// <summary>장치 전체 폭(m). 명세 §4.</summary>
-        public const float MachineWidth = 2.1f;
+        public const float MachineWidth = 1.94f;   // 48.5% (요구 45~52%)
 
         /// <summary>장치 전체 높이(m). 명세 §4.</summary>
-        public const float MachineHeight = 2.2f;
+        public const float MachineHeight = 1.86f;  // 64.1% (요구 60~68%) — 2.2 는 75.9% 로 초과였다
 
         /// <summary>장치가 벽에서 실내로 돌출되는 깊이(m). 명세 §4.</summary>
-        public const float MachineDepth = 0.22f;
+        public const float MachineDepth = 0.20f;
 
         /// <summary>
         /// 장치 하단과 바닥 사이 간격(m). 명세 §4 「약 0.2m」.
@@ -183,10 +183,10 @@ namespace Ascend.Prototype.Art
         // ── 원형 관찰창 모듈 ──────────────────────────────────────────────────
 
         /// <summary>내부 유리 지름(m). 명세 §4 「0.30~0.32m」 — 상한을 쓴다.</summary>
-        public const float WindowGlassDiameter = 0.32f;
+        public const float WindowGlassDiameter = 0.28f;
 
         /// <summary>모듈이 장치 전면에서 더 돌출되는 깊이(m). 명세 §4 「약 0.10m」.</summary>
-        public const float WindowProtrusion = 0.10f;
+        public const float WindowProtrusion = 0.16f;   // 요구 14~18cm
 
         /// <summary>
         /// 금속 링 두께(m). 명세 §4 는 「약 65mm」.
@@ -205,7 +205,7 @@ namespace Ascend.Prototype.Art
         /// `ASSUMPTION_LOG` 에 기록한다. 명세를 어긴 것이 맞고, 어긴 이유가 명세 §2
         /// 「시각적 우선순위 1 = 붉게 빛나는 3×3 통관 장치」를 지키기 위해서다.
         /// </summary>
-        public const float WindowRingBand = 0.0576f;
+        public const float WindowRingBand = 0.050f;    // 0.050/0.28 = 0.179 <= 판독 상한 0.18
 
         /// <summary>외부 금속 링 지름(m). 유리 + 링 두께 ×2 에서 **유도한다.</summary>
         public const float WindowRingDiameter = WindowGlassDiameter + WindowRingBand * 2f;   // 0.4352
@@ -237,7 +237,7 @@ namespace Ascend.Prototype.Art
         /// `ASSUMPTION_LOG` 에 기록한다.
         /// </summary>
         /// 값은 링 지름(0.4352) + 프레임 90mm 에서 유도했다.
-        public const float WindowPitch = 0.525f;
+        public const float WindowPitch = 0.465f;       // 링 0.38 + 프레임 85mm
 
         public const float WindowPitchX = WindowPitch;
         public const float WindowPitchY = WindowPitch;
@@ -251,6 +251,68 @@ namespace Ascend.Prototype.Art
         /// 12 와 16 뿐이고, 더 각진 12 를 고른다(명세 §14 「매끄러운 곡면을 피함」).
         /// </summary>
         public const int WindowSilhouetteSides = 12;
+
+        // ── 모듈 5층 구조 (영웅 오브젝트 명세 2차) ─────────────────────────
+        //
+        // 「측면 또는 사선에서 최소 5개 층이 구분되어야 한다」 —
+        //   ① 후면 장착판 ② 지지 브래킷 ③ 외부 보호 칼라 ④ 들어간 유리 ⑤ 내부 챔버
+        //
+        // 직전 판본은 ①②가 아예 없었다(모듈 자식이 Ring/Well/Soul/Glass/Bolts).
+        // 그래서 「평면 판에 원형 장식 9개」로 읽혔고, 그것이 최우선 결함이었다.
+
+        /// <summary>① 후면 장착판 두께(m). 모듈이 프레임에 볼트로 붙는 판.</summary>
+        public const float WindowBackPlateThickness = 0.022f;
+
+        /// <summary>① 장착판이 링보다 큰 비율. 1.18 이면 테가 눈에 보인다.</summary>
+        public const float WindowBackPlateOversize = 1.18f;
+
+        /// <summary>② 지지 브래킷 개수. 장착판과 칼라를 잇고 하중을 나른다.</summary>
+        public const int WindowBracketCount = 4;
+
+        /// <summary>② 브래킷 단면(m).</summary>
+        public const float WindowBracketThickness = 0.026f;
+
+        /// <summary>④ 유리가 칼라 앞면에서 **안쪽으로** 들어간 깊이(m). 요구 6~10cm.</summary>
+        public const float WindowGlassInset = 0.075f;
+
+        /// <summary>⑤ 내부 챔버 깊이(m). 유리와 영혼 사이의 실제 거리를 만든다.</summary>
+        public const float WindowChamberDepth = 0.115f;
+
+        /// <summary>영혼이 유리 뒤로 떨어진 거리(m). 패럴랙스와 그림자의 근거다.</summary>
+        public const float SoulStandoff = 0.070f;
+
+        /// <summary>잠금 클램프 개수 (좌우).</summary>
+        public const int WindowClampCount = 2;
+
+        /// <summary>케이블 소켓 반지름(m). 모듈 하단에서 프레임으로 들어간다.</summary>
+        public const float WindowSocketRadius = 0.017f;
+
+        // ── 레버 기구 (영웅 오브젝트 명세 2단계) ───────────────────────────
+
+        /// <summary>벽에 고정된 베이스 플레이트(m).</summary>
+        public const float LeverBasePlateW = 0.30f;
+        public const float LeverBasePlateH = 0.52f;
+        public const float LeverBasePlateT = 0.028f;
+
+        /// <summary>하중을 받는 원형 회전 허브(m).</summary>
+        public const float LeverHubRadius = 0.052f;
+        public const float LeverHubDepth = 0.070f;
+
+        /// <summary>암이 지나는 가이드 슬롯 폭(m).</summary>
+        public const float LeverSlotWidth = 0.042f;
+
+        /// <summary>시작·끝 스토퍼 크기(m).</summary>
+        public const float LeverStopperSize = 0.038f;
+
+        /// <summary>잠금핀(m). **이동 경로를 물리적으로 막는 부품이다.**</summary>
+        public const float LeverPinRadius = 0.019f;
+        public const float LeverPinLength = 0.108f;
+
+        /// <summary>잠긴 상태에서 핀에 부딪히기까지 허용되는 각도(도). 요구 2~4도.</summary>
+        public const float LeverLockedTravelDegrees = 3.2f;
+
+        /// <summary>내부 장치와 연결되는 링크 샤프트 반지름(m).</summary>
+        public const float LeverLinkRadius = 0.013f;
 
         /// <summary>
         /// 3×3 격자의 세로 중심.
@@ -280,7 +342,7 @@ namespace Ascend.Prototype.Art
         // ── 하단 정비 패널 ────────────────────────────────────────────────────
 
         /// <summary>정비 패널 높이(m). 명세 §4 「약 0.42m」.</summary>
-        public const float ServicePanelHeight = 0.42f;
+        public const float ServicePanelHeight = 0.34f;
 
         /// <summary>정비 패널 수. 명세 §4 「가로로 나뉜 3개」 — 위쪽 세로 열과 정렬.</summary>
         public const int ServicePanelCount = 3;
@@ -308,10 +370,10 @@ namespace Ascend.Prototype.Art
         public const float LeverPivotY = 1.25f;
 
         /// <summary>레버 손잡이 전체 길이(m). 명세 §5.</summary>
-        public const float LeverHandleLength = 0.42f;
+        public const float LeverHandleLength = 0.38f;  // 요구 32~42cm
 
         /// <summary>붉은 원통형 그립 길이(m). 명세 §5.</summary>
-        public const float LeverGripLength = 0.28f;
+        public const float LeverGripLength = 0.18f;    // 요구 14~20cm — 28cm 는 두 손 크기였다
 
         /// <summary>그립 지름(m). 명세 §5 「약 45mm」.</summary>
         public const float LeverGripDiameter = 0.045f;
@@ -552,9 +614,15 @@ namespace Ascend.Prototype.Art
             if (ShelfProtrusion > ShelfMaxProtrusion + 0.001f)
                 list.Add($"§7 선반 돌출 {ShelfProtrusion:F2}m > 한계 {ShelfMaxProtrusion:F2}m");
 
+            // 영웅 오브젝트 명세(2026-08-02) — 폭 45~52% · 높이 60~68%.
+            // ⚠ 이 범위를 테스트에서만 고치고 여기를 안 고쳐서 조립기가 한 번 멈췄다.
+            // **자기 보고와 검사는 같은 숫자를 봐야 한다** — 그러라고 둘을 이어 놨다.
             float coverage = MachineWallCoverage;
-            if (coverage < 0.52f || coverage > 0.55f)
-                list.Add($"§4 장치가 후면 벽의 {coverage * 100f:F1}% — 요구 52~55%");
+            if (coverage < 0.45f || coverage > 0.52f)
+                list.Add($"§4 장치가 벽 폭의 {coverage * 100f:F1}% — 요구 45~52%");
+            float hCoverage = MachineHeight / InteriorHeight;
+            if (hCoverage < 0.60f || hCoverage > 0.68f)
+                list.Add($"§4 장치가 벽 높이의 {hCoverage * 100f:F1}% — 요구 60~68%");
 
             if (MachineRightX + LeverGapFromMachine + LeverColumnWidth > WallRightX + 0.001f)
                 list.Add("§5 레버 컬럼이 우벽을 넘는다");
