@@ -35,6 +35,31 @@
       M  4px 폭 64단                    계단 0 (전부 8px 미만) · **관측 안 됨**
       N  64px + 3px 조각 + 64px         계단 2 · 단차 1 — 짧은 조각을 건너뛰고 이웃 계단끼리 비교한다
 
+    ── G-1b·G-1c 반증 케이스 (O~R) ─────────────────────────────────────────────
+    G-1a(전체 블록 중앙값)는 「텍스처가 잘 보이는가」가 아니라 「화면의 몇 %가
+    텍스처인가」를 재고 있었다 (GRAPHICS_TARGET §5.1). 아래가 그 결함을 고정한다.
+
+      O  완전 무지 (A 재사용)          G-1a 0 · **G-1b 정의불가(블록 0개)** · G-1c 0%
+      P  좌 1/2 무지 + 우 1/2 노이즈    텍스처 블록 정확히 512/1024 · G-1a 는 눌리고 G-1b 는 노이즈 값
+      Q  좌 3/4 무지 + 우 1/4 노이즈    **G-1a 가 정확히 0** 인데 G-1b 는 ≈55 — 결함 그 자체
+      R  전면 노이즈 (B 재사용)         전 블록이 텍스처 → **G-1b ≡ G-1a** (불변식)
+
+    Q 가 핵심이다. 텍스처가 화면의 25% 를 덮고 있어도 G-1a 는 0 을 낸다 —
+    「통과선 12.0 에 닿으려면 화면의 절반 이상이 텍스처여야 한다」가 이것이다.
+
+    ── G-4 세 갈래 반증 케이스 (S~W) ───────────────────────────────────────────
+    주사선이 조명 없는 면 위에 있으면 계단은 **원리적으로** 만들어지지 않는다.
+    그것을 「미관측」으로 세면 「고치면 되는 것」과 섞인다 (GRAPHICS_TARGET §5.4).
+
+      S  주사선 완전 단색 (A 재사용)    휘도폭 0 → **측정 불가**
+      T  휘도폭 5 인데 계단 4·단차 3    직전 두 갈래로는 「관측됨」 — 지금은 **측정 불가**
+      U  휘도폭 8 인 같은 모양          경계값 → **관측됨** (임계를 양쪽에서 고정한다)
+      V  4단 계단 192폭 (C 재사용)      **관측됨**
+      W  매끄러운 램프 (K 재사용)       휘도폭 255 → 측정 가능하지만 **미관측**
+
+    T·U 가 한 쌍으로 「휘도폭 8」의 경계를 고정한다. T 는 동시에 **직전 정의가
+    무엇을 틀리게 통과시켰는지**를 고정한다 — 이것이 없으면 정정이 회귀해도 아무도 모른다.
+
 .PARAMETER KeepImages
     생성한 합성 PNG 를 지우지 않는다 (눈으로 확인할 때).
 
@@ -322,6 +347,200 @@ $M4 = [CaptureMetrics.Analyzer]::Analyze($pM, 0.5, 0.0, 0, 1, 4, 4)
 Assert-Value 'M 최소길이4' '계단 최소 길이 반영' 4 $M4.StepMinLengthUsed
 Assert-Value 'M 최소길이4' '계단 수'             64 $M4.StepCount
 Assert-Value 'M 최소길이4' '단차 수 (64−1)'      63 $M4.BoundaryCount
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G-1b / G-1c — 「텍스처가 잘 보이는가」와 「화면의 몇 %가 텍스처인가」를 가른다
+#
+# G-1b = 블록 std ≥ 4.0 인 블록만 모은 중앙값 (무지 면을 분모에서 뺀다)
+# G-1c = 전체 블록 중 std ≥ 8.0 인 것의 비율(%)
+#
+# 기댓값은 손으로 계산했다. 8×8 블록이므로 256×256 이미지의 블록 수는 32×32 = 1024 다.
+# ══════════════════════════════════════════════════════════════════════════════
+$G1b_Min = 4.0
+$G1c_Min = 8.0
+
+# ── O 완전 무지 (A 재사용: 256×256 회색 128) ──────────────────────────────────
+#    모든 블록의 std 가 정확히 0 이다 → 4.0 을 넘는 블록이 **하나도 없다.**
+#    그러므로 G-1b 의 분모가 0 이고 중앙값은 **정의되지 않는다.**
+#    0 을 내면 「텍스처가 있는데 평평하다」와 구분이 사라지므로 NaN 으로 내고
+#    표시 문자열은 「정의불가」로 고정한다.
+Assert-Value 'O 무지' 'G-1a 전체 중앙값'          0.0 $A.LocalStdMedian $EPS
+Assert-Value 'O 무지' '텍스처 블록 수 (std≥4)'    0 $A.TexturedBlockCount
+Assert-Value 'O 무지' '텍스처 블록 비율'          0.0 $A.TexturedBlockPercent $EPS
+Assert-Value 'O 무지' 'G-1b 는 NaN'               $true ([double]::IsNaN($A.TexturedBlockStdMedian))
+Assert-Value 'O 무지' 'G-1b 표시 = 정의불가'      '정의불가' (Format-CaptureG1b $A.TexturedBlockStdMedian $A.TexturedBlockCount)
+Assert-Value 'O 무지' 'G-1c 선명 블록 비율'       0.0 $A.SharpBlockPercent $EPS
+Assert-Value 'O 무지' '선명 블록 수'              0 $A.SharpBlockCount
+Assert-Value 'O 무지' 'G-1b 임계 반영'            $G1b_Min $A.G1bBlockStdMin $EPS
+Assert-Value 'O 무지' 'G-1c 임계 반영'            $G1c_Min $A.G1cBlockStdMin $EPS
+# 히스토그램: std 0 인 블록 1024 개가 전부 첫 칸(0.0~0.5)에 들어간다.
+Assert-Value 'O 무지' '히스토그램 첫 칸 = 전 블록' 1024 $A.BlockStdHist[0]
+Assert-Value 'O 무지' '히스토그램 칸 폭'          0.5 $A.BlockStdHistBinWidth $EPS
+
+# ── C(4단 계단)도 텍스처가 아니다 ─────────────────────────────────────────────
+#    띠 폭 64 는 8 의 배수라 블록이 경계를 걸치지 않는다 → 전 블록 std 0.
+#    「계단이 있다」와 「텍스처가 있다」가 다른 축이라는 것을 고정한다.
+Assert-Value 'O 4단계단' '텍스처 블록 수'      0 $C.TexturedBlockCount
+Assert-Value 'O 4단계단' 'G-1b 표시'           '정의불가' (Format-CaptureG1b $C.TexturedBlockStdMedian $C.TexturedBlockCount)
+Assert-Value 'O 4단계단' 'G-1c'                0.0 $C.SharpBlockPercent $EPS
+
+# ── R 전면 노이즈 (B 재사용) — 전 블록이 텍스처면 G-1b ≡ G-1a ─────────────────
+#    필터가 아무것도 걸러내지 않으면 두 중앙값은 **같은 표본의 중앙값**이므로
+#    정확히 같아야 한다. 필터가 잘못 구현되면 여기서 어긋난다.
+Assert-Value 'R 전면노이즈' '텍스처 블록 = 전 블록' 1024 $B.TexturedBlockCount
+Assert-Value 'R 전면노이즈' '텍스처 블록 비율'      100.0 $B.TexturedBlockPercent $EPS
+Assert-Value 'R 전면노이즈' 'G-1c = 100%'           100.0 $B.SharpBlockPercent $EPS
+Assert-Value 'R 전면노이즈' 'G-1b ≡ G-1a'           $true ([Math]::Abs($B.TexturedBlockStdMedian - $B.LocalStdMedian) -le $EPS)
+Assert-Value 'R 전면노이즈' 'G-1b 범위 (이론 ≈55.4)' '45..65' $B.TexturedBlockStdMedian
+
+# ── P 좌 1/2 무지 + 우 1/2 노이즈 (256×256, 경계 x=128) ───────────────────────
+#    128 은 8 의 배수라 블록이 경계를 걸치지 않는다.
+#    블록 열 32개 중 좌 16열 = 512 블록이 std 0, 우 16열 = 512 블록이 std ≈55.
+#    G-1a = 1024개의 중앙값 = (정렬 512번째 + 513번째)/2 = (0 + 최소노이즈)/2.
+#      64표본 블록 std 의 표본오차 ≈ 55.4/√128 ≈ 4.9 이고 512개 중 최소는
+#      평균 −3.2σ ≈ 39.7 근처다 → G-1a ≈ 20. 손계산 밴드 14~30 을 쓴다.
+#    G-1b = 노이즈 블록 512개만의 중앙값 → B 와 같은 밴드 45~65.
+$pP = Join-Path $work 'P_half_blank.png'
+[CaptureMetrics.TestImages]::SolidWithNoiseRight($pP, 256, 256, 128, 128, 20260802)
+$P = [CaptureMetrics.Analyzer]::Analyze($pP, 0.5, 0.0, 0)
+
+Assert-Value 'P 반반' '전체 블록 수'              1024 $P.BlockCount8
+Assert-Value 'P 반반' '텍스처 블록 수 (우 16열)'  512 $P.TexturedBlockCount
+Assert-Value 'P 반반' '텍스처 블록 비율'          50.0 $P.TexturedBlockPercent $EPS
+Assert-Value 'P 반반' 'G-1c 선명 블록 비율'       50.0 $P.SharpBlockPercent $EPS
+Assert-Value 'P 반반' 'G-1a 는 무지에 눌린다'     '14..30' $P.LocalStdMedian
+Assert-Value 'P 반반' 'G-1b 는 노이즈 쪽'         '45..65' $P.TexturedBlockStdMedian
+Assert-Value 'P 반반' 'G-1b > G-1a'               $true ($P.TexturedBlockStdMedian -gt $P.LocalStdMedian)
+
+# ── Q 좌 3/4 무지 + 우 1/4 노이즈 (256×256, 경계 x=192) ───────────────────────
+#    좌 24열 = 768 블록이 std 0, 우 8열 = 256 블록이 std ≈55.
+#    정렬 512·513번째가 **둘 다 무지 블록** 안에 있으므로 G-1a 는 **정확히 0** 이다.
+#    텍스처가 화면의 25% 를 실제로 덮고 있는데도 그렇다 — 이것이 §5.1 의 결함이다.
+$pQ = Join-Path $work 'Q_quarter_tex.png'
+[CaptureMetrics.TestImages]::SolidWithNoiseRight($pQ, 256, 256, 128, 192, 20260802)
+$Q = [CaptureMetrics.Analyzer]::Analyze($pQ, 0.5, 0.0, 0)
+
+Assert-Value 'Q 1/4텍스처' 'G-1a = 정확히 0 (768/1024 무지)' 0.0 $Q.LocalStdMedian $EPS
+Assert-Value 'Q 1/4텍스처' '텍스처 블록 수 (우 8열)'         256 $Q.TexturedBlockCount
+Assert-Value 'Q 1/4텍스처' '텍스처 블록 비율'                25.0 $Q.TexturedBlockPercent $EPS
+Assert-Value 'Q 1/4텍스처' 'G-1c 선명 블록 비율'             25.0 $Q.SharpBlockPercent $EPS
+Assert-Value 'Q 1/4텍스처' 'G-1b 는 살아 있다'               '45..65' $Q.TexturedBlockStdMedian
+Assert-Value 'Q 1/4텍스처' '빈 평면 비율 (32×32, 24/32열)'   75.0 $Q.EmptyPlanePercent $EPS
+
+# ── 임계가 실제로 전달되는가 ──────────────────────────────────────────────────
+# Q 를 텍스처 임계 100 으로 다시 읽으면 노이즈 블록(≈55)도 걸러져 0개가 된다.
+$Q100 = [CaptureMetrics.Analyzer]::Analyze($pQ, 0.5, 0.0, 0, 1, 8, 4, 100.0, 100.0)
+Assert-Value 'Q 임계100' 'G-1b 임계 반영'   100.0 $Q100.G1bBlockStdMin $EPS
+Assert-Value 'Q 임계100' '텍스처 블록 0개'  0 $Q100.TexturedBlockCount
+Assert-Value 'Q 임계100' 'G-1b 정의불가'    '정의불가' (Format-CaptureG1b $Q100.TexturedBlockStdMedian $Q100.TexturedBlockCount)
+# 임계 0 이면 모든 블록이 텍스처로 잡히고 G-1b ≡ G-1a 가 된다.
+$Q0 = [CaptureMetrics.Analyzer]::Analyze($pQ, 0.5, 0.0, 0, 1, 8, 4, 0.0, 0.0)
+Assert-Value 'Q 임계0' '텍스처 블록 = 전 블록' 1024 $Q0.TexturedBlockCount
+Assert-Value 'Q 임계0' 'G-1b ≡ G-1a (=0)'      0.0 $Q0.TexturedBlockStdMedian $EPS
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G-4 세 갈래 — 관측됨 / 미관측 / **측정 불가**
+#
+# 측정 불가 = 주사선 구간의 휘도 동적 범위(max−min) < 8.
+# 언릿 면 위의 주사선은 계단을 만들 수 없으므로 「미관측」이 아니다 (§5.4).
+# ══════════════════════════════════════════════════════════════════════════════
+$G4_MinSpan = 8
+function Test-Verdict { param($M) return (Get-CaptureG4Verdict -Metric $M -StepsMin $G4_StepsMin -BoundsMin $G4_BoundsMin -MinSpan $G4_MinSpan) }
+
+Assert-Value 'G4 임계' '측정 가능 최소 휘도폭' 8 $script:CM_Classify.G4_MeasurableMinSpan
+
+# ── S 주사선 완전 단색 (A 재사용) ─────────────────────────────────────────────
+Assert-Value 'S 단색주사선' '주사선 휘도폭'   0 $A.ScanSpan
+Assert-Value 'S 단색주사선' 'G-4 판정'        'UNMEASURABLE' (Test-Verdict $A)
+Assert-Value 'S 단색주사선' '한글 표기'       '측정불가' (Get-CaptureG4VerdictLabel (Test-Verdict $A))
+
+# ── T 휘도폭 5 인데 계단 4 · 단차 3 ───────────────────────────────────────────
+#    값: 0×20, 5×20, 0×20, 5×20 (폭 80). 회색 v 의 휘도는 정확히 v 다.
+#    δ≤1 에서 경계차 5 > 1 이라 4구간, 각 20px ≥ 8 → 계단 4.
+#    평균 0·5·0·5 의 이웃 차 5 ≥ 4 → 단차 3.
+#    **직전 두 갈래 판정은 이것을 「관측됨」으로 셌다** (계단 4≥3, 단차 3≥2).
+#    그러나 주사선 전체의 휘도폭이 5 뿐이다 — 눈에 보이는 계단이 아니다.
+$pT = Join-Path $work 'T_span5.png'
+$valsT = New-Object byte[] 80
+for ($i = 0;  $i -lt 20; $i++) { $valsT[$i] = 0 }
+for ($i = 20; $i -lt 40; $i++) { $valsT[$i] = 5 }
+for ($i = 40; $i -lt 60; $i++) { $valsT[$i] = 0 }
+for ($i = 60; $i -lt 80; $i++) { $valsT[$i] = 5 }
+[CaptureMetrics.TestImages]::Columns($pT, 16, $valsT)
+$T = [CaptureMetrics.Analyzer]::Analyze($pT, 0.5, 0.0, 0)
+
+Assert-Value 'T 휘도폭5' '계단 수'                4 $T.StepCount
+Assert-Value 'T 휘도폭5' '최장 계단'              20 $T.StepLongest
+Assert-Value 'T 휘도폭5' '단차 수'                3 $T.BoundaryCount
+Assert-Value 'T 휘도폭5' '주사선 휘도폭'          5 $T.ScanSpan
+Assert-Value 'T 휘도폭5' '직전 두 갈래는 관측됨'  $true (Test-Observed $T)
+Assert-Value 'T 휘도폭5' 'G-4 판정 = 측정 불가'   'UNMEASURABLE' (Test-Verdict $T)
+
+# ── U 같은 모양인데 휘도폭 8 (경계값) ─────────────────────────────────────────
+#    값: 0×20, 8×20, 0×20, 8×20. 휘도폭 8 은 「≥ 8」이므로 측정 가능이다.
+#    T 와 U 가 한 쌍으로 임계 8 을 양쪽에서 고정한다.
+$pU = Join-Path $work 'U_span8.png'
+$valsU = New-Object byte[] 80
+for ($i = 0;  $i -lt 20; $i++) { $valsU[$i] = 0 }
+for ($i = 20; $i -lt 40; $i++) { $valsU[$i] = 8 }
+for ($i = 40; $i -lt 60; $i++) { $valsU[$i] = 0 }
+for ($i = 60; $i -lt 80; $i++) { $valsU[$i] = 8 }
+[CaptureMetrics.TestImages]::Columns($pU, 16, $valsU)
+$U = [CaptureMetrics.Analyzer]::Analyze($pU, 0.5, 0.0, 0)
+
+Assert-Value 'U 휘도폭8' '주사선 휘도폭'        8 $U.ScanSpan
+Assert-Value 'U 휘도폭8' '계단 수'              4 $U.StepCount
+Assert-Value 'U 휘도폭8' '단차 수'              3 $U.BoundaryCount
+Assert-Value 'U 휘도폭8' 'G-4 판정 = 관측됨'    'OBSERVED' (Test-Verdict $U)
+Assert-Value 'U 휘도폭8' '한글 표기'            '관측됨' (Get-CaptureG4VerdictLabel (Test-Verdict $U))
+
+# ── V 4단 계단 (C 재사용: 0/64/128/192, 휘도폭 192) ───────────────────────────
+Assert-Value 'V 4단계단' '주사선 휘도폭'      192 $C.ScanSpan
+Assert-Value 'V 4단계단' 'G-4 판정 = 관측됨'  'OBSERVED' (Test-Verdict $C)
+
+# ── W 매끄러운 램프 (K 재사용: 0..255) — 측정 가능하지만 미관측 ───────────────
+#    휘도폭 255 라 측정은 가능하다. 그러나 계단 1 · 단차 0 이므로 계단이 아니다.
+#    「측정 불가」와 「미관측」이 다른 것이라는 사실을 고정한다.
+Assert-Value 'W 램프' '주사선 휘도폭'          255 $K.ScanSpan
+Assert-Value 'W 램프' 'G-4 판정 = 미관측'      'UNOBSERVED' (Test-Verdict $K)
+Assert-Value 'W 램프' '한글 표기'              '미관측' (Get-CaptureG4VerdictLabel (Test-Verdict $K))
+
+# ── 나머지 기존 케이스의 세 갈래 판정 ─────────────────────────────────────────
+# H(0/2/4/6): 휘도폭 6 < 8 → 측정 불가. 직전에는 「미관측」이었다.
+Assert-Value 'L 약한단차' '주사선 휘도폭'      6 $H.ScanSpan
+Assert-Value 'L 약한단차' 'G-4 판정'           'UNMEASURABLE' (Test-Verdict $H)
+# M(4px 폭 64단): 휘도폭 252 라 측정 가능. 계단 0 → 미관측.
+Assert-Value 'M 4px계단' '주사선 휘도폭'       252 $M.ScanSpan
+Assert-Value 'M 4px계단' 'G-4 판정'            'UNOBSERVED' (Test-Verdict $M)
+# N(0/100/8): 휘도폭 100. 계단 2 < 3 → 미관측.
+Assert-Value 'N 짧은조각' '주사선 휘도폭'      100 $N.ScanSpan
+Assert-Value 'N 짧은조각' 'G-4 판정'           'UNOBSERVED' (Test-Verdict $N)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 히스토그램 골 탐지 — 임계 4.0 이 실제로 두 집단을 가르는가를 재는 도구 자체의 검사
+#
+# P(좌 무지 std 0 · 우 노이즈 std ≈55)는 **설계상 완벽한 쌍봉**이다.
+# 골은 두 봉우리 사이 어딘가의 빈 칸이어야 한다.
+# ══════════════════════════════════════════════════════════════════════════════
+$histP = Get-CaptureBlockStdHistogram @($P)
+$sumP = 0L; foreach ($v in $histP) { $sumP += $v }
+Assert-Value 'P 히스토그램' '총 블록'          1024 $sumP
+Assert-Value 'P 히스토그램' '첫 칸 = 무지 512' 512 $histP[0]
+$valP = Get-CaptureHistogramValley -Hist $histP -BinWidth 0.5 -SearchMaxBin 130
+Assert-Value 'P 히스토그램' '쌍봉으로 판정'    $true $valP.IsBimodal
+Assert-Value 'P 히스토그램' '봉우리1 = std 0'  0.0 $valP.Peak1Value $EPS
+Assert-Value 'P 히스토그램' '골의 블록 수 0'   0 $valP.ValleyCount
+
+# 단봉(전면 노이즈 B)은 쌍봉이 아니어야 한다 — 골 탐지가 아무 데서나 쌍봉을 만들면 안 된다.
+$histB = Get-CaptureBlockStdHistogram @($B)
+$valB = Get-CaptureHistogramValley -Hist $histB -BinWidth 0.5 -SearchMaxBin 130
+Assert-Value 'B 히스토그램' '단봉 → 쌍봉 아님' $false $valB.IsBimodal
+
+# 여러 장 합산이 실제로 더해지는가.
+$histAB = Get-CaptureBlockStdHistogram @($A, $B)
+$sumAB = 0L; foreach ($v in $histAB) { $sumAB += $v }
+Assert-Value '합산 히스토그램' '총 블록 (1024×2)' 2048 $sumAB
+Assert-Value '합산 히스토그램' '첫 칸 ≥ A 의 1024' $true ($histAB[0] -ge 1024)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 보고

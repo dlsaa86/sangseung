@@ -863,6 +863,23 @@ function Format-CaptureBlockStdHistogram {
     return $lines
 }
 
+function Format-CaptureG1b {
+    <#
+    .SYNOPSIS
+        G-1b(텍스처 블록 중앙값)의 표시 문자열. 텍스처 블록이 0개면 「정의불가」다.
+
+    .DESCRIPTION
+        0 을 내면 「텍스처가 있는데 아주 평평하다」와 「텍스처 블록이 아예 없다」가
+        같은 숫자가 된다. 그 둘은 완전히 다른 상태이므로 같은 칸에 넣지 않는다.
+        CSV 에는 빈 칸으로 쓴다 — 숫자 열에 0 을 넣으면 집계에 섞인다.
+    #>
+    param($Value, [int] $Count)
+    if ($Count -le 0) { return '정의불가' }
+    if ($null -eq $Value) { return '정의불가' }
+    if ([double]::IsNaN([double]$Value)) { return '정의불가' }
+    return ('{0:F2}' -f [double]$Value)
+}
+
 function Get-CaptureMedian {
     <#
     .SYNOPSIS
