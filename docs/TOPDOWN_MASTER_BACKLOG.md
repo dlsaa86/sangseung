@@ -1693,13 +1693,13 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 ### UP-TEST-06 — 디버그 패널
 - 분류: Required · 출처: PRD §4.1, N08 §17 「개발 빌드에서만 기본 활성화」
-- 상태: CONNECTED · 패스: P1 P2
-- 구현: `Scripts/UI/DebugPanelView.cs`
-- 접근: F1
-- 검증: `Logs/tenfloor_playmode.txt` 씬 배선 검사
-- 증거: `Logs/tenfloor_playmode.txt`
+- 상태: VERIFIED · 패스: P1 P2
+- 구현: `Scripts/UI/DebugPanelView.cs` (`DebugToolsAllowed` → `Start()`·`Update()`)
+- 접근: F1 (에디터·개발 빌드). 씬에 컴포넌트 1개 배선
+- 검증: `Ascend/Run All EditMode Tests` → 배선 진단 「에디터에서 디버그 도구가 허용된다」·「릴리스 가드가 Start 와 Update 둘 다에 걸려 있다」
+- 증거: `Logs/editmode_tests.txt` (2026-08-02 13:41 · 444 PASS / 0 FAIL), `.claude/state/last-selftest.txt` (463 PASS / 0 FAIL)
 - 의존: UP-RUN-05
-- 남은 문제: `Scripts/UI/DebugPanelView.cs` 에 `#if UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild` 가 **하나도 없다.** 릴리스 빌드에서 F1 이 그대로 열린다 — N08 §17 「개발 빌드에서만 기본 활성화」 미충족
+- 남은 문제: **직전 판본의 「가드가 하나도 없다」는 낡은 기록이었다 (2026-08-02 실측 정정).** `DebugPanelView.cs:103` 에 `DebugToolsAllowed => Debug.isDebugBuild` 가 있고 **두 진입점이 그것을 본다** — `Start()` 가 릴리스에서 `SetVisible(false)` 로 「기본 활성화」를 막고(인스펙터에서 켜 둔 채 빌드해도 안 뜬다), `Update()` 가 F1·R·T·L 입력을 통째로 막는다. 조건부 컴파일(`#if`)이 아니라 런타임 조건인 이유는 `HeroSliceAutoPilot`·`HeroSlicePerfProbe` 가 이 타입을 `FindAnyObjectByType` 로 참조해서 타입이 사라지면 하네스가 깨지기 때문이다. `Debug.isDebugBuild` 는 에디터에서 참이라 하네스는 그대로 돈다. **증거 다리가 비어 있어서 단정 2건을 새로 붙였다** — 승격 전에는 이 요구를 검사하는 테스트가 한 건도 없었다. 릴리스 동작 자체는 에디터에서 재현할 수 없으므로(에디터에서 `isDebugBuild` 는 항상 참) 검사는 둘로 나뉜다: ① 에디터에서 허용이 참이라 하네스가 돈다 ② 가드가 두 진입점에 실제로 걸려 있다(원본 텍스트를 중괄호 균형으로 잘라 확인). ②를 텍스트로 보는 이유는 **그것이 제거돼도 에디터 동작이 하나도 안 바뀌어 조용히 통과하는 유일한 결함**이기 때문이다
 
 ### UP-TEST-07 — 밸런스 프로브 (시드 대량 시뮬레이션)
 - 분류: Required · 출처: PRD §15.3 「측정 가능한 차이 없이 무작정 반복하지 않는다」, §16.3

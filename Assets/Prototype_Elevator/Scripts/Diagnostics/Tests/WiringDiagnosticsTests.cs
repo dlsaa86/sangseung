@@ -41,6 +41,8 @@ namespace Ascend.Prototype.Diagnostics.Tests
             Run("null 인스턴스를 넘겨도 터지지 않는다", TestNullInstanceIsSafe, ref passed, ref failed, report);
             Run("씬 로드 직후 자동 실행 진입점이 존재한다", TestAutoEntryPointExists, ref passed, ref failed, report);
             Run("플레이어 3종에 필수 표시가 남아 있다", TestPlayerComponentsStayMarked, ref passed, ref failed, report);
+            Run("에디터에서 디버그 도구가 허용된다", TestDebugToolsAllowedInEditor, ref passed, ref failed, report);
+            Run("릴리스 가드가 Start 와 Update 둘 다에 걸려 있다", TestDebugPanelGuardsBothEntryPoints, ref passed, ref failed, report);
 
             report.Insert(0, "[상승] === Diagnostics (필수 참조 배선) Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
@@ -332,6 +334,77 @@ namespace Ascend.Prototype.Diagnostics.Tests
         }
 
         private static string Join(List<WiringDefect> defects)
+        {
+            return DescribeDefectsCore(defects);
+        }
+
+        // ── 디버그 패널의 릴리스 가드 (`UP-TEST-06` · N08 §17) ────────────────
+        //
+        // 요구는 「**개발 빌드에서만** 기본 활성화」다. 한때 이 파일에는
+        // `UNITY_EDITOR`·`DEVELOPMENT_BUILD`·`Debug.isDebugBuild` 가 하나도 없어서
+        // 릴리스에서 F1 이 시드 재시작(R)·시드 입력(T)·스핀 로그(L)까지 열었다.
+        // 지금은 `DebugToolsAllowed` 가 있고 두 진입점이 그것을 본다.
+        //
+        // **릴리스 동작 자체는 에디터에서 재현할 수 없다** — `Debug.isDebugBuild` 는
+        // 에디터에서 항상 참이다. 그래서 검사할 수 있는 것은 두 가지뿐이다:
+        // ① 에디터에서 허용이 참이라 하네스가 돈다 ② 가드가 두 진입점에 실제로 걸려 있다.
+        // ②를 원본 텍스트로 보는 이유는 그것이 **제거되면 조용히 통과할 수 있는**
+        // 유일한 결함이기 때문이다 — 지우면 에디터 동작은 하나도 안 바뀐다.
+
+        private static string TestDebugToolsAllowedInEditor()
+        {
+            if (!Ascend.Prototype.UI.DebugPanelView.DebugToolsAllowed)
+                return "에디터에서 디버그 도구가 막혔다 — HeroSliceAutoPilot 등 하네스가 이 타입에 의존한다";
+            return null;
+        }
+
+        private static string TestDebugPanelGuardsBothEntryPoints()
+        {
+            const string relative = "Assets/Prototype_Elevator/Scripts/UI/DebugPanelView.cs";
+            var root = System.IO.Directory.GetParent(Application.dataPath);
+            string path = root == null ? relative
+                : System.IO.Path.Combine(root.FullName,
+                    relative.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            if (!System.IO.File.Exists(path)) return $"{relative} 가 없다";
+
+            string src = System.IO.File.ReadAllText(path);
+            if (!src.Contains("Debug.isDebugBuild"))
+                return "DebugToolsAllowed 가 Debug.isDebugBuild 에서 오지 않는다 — 상수로 굳으면 릴리스에서 열린다";
+
+            string start = BodyOf(src, "private void Start()");
+            if (start == null) return "Start() 를 못 찾았다";
+            if (!start.Contains("DebugToolsAllowed"))
+                return "Start() 가 가드를 보지 않는다 — 인스펙터에서 켜 둔 채 빌드하면 릴리스에서 처음부터 떠 있다";
+
+            string update = BodyOf(src, "private void Update()");
+            if (update == null) return "Update() 를 못 찾았다";
+            if (!update.Contains("DebugToolsAllowed"))
+                return "Update() 가 가드를 보지 않는다 — 릴리스에서 F1·R·T·L 이 살아 있다";
+            return null;
+        }
+
+        /// <summary>중괄호 균형으로 메서드 본문을 잘라낸다. 못 찾으면 null.</summary>
+        private static string BodyOf(string source, string signature)
+        {
+            int at = source.IndexOf(signature, StringComparison.Ordinal);
+            if (at < 0) return null;
+            int open = source.IndexOf('{', at);
+            if (open < 0) return null;
+
+            int depth = 0;
+            for (int i = open; i < source.Length; i++)
+            {
+                if (source[i] == '{') depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0) return source.Substring(open, i - open + 1);
+                }
+            }
+            return null;
+        }
+
+        private static string DescribeDefectsCore(IReadOnlyList<WiringDefect> defects)
         {
             if (defects == null || defects.Count == 0) return "(결함 없음)";
             var sb = new StringBuilder();
