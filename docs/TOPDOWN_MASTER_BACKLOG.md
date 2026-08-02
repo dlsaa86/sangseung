@@ -1492,7 +1492,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 검증: `TenFloorAutoPilot` → 「오디오가 AudioMixProfile 을 읽는다」
 - 증거: `Logs/tenfloor_playmode.txt`
 - 의존: UP-AUD-01
-- 남은 문제: `AudioMixProfile` 주입은 검증됐다(폴백이면 「인스펙터 슬라이더」로 찍히므로 통과하지 않는다). **요구의 나머지 절반인 오디오 압축 구분이 0건이다** — `.preset` 파일 0개, `AudioImporter`/`compressionFormat`/`loadType` 참조 0건, 프로파일에 압축 필드 없음
+- 남은 문제: `AudioMixProfile` 주입은 검증됐다(폴백이면 「인스펙터 슬라이더」로 찍히므로 통과하지 않는다). ~~**요구의 나머지 절반인 오디오 압축 구분이 0건이다** — `.preset` 파일 0개, `AudioImporter`/`compressionFormat`/`loadType` 참조 0건, 프로파일에 압축 필드 없음~~ → **셋 중 둘이 사실이 아니다 (2026-08-02 실측 정정).** `AudioImporter` 참조 **1**개 · `compressionFormat` **1**개 · `loadType` **3**개 · `AudioMixProfile.cs:73` 에 `_audioImportRules` **필드가 있다**(`:104` 에서 `AudioImportRuleSet.Presets()` 로 채우고 `:116` 이 규칙 집합을 만든다). `Logs/import_rules.txt` 가 세 갈래를 이미 찍는다 — ShortEffect `DecompressOnLoad`/Adpcm/1.00/모노강제 · Loop `CompressedInMemory`/Vorbis/0.50/모노유지 · Voice `Streaming`/Vorbis/0.70/모노강제. 「이름만 셋이고 값이 같아지는 회귀」와 「PCM 이 어느 갈래의 기본값도 아니다」(PRD §13.4)를 단정이 잡는다. **`.preset` 0개는 사실이지만 의도된 것이다** — `UP-PLAT-05` 에 「`.preset` 은 직렬화 에셋이라 이 저장소에서 조용히 깨지는 부류라 만들지 않고 `AssetPostprocessor` 로 대신했다」고 적혀 있다. **진짜 남은 것 하나**: 관할 루트 아래 **오디오 클립이 0개**라 `OnPreprocessAudio` 가 한 번도 실행된 적이 없다. 「규칙이 있다」와 「적용됐다」의 구분이고, 클립이 들어오면 그때 관측된다(`UP-PLAT-05` 와 같은 뿌리 — 텍스처 쪽은 18개가 되어 이미 넘어갔다)
 
 ## 2.14 TECH — 엔지니어링 목표
 
