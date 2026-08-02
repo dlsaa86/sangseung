@@ -292,6 +292,83 @@ namespace Ascend.Prototype.EditorTools
             report?.AppendLine($"  {rp.name}.colorGradingMode {(ColorGradingMode)before} → HighDynamicRange");
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        //  조명 — 그림자 예산이 통째로 낭비되고 있었다
+        //
+        //  `PC_RPAsset` 은 4캐스케이드 · 2048 shadowmap · High Soft Shadow 를 전부 켜 두고
+        //  있는데, 씬의 `Directional Light` 는 `m_Shadows.m_Type: 0` — **그림자를 안 만든다.**
+        //  실제로 그림자를 드리우던 것은 range 7 짜리 `CabinLight` 포인트 라이트 하나뿐이다.
+        //
+        //  이것이 두 축을 동시에 막고 있었다.
+        //   · G-2 — 가려진 곳이 어두워지지 않으니 휘도 5퍼센타일이 바닥에서 뜬다
+        //   · G-4 — 셰이더 레인의 실측: 주광 그림자가 꺼져 있어 `atten = pow(1, 2.5) = 1`,
+        //           그래서 `_FalloffPower` 가 **주광에 대해 죽은 손잡이**였다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 주광 세기. 실내라서 방향광이 벽을 균일하게 때리면 위험 연출이 죽는다 —
+        /// 주역은 실용 광원(천장등·계기 발광·통관)이고 방향광은 형태를 세우는 보조다.
+        /// </summary>
+        public const float SunIntensity = 0.55f;
+        public const float SunShadowStrength = 0.85f;
+
+        /// <summary>
+        /// 씬 앰비언트 배율. **줄이는 것이 목적이지 0 이 목적이 아니다.**
+        ///
+        /// ⚠ 이 값은 위험 연출과 직접 얽혀 있다. `RiskStateView.ApplyAmbient` 가
+        /// 씬의 `RenderSettings.ambientLight` 를 `_originalAmbient` 로 붙잡고
+        /// `RiskAmbientLadder.CeilingFor(baseAmbient, ...)` 로 4단계 사다리의 **천장**을
+        /// 계산한다. 너무 낮추면 `BandIsSufficient` 가 깨져 단계 간격이 하한에 눌리고,
+        /// 그러면 **좌벽 ΔL 회귀 감시선(≥ 15)이 무너진다.**
+        /// 그래서 절반 조금 아래까지만 내리고 캡처로 확인한다.
+        /// </summary>
+        public const float AmbientScale = 0.55f;
+
+        /// <summary>앰비언트 원본. 배율이 아니라 **절대값**으로 둔다 — 두 번 돌려도 같아야 한다.</summary>
+        public static readonly Color AmbientBase = new Color(0.260f, 0.270f, 0.310f, 1f);
+
+        [MenuItem("Ascend/Graphics/Build Lighting")]
+        public static void BuildLighting()
+        {
+            if (EditorApplication.isPlaying)
+            { Debug.LogError("[상승] Play 모드에서는 씬을 고치지 않는다."); return; }
+
+            Scene scene = EnsureScene();
+            if (!scene.IsValid()) return;
+
+            var report = new StringBuilder("[상승] 조명 재설계\n");
+
+            foreach (Light l in Object.FindObjectsByType<Light>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (l.type != LightType.Directional) continue;
+                Undo.RecordObject(l, "Build lighting");
+                LightShadows beforeShadows = l.shadows;
+                float beforeIntensity = l.intensity;
+
+                // **절대값으로 준다.** 「지금 값의 절반」 같은 델타를 쓰면 두 번 돌릴 때
+                // 계속 어두워진다 — `Reproportion Elevator Car` 가 그렇게 계기판을 밀었다.
+                l.shadows        = LightShadows.Soft;
+                l.shadowStrength = SunShadowStrength;
+                l.intensity      = SunIntensity;
+                EditorUtility.SetDirty(l);
+
+                report.AppendLine($"  {l.gameObject.name} — shadows {beforeShadows} → {l.shadows} " +
+                                  $"(strength {l.shadowStrength:F2}) · intensity {beforeIntensity:F2} → {l.intensity:F2}");
+            }
+
+            Color ambient = AmbientBase * AmbientScale;
+            ambient.a = 1f;
+            report.AppendLine($"  앰비언트 {RenderSettings.ambientLight.ToString("F3")} → {ambient.ToString("F3")} " +
+                              $"(원본 {AmbientBase.ToString("F3")} × {AmbientScale:F2}) · 모드 {RenderSettings.ambientMode}");
+            RenderSettings.ambientLight = ambient;
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            report.AppendLine("  ⚠ 위험 4단계 좌벽 ΔL 은 **캡처로 확인해야 한다** — " +
+                              "앰비언트는 `RiskAmbientLadder` 의 천장이라 여기를 내리면 단계 간격이 함께 줄어든다.");
+            Debug.Log(report.ToString());
+        }
+
         // ── AA A/B ──────────────────────────────────────────────────────────
 
         [MenuItem("Ascend/Graphics/Antialiasing - None")]

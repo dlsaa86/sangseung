@@ -20,7 +20,7 @@ RenderSettings:
   m_FogDensity: 0.01
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.26, g: 0.27, b: 0.31, a: 1}
+  m_AmbientSkyColor: {r: 0.14299999, g: 0.14850001, b: 0.17050001, a: 1}
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1
@@ -1849,8 +1849,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 0.12500006, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -1964,7 +1964,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.23899984, g: 0.2669998, b: 0.24699983, a: 1}
+    - _BaseColor: {r: 0.82352054, g: 0.92, b: 0.85108614, a: 1}
     - _Color: {r: 0.23899984, g: 0.2669998, b: 0.24699983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -3924,9 +3924,6 @@ MonoBehaviour:
   _poolSize: 28
   _barThickness: 0.045
   _surfaceOffset: 0.12
-  _lineOverhang: 0.16
-  _shutterSpan: 0.78
-  _shutterOpenGap: 0.34
   _sealedThickness: 2.1
   _sealedEmission: 0.35
   _sealedTint: {r: 0.3, g: 0.32, b: 0.35, a: 1}
@@ -4420,8 +4417,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 1.6, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -4535,7 +4532,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.25899985, g: 0.28599986, b: 0.2669998, a: 1}
+    - _BaseColor: {r: 0.8331468, g: 0.92, b: 0.85888094, a: 1}
     - _Color: {r: 0.25899985, g: 0.28599986, b: 0.2669998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -4567,8 +4564,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: d22980af39b7bd1468be9cd221104daf, type: 3}
+        m_Scale: {x: 1.2, y: 1.2800001}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -4682,7 +4679,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.0859999, g: 0.093999825, b: 0.08999988, a: 1}
+    - _BaseColor: {r: 0.34765983, g: 0.38, b: 0.36383006, a: 1}
     - _Color: {r: 0.0859999, g: 0.093999825, b: 0.08999988, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -5377,8 +5374,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 994ab29e238950c47bf1e3cc3cdd2d6f, type: 3}
+        m_Scale: {x: 0.12, y: 3.8}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -5492,7 +5489,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.29799986, g: 0.31799984, b: 0.3019998, a: 1}
+    - _BaseColor: {r: 0.84339625, g: 0.9, b: 0.85471684, a: 1}
     - _Color: {r: 0.29799986, g: 0.31799984, b: 0.3019998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -7549,8 +7546,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 0519f9347e7fe3044af3382f21ae8149, type: 3}
+        m_Scale: {x: 0.5, y: 0.57500005}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -7664,7 +7661,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.19199985, g: 0.21599984, b: 0.19999984, a: 1}
+    - _BaseColor: {r: 0.8444444, g: 0.95, b: 0.87962955, a: 1}
     - _Color: {r: 0.19199985, g: 0.21599984, b: 0.19999984, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -9138,16 +9135,16 @@ Light:
   serializedVersion: 13
   m_Type: 1
   m_Color: {r: 1, g: 0.97, b: 0.92, a: 1}
-  m_Intensity: 1.15
+  m_Intensity: 0.55
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
   m_CookieSize2D: {x: 0.5, y: 0.5}
   m_Shadows:
-    m_Type: 0
+    m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
-    m_Strength: 1
+    m_Strength: 0.85
     m_Bias: 0.05
     m_NormalBias: 0.4
     m_NearPlane: 0.2
@@ -9824,6 +9821,7 @@ MonoBehaviour:
   _overharvestProfile: {fileID: 11400000, guid: 10290f4e04a23504ba1a506b334c0e00, type: 2}
   _anteRatio: 0.12
   _anteEscalation: 0.35
+  _weightProfile: {fileID: 0}
 --- !u!4 &998528528
 Transform:
   m_ObjectHideFlags: 0
@@ -11275,7 +11273,7 @@ RenderTexture:
   m_TextureSettings:
     serializedVersion: 2
     m_FilterMode: 1
-    m_Aniso: 1
+    m_Aniso: 0
     m_MipBias: 0
     m_WrapU: 1
     m_WrapV: 1
@@ -11437,8 +11435,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 00c915ed88ad89446a7fb3e1d57565ce, type: 3}
+        m_Scale: {x: 1.4000001, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -11552,7 +11550,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.2349998, g: 0.26299983, b: 0.24299985, a: 1}
+    - _BaseColor: {r: 0.8220531, g: 0.92, b: 0.85003805, a: 1}
     - _Color: {r: 0.2349998, g: 0.26299983, b: 0.24299985, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -12304,7 +12302,8 @@ Material:
   m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
+  m_ValidKeywords:
+  - _EMISSIONMAP_ON
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -12318,8 +12317,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 46ce0e647c479fa4592767e7a3b0b23a, type: 3}
+        m_Scale: {x: 0.24000007, y: 1.02}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -12342,8 +12341,8 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _EmissionMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: ae042fe9cce60394a92fbc77c58cd8c0, type: 3}
+        m_Scale: {x: 0.24000007, y: 1.02}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
         m_Texture: {fileID: 0}
@@ -12402,7 +12401,7 @@ Material:
     - _DitherStrength: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
-    - _EmissionMapEnabled: 0
+    - _EmissionMapEnabled: 1
     - _EnvironmentReflections: 1
     - _FalloffPower: 2.5
     - _GlossMapScale: 0
@@ -12433,7 +12432,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.27799982, g: 0.26299983, b: 0.23099983, a: 1}
+    - _BaseColor: {r: 0.9, g: 0.8514388, b: 0.7478416, a: 1}
     - _Color: {r: 0.27799982, g: 0.26299983, b: 0.23099983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -12813,8 +12812,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 1.6, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -12928,7 +12927,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.25899985, g: 0.28599986, b: 0.2669998, a: 1}
+    - _BaseColor: {r: 0.8331468, g: 0.92, b: 0.85888094, a: 1}
     - _Color: {r: 0.25899985, g: 0.28599986, b: 0.2669998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -14786,8 +14785,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 6e32df36ec2dad9448aa10a723e03e0e, type: 3}
+        m_Scale: {x: 3, y: 3.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -14901,7 +14900,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.105999835, g: 0.11399985, b: 0.10999983, a: 1}
+    - _BaseColor: {r: 0.41842088, g: 0.45, b: 0.43421036, a: 1}
     - _Color: {r: 0.105999835, g: 0.11399985, b: 0.10999983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -17318,8 +17317,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 994ab29e238950c47bf1e3cc3cdd2d6f, type: 3}
+        m_Scale: {x: 0.9, y: 0.12}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -17433,7 +17432,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.29799986, g: 0.31799984, b: 0.3019998, a: 1}
+    - _BaseColor: {r: 0.84339625, g: 0.9, b: 0.85471684, a: 1}
     - _Color: {r: 0.29799986, g: 0.31799984, b: 0.3019998, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -18060,8 +18059,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 0.77500004, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -18175,7 +18174,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.23899984, g: 0.2669998, b: 0.24699983, a: 1}
+    - _BaseColor: {r: 0.82352054, g: 0.92, b: 0.85108614, a: 1}
     - _Color: {r: 0.23899984, g: 0.2669998, b: 0.24699983, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -19021,8 +19020,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 14aab5a7245b8fa48a6a91dffda11b6b, type: 3}
+        m_Scale: {x: 1.4000001, y: 1.6}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -19136,7 +19135,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.14499983, g: 0.16099983, b: 0.15299985, a: 1}
+    - _BaseColor: {r: 0.79254645, g: 0.88, b: 0.8362733, a: 1}
     - _Color: {r: 0.14499983, g: 0.16099983, b: 0.15299985, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
@@ -19168,8 +19167,8 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 25b83c70413b15244bdd01fb4d389107, type: 3}
+        m_Scale: {x: 2.1000001, y: 2.4}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -19283,7 +19282,7 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.24299985, g: 0.21599984, b: 0.18399984, a: 1}
+    - _BaseColor: {r: 0.9, g: 0.79999983, b: 0.68148124, a: 1}
     - _Color: {r: 0.24299985, g: 0.21599984, b: 0.18399984, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
