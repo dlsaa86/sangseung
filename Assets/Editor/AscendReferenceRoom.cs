@@ -235,6 +235,33 @@ namespace Ascend.Prototype.EditorTools
             if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", 1f);
             if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 1f);
 
+            // ── 유리는 **투명이어야 한다** ──────────────────────────────────
+            //
+            // ⚠ 이 블록이 없으면 관찰창 유리가 불투명이 되어 **영혼 구슬을 통째로
+            // 가린다.** URP/Lit 으로 옮기면서 실제로 그렇게 됐고, 화면에서 아홉 창이
+            // 전부 빈 회색 원으로 보였다. 한 번 손으로 고쳤는데 다음 조립에서 되돌아갔다 —
+            // **조립기가 정본이므로 조립기가 알아야 한다.**
+            if (key == "Glass")
+            {
+                m.SetFloat("_Surface", 1f);   // Transparent
+                m.SetFloat("_Blend", 0f);     // Alpha
+                m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                m.SetFloat("_ZWrite", 0f);
+                m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                color.a = 0.34f;              // 구슬이 비치되 유리가 있다는 것은 읽힌다
+            }
+            else
+            {
+                m.SetFloat("_Surface", 0f);
+                m.SetFloat("_ZWrite", 1f);
+                m.renderQueue = -1;
+                m.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                color.a = 1f;
+            }
+
             // **항상 전 필드를 다시 쓴다.** 재사용하되 상태는 새로 만든 것과 같아야 한다.
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
 
@@ -501,11 +528,18 @@ namespace Ascend.Prototype.EditorTools
             Light light = lightGo.AddComponent<Light>();
             light.type = LightType.Point;
             light.color = ReferenceRoomSpec.CageLampColor;
-            light.intensity = 1.5f;
-            // 사거리는 방 대각선보다 짧게 — 명세 §11 「벽 모서리와 선반 아래는 거의 검게」.
-            light.range = 4.2f;
+            // ⚠ 실측으로 정해진 값이다. `RiskStateView._baseLightIntensity` 도 배선기가
+            // 같은 값으로 묶는다 — 안 묶으면 플레이 모드에서만 어두워진다.
+            light.intensity = 5.4f;
+            // 사거리는 방 대각선(약 5.4m)보다 짧게 — 명세 §11 「벽 모서리는 거의 검게」.
+            light.range = 4.4f;
             light.shadows = LightShadows.Soft;
             light.shadowStrength = 0.9f;
+
+            // 앰비언트는 **거의 0** 이다. 어둠은 조명이 만들어야 하고,
+            // 앰비언트로 들어 올리면 명세 §11 「벽 모서리와 선반 아래는 거의 검게」가 무너진다.
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.030f, 0.026f, 0.021f, 1f);
 
             _report.AppendLine($"  {CeilingLampName} — 케이지 지름 {dia} · 높이 {hgt} · 필라멘트 y={ReferenceRoomSpec.CageLampFilament.y:F2} " +
                                $"· 보강빔 {beams}개");
@@ -827,19 +861,33 @@ namespace Ascend.Prototype.EditorTools
             float prot = ReferenceRoomSpec.WindowProtrusion;
             float uv = ReferenceRoomSpec.HeroUvPerMeter;
 
-            // 링 — 바깥 반지름과 안쪽 반지름 사이의 고리를 사각 단면 밴드 12개로.
+            // ── 링 ────────────────────────────────────────────────────────────
+            // 사용자 지적: 「통관 디자인도 너무 대충」. 직전 판본은 **평평한 고리 하나**
+            // 였고, 그러면 벽에 그린 원과 구분되지 않는다. 실제 현창의 실루엣은
+            // **바깥 플랜지 · 안쪽 베젤 · 그 사이의 단** 셋이 겹쳐 만들어진다.
             var rb = new ProcMeshBuilder();
+            float rMid = (rGlass + rRing) * 0.5f;
+
             for (int i = 0; i < sides; i++)
             {
-                float a0 = i * Mathf.PI * 2f / sides;
-                float a1 = (i + 1) * Mathf.PI * 2f / sides;
-                float am = (a0 + a1) * 0.5f;
-                float segLen = 2f * Mathf.Tan(Mathf.PI / sides) * ((rGlass + rRing) * 0.5f);
-                var center = new Vector3(Mathf.Cos(am) * (rGlass + rRing) * 0.5f,
-                                         Mathf.Sin(am) * (rGlass + rRing) * 0.5f,
-                                         -prot * 0.5f);
+                float am = (i + 0.5f) * Mathf.PI * 2f / sides;
+                float cos = Mathf.Cos(am), sin = Mathf.Sin(am);
                 Quaternion rot = Quaternion.Euler(0f, 0f, am * Mathf.Rad2Deg + 90f);
-                rb.AddBox(center, new Vector3(segLen, rRing - rGlass, prot), rot, 0f, uv);
+
+                // ① 바깥 플랜지 — 벽에 붙는 넓고 낮은 테
+                float segOuter = 2f * Mathf.Tan(Mathf.PI / sides) * rRing;
+                rb.AddBox(new Vector3(cos * rRing * 0.94f, sin * rRing * 0.94f, -prot * 0.22f),
+                          new Vector3(segOuter, (rRing - rGlass) * 0.55f, prot * 0.44f), rot, 0f, uv);
+
+                // ② 안쪽 베젤 — 유리를 무는 좁고 높은 테. 앞으로 더 나온다.
+                float segInner = 2f * Mathf.Tan(Mathf.PI / sides) * rMid;
+                rb.AddBox(new Vector3(cos * rMid, sin * rMid, -prot * 0.74f),
+                          new Vector3(segInner, (rRing - rGlass) * 0.62f, prot * 0.56f), rot, 0f, uv);
+
+                // ③ 두 테를 잇는 경사 단 — 이것이 두께를 만든다
+                float segStep = 2f * Mathf.Tan(Mathf.PI / sides) * (rMid + rRing) * 0.5f;
+                rb.AddBox(new Vector3(cos * (rMid + rRing) * 0.5f, sin * (rMid + rRing) * 0.5f, -prot * 0.5f),
+                          new Vector3(segStep, (rRing - rGlass) * 0.34f, prot * 0.30f), rot, 0f, uv);
             }
             ring = SaveMesh(rb.ToMesh("SoulWindowRing"), "SoulWindowRing");
 
@@ -878,12 +926,20 @@ namespace Ascend.Prototype.EditorTools
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             Material m = existing ?? new Material(P("RedPaint")) { name = $"RM_{key}" };
 
-            // 0.72 ~ 1.08 배. 명세가 요구하는 「빛의 세기를 조금씩 다르게」의 폭이다.
-            float k = 0.72f + ProcMeshBuilder.Hash01(seed * 641 + 29) * 0.36f;
-            m.SetColor("_BaseColor", ReferenceRoomSpec.SoulEmission * 0.35f);
-            // 세기 1.15 는 블룸 임계(0.80)를 조금 넘는 값이다. 더 올리면 명세 §11
-            // 「강한 블룸」 금지와 「주변을 강하게 밝히지 않는다」에 걸린다.
-            m.SetColor("_EmissionColor", ReferenceRoomSpec.SoulEmission * (1.15f * k));
+            // ⚠ **이 값들은 실측으로 정해졌다. 되돌리지 않는다.**
+            //
+            // 발광을 ×3.6 으로 줬더니 톤매핑이 채널을 전부 포화시켜 **색상 정보가
+            // 사라졌다** — 구슬이 붉지 않고 **흰색**으로 보였고 붉은 화소가 0.13% 였다.
+            // ×1.05 로 내리자 0.91% 로 올랐다. HDR 발광은 세게 줄수록 붉어지는 게
+            // 아니라 **희어진다.** 1 을 살짝 넘겨 블룸만 걸리고 포화는 안 되는 값이다.
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit != null) m.shader = lit;
+            m.SetFloat("_Smoothness", 0.55f);
+            m.SetFloat("_Metallic", 0f);
+
+            float k = 0.80f + (seed % 3) * 0.12f;
+            m.SetColor("_BaseColor", new Color(0.22f, 0.02f, 0.01f, 1f));
+            m.SetColor("_EmissionColor", new Color(1.00f, 0.11f, 0.04f) * (1.05f * k));
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
 
@@ -934,24 +990,74 @@ namespace Ascend.Prototype.EditorTools
             pivot.transform.localPosition = new Vector3(0f, ReferenceRoomSpec.LeverPivotY, -cd);
 
             float armLen = ReferenceRoomSpec.LeverHandleLength - ReferenceRoomSpec.LeverGripLength;
+            // ── 손잡이 조립체 ────────────────────────────────────────────────
+            // 사용자 지적: 「레버의 디자인이 너무 그냥 박스 형태」.
+            // 실제 산업용 레버의 실루엣은 **축 보스 · 클레비스(포크) · 각진 팔 ·
+            // 홈이 파인 그립** 넷으로 읽힌다. 상자 하나로는 어느 쪽이 축인지도 안 보인다.
             var hb = new ProcMeshBuilder();
-            // 회전축 보스
-            hb.AddPrism(Vector3.zero, 0.030f, 0.030f, 0.052f, 8, MeshAxis.Z, 0f, true, true, false, uv);
-            // 팔 — 축에서 앞으로 뻗는다(로컬 −Z 가 실내 쪽).
-            hb.AddBox(new Vector3(0f, 0f, -armLen * 0.5f - 0.02f), new Vector3(0.026f, 0.026f, armLen), 0f, uv);
+
+            // ① 회전축 보스 — 굵은 원통 + 바깥 플랜지. 「여기가 축이다」를 형상으로 말한다.
+            hb.AddPrism(Vector3.zero, 0.034f, 0.034f, 0.058f, 10, MeshAxis.Z, 0f, true, true, false, uv);
+            hb.AddPrism(new Vector3(0f, 0f, -0.034f), 0.048f, 0.040f, 0.014f, 10, MeshAxis.Z, 0f, true, true, false, uv);
+            // 보스 둘레 볼트 넷
+            for (int i = 0; i < 4; i++)
+            {
+                float a = (i + 0.5f) * Mathf.PI * 0.5f;
+                hb.AddPrism(new Vector3(Mathf.Cos(a) * 0.040f, Mathf.Sin(a) * 0.040f, -0.044f),
+                            0.008f, 0.007f, 0.010f, 6, MeshAxis.Z, 0f, true, true, false, uv);
+            }
+
+            // ② 클레비스 — 보스를 감싸는 두 갈래 포크. 팔이 축에 **물려 있다**를 만든다.
+            for (int s = -1; s <= 1; s += 2)
+            {
+                hb.AddBox(new Vector3(0f, s * 0.030f, -0.055f), new Vector3(0.020f, 0.016f, 0.075f), 0f, uv);
+            }
+
+            // ③ 팔 — 단면이 세로로 긴 각재. 정사각 단면은 방향이 안 읽힌다.
+            hb.AddBox(new Vector3(0f, 0f, -armLen * 0.5f - 0.055f),
+                      new Vector3(0.020f, 0.034f, armLen), 0f, uv);
+            // 팔 중간 보강 리브
+            hb.AddBox(new Vector3(0f, 0f, -armLen * 0.5f - 0.055f),
+                      new Vector3(0.030f, 0.012f, armLen * 0.55f), 0f, uv);
+
+            // ④ 그립 목 — 팔에서 그립으로 넘어가는 테이퍼. 이게 없으면 그립이 떠 보인다.
+            hb.AddPrism(new Vector3(0f, 0f, -armLen - 0.045f), 0.017f, 0.026f, 0.038f,
+                        8, MeshAxis.Z, 0f, true, true, false, uv);
             Mesh armMesh = SaveMesh(hb.ToMesh("LeverArm"), "LeverArm");
             var arm = new GameObject("Arm");
             arm.transform.SetParent(pivot.transform, false);
             Render(arm, armMesh, "BareSteel");
 
             // 붉은 원통 그립. 명세 §5 「칠이 벗겨진 어두운 적색 도장 · 8각 이하」.
+            // 원통 하나가 아니라 **홈이 파인 손잡이**로 만든다. 손이 닿는 물건은
+            // 미끄럼 방지 홈이 있고, 그 홈이 실루엣에서 「잡는 것」이라고 말한다.
             var gb = new ProcMeshBuilder();
-            gb.AddPrism(Vector3.zero, ReferenceRoomSpec.LeverGripDiameter * 0.5f, ReferenceRoomSpec.LeverGripDiameter * 0.5f,
-                        ReferenceRoomSpec.LeverGripLength, ReferenceRoomSpec.LeverGripSides, MeshAxis.Z, 0f, true, true, false, uv);
+            float gr = ReferenceRoomSpec.LeverGripDiameter * 0.5f;
+            int gs = ReferenceRoomSpec.LeverGripSides;
+            float gl = ReferenceRoomSpec.LeverGripLength;
+
+            // 뒤쪽 칼라(손이 미끄러져 빠지지 않게 하는 턱)
+            gb.AddPrism(new Vector3(0f, 0f, gl * 0.5f - 0.012f), gr * 1.45f, gr * 1.45f, 0.016f,
+                        gs, MeshAxis.Z, 0f, true, true, false, uv);
+
+            // 본체를 다섯 마디로 나누고 마디마다 굵기를 번갈아 — 홈이 생긴다.
+            const int knurls = 5;
+            float seg = (gl - 0.030f) / knurls;
+            for (int i = 0; i < knurls; i++)
+            {
+                float z = gl * 0.5f - 0.024f - seg * (i + 0.5f);
+                float r = (i % 2 == 0) ? gr : gr * 0.80f;
+                gb.AddPrism(new Vector3(0f, 0f, z), r, r, seg, gs, MeshAxis.Z,
+                            (i % 2) * (180f / gs), true, true, false, uv);
+            }
+
+            // 앞쪽 마감 캡 — 둥근 끝. 잘린 원통은 「부러진 것」으로 보인다.
+            gb.AddPrism(new Vector3(0f, 0f, -gl * 0.5f + 0.008f), gr * 1.18f, gr * 0.55f, 0.026f,
+                        gs, MeshAxis.Z, 0f, true, true, false, uv);
             Mesh gripMesh = SaveMesh(gb.ToMesh("LeverGrip"), "LeverGrip");
             var grip = new GameObject("Grip");
             grip.transform.SetParent(pivot.transform, false);
-            grip.transform.localPosition = new Vector3(0f, 0f, -armLen - ReferenceRoomSpec.LeverGripLength * 0.5f - 0.02f);
+            grip.transform.localPosition = new Vector3(0f, 0f, -armLen - gl * 0.5f - 0.055f);
             Render(grip, gripMesh, "RedPaint");
 
             // ── 반동 ──

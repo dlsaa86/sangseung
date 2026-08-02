@@ -283,6 +283,40 @@ namespace Ascend.Prototype.EditorTools
             var impact = root.GetComponent<View.MachineImpactView>();
             if (impact == null) impact = root.AddComponent<View.MachineImpactView>();
 
+            // ── 릴 ──
+            // 사용자 요청: 「레버를 내리면 통관을 통해서 구슬이 위에서 아래로
+            // 흘렀다가 멈추는(슬롯머신처럼) 연출」.
+            //
+            // ⚠ **형상이 아니라 움직임만 릴이다.** 명세 §13 의 「슬롯머신처럼 보이는
+            // 장식 금지」는 형상(세로 릴 창·열로 뭉치는 배치)에 걸린 것이고, 창은
+            // 여전히 등방 3×3 격자다. 구슬은 **각자의 원형 창 안에서만** 흐른다.
+            var reel = root.GetComponent<View.SoulReelView>();
+            if (reel == null) reel = root.AddComponent<View.SoulReelView>();
+
+            var rso2 = new SerializedObject(reel);
+            SerializedProperty souls = rso2.FindProperty("_souls");
+            if (souls != null)
+            {
+                souls.arraySize = View.SoulReelView.Columns * View.SoulReelView.Rows;
+                int found = 0;
+                for (int col = 0; col < View.SoulReelView.Columns; col++)
+                    for (int row = 0; row < View.SoulReelView.Rows; row++)
+                    {
+                        Transform module = grid.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
+                        Transform soul = module != null ? module.Find(AscendReferenceRoom.SoulName) : null;
+                        // 인덱스 규약은 `SoulReelView.Index` 와 **같아야** 한다 —
+                        // 열 우선. 어긋나면 엉뚱한 열이 멈춘다.
+                        souls.GetArrayElementAtIndex(col * View.SoulReelView.Rows + row)
+                             .objectReferenceValue = soul;
+                        if (soul != null) found++;
+                    }
+                Set(rso2, "_impact", impact);
+                rso2.ApplyModifiedProperties();
+                EditorUtility.SetDirty(reel);
+                _report.AppendLine($"  릴 연출 — 구슬 {found}/9 배선 · 총 {reel.TotalDuration:F2}초 " +
+                                   $"(열 정지 {reel.StopTimeOf(0):F2} / {reel.StopTimeOf(1):F2} / {reel.StopTimeOf(2):F2}초)");
+            }
+
             var so = new SerializedObject(impact);
             Set(so, "_keyLight", lamp != null ? lamp.GetComponentInChildren<Light>(true) : null);
             Set(so, "_warningLens", warn != null ? FindDeep(warn, "Lens")?.GetComponent<Renderer>() : null);
@@ -335,6 +369,25 @@ namespace Ascend.Prototype.EditorTools
                 call.FindPropertyRelative("m_MethodName").stringValue = "Strike";
                 call.FindPropertyRelative("m_Mode").intValue = 1;           // Void
                 call.FindPropertyRelative("m_CallState").intValue = 2;      // RuntimeOnly
+                // 릴도 같은 순간에 돈다. 레버가 바닥에 닿는 그 프레임이 「당겼다」의 정의다.
+                bool reelHooked = false;
+                for (int i = 0; i < calls.arraySize; i++)
+                {
+                    SerializedProperty t2 = calls.GetArrayElementAtIndex(i).FindPropertyRelative("m_Target");
+                    if (t2 != null && t2.objectReferenceValue == reel) { reelHooked = true; break; }
+                }
+                if (!reelHooked)
+                {
+                    calls.arraySize++;
+                    SerializedProperty rc = calls.GetArrayElementAtIndex(calls.arraySize - 1);
+                    rc.FindPropertyRelative("m_Target").objectReferenceValue = reel;
+                    rc.FindPropertyRelative("m_TargetAssemblyTypeName").stringValue =
+                        typeof(View.SoulReelView).AssemblyQualifiedName;
+                    rc.FindPropertyRelative("m_MethodName").stringValue = "Spin";
+                    rc.FindPropertyRelative("m_Mode").intValue = 1;
+                    rc.FindPropertyRelative("m_CallState").intValue = 2;
+                }
+
                 lso.ApplyModifiedProperties();
                 EditorUtility.SetDirty(lp);
                 hooked++;

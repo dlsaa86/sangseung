@@ -89,6 +89,11 @@ namespace Ascend.Prototype.EditorTools
                     // 색은 텍스처가 나르므로 여기서는 **거의 흰색**을 넣는다.
                     // 재질별 미세한 색조만 남겨 일곱 재질이 구분되게 한다.
                     Color tint = Tint(mat);
+                    // ⚠ **알파를 덮어쓰지 않는다.** 유리는 조립기가 투명(α 0.34)으로
+                    // 세워 두는데, 여기서 불투명 틴트를 그대로 쓰면 다시 막혀
+                    // 영혼 구슬이 사라진다. 실제로 그렇게 사라진 적이 있다.
+                    Color prev = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white;
+                    tint.a = prev.a;
                     m.SetColor("_BaseColor", tint);
                     report.AppendLine($"     _BaseColor → 틴트 {tint.r:F2},{tint.g:F2},{tint.b:F2} (반사율은 텍스처가 나른다)");
                     wired++;
