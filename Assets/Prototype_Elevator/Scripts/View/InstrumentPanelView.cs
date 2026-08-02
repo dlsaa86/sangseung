@@ -437,34 +437,47 @@ namespace Ascend.Prototype.View
 
             // 잔류 저항은 "숫자만 작게" 두면 위협으로 안 읽힌다(visual-criteria B-3.10).
             // 그래서 계기판 본문에 원인 문장으로 올린다.
-            ResidualState residual = floor.Residual;
-            if (residual.IsClean) _text.Append("잔류 없음");
-            else
-            {
-                // **배킹판이 글자상자보다 좁다.** 12·13차가 같은 것을 두 번 지목했다 —
-                // 여덟 장 전부 이 줄이 「저장 전력」에서 끝나고 **값이 화면에 없다.**
-                // 매니페스트는 그 여섯 장을 「프레임밖 0자」로 적었다(거짓 그린) —
-                // 글자상자(26.00) 기준으로 재고 있어서 판을 넘는 것을 못 본다.
-                //
-                // 실측: 판 오른끝 1260 px · 잉크 오른끝 1273 px — **13 px 넘친다.**
-                // 앞서 잰 글자 폭은 「흡수체 4개 → 저장 전력 −32.0」 18.15 단위이고
-                // 「흡수체 4 · 전력 −32.0」은 14.45 단위다. 20% 를 줄이면 13 px 는 덮는다.
-                //
-                // 「개」와 「저장」을 뺀다. 뜻은 안 죽는다 — 숫자 뒤의 조사이고,
-                // 「전력」이 이미 무엇이 깎이는지 말한다. **끝에 값이 남는 것이 요구다**
-                // (`B-3 #10` 대가 수치). 잘린 숫자는 못 읽지만 짧은 문장은 읽힌다.
-                if (residual.AbsorberCount > 0)
-                    _text.Append("흡수체 ").Append(residual.AbsorberCount)
-                         .Append(" · 전력 −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
-                if (residual.AbsorberCount > 0 && residual.ProliferatorCount > 0)
-                    _text.AppendLine();
-                if (residual.ProliferatorCount > 0)
-                    // 흡수체 줄과 같은 폭으로 맞춘다. 둘이 나란히 있는데 한 줄만
-                    // 판을 넘으면 「어느 쪽이 잘렸나」가 매번 달라져 회귀를 못 잡는다.
-                    _text.Append("증식체 ").Append(residual.ProliferatorCount)
-                         .Append(" · 출현 +")
-                         .AppendFormat("{0:F2}", residual.NextProliferatorWeightAdd);
-            }
+            // 잔류 조립은 `AppendResidual` 하나가 소유한다. **반드시 한 줄이다** —
+            // 여기서 줄이 하나 더 생기면 셋째 줄이 `CascadeLabel` 자리에 앉는다
+            // (`UP-FIX-51`). 그 함수의 주석이 계산과 이유를 들고 있다.
+            AppendResidual(floor.Residual, _text);
+        }
+
+        /// <summary>
+        /// 상태 라벨의 **잔류 줄**을 만든다. 반드시 **한 줄**이다.
+        ///
+        /// ## 왜 줄바꿈이 금지인가 (`UP-FIX-51`)
+        ///
+        /// 상태 라벨의 첫 줄은 스핀·판돈이 쓴다. 잔류가 둘째 줄이고, 여기서
+        /// 줄을 하나 더 만들면 **셋째 줄상자가 판 로컬 y 1.402…1.486 에 앉는다.**
+        /// 그 자리는 `CascadeLabel`(1.400…1.484) — 계기판 여섯째 줄의 자리다.
+        /// 글자끼리 겹치면 둘 다 못 읽고, **가림 계측은 글자↔글자 겹침을 예외로
+        /// 두기 때문에 매니페스트가 둘 다 「온전」이라고 적는다.** 즉 자동 검사가
+        /// 잡지 못하는 종류의 손상이다. 그래서 여기서 구조적으로 막는다.
+        ///
+        /// 옮겨서 피할 수 없다 — 위는 상태 2줄, 아래는 `PowerBarTicks`(…1.395)가
+        /// 막고 있어 남는 띠가 하나뿐이다(`CascadeLineBuilder` 주석의 계산).
+        ///
+        /// 대신 **폭을 쓴다.** 조사와 단위를 덜어 두 항목을 한 줄에 잇는다.
+        /// 길어진 줄은 <see cref="Fit"/> 의 자동 축소가 흡수한다 — 이 라벨에서
+        /// 이미 내린 판단이다: 잘린 숫자는 못 읽지만 작아진 숫자는 읽힌다.
+        ///
+        /// `static` 인 이유는 씬 없이 검사하기 위해서다.
+        /// </summary>
+        public static void AppendResidual(in ResidualState residual, StringBuilder into)
+        {
+            if (into == null) return;
+            if (residual.IsClean) { into.Append("잔류 없음"); return; }
+
+            if (residual.AbsorberCount > 0)
+                into.Append("흡수체 ").Append(residual.AbsorberCount)
+                    .Append(" −").AppendFormat("{0:F1}", residual.StoredPowerLoss);
+            // ⚠ 공백이다. `AppendLine()` 으로 바꾸면 위 주석의 겹침이 그대로 돌아온다.
+            if (residual.AbsorberCount > 0 && residual.ProliferatorCount > 0)
+                into.Append("   ");
+            if (residual.ProliferatorCount > 0)
+                into.Append("증식체 ").Append(residual.ProliferatorCount)
+                    .Append(" +").AppendFormat("{0:F2}", residual.NextProliferatorWeightAdd);
         }
 
         private void ShowRunOver(RunSession run)
