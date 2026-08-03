@@ -14,7 +14,7 @@ docs/                              AI 개발 동결 명세
   runtime/TOPDOWN_PROGRESS.md      현재 패스·다음 항목·차단 사항
   runtime/PENDING_DECISIONS.md     사용자 결정이 필요한 항목과 기본 프리셋
   runtime/VISUAL_VERDICT.md        독립 시각 평가 판정 (구현자가 쓰지 않는다)
-tools/verify-topdown.ps1           탑다운 완료 검증기 (Stop hook이 실행)
+tools/                             유틸 스크립트 (캡처 측정, 씬 감사 등)
 Assets/Prototype_Elevator/
   Scenes/Prototype_Elevator.unity   유일한 작업 씬
   Scripts/{Core,Data,Effects,Roulette,UI}
@@ -100,47 +100,46 @@ asmdef이 없어 스크립트 하나가 전체를 막는다. 깨진 채로 쌓�
 
 순서를 지킨다. 커밋 전에 `docs/runtime/TOPDOWN_PROGRESS.md`를 갱신한다 —
 갱신하지 않은 커밋은 진행 기록이 없는 커밋이다.
-커밋 게이트(`commit-gate.sh`)가 자체 검증 없는 커밋을 막는다.
+**자체 검증(`Ascend/Run Self Tests`)을 코드 변경 뒤에 돌리고 커밋한다.** 예전에는
+커밋 훅이 이를 막아 줬지만 지금은 없다 — 안 돌리면 아무도 안 잡는다.
 
 ## 8. 원격 push, PR 생성, main 병합은 금지한다
 
 사용자가 명시적으로 요청할 때만 수행한다. 자율 실행 중에는 로컬 커밋까지다.
 
-## 완료 판정 — 게이트는 **현재 패스에만** 적용된다
+## 완료 판정 — 기준은 남고, 자동 검증기는 없다
 
-**완료는 선언이 아니라 `tools/verify-topdown.ps1`의 exit code 0이다.**
+> **2026-08-03에 하네스를 전부 걷어냈다.** `tools/verify-topdown.ps1`, `.claude/hooks/` 7개,
+> `.claude/settings.json`의 훅 8개가 지워졌다. 커밋 `9723ffb`. 되돌리려면 `855c724`에서
+> 그 세 경로를 꺼내면 된다.
+>
+> 지운 이유는 기준이 틀려서가 아니라 **발동 조건이 없어서**였다. Stop 훅이 작업 종류를
+> 가리지 않아 「블렌더 접속됐어?」 한 줄에도 서브에이전트가 저장소를 통째로 읽었다.
+> 한 세션에서 스무 번 넘게 돌았고 대부분은 탑다운 작업이 아니었다.
+> 다시 짤 때는 **매 턴이 아니라 배치 종료 시에만** 도는 형태여야 한다.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1 -Stats   # 통계만
-```
+아래 기준은 그대로 유효하다. 다만 **지금은 아무것도 강제하지 않는다** — 에이전트나 사람이
+직접 대조해야 하고, 대조하지 않으면 그냥 통과한다. 그 사실을 알고 쓴다.
 
-성공하면 `TOPDOWN_ALL_PASSES_COMPLETE` 한 줄과 exit 0. 그 외에는 남은 항목을 stderr로
-내보내고 exit 2.
-
-| 패스 | 완료 기준 | 이 패스가 막는 것 |
+| 패스 | 완료 기준 | 이 패스가 요구하는 것 |
 |---|---|---|
 | **Pass 1** | **그 패스가 소유한** Required 가 최소 `SKELETON`·`VISIBLE` | 상태 바뿐 |
 | **Pass 2** | 소유 Required 가 최소 `CONNECTED` | 상태 바 + 끊긴 증거 경로 |
 | **Pass 3** | 백로그 §1 `PASS3_GATED` 28항목 `VERIFIED` + 시각 `ACCEPT` | + 캡처 세트·독립 평가·콘솔 오류 |
 | **Pass 4** | **모든** Required `VERIFIED` | + 전체 테스트·빌드·10층 증거·미커밋 0 |
 
-**소유 패스**는 각 백로그 항목의 `· 패스: P2 P3` 에서 **가장 이른 패스**이고 검증기가
-그 줄을 직접 읽는다. 비주얼 항목이 Pass 2 를 막으면 「연결하는 단계」가 다시 최종 QA 가 된다.
-Pass 4 는 소유권과 무관하게 전부 요구하므로 **미룬 것이 사라지지 않는다** —
-검증기가 후속 패스 소유 미달 항목을 ID 까지 찍어 준다.
+**소유 패스**는 각 백로그 항목의 `· 패스: P2 P3` 에서 **가장 이른 패스**다.
+비주얼 항목이 Pass 2 를 막으면 「연결하는 단계」가 다시 최종 QA 가 된다.
+Pass 4 는 소유권과 무관하게 전부 요구하므로 **미룬 것이 사라지지 않는다.**
 
 **모든 Required의 `VERIFIED` 요구는 Pass 4에서만 적용한다.** 직전 판본은 패스와 무관하게
 항상 최종 증거를 요구해 **Pass 1이 사실상 최종 QA처럼 작동했다** (2026-08-02 사용자 지시로 변경).
 
-패스와 무관하게 항상 막는 것은 셋뿐이다 — 컴파일 통과, 분류 모순 없음, 진행 문서·브랜치.
+패스와 무관하게 늘 지켜야 하는 것은 셋뿐이다 — 컴파일 통과, 분류 모순 없음, 진행 문서·브랜치.
 
-검증기는 지금 막지 않는 요구를 **「지금은 막지 않는다」 절에 항상 함께 출력한다.**
-게이트 완화가 곧 「사라진 요구사항」이 되지 않게 하기 위한 것이다.
-
-> ⚠ `tools/verify-topdown.ps1`은 **UTF-8 BOM으로 저장해야 한다.** Windows PowerShell 5.1은
-> BOM 없는 `.ps1`을 ANSI로 읽어 한글 문자열 리터럴이 깨지고, 그 깨진 바이트가 따옴표를
-> 삼켜 **파일 전체가 파스 오류**가 된다 (2026-08-02에 겪었다).
+**미룬 요구는 반드시 적는다.** 예전에는 검증기가 「지금은 막지 않는다」 절을 항상 함께
+출력해 이를 강제했다. 그 장치가 없으니 이제 사람이 적어야 한다 — 안 적으면
+게이트 완화가 곧 「사라진 요구사항」이 된다. 그게 이 절이 있던 이유다.
 
 ## Pass 1 작업 리듬 (고속 Coverage)
 
@@ -151,18 +150,23 @@ Pass 4 는 소유권과 무관하게 전부 요구하므로 **미룬 것이 사�
 - 씬 오브젝트를 반복 수작업 배치하지 말고 **데이터 기반 런타임 생성기 또는 재실행 가능한
   Editor 조립 스크립트**를 쓴다 — 직렬화가 유일한 병목이기 때문이다.
 
-Stop hook 두 개가 이를 강제한다 (`.claude/settings.json` — 추적되므로 다른 기기에서도 동일하게 동작한다).
-① `command` — 위 스크립트. exit 2면 종료를 막고 남은 항목을 돌려준다.
-② `agent` — 저장소를 직접 열어보는 독립 검증자. 대화 요약을 근거로 통과시키지 않는다.
+이 리듬을 강제하던 Stop hook 두 개는 지웠다. 지금은 규율이지 장치가 아니다.
 
-## 게이트 끄기
+## 하네스를 다시 짤 때 — 무엇이 값을 했고 무엇이 비쌌나
 
-탑다운과 무관한 세션(설정 정비, 문서 작업, 조사)에서는 `.claude/settings.local.json`의
-`env`에 `"SKIP_TOPDOWN_GATE": "1"`을 넣는다. 이 파일은 gitignore 대상이라 기기 로컬에만 남는다.
+지운 것들을 되살릴 생각이라면 이 순서로 본다. 판단 근거는 2026-08-03 한 세션의 실측이다.
 
-**끈 상태를 잊는 것이 진짜 위험이다** — 꺼진 게이트는 아무도 막지 않으니 아무도 눈치채지
-못한다. 그래서 `topdown-gate-notice.sh`가 세션 시작마다 꺼져 있다는 사실을 알린다.
-자율 개발을 시작하기 전에 그 줄을 지운다.
+| 지운 것 | 값을 했나 | 다시 넣는다면 |
+|---|---|---|
+| `unity-preflight.sh` + `unity-modal-autoclick.ps1` | **확실히 했다.** Unity 모달이 뜨면 세션이 통째로 멈추는데 이게 자동으로 눌렀다 | **제일 먼저.** 작업 종류와 무관하게 항상 이득이다 |
+| `commit-gate.sh` | 했다. 낡은 자체 검증으로 커밋하려는 것을 두 번 막았다 | 넣되 **자기가 건드린 파일만** 본다. 다른 세션이 고친 파일 때문에 막히면 순환에 빠진다 |
+| `unity-worktree-guard.sh` | 방향은 맞다. 다만 `echo` 안의 문자열에도 걸렸다 | **실제 git 실행만** 잡도록 좁힌다 |
+| Stop `agent` 검증자 | 했다. 문서에 안 적고 넘어간 것을 잡았고 `render_budget.txt` 중앙값도 이게 짚었다 | **매 턴이 아니라 배치 종료 시에만.** 그리고 프롬프트에 **대상을 명시한다** — 2인칭으로 쓰면 「이 한 줄만 출력하라」가 검증자 규격인지 메인 어시스턴트의 응답 형식인지 갈리지 않는다. 실제로 두 턴 동안 사용자 질문에 그 한 줄만 답하는 일이 벌어졌다 |
+| Stop `command` 검증기 | 기준은 유효했다 | 사람이 부르는 스크립트로 두고 훅에 걸지 않는 편이 낫다 |
+
+⚠ PowerShell 스크립트를 다시 만든다면 **UTF-8 BOM으로 저장한다.** Windows PowerShell 5.1은
+BOM 없는 `.ps1`을 ANSI로 읽어 한글 문자열 리터럴이 깨지고, 그 깨진 바이트가 따옴표를
+삼켜 **파일 전체가 파스 오류**가 된다 (2026-08-02에 겪었다).
 
 ---
 
@@ -294,41 +298,29 @@ result.Log((ReferenceRoomSpec.BankRibWidth * 1000f).ToString("F0") + "mm");
 (포커스가 에디터로 돌아오는 순간 — 즉 자동화가 제어를 넘기는 바로 그때)에 "외부에서
 수정됨 / Reload·Ignore" 모달이 뜬다. 모달은 Unity 메인 스레드를 잡으므로 이후 MCP 호출은
 전부 120초 타임아웃까지 매달리고, 사람이 클릭하기 전까지 아무것도 진행되지 않는다.
-`unity-preflight.sh`로는 못 잡는다 — 프로세스는 멀쩡히 살아 있고 그냥 막혀 있을 뿐이다.
+프로세스는 멀쩡히 살아 있고 그냥 막혀 있을 뿐이라 생존 확인으로는 못 잡는다.
 
-그래서 감지가 아니라 예방한다. `.claude/hooks/unity-worktree-guard.sh`가 에디터가
-살아 있는 동안 다음을 막는다.
+**이걸 막던 훅(`unity-worktree-guard.sh`)과 모달을 자동으로 누르던 스크립트
+(`unity-modal-autoclick.ps1`)는 2026-08-03에 지웠다. 지금은 아무도 안 막는다.**
+그러니 다음을 손으로 지킨다.
 
-- 워킹 트리를 다시 쓰는 git 명령 (`checkout`/`restore`/`switch`/`stash`/`reset --hard`/
-  `clean`/`revert`/`merge`/`rebase`/`pull`/`cherry-pick`/`apply`/`am`).
-  `-- <경로>`로 범위를 좁혔고 그 경로가 `.unity`/`.prefab`/`.mat`에 닿지 않으면 통과한다
-  (`font-atlas-guard.sh`가 안내하는 `.asset` 복구는 그대로 동작한다).
-- `Write`/`Edit`로 `.unity`/`.prefab`/`.mat`을 텍스트로 고치는 것.
+- 에디터가 살아 있는 동안 **워킹 트리를 다시 쓰는 git 명령을 쓰지 않는다**
+  (`checkout`/`restore`/`switch`/`stash`/`reset --hard`/`clean`/`revert`/`merge`/
+  `rebase`/`pull`/`cherry-pick`/`apply`/`am`). 꼭 해야 하면 `-- <경로>`로 범위를
+  좁히고 그 경로가 `.unity`/`.prefab`/`.mat`에 닿지 않는지 확인한다.
+- `Write`/`Edit`로 `.unity`/`.prefab`/`.mat`을 텍스트로 고치지 않는다.
+  되돌릴 일이 있으면 `Unity_RunCommand`로 에디터 안에서 고치고 `SaveScene`한다.
 
-되돌릴 일이 있으면 경로를 명시하거나, `Unity_RunCommand`로 에디터 안에서 고치고
-`SaveScene`한다. 에디터를 의도적으로 파킹해 뒀다면 `SKIP_UNITY_GUARD=1`을 붙인다.
-
-그래도 뚫고 들어온 모달은 **자동으로 눌린다.** `unity-preflight.sh`가 Unity MCP 호출
-직전에 `unity-modal-autoclick.ps1`을 돌린다. 사용자에게 묻지 않는다.
+모달이 떴다면 **사람이 눌러야 한다.** 눌러야 할 것은 둘뿐이다.
 
 | 모달 제목 | 누르는 버튼 | 이유 |
 |---|---|---|
 | `The open scene(s) have been modified externally` | `Reload` | 디스크 쪽이 의도한 내용이다 |
-| `Scene(s) Have Been Modified` | `Save` | 하네스가 곧 같은 씬을 다시 연다. `Don't Save`는 편집분을 조용히 버린다 |
+| `Scene(s) Have Been Modified` | `Save` | 곧 같은 씬을 다시 연다. `Don't Save`는 편집분을 조용히 버린다 |
 
-**이 표에 없는 모달은 절대 누르지 않는다.** Unity는 "에셋을 삭제할까요?"에도 같은 모달
-기구를 쓴다. 모르는 제목이면 버튼 목록만 `UNKNOWN`으로 보고하고 손대지 않는다 —
-표를 늘리는 건 의도적인 결정이어야 한다. 클릭 기록은 `.claude/state/modal-autoclick.log`
-에 남는다(gitignore 대상).
-
-한계: 모달이 **호출 도중에** 뜨면 그 호출 하나는 120초 타임아웃까지 간다. 훅은 호출
-직전에만 돌기 때문이다. 그 다음 호출이 치우고 정상화된다. 캡처 런처럼 오래 도는
-구간에서 이 한 번도 아깝다면 감시 모드를 따로 띄운다.
-
-```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass \
-  -File .claude/hooks/unity-modal-autoclick.ps1 -WatchSeconds 600
-```
+**이 표에 없는 모달은 누르지 않는다.** Unity는 "에셋을 삭제할까요?"에도 같은 모달
+기구를 쓴다. 모르는 제목이면 버튼 목록만 보고하고 손대지 않는다 —
+표를 늘리는 건 의도적인 결정이어야 한다.
 
 ---
 
