@@ -2326,7 +2326,37 @@ namespace Ascend.Prototype.EditorTools
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing != null)
             {
-                EditorUtility.CopySerialized(mesh, existing);
+                // 🔴🔴 **`EditorUtility.CopySerialized` 를 쓰지 않는다.**
+                //
+                // 이것이 이 저장소에서 가장 오래 숨어 있던 결함이다. `CopySerialized` 는
+                // 직렬화 필드를 복사하지만 **이미 로드된 `Mesh` 객체의 렌더 표현을
+                // 다시 만들지 않는다.** 그래서 디스크의 에셋은 새 형상인데 화면은
+                // **그 메시가 처음 만들어졌을 때의 형상**을 계속 그린다.
+                //
+                // 증상이 「고쳤는데 화면이 그대로다」라서 원인을 형상에서 찾게 된다.
+                // 2026-08-03 에 그 함정에 정확히 빠졌다 — 챔버 도어에 조리개를 뚫고,
+                // 정점 덤프(조리개 안 삼각형 0개)·메시 콜라이더 레이캐스트(r≤0.14 통과)로
+                // 두 번 확인하고도 화면은 막혀 있었다. 통제 실험이 결론을 냈다:
+                //
+                //   ① 에셋 메시            평균 12.0 · 붉은 0.00%
+                //   ② 동일 기하 런타임 메시  평균 23.8 · 붉은 **0.58%**  ← 영혼이 보인다
+                //   ③ 되돌림               평균 12.0 · 붉은 0.00%  (재현)
+                //
+                // 그동안 유리·챔버·조명·시차·그림자·렌더 큐를 전부 의심하고 배제했다.
+                // 전부 무죄였다. 범인은 **에셋 갱신 경로**였다.
+                //
+                // ⚠ 에셋을 지우고 새로 만드는 방법은 쓰지 않는다 — GUID 가 바뀌어
+                // 씬의 `MeshFilter` 참조가 통째로 끊긴다. 대신 **채널을 직접 덮어쓴다.**
+                // `ProcMeshBuilder.WriteInto` 가 쓰는 채널과 같아야 한다
+                // (정점·노멀·UV0·삼각형. 접선은 만들지 않는다).
+                existing.Clear();
+                existing.indexFormat = mesh.indexFormat;
+                existing.SetVertices(mesh.vertices);
+                existing.SetNormals(mesh.normals);
+                existing.SetUVs(0, mesh.uv);
+                existing.SetTriangles(mesh.triangles, 0, true);
+                existing.RecalculateBounds();
+                existing.name = safe;
                 Object.DestroyImmediate(mesh);
                 EditorUtility.SetDirty(existing);
                 BakedMeshes[path] = existing;
