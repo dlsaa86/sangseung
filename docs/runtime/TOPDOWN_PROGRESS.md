@@ -4726,3 +4726,68 @@ CLAUDE.md 「동시에 두 에이전트가 씬을 열지 않는다. 에디터 �
 `build_all()` 을 다시 돌리면 지워진다. 영구화하려면 스크립트가 가로 레일을 드럼 x 구간
 `[−0.745,−0.431] · [−0.157,0.157] · [0.431,0.745]` 를 피해 4구간으로 만들게 고쳐야 한다.
 그 파일은 다른 세션이 편집 중이라 손대지 않았다.
+
+---
+
+# 2026-08-04 야간 — 카 내부 셸을 블렌더로 다시 만든다 (STORY-CABIN-01)
+
+사용자 지시: 「공간의 분위기가 맘에 안 든다. 블렌더로 모델링해서 유니티에 넣어라.」
+모드: AFK_AUTONOMOUS. 레퍼런스: `docs/references/elevator/mood_20260804_user_cabin.png`.
+
+## 진단 — 형태가 아니라 값과 음영이었다
+
+기준선 캡처 `Captures/baseline_20260804/` 4장에서 확인했다. **배치는 이미 맞다** —
+가위문 좌측, 장치 정면, 벤치 우측, 케이지등 천장. 레퍼런스와 같은 구성이다.
+실패는 둘이었고 둘 다 측정으로 잡힌다.
+
+| # | 실패 | 측정 |
+|---|---|---|
+| 1 | 값이 두 덩어리로 갈라짐 | 벽 패널 명도 ~15% vs 바닥·천장·천장보·바닥테두리·선반·문설주 ~70%. 레퍼런스는 전 면이 서로 몇 % 안쪽 |
+| 2 | 면에 음영이 없음 | 벽이 평면 쿼드 + 타일링 텍스처. 레퍼런스의 인상은 「오목 패널 + 돌출 스트랩 + 리벳 띠」가 만드는 실제 그림자인데 텍스처로는 안 나온다 |
+
+부수: 벽 텍스처가 0.45m 격자로 반복 / 대기광이 높아 구석이 안 어두움 /
+가위문 격자가 채도 높은 올리브 / 천장이 밝아 시선을 끌어감.
+
+**→ 블렌더로 간 판단이 옳다.** #2 는 형상 문제라 텍스처로는 못 고친다.
+
+## 산출물
+
+| 파일 | 내용 |
+|---|---|
+| `tools/blender/build_cabin.py` | 절차적 조립기. 치수는 전부 `ReferenceRoomSpec.cs` 미러 상수 |
+| `tools/blender/cabin.blend` | 조립 결과 (다음 세션 인계용) |
+| `Assets/.../Art/Models/ELV_Cabin.fbx` | 9모듈 / 22,528 tris / UV 완비 |
+| `Assets/.../Art/Models/ELV_Shaft.fbx` | 문 밖 통로 3.6m / 692 tris |
+| `Assets/Editor/AscendCabinAdoption.cs` | 임포터·재질·배치·조명 채택. 원복 메뉴 1개 |
+| `Assets/Editor/AscendValueBandPass.cs` | 값 폭 압축 (기존 오브젝트 대상). 원본 색 JSON 백업 |
+| `production/stories/STORY-CABIN-01-blender-shell.md` | AC 10항 |
+
+모듈 9종: `ELV_Floor` / `Ceiling` / `Wall_Rear` / `Wall_Front` / `Wall_Right` /
+`Wall_Left` / `CornerPosts` / `CeilingLamp` / `Bench`. 접두사는
+`DEVICE_DESIGN_SPEC.md` §7 명명 규칙을 따랐다.
+
+## 곁가지로 메운 것 — 문 밖 깊이
+
+`DEVICE_DESIGN_SPEC.md` §2.6 이 **미달로 판정해 둔 실질 결함 2건 중 하나**다
+(Notion 요구 3~5m, 현재 Lobby 1.4m). 레퍼런스에서도 가위문 너머로 물러나는 어둠과
+먼 등 하나가 보이고 그 깊이가 폐쇄감의 상당 부분을 만든다. 3.6m 로 만들었다 —
+근거는 `ASSUMPTION_LOG` A-20260804-04.
+
+블렌더 렌더 `Captures/blender_cabin/MOOD_gate_depth.png` 에서 물러나는 보의 리듬과
+먼 등이 읽히는 것을 확인했다.
+
+⚠ **채택 시 주의**: 현재 씬의 `ReferenceRoom/LeftScissorGate/ShaftBackdrop`
+(월드 x≈−2.42 의 판)이 통로를 가린다. 통로를 채택하려면 이것을 먼저 꺼야 한다.
+
+## 지금 상태
+
+- 블렌더 → FBX 까지 완료
+- Unity 채택은 `unity-scene-owner` 에이전트가 실행 중 (씬 소유권 규칙)
+- 독립 시각 평가 미실시 → **아직 아무것도 VERIFIED 가 아니다**
+
+## 미룬 요구 (사라지지 않게 적는다)
+
+- 통로 FBX 는 만들었지만 **씬 채택은 안 했다.** 카 셸 판정이 먼저다
+- 값 폭 압축 패스는 **작성만 했고 실행 안 했다.** 카 셸 v1 관측 뒤에 돌린다
+- 기존 재질 23장은 손대지 않았다 (일괄 교체를 두 번 되돌린 이력 때문)
+- 자체 검증(`Ascend/Run Self Tests`) 미실행 — 씬 소유자 작업이 끝난 뒤에 돌린다
