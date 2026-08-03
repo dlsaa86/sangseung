@@ -22,12 +22,37 @@ Assets/Prototype_Elevator/
 Assets/CaptureHarness/              결정론적 캡처 하네스 (README 참조)
 Assets/Plans/                       T-00~ 작업 명세
 .claude/visual-criteria.md          상세 시각 평가 기준
+.claude/OPERATING_MODES.md          협업/자율주행 모드 계약 (아래에서 import)
+.claude/agents/                     프로젝트 전용 8 + Game Studios 39
+.claude/skills/                     visual-verify + Game Studios 73
+.claude/rules/                      경로별 코딩 표준 (Game Studios)
+production/                         Story·스프린트·세션 로그 (Game Studios)
+design/                             GDD·엔티티 레지스트리 (Game Studios)
 Captures/                           캡처 산출물 (gitignore, 기기 종속)
 ```
 
 네임스페이스: 게임 코드 `Ascend.Prototype`, 하네스 `Ascend.CaptureHarness`.
 **asmdef이 없다** — 모든 스크립트가 `Assembly-CSharp` 하나에 들어간다. 스크립트를
 하나만 고쳐도 전체가 재컴파일되고 플레이 모드가 종료된다.
+
+---
+
+# 운영 모드
+
+이 저장소는 **Claude Code Game Studios**를 판단 체계로, **Ouroboros**를 반복 실행
+엔진으로, **Unity MCP**를 손과 눈으로 쓴다. 기본 모드는 **협업(COLLABORATIVE)**이고,
+사용자가 취침·출근·자율주행을 명시했을 때만 **AFK_AUTONOMOUS**로 전환한다.
+
+전문은 아래 문서에 있다. 반드시 따른다.
+
+@.claude/OPERATING_MODES.md
+
+특히 다음 셋은 어느 모드에서도 뒤집히지 않는다 — Game Studios 에이전트 39개는
+이 제약을 모르므로 충돌하면 아래가 이긴다.
+
+1. `.unity`/`.prefab`/`.mat`/`.asset`은 `unity-scene-owner` 에이전트만 수정한다.
+2. 동시에 두 에이전트가 씬을 열지 않는다.
+3. 구현자가 자기 작업을 `VERIFIED`로 최종 승인하지 않는다.
 
 ---
 

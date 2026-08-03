@@ -60,3 +60,9 @@ Captures/
 
 # Blender 자동 백업 — 저장할 때마다 바뀐다
 *.blend1
+
+# Game Studios — 세션 로그는 기기 종속 잡음이다
+production/session-logs/
+
+# Python 바이트코드
+__pycache__/
