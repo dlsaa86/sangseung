@@ -133,6 +133,22 @@ namespace Ascend.Prototype.EditorTools
                 new Pose("05_window_macro",
                          new Vector3(mx + 0.34f, ReferenceRoomSpec.WindowGridCenterY + 0.09f, face - 0.52f),
                          new Vector3(6f, -30f, 0f), 32f),
+
+                // ⑥ **진짜 측면** — 지시의 「측면에서 최소 네 단계의 깊이 단차」는
+                // 이 각도에서만 판정된다.
+                //
+                // ⚠ 직전 세트의 최대 각도가 −42° 였고, 독립 평가가
+                // 「진짜 측면(−75~−90°) 캡처가 없어 여유를 확인할 수 없다」고
+                // 판정 자체를 보류했다. 22mm 돌출은 −42° 에서 화면상 5~6px 라
+                // **단차가 있는데도 없는 것과 구분되지 않는다.**
+                //
+                // −78° 로 잡는다. −90° 는 도어 면이 완전히 사라져 링과 유리의
+                // 관계가 안 보이고, 그러면 이 컷이 재는 것이 하나 줄어든다.
+                new Pose("06_side78",
+                         new Vector3(pairX + Mathf.Sin(78f * Mathf.Deg2Rad) * obliqueDist * 0.86f,
+                                     pairY + 0.06f,
+                                     face - Mathf.Cos(78f * Mathf.Deg2Rad) * obliqueDist * 0.86f),
+                         new Vector3(2f, -78f, 0f), obliqueFov),
             };
         }
 
@@ -171,7 +187,22 @@ namespace Ascend.Prototype.EditorTools
             grey.SetFloat("_Smoothness", 0.18f);
             grey.SetFloat("_Metallic", 0f);
 
-            Renderer[] renderers = room.GetComponentsInChildren<Renderer>(false);
+            // 🔴 **방 밖까지 덮는다.** 직전 판본은 `ReferenceRoom` 자식만 회색으로
+            // 바꿨고, 그 결과 `GrayboxWorld/Car/DoorControl` 이 그레이박스 캡처에서
+            // **혼자 순수 검정 사각형**으로 남았다. 독립 평가자가 「정체 불명 ·
+            // 그레이 오버라이드가 닿지 않은 오브젝트이거나 벽의 구멍」으로 지목했다.
+            //
+            // 그레이박스의 목적은 「재질을 지우고 형태만 본다」이다. 한 물체라도
+            // 재질을 유지하면 그 물체가 형태 판정에서 가장 눈에 띄는 것이 된다 —
+            // 정확히 반대 효과다. 화면에 나오는 것은 전부 덮는다.
+            var all = new List<Renderer>();
+            foreach (Renderer r in UnityEngine.Object.FindObjectsByType<Renderer>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (!r.enabled || r.GetComponent<TMPro.TMP_Text>() != null) continue;
+                all.Add(r);
+            }
+            Renderer[] renderers = all.ToArray();
             var saved = new Material[renderers.Length][];
 
             // 🔴 **유리와 영혼은 그레이박스에서 숨긴다.**
@@ -220,8 +251,17 @@ namespace Ascend.Prototype.EditorTools
                     RenderSettings.ambientIntensity = 1f;
                     for (int i = 0; i < lights.Length; i++) lights[i].intensity = lightHome[i] * 0.45f;
 
-                    Pose[] all = Standard();
-                    Debug.Log("[상승] 무재질 그레이박스 캡처\n" + Capture(new[] { all[0], all[1] }, "grey_"));
+                    // 🔴 **여섯 장 전부 찍는다.**
+                    //
+                    // 직전 판본은 정면과 −42° 두 장만 찍었다. 그런데 지시의 합격
+                    // 조건 여덟 개 중 셋(동력 전달·부품 기능·기능 이해)은
+                    // 근접 컷 없이는 원리적으로 판정할 수 없다 — 399 px/m 배율에서
+                    // 46mm 힌지는 18px 이고, 「이게 경첩이다」로 읽히지 않는 것이
+                    // 형태 결함인지 배율 탓인지 갈리지 않는다.
+                    //
+                    // 독립 평가가 세 조건을 **판정 불가**로 돌려보냈다. 판정할 수
+                    // 없는 증거를 내는 것은 증거를 안 내는 것과 같다.
+                    Debug.Log("[상승] 무재질 그레이박스 캡처\n" + Capture(Standard(), "grey_"));
                 }
                 finally
                 {
@@ -365,14 +405,81 @@ namespace Ascend.Prototype.EditorTools
             m.AppendLine("## 장치 치수 (ReferenceRoomSpec 실측)");
             m.AppendLine($"  캐비닛 {ReferenceRoomSpec.MachineWidth:F3} × {ReferenceRoomSpec.MachineHeight:F3} × {ReferenceRoomSpec.MachineDepth:F2}");
             m.AppendLine($"  프레임 굵기 외곽 {ReferenceRoomSpec.OuterFrameBand * 1000f:F0} / 리브 {ReferenceRoomSpec.BankRibWidth * 1000f:F0} / 격벽 {ReferenceRoomSpec.BulkheadHeight * 1000f:F0} mm");
-            m.AppendLine($"  프레임 돌출 외곽 {ReferenceRoomSpec.OuterFrameProud * 1000f:F0} / 격벽 {ReferenceRoomSpec.BulkheadProud * 1000f:F0} / 리브 {ReferenceRoomSpec.BankRibProud * 1000f:F0} mm");
+            m.AppendLine($"  프레임 돌출 외곽 {ReferenceRoomSpec.OuterFrameProud * 1000f:F0} / " +
+                         $"리브 캡 {ReferenceRoomSpec.RibCapProud * 1000f:F0} / 리브 {ReferenceRoomSpec.BankRibProud * 1000f:F0} / " +
+                         $"격벽 {ReferenceRoomSpec.BulkheadProud * 1000f:F0} mm (격벽은 **음각**)");
             m.AppendLine($"  세로 무중단 비 {ReferenceRoomSpec.LongestVerticalRunRatio:P1} (상한 {ReferenceRoomSpec.MaxVerticalRunRatio:P0})");
             m.AppendLine($"  간격 이방비 {ReferenceRoomSpec.WindowPitchAnisotropy:F3}");
+            m.AppendLine();
+            m.AppendLine(LockStateFacts());
             m.AppendLine();
             m.AppendLine("## 화소 통계");
             m.Append(stats);
 
             File.WriteAllText($"{OutDir}/manifest{(string.IsNullOrEmpty(prefix) ? "" : "_" + prefix.TrimEnd('_'))}.txt", m.ToString());
+        }
+
+        /// <summary>
+        /// 🔴 **찍은 순간의 잠금 기구 자세를 적는다.**
+        ///
+        /// 왜 필요한가: 이 장치의 정체가 「레버 하나가 챔버 아홉을 동시에 잠근다」인데,
+        /// 매니페스트가 캡처 순간이 **체결인지 해제인지** 말하지 않았다. 독립 평가는
+        /// 그 때문에 「동력 전달 경로가 추적 가능한가」를 **판정 불가**로 돌려보냈다 —
+        /// 상태 탭이 올라가 있어야 정상인지 내려가 있어야 정상인지 알 수 없으니
+        /// 화면에 무엇이 보이든 옳다고도 그르다고도 할 수 없었다.
+        ///
+        /// 각도와 거리는 주장하지 않고 **트랜스폼에서 잰다.**
+        /// </summary>
+        private static string LockStateFacts()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## 잠금 기구 자세 (캡처 순간 · 트랜스폼 실측)");
+
+            var view = UnityEngine.Object.FindFirstObjectByType<Prototype.View.CustomsLockView>(
+                FindObjectsInactive.Include);
+            if (view == null)
+            {
+                sb.AppendLine("  **확인 못 함** — CustomsLockView 를 찾지 못했다. " +
+                              "동력 전달 관련 판정은 이 세트로 하지 말 것");
+                return sb.ToString();
+            }
+
+            sb.AppendLine($"  체결 {(view.IsEngaged ? "걸림" : "해제")} · " +
+                          $"체결 진행도 {view.Engagement:P0} · 핀 후퇴 {view.PinRetraction:P0}");
+
+            var grid = GameObject.Find("ReferenceRoom/SoulMachine/WindowGrid");
+            var shaft = GameObject.Find($"ReferenceRoom/SoulMachine/ShaftHousing/{AscendReferenceRoom.CommonShaftName}");
+            if (shaft != null)
+                sb.AppendLine($"  공통축 회전 {shaft.transform.localEulerAngles.x:F1}° (X축)");
+
+            for (int i = 0; i < 3; i++)
+            {
+                var tab = GameObject.Find($"ReferenceRoom/SoulMachine/ShaftHousing/{AscendReferenceRoom.StatusTabName}_{i}");
+                if (tab != null)
+                    sb.AppendLine($"  상태 탭 {i} y {tab.transform.localPosition.y * 1000f:F1} mm");
+            }
+
+            if (grid != null)
+            {
+                int measured = 0;
+                float sum = 0f;
+                for (int col = 0; col < 3; col++)
+                    for (int row = 0; row < 3; row++)
+                    {
+                        Transform module = grid.transform.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
+                        Transform clamp = module != null ? module.Find(AscendReferenceRoom.LockClampName) : null;
+                        if (clamp == null) continue;
+                        sum += clamp.localEulerAngles.z;
+                        measured++;
+                    }
+                sb.AppendLine(measured == 9
+                    ? $"  클램프 9개 평균 각 {sum / 9f:F1}° (9/9 실측)"
+                    : $"  클램프 **{measured}/9 만 실측됐다** — 나머지는 확인 못 함");
+            }
+
+            sb.AppendLine("  ※ 이 세트는 에디터 정지 상태다. 「탭이 안 움직인다」는 지적은 " +
+                          "이 값이 해제 자세인지 먼저 확인한 뒤에만 성립한다.");
+            return sb.ToString();
         }
 
         private static string Shoot(Camera cam, string name)

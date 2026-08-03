@@ -163,6 +163,10 @@ namespace Ascend.Prototype.View
             _engaged = true;
             _age = 0f;
             _dirty = true;
+            // 🔴 **체결 시점의 레버 상태를 기준선으로 잡는다.**
+            // 자동 해제는 「지금 원위치에 있다」가 아니라 「방금 원위치로 **돌아왔다**」
+            // 로만 발동한다. 이유는 `Step()` 의 주석에 있다.
+            _leverSeen = _lever != null ? _lever.Current : LeverStateMachine.State.Latched;
         }
 
         /// <summary>
@@ -187,6 +191,15 @@ namespace Ascend.Prototype.View
             Apply(-1f);
         }
 
+        /// <summary>레버가 「원위치」 계열인가. 여기서 자동 해제가 발동한다.</summary>
+        private static bool IsLeverHome(LeverStateMachine.State s)
+            => s == LeverStateMachine.State.Idle
+            || s == LeverStateMachine.State.Ready
+            || s == LeverStateMachine.State.Locked;
+
+        /// <summary>직전 스텝에서 관측한 레버 상태. 모서리 판정의 기준선이다.</summary>
+        private LeverStateMachine.State _leverSeen = LeverStateMachine.State.Latched;
+
         private void LateUpdate() => Step(Time.deltaTime);
 
         /// <summary>한 스텝. **테스트가 고정 dt 로 직접 부른다.**</summary>
@@ -197,11 +210,26 @@ namespace Ascend.Prototype.View
             // 레버가 **원위치로 돌아왔으면** 자동으로 푼다. 레버는 「언제 풀리는가」만
             // 알려 주고, 「걸려 있는가」는 `_engaged` 가 소유한다 — 그 소유권 분리가
             // 이 컴포넌트를 레버 없이도 시험 가능하게 만든다.
-            if (_engaged && _lever != null &&
-                (_lever.Current == LeverStateMachine.State.Idle ||
-                 _lever.Current == LeverStateMachine.State.Ready ||
-                 _lever.Current == LeverStateMachine.State.Locked))
+            //
+            // 🔴 **수위가 아니라 모서리로 판정한다.**
+            //
+            // 직전 판본은 「지금 레버가 Idle/Ready/Locked 이면 푼다」였다. 그런데
+            // `LeverStateMachine` 의 **초기 상태가 `Idle`** 이라, 레버가 배선된 채로
+            //
+            //     view.Engage();
+            //     view.Step(1f / 60f);
+            //
+            // 를 하면 다음 스텝에서 `_engaged` 가 곧바로 false 가 됐다. 씬에서는
+            // `Engage()` 가 `onLatched` 로만 불려서 우연히 드러나지 않았을 뿐이다.
+            //
+            // 그리고 **테스트가 이것을 원리적으로 못 잡았다** — 리그가 레버를
+            // `null` 로 넘겨서 `_lever != null` 이 항상 거짓이었다. 소유권 버그를
+            // 고쳤다고 적어 놓고 폴링을 남겨 두었고, 그 폴링을 우회하는 리그로
+            // 시험했다. 독립 감사가 이 조합을 찾아냈다.
+            LeverStateMachine.State now = _lever != null ? _lever.Current : _leverSeen;
+            if (_engaged && _lever != null && IsLeverHome(now) && !IsLeverHome(_leverSeen))
                 _engaged = false;
+            _leverSeen = now;
 
             float total = TotalDuration;
             if (_engaged) _age = Mathf.Min(_age < 0f ? dt : _age + dt, total);

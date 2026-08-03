@@ -258,6 +258,29 @@ MCP의 콘솔 조회는 Clear-on-Play 이후 비어 보이므로, 플레이 모�
 **MCP `Unity_RunCommand`는 `System.Reflection`을 차단한다.** 타입을 직접 참조하거나
 `AppDomain.CurrentDomain.GetAssemblies()`로 우회한다.
 
+**`Unity_RunCommand`의 `isCompilationSuccessful: true`는 프로젝트가 컴파일된다는 뜻이 아니다.**
+그 스니펫이 **현재 로드된 옛 어셈블리에 대해** 컴파일됐다는 뜻일 뿐이다. 프로젝트에
+컴파일 오류가 있으면 도메인이 리로드되지 않아 **에디터는 옛 코드를 계속 실행하고**,
+`.cs`를 고쳐도 조립·캡처 결과가 **비트 단위로 동일하게** 나온다. 이때
+`AssetDatabase.Refresh(ForceUpdate)`도 `EditorUtility.RequestScriptReload()`도
+`CompilationPipeline.RequestScriptCompilation()`도 전부 조용히 아무 일도 하지 않는다.
+
+그래서 **`.cs`를 고친 뒤 첫 검증은 항상 이것이다.**
+
+```bash
+grep -an "error CS" Logs/Editor.log | tail -5    # 줄 번호로 최신 여부를 판단한다
+```
+
+로그에는 옛 세션의 오류가 그대로 남아 있으므로 **줄 번호가 파일 끝에 가까운 것만** 현재
+오류다. 오류를 고친 뒤 리프레시하면 그 호출이 120초 타임아웃까지 매달리는데, 그것이
+도메인 리로드가 실제로 걸렸다는 **신호**다 — 실패가 아니다.
+
+값이 반영됐는지는 인상이 아니라 상수로 확인한다.
+
+```csharp
+result.Log((ReferenceRoomSpec.BankRibWidth * 1000f).ToString("F0") + "mm");
+```
+
 **에디터가 포커스를 잃으면 플레이 루프가 멈춘다** (`runInBackground=false`).
 자동화 중 플레이 모드가 진행되지 않으면 이걸 먼저 의심한다.
 

@@ -40,6 +40,9 @@ namespace Ascend.Prototype.View.Tests
             Run("전력이 없으면 잠금핀이 슬롯을 막는다", TestPinBlocksWhenLocked, ref passed, ref failed, report);
             Run("유휴 프레임에 트랜스폼을 쓰지 않는다", TestIdleIsQuiet, ref passed, ref failed, report);
             Run("프레임률이 달라도 최종 자세가 같다", TestFrameRateIndependent, ref passed, ref failed, report);
+            Run("레버가 배선돼도 체결이 다음 스텝에 풀리지 않는다", TestEngageSurvivesWiredLever, ref passed, ref failed, report);
+            Run("레버가 원위치로 **돌아오면** 그때 풀린다", TestLeverReturnReleases, ref passed, ref failed, report);
+            Run("풀면 아홉 클램프와 세 탭이 **전부** 원위치다", TestReleaseReturnsEveryPart, ref passed, ref failed, report);
 
             return (passed, failed, report.ToString());
         }
@@ -76,6 +79,26 @@ namespace Ascend.Prototype.View.Tests
                 rig.Clamps[i] = Child(rig.Root.transform, "Clamp" + i, new Vector3(i * 0.1f, 1f, 0f));
 
             rig.View.Configure(null, rig.Rod, rig.Shaft, rig.Pin, rig.Tabs, rig.Clamps);
+            return rig;
+        }
+
+        /// <summary>
+        /// 🔴 **레버를 실제로 붙인 리그.**
+        ///
+        /// 왜 따로 필요한가: 위 `Build()` 는 레버를 `null` 로 넘기고, 자동 해제
+        /// 경로가 통째로 `_lever != null` 뒤에 있다. 그래서 그 경로의 결함은
+        /// **원리적으로** 위 리그로 잡히지 않는다 — 실제로 「지금 Idle 이면 푼다」는
+        /// 수위 판정이 남아 있었고 여덟 개 검사가 전부 통과했다.
+        ///
+        /// 조건부 코드는 그 조건을 켠 리그가 없으면 시험되지 않은 코드다.
+        /// </summary>
+        private static Rig BuildWithLever(out LeverStateMachine lever)
+        {
+            var rig = Build();
+            var leverGo = new GameObject("Lever");
+            leverGo.transform.SetParent(rig.Root.transform, false);
+            lever = leverGo.AddComponent<LeverStateMachine>();
+            rig.View.Configure(lever, rig.Rod, rig.Shaft, rig.Pin, rig.Tabs, rig.Clamps);
             return rig;
         }
 
@@ -283,6 +306,94 @@ namespace Ascend.Prototype.View.Tests
                     throw new Exception("프레임률에 따라 최종 체결 진행도가 다르다");
             }
             finally { a.Destroy(); b.Destroy(); }
+        }
+
+        /// <summary>
+        /// 🔴 이 검사가 없어서 소유권 결함이 살아남았다.
+        ///
+        /// `LeverStateMachine` 의 **초기 상태가 `Idle`** 이고, 직전 판본의 자동 해제는
+        /// 「지금 Idle 이면 푼다」는 수위 판정이었다. 그래서 레버가 배선된 채로
+        /// 체결하면 **바로 다음 스텝에 스스로 풀렸다.** 씬에서는 `Engage()` 가
+        /// `onLatched`(= 레버가 `Latched`)로만 불려 우연히 드러나지 않았다.
+        /// </summary>
+        private static void TestEngageSurvivesWiredLever()
+        {
+            Rig rig = BuildWithLever(out LeverStateMachine lever);
+            try
+            {
+                if (lever.Current != LeverStateMachine.State.Idle)
+                    throw new Exception($"전제가 깨졌다 — 레버 초기 상태가 Idle 이 아니라 {lever.Current} 다");
+
+                rig.View.Engage();
+                rig.View.Step(1f / 60f);
+                if (!rig.View.IsEngaged)
+                    throw new Exception("체결 직후 한 스텝 만에 스스로 풀렸다 — 자동 해제가 수위로 판정하고 있다");
+
+                Run(rig.View, rig.View.TotalDuration + 0.2f, 1f / 60f);
+                if (!rig.View.IsEngaged)
+                    throw new Exception("체결이 유지되지 않는다");
+                AtLeast(rig.View.Engagement, 0.99f, "체결 진행도");
+            }
+            finally { rig.Destroy(); }
+        }
+
+        /// <summary>
+        /// 그리고 **자동 해제가 죽어 있지도 않아야 한다.** 위 검사만 있으면
+        /// 「폴링을 통째로 지운다」가 통과해 버리고, 그러면 레버가 올라와도
+        /// 아홉 챔버가 영영 물린 채로 남는다.
+        /// </summary>
+        private static void TestLeverReturnReleases()
+        {
+            Rig rig = BuildWithLever(out LeverStateMachine lever);
+            try
+            {
+                lever.ForceState(LeverStateMachine.State.Latched);
+                rig.View.Engage();
+                Run(rig.View, rig.View.TotalDuration + 0.1f, 1f / 60f);
+                if (!rig.View.IsEngaged) throw new Exception("걸린 상태에서 유지되지 않았다");
+
+                lever.ForceState(LeverStateMachine.State.Resetting);
+                rig.View.Step(1f / 60f);
+                if (!rig.View.IsEngaged) throw new Exception("복귀 중인데 벌써 풀렸다");
+
+                lever.ForceState(LeverStateMachine.State.Idle);
+                rig.View.Step(1f / 60f);
+                if (rig.View.IsEngaged)
+                    throw new Exception("레버가 원위치로 돌아왔는데 풀리지 않았다 — 자동 해제가 죽었다");
+            }
+            finally { rig.Destroy(); }
+        }
+
+        /// <summary>
+        /// 해제 복귀를 **전부** 검사한다. 직전 판본은 클램프 0번과 탭 0번만 봤고,
+        /// 독립 감사가 「9개와 3개를 개별로 보는 불변식이 비어 있다」고 지적했다.
+        /// 대표 하나만 보는 검사는 나머지 여덟이 어긋나도 통과한다.
+        /// </summary>
+        private static void TestReleaseReturnsEveryPart()
+        {
+            Rig rig = Build();
+            try
+            {
+                var tabHome = new Vector3[CustomsLockView.Banks];
+                var clampHome = new Quaternion[CustomsLockView.Chambers];
+                for (int i = 0; i < CustomsLockView.Banks; i++) tabHome[i] = rig.Tabs[i].localPosition;
+                for (int i = 0; i < CustomsLockView.Chambers; i++) clampHome[i] = rig.Clamps[i].localRotation;
+
+                rig.View.Engage();
+                Run(rig.View, rig.View.TotalDuration + 0.2f, 1f / 60f);
+                rig.View.Release();
+                Run(rig.View, rig.View.TotalDuration + 0.6f, 1f / 60f);
+
+                for (int i = 0; i < CustomsLockView.Banks; i++)
+                    if (Vector3.Distance(rig.Tabs[i].localPosition, tabHome[i]) > 0.0005f)
+                        throw new Exception($"상태 탭 {i} 가 원위치로 안 돌아왔다 " +
+                                            $"({Vector3.Distance(rig.Tabs[i].localPosition, tabHome[i]) * 1000f:F1} mm)");
+                for (int i = 0; i < CustomsLockView.Chambers; i++)
+                    if (Quaternion.Angle(rig.Clamps[i].localRotation, clampHome[i]) > 0.05f)
+                        throw new Exception($"클램프 {i} 가 원위치로 안 돌아왔다 " +
+                                            $"({Quaternion.Angle(rig.Clamps[i].localRotation, clampHome[i]):F2}°)");
+            }
+            finally { rig.Destroy(); }
         }
 
         // ── 단정 도구 ───────────────────────────────────────────────────────

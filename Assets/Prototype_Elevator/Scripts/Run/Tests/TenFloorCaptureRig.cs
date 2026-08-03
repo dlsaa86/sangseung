@@ -1135,6 +1135,7 @@ namespace Ascend.Prototype.Run.Tests
                                  $"FOV {Fov:F0}° · {Width}×{Height} px  " +
                                  $"위험 {(risk != null ? risk.Level.DisplayName() : "—")}");
             _manifest.AppendLine($"{"",-26} {note}");
+            _manifest.AppendLine($"{"",-26} {GameState()}");
             _manifest.AppendLine($"{"",-26} {GaugeFill()}");
             _manifest.AppendLine($"{"",-26} {FrameFacts()}");
             RecordBoardRoi(name, Width, Height);
@@ -2065,6 +2066,42 @@ namespace Ascend.Prototype.Run.Tests
         /// 그러니 캡처가 스스로 증언하게 한다. 막대의 실제 폭이 여기 남으면 다음
         /// 평가는 "안 보인다"와 "없다"를 구분할 수 있다.
         /// </summary>
+        /// <summary>
+        /// **이 장이 어떤 게임 상태에서 찍혔는지** 적는다.
+        ///
+        /// 왜 필요한가: 평가자는 그림만 보고 「결과판이 왜 저 심볼인지」, 「계약 문구가
+        /// 왜 저것인지」, 「전력이 왜 저만큼인지」를 판단할 근거가 없었다. 위험 단계는
+        /// 이미 각 줄에 있었지만 **층·단계·남은 스핀·선택된 계약**은 어디에도 없어,
+        /// 지적이 「연출이 이상하다」와 「그 상태에서는 그게 맞다」로 갈렸다(`UP-FIX-65`).
+        ///
+        /// 상태를 못 읽으면 **못 읽었다고 적는다** — 빈 줄이나 0 으로 얼버무리지 않는다.
+        /// </summary>
+        private static string GameState()
+        {
+            var run = FindAnyObjectByType<RunSessionBehaviour>();
+            if (run == null || run.Session == null) return "게임 상태 — **확인 못 함**(RunSession 없음)";
+
+            FloorSession floor = run.Session.Current;
+            if (floor == null)
+                return $"게임 상태 — 모드 {run.Mode} · 진행층 {run.Session.CurrentFloor} · " +
+                       $"완료 {run.Session.IsComplete} · 활성 층 없음";
+
+            // `ResistanceContract` 는 **구조체**다 — null 비교가 컴파일되지 않는다.
+            // 미선택은 빈 `Label` 로 나타난다.
+            string label = floor.SelectedContract.Label;
+            string contract = !string.IsNullOrEmpty(label)
+                ? label
+                : (floor.Phase == FloorPhase.ContractSelection
+                    ? $"미선택(선택지 {floor.Plan.ContractChoices.Length}개)"
+                    : "없음");
+
+            return $"게임 상태 — 모드 {run.Mode} · {floor.Plan.Floor}층 · 단계 {floor.Phase} · " +
+                   $"남은 스핀 {floor.SpinsRemaining}/{floor.Plan.Spins} · 계약 {contract} · " +
+                   $"전력 {floor.Power:F1} / 요구 {floor.RequiredPower:F1} " +
+                   $"({(floor.RequiredPower > 0f ? floor.Power / floor.RequiredPower * 100f : 0f):F0}%) · " +
+                   $"수확대 {(floor.IsOverharvestUnlocked ? "열림" : "잠김")}";
+        }
+
         private static string GaugeFill()
         {
             var panel = FindAnyObjectByType<InstrumentPanelView>();
@@ -2379,6 +2416,7 @@ namespace Ascend.Prototype.Run.Tests
                 else
                 {
                     _measureCamera = view;
+                    _manifest.AppendLine($"{"",-26} {GameState()}");
                     _manifest.AppendLine($"{"",-26} {GaugeFill()}");
                     _manifest.AppendLine($"{"",-26} {FrameFacts()}");
                     RecordBoardRoi(name, shot.width, shot.height);
@@ -2563,6 +2601,11 @@ namespace Ascend.Prototype.Run.Tests
             _manifest.AppendLine("장수·해상도·프레임 내용은 **주장하지 않고 잰다** — 하드코딩된 개수 주장은 " +
                                  "세트가 커질 때마다 조용히 틀려진다(`UP-REC-06`).");
             _manifest.AppendLine("위험 단계는 연출이 아니라 실제 게임 상태다 — 무엇을 해서 도달했는지 각 줄에 적혀 있다.");
+            _manifest.AppendLine(
+                "**각 장에 「게임 상태」 줄이 붙는다** — 층 · 단계 · 남은 스핀 · 선택된 계약 · 전력비 · 수확대 개방 여부. " +
+                "예전에는 위험 단계만 있어서, 결과판 심볼이나 계약 문구가 이상해 보일 때 " +
+                "「연출 결함」인지 「그 상태에서는 그게 맞다」인지 평가자가 가릴 수 없었다(`UP-FIX-65`). " +
+                "상태를 못 읽은 장은 **확인 못 함**이라고 적히며, 0 으로 얼버무리지 않는다.");
             // ── 8차 판정이 이 두 줄을 요구했다 ─────────────────────────────────
             _manifest.AppendLine(
                 "**가림을 잰다.** 「온전」의 정의가 바뀌었다 — 이제 **프레임 안 그리고 가리는 것이 없음**이다. " +

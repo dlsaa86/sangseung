@@ -325,11 +325,35 @@ namespace Ascend.Prototype.Art.Tests
             AtMost(ReferenceRoomSpec.LongestVerticalRunRatio, ReferenceRoomSpec.MaxVerticalRunRatio,
                    "끊기지 않는 세로 부재 ÷ 캐비닛 높이");
 
-            // 깊이 위계가 가로 연속성을 이기게 되어 있는가.
-            if (!(ReferenceRoomSpec.BulkheadProud > ReferenceRoomSpec.BankRibProud))
-                throw new Exception($"격벽 돌출 {ReferenceRoomSpec.BulkheadProud * 1000f:F0}mm 가 " +
-                                    $"리브 {ReferenceRoomSpec.BankRibProud * 1000f:F0}mm 보다 앞이 아니다 " +
-                                    "— 교차점에서 세로가 이겨 판이 3분할된다");
+            // 🔴 **가로 연속성을 「돌출」이 아니라 「음각」으로 얻는다.**
+            //
+            // 직전 판본은 격벽을 +14mm 앞으로 내밀어 가로가 이기게 했다. 릴 띠는
+            // 실제로 막혔지만 그 대가가 컸다 — 격벽이 화면에서 **가장 밝은 선형
+            // 요소**가 되어 판이 「가로 선반 3단」으로 읽혔고, `VISUAL_SPEC` §3 의
+            // 「각 통관 열 = 결과판 한 열」이 형태로 부정됐다. 독립 평가가
+            // 399 px/m 실측으로 잡았다 — 폭은 리브 26px > 격벽 13px 인데
+            // 시각 무게는 격벽 > 외곽 ≥ 리브였다.
+            //
+            // 음각 채널은 **연속된 그림자선**을 남기므로 가로 연속성은 그대로
+            // 유지하면서 하이라이트만 포기한다. 그래서 이 검사는 이제
+            // 「격벽이 앞이다」가 아니라 「격벽이 음각이다」를 요구한다.
+            if (ReferenceRoomSpec.BulkheadProud >= 0f)
+                throw new Exception($"격벽이 음각이 아니다 ({ReferenceRoomSpec.BulkheadProud * 1000f:F0}mm) " +
+                                    "— 앞으로 나온 가로 부재는 폭이 얼마든 화면에서 가장 강한 분할이 된다");
+
+            // 그리고 세로가 가로를 **시각적으로** 이겨야 한다. 리브 캡이 그 수단이다.
+            if (ReferenceRoomSpec.RibCapProud <= ReferenceRoomSpec.BulkheadProud + 0.012f)
+                throw new Exception($"세로 리브가 가로 격벽을 못 이긴다 — " +
+                                    $"리브 캡 {ReferenceRoomSpec.RibCapProud * 1000f:F0}mm vs " +
+                                    $"격벽 {ReferenceRoomSpec.BulkheadProud * 1000f:F0}mm");
+
+            // 그런데 캡이 이어지면 릴 띠가 돌아온다. **끊김**을 함께 요구한다 —
+            // 이 두 단정은 반드시 같이 있어야 한다. 하나만 있으면
+            // 「리브를 전 높이로 앞에 내민다」가 통과해 버린다.
+            if (ReferenceRoomSpec.RibCapSegmentHeight >= ReferenceRoomSpec.ChamberDoorHeight)
+                throw new Exception($"리브 캡 토막 {ReferenceRoomSpec.RibCapSegmentHeight:F3} 이 " +
+                                    $"도어 높이 {ReferenceRoomSpec.ChamberDoorHeight:F3} 이상이다 — 캡이 이어진다");
+            AtMost(ReferenceRoomSpec.RibCapWidth, ReferenceRoomSpec.BankRibWidth * 0.6f, "리브 캡 폭");
 
             // 간격이 유도값인가. 상수로 되돌리면 프레임 위계와 갈라진다.
             Approx(ReferenceRoomSpec.WindowPitchX,

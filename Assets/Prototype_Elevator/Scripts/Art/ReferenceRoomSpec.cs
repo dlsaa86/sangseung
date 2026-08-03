@@ -244,11 +244,33 @@ namespace Ascend.Prototype.Art
         //   뱅크: 챔버 3개 적층 하중 + 챔버 간 격벽 + 공통 잠금 링크 보호.
         //   격벽: 챔버 하나와 하나 사이의 밀폐 칸막이. 하중을 받지 않는다.
 
-        /// <summary>외곽 하중 프레임 폭(m). 지시 「약 70~90mm」.</summary>
-        public const float OuterFrameBand = 0.086f;
+        /// <summary>
+        /// 외곽 하중 프레임 폭(m). 지시 「약 70~90mm」.
+        ///
+        /// ⚠ 86mm 였는데 아래 <see cref="BankRibWidth"/> 가 58 → 68 로 올라가면서
+        /// **외곽−뱅크 차이가 18mm 로 줄어 3단 위계 하한(20mm)을 깼다.**
+        /// 「5mm 차이는 4m 거리에서 위계가 아니다」로 세운 그 하한이다.
+        ///
+        /// 뱅크를 되돌리지 않는다 — 68 : 30 은 격벽 돌출 하이라이트를 이기려고
+        /// 독립 평가의 REJECT 를 받고 올린 값이다. 대신 **외곽을 지시 상한까지 올려**
+        /// 위계를 위쪽에서 복원한다. 90 : 68 : 30 = 3.0 : 2.3 : 1.0.
+        /// 캐비닛 폭 1.868 → 1.876 (벽 46.9%) · 높이 1.792 → 1.800 (벽 62.1%) 로
+        /// 둘 다 요구 범위 안이다.
+        /// </summary>
+        public const float OuterFrameBand = 0.090f;
 
-        /// <summary>세로 뱅크 프레임 폭(m). 외곽보다 얇고 격벽보다 두껍다.</summary>
-        public const float BankRibWidth = 0.058f;
+        /// <summary>
+        /// 세로 뱅크 프레임 폭(m). 외곽보다 얇고 격벽보다 두껍다.
+        ///
+        /// ⚠ 58mm 였을 때 독립 평가가 「굵기 3단이 **2단으로** 읽힌다 — 30mm 격벽이
+        /// 14mm 돌출해 하이라이트를 얻으며 58mm 리브보다 굵어 보인다」로 판정했다.
+        /// **깊이 위계를 뒤집은 대가**다(가로를 앞에 둬서 세로 릴 띠를 닫았다).
+        ///
+        /// 둘 중 하나를 포기하지 않고 **굵기 차이를 키워** 푼다 — 68 : 30 = 2.3배.
+        /// 화면에서 27 : 12 px 이면 그림자 이득으로 뒤집히지 않는다.
+        /// 캐비닛 폭이 1.848 → 1.868 로 20mm 늘지만 벽 점유 46.7% 로 요구 안이다.
+        /// </summary>
+        public const float BankRibWidth = 0.068f;
 
         /// <summary>챔버 사이 가로 격벽 두께(m). 셋 중 가장 얇다.</summary>
         public const float BulkheadHeight = 0.030f;
@@ -572,18 +594,94 @@ namespace Ascend.Prototype.Art
         public const float OuterFrameProud = 0.022f;
 
         /// <summary>
-        /// 가로 격벽이 앞으로 나온 양(m). **리브보다 앞이다 — 굵기 위계와 반대다.**
+        /// 가로 격벽이 도어 면보다 **들어간** 양(m). 음각 채널이다 — 부호가 반대다.
         ///
-        /// 🔴 굵기는 지시대로 리브(58) > 격벽(30) 인데 깊이는 뒤집는다.
-        /// 리브를 앞에 두고 전 높이로 이었더니 판이 **끊기지 않는 세로 채널 둘**로
-        /// 3분할됐고, 그것이 `G-SLOT` 축이 12라운드 싸운 슬롯머신 릴 띠다.
-        /// 압력 챔버 랙은 실제로 **수평 선반판이 연속이고 수직 스티프너가 그 사이에
-        /// 끼워진다.** 굵기 위계를 지키면서 연속성만 가로로 넘기는 방법이다.
+        /// 🔴 **돌출이 위계를 만든다. 폭이 아니다.**
+        ///
+        /// 직전 판본은 격벽을 +14mm 앞으로 내밀었다. 그 결과 실측이 이렇게 나왔다
+        /// (399 px/m · 독립 평가 실측):
+        ///
+        ///   외곽 86mm(30px) 돌출 22mm — 벽과 값 차 미미
+        ///   리브 68mm(26px) 돌출  7mm — **하이라이트도 그림자도 없다**
+        ///   격벽 30mm(13px) 돌출 14mm — **화면에서 가장 밝은 선형 요소**
+        ///
+        /// 폭은 사양대로 68 : 30 = 2.3배로 들어가 있는데 화면의 시각 무게는
+        /// 격벽 > 외곽 ≥ 리브 로 **완전히 뒤집혀 있었다.** 14mm 돌출한 13px 부재는
+        /// 하이라이트와 그림자 **두 개**의 신호를 얻고, 7mm 돌출한 26px 부재는
+        /// 아무 신호도 얻지 못하기 때문이다. 폭을 58 → 68 로 올린 조치는
+        /// **원인이 아닌 축을 건드린 것**이었고 그래서 지적이 그대로 남았다.
+        ///
+        /// 그리고 이 실패는 취향 문제가 아니었다. 격벽이 가장 강한 분할이 되면
+        /// 판이 **가로 선반 3단**으로 읽히고, `VISUAL_SPEC` §3 의
+        /// 「세 개의 수직 통관이 나란히 배치되고 각 통관은 결과판의 한 열과
+        /// 대응한다」가 형태로 부정된다. 릴 띠를 잡느라 **열 대응을 잃은 것**이다.
+        ///
+        /// 음각으로 뒤집으면 가로 연속성은 **그림자선으로 유지되고**(릴 띠 방어는
+        /// 살아 있다) 하이라이트만 잃는다. 리브가 상대적으로 앞선다.
         /// </summary>
-        public const float BulkheadProud = 0.014f;
+        public const float BulkheadRecess = 0.008f;
 
-        /// <summary>세로 뱅크 프레임이 앞으로 나온 양(m). 격벽보다 **뒤**다.</summary>
+        /// <summary>
+        /// 격벽의 실효 돌출(m). 음각이므로 **음수**다.
+        /// 깊이 위계 불변식이 이 값을 본다.
+        /// </summary>
+        public static float BulkheadProud => -BulkheadRecess;
+
+        /// <summary>세로 뱅크 프레임이 앞으로 나온 양(m). 리브 몸통.</summary>
         public const float BankRibProud = 0.007f;
+
+        // ── 하중 경로 — **굵기가 아니라 접속부가 하중을 말한다** ──────────────
+        //
+        // 🔴 외곽 프레임 86mm 는 사양대로인데 독립 평가가 세 라운드 연속
+        // 「앵커·플랜지 없는 균일폭 액자 몰딩」으로 읽었다. 399 px/m 실측에서
+        // 네 변이 전부 폭 30px 평면 띠였고, **볼트·러그·브래킷·거싯·기초 채널이
+        // 화면에 하나도 없었다.** 1.868 × 1.792 × 0.26 m 강재 캐비닛이 벽에
+        // 무엇으로 붙어 있는지 형태가 답하지 못한 것이다.
+        //
+        // 기존 마운트 프레임에도 볼트와 거싯은 있었다 — 전부 **캐비닛 뒤에
+        // 가려** 정면에서 한 개도 안 보였다. 안 보이는 접속부는 없는 것과 같다.
+        // 그래서 러그를 **실루엣 밖으로** 내민다.
+
+        /// <summary>벽 앵커 러그 한 장의 폭(m). 프레임 바깥으로 나가는 방향.</summary>
+        public const float AnchorLugWidth = 0.120f;
+
+        /// <summary>벽 앵커 러그 한 장의 높이(m).</summary>
+        public const float AnchorLugHeight = 0.090f;
+
+        /// <summary>러그가 캐비닛 실루엣 **밖으로** 나가는 양(m). 이것이 보여야 한다.</summary>
+        public const float AnchorLugOverhang = 0.030f;
+
+        /// <summary>한쪽 변의 러그 개수. 좌우 합계 6개.</summary>
+        public const int AnchorLugPerSide = 3;
+
+        /// <summary>기초 채널(sill)의 깊이(m). 캐비닛 아래를 받친다.</summary>
+        public const float SillDepth = 0.140f;
+
+        /// <summary>기초 채널의 높이(m).</summary>
+        public const float SillHeight = 0.090f;
+
+        /// <summary>기초 채널 아래 받침 다리의 개수. 바닥까지 하중을 내린다.</summary>
+        public const int SillLegCount = 3;
+
+        /// <summary>러그 i 의 높이(m). 캐비닛 높이를 4등분한 안쪽 세 점.</summary>
+        public static float AnchorLugY(int i)
+            => MachineBottomY + MachineHeight * (i + 1) / (AnchorLugPerSide + 1);
+
+        /// <summary>
+        /// 리브 앞면에 얹는 **캡 스트립**의 폭(m).
+        ///
+        /// 리브 몸통을 통째로 앞으로 내밀지 않는 이유: 그러면 리브가 26px 폭으로
+        /// 전면에 나와 다시 세로 채널이 되고 `G-SLOT` 릴 띠가 돌아온다.
+        /// 캡은 리브보다 **좁고**(28 vs 68mm) 무엇보다 **행마다 끊긴다** —
+        /// 하이라이트는 얻고 무중단 세로 길이는 도어 높이(0.48 m)를 넘지 않는다.
+        /// </summary>
+        public const float RibCapWidth = 0.028f;
+
+        /// <summary>리브 캡이 도어 면보다 앞으로 나온 양(m). 격벽보다 확실히 앞이다.</summary>
+        public const float RibCapProud = 0.018f;
+
+        /// <summary>리브 캡 한 토막의 세로 길이(m). 도어 높이보다 짧아야 끊긴다.</summary>
+        public static float RibCapSegmentHeight => ChamberDoorHeight - 0.040f;
 
         /// <summary>샤프트 하우징이 외곽 프레임보다 더 앞으로 나온 양(m).</summary>
         public const float ShaftHousingProud = 0.010f;
@@ -1042,11 +1140,44 @@ namespace Ascend.Prototype.Art
                 list.Add($"§13 끊기지 않는 세로 부재가 캐비닛 높이의 {LongestVerticalRunRatio:P0} " +
                          $"(상한 {MaxVerticalRunRatio:P0}) — 판이 세로 띠로 갈라져 슬롯머신 릴이 된다");
 
-            // 깊이 위계 — 격벽이 리브보다 **앞**이어야 가로 연속성이 이긴다.
-            if (!(OuterFrameProud > BulkheadProud && BulkheadProud > BankRibProud))
+            // ── 깊이 위계 — **화면의 시각 무게가 폭 위계를 따라야 한다** ──────────
+            //
+            // 앞에서 뒤로: 외곽(22) > 리브 캡(18) > 리브 몸통(7) > 도어 면(0) > 격벽(−8).
+            // 격벽만 음각이라 부호가 뒤집힌다.
+            if (!(OuterFrameProud > RibCapProud && RibCapProud > BankRibProud && BankRibProud > 0f))
                 list.Add($"§4 깊이 위계가 깨졌다 — 외곽 {OuterFrameProud * 1000f:F0} / " +
-                         $"격벽 {BulkheadProud * 1000f:F0} / 리브 {BankRibProud * 1000f:F0} mm. " +
-                         "리브가 앞에 나오면 세로 채널이 판을 3분할한다");
+                         $"리브 캡 {RibCapProud * 1000f:F0} / 리브 {BankRibProud * 1000f:F0} mm");
+
+            // 🔴 **이것이 `UP-FIX-60` 을 세 라운드 살려 둔 불변식이다.**
+            //
+            // 직전 판본은 폭만 검사했다(리브 68 > 격벽 30). 폭은 통과했는데
+            // 화면에서는 격벽이 가장 강한 분할이었다 — 격벽이 +14mm 앞이라
+            // 하이라이트와 그림자를 둘 다 얻었고 리브는 7mm 라 아무것도 못 얻었다.
+            // **폭을 재는 불변식은 이 실패를 원리적으로 잡을 수 없다.**
+            //
+            // 그리고 이건 취향이 아니다. 격벽이 이기면 판이 가로 선반 3단이 되고
+            // `VISUAL_SPEC` §3 의 「각 통관 열 = 결과판 한 열」이 형태로 부정된다.
+            if (RibCapProud <= BulkheadProud + 0.012f)
+                list.Add($"§4c 세로 리브가 가로 격벽을 시각적으로 못 이긴다 — " +
+                         $"리브 캡 {RibCapProud * 1000f:F0}mm vs 격벽 {BulkheadProud * 1000f:F0}mm. " +
+                         "열 분할이 행 분할보다 약하면 3×3 이 「가로 선반 3단」으로 읽히고 " +
+                         "VISUAL_SPEC §3 의 열-결과판 대응이 깨진다");
+
+            // 격벽은 **음각이어야 한다.** 앞으로 내밀면 위 불변식을 통과하고도
+            // 다시 가장 밝은 선형 요소가 된다.
+            if (BulkheadProud >= 0f)
+                list.Add($"§4d 가로 격벽이 음각이 아니다({BulkheadProud * 1000f:F0}mm) — " +
+                         "앞으로 나온 가로 부재는 폭이 얼마든 화면에서 가장 강한 분할이 된다");
+
+            // 리브 캡이 행마다 끊기는가. 이으면 `G-SLOT` 릴 띠가 돌아온다.
+            if (RibCapSegmentHeight >= ChamberDoorHeight)
+                list.Add($"§4e 리브 캡 토막 {RibCapSegmentHeight:F3} 이 도어 높이 " +
+                         $"{ChamberDoorHeight:F3} 이상이다 — 캡이 이어져 세로 채널이 된다");
+
+            // 캡은 리브보다 좁아야 한다. 같으면 리브 전체가 앞으로 나온 것과 같다.
+            if (RibCapWidth >= BankRibWidth * 0.6f)
+                list.Add($"§4f 리브 캡 폭 {RibCapWidth * 1000f:F0}mm 이 리브 " +
+                         $"{BankRibWidth * 1000f:F0}mm 의 60% 이상이다 — 리브가 통째로 앞에 나온 것과 같다");
 
             // 공통축이 모서리 기어박스까지 실제로 닿는가.
             if (CommonShaftRightX < LeverColumnCenterX - 0.001f)

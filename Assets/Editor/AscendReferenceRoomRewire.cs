@@ -417,6 +417,21 @@ namespace Ascend.Prototype.EditorTools
                               ReferenceRoomSpec.GateOpeningWidth * 0.5f + 0.22f),
                   Quaternion.Euler(0f, 90f, 0f), 1f, "문 제어(InteractableDoorControl)");
 
+            // 🔴 **계약 명판 셋을 되살려 글자 뒤에 세운다.**
+            //
+            // 독립 평가자가 「판도 테도 없이 흰 글자만 벽에 얹혀 있다 ·
+            // `VISUAL_SPEC` §5 「현대적 HUD처럼 떠 보이면 안 된다」 위반」으로 지목했다.
+            //
+            // 원인은 **파킹이 판만 껐고 글자는 안 껐다**는 것이다. 실측 —
+            //   `ContractPlaqueLabel_0..2` 활성 · 렌더 True @ (0.95, 1.2~1.64, −0.72)
+            //   `ContractPlaque_0..2`      **비활성** @ (0.99, 1.28~1.72, +0.30)
+            // 둘이 서로 다른 자리에 있고 한쪽만 살아 있었다. 글자가 뜬 것이 아니라
+            // **판이 꺼지고 딴 데 있었다.**
+            //
+            // 이 저장소가 이번 배치에서 네 번째로 겪는 「구 형상과 새 배치가 어긋난다」다.
+            // 판과 글자를 **같은 자리에** 세우고 판을 되살린다.
+            RelocateContractPlaques();
+
             // 사고 기록기도 후면 벽에서 뺀다 — 같은 이유다.
             Place("GrayboxWorld/Car/AccidentPrinter",
                   new Vector3(ReferenceRoomSpec.WallLeftX + 0.10f, 1.30f,
@@ -452,6 +467,56 @@ namespace Ascend.Prototype.EditorTools
                 hidden++;
             }
             _report.AppendLine($"     {what} 렌더러 {hidden}개 비표시 (오브젝트·콜라이더는 살린다)");
+        }
+
+        /// <summary>
+        /// 계약 명판 셋과 그 글자를 계약 패널 옆 우벽에 나란히 세운다.
+        ///
+        /// **판을 되살리는 것이 요점이다.** 파킹 목록이 판만 끄고 글자는 안 꺼서
+        /// 흰 글자가 벽에 떠 있었다. 자리는 계약 패널과 같은 벽·같은 z 로 잡는다 —
+        /// 「무엇을·얼마에」를 한 시선 안에서 읽어야 하기 때문이다.
+        /// </summary>
+        private static void RelocateContractPlaques()
+        {
+            float x = ReferenceRoomSpec.WallRightX - 0.05f;
+            float z = ReferenceRoomSpec.ShelfCenterZ - ReferenceRoomSpec.ShelfLength * 0.5f - 0.45f;
+            var rot = Quaternion.Euler(0f, -90f, 0f);   // 실내(−X)를 향한다
+            int revived = 0, moved = 0;
+
+            for (int i = 0; i < 3; i++)
+            {
+                float y = 1.68f - i * 0.23f;
+
+                Transform plaque = FindAnywhere($"ContractPlaque_{i}");
+                if (plaque != null)
+                {
+                    Undo.RecordObject(plaque.gameObject, "revive contract plaque");
+                    if (!plaque.gameObject.activeSelf) { plaque.gameObject.SetActive(true); revived++; }
+                    plaque.SetPositionAndRotation(new Vector3(x, y, z), rot);
+                    plaque.localScale = Vector3.one;
+                    EditorUtility.SetDirty(plaque);
+                }
+
+                Transform label = FindAnywhere($"ContractPlaqueLabel_{i}");
+                if (label != null)
+                {
+                    Undo.RecordObject(label, "relocate contract label");
+                    // 글자는 판보다 **앞**에 — 30mm 띄우면 판이 배경이 된다.
+                    label.SetPositionAndRotation(new Vector3(x - 0.030f, y, z), rot);
+                    EditorUtility.SetDirty(label);
+                    moved++;
+                }
+            }
+            _report.AppendLine($"  계약 명판 — 판 되살림 {revived}/3 · 글자 이동 {moved}/3 " +
+                               $"@ 우벽 x={x:F2} z={z:F2} (판이 글자 뒤에 선다)");
+        }
+
+        /// <summary>이름으로 찾는다. 비활성도 찾아야 파킹된 것을 되살릴 수 있다.</summary>
+        private static Transform FindAnywhere(string name)
+        {
+            foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include))
+                if (t.name == name) return t;
+            return null;
         }
 
         private static void Place(string path, Vector3 pos, Quaternion rot, float scale, string what)
@@ -824,7 +889,10 @@ namespace Ascend.Prototype.EditorTools
                 "GrayboxWorld/Car/TankStand",
                 "GrayboxWorld/Car/TankTick_0", "GrayboxWorld/Car/TankTick_1",
                 "GrayboxWorld/Car/TankTick_2", "GrayboxWorld/Car/TankTick_3",
-                "GrayboxWorld/Car/ContractPlaque_0", "GrayboxWorld/Car/ContractPlaque_1", "GrayboxWorld/Car/ContractPlaque_2",
+                // ⚠ `ContractPlaque_0..2` 는 **여기서 뺐다.** 파킹이 판만 끄고 글자는
+                // 안 꺼서 흰 글자가 벽에 떠 있었고, 그것이 `UP-FIX-63` 이다.
+                // `RelocateContractPlaques` 가 판을 되살려 글자 뒤에 세운다 —
+                // 파킹 목록에 남겨 두면 되살린 직후 다시 꺼진다(이 함수가 나중에 돈다).
                 "GrayboxWorld/Car/Door",
             };
 

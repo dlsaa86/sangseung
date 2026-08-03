@@ -290,6 +290,18 @@ namespace Ascend.Prototype.View
             }
         }
 
+        /// <summary>
+        /// **헤드리스 검사 전용.** 상태를 직접 세운다.
+        ///
+        /// 왜 필요한가: `CustomsLockView` 의 자동 해제는 레버 상태의 **전이**를 본다.
+        /// 그 전이를 재현하려면 `Latched → Resetting → Idle` 을 만들 수 있어야 하는데,
+        /// 정상 경로로는 초 단위 시간과 입력이 필요해 순수 검사에서 재현할 수 없다.
+        /// 그 재현 수단이 없어서 소유권 결함이 여덟 개 검사를 통과했다.
+        ///
+        /// 게임 코드에서 부르지 않는다 — 부르면 이벤트가 건너뛰어진다.
+        /// </summary>
+        public void ForceState(State next) => Enter(next);
+
         private static float EaseOut(float t) => 1f - Mathf.Pow(1f - Mathf.Clamp01(t), 3f);
 
         private void Enter(State next)

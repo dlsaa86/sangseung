@@ -285,6 +285,22 @@ namespace Ascend.Prototype.EditorTools
             // 근접 캡처에서 칼라가 「자갈」로 읽힌 이유이기도 하다.
             Mat("Collar",    new Color(0.585f, 0.560f, 0.512f));
 
+            // ⑧b **클램프 링 전용 — 칼라보다 어둡다.**
+            //
+            // 🔴 링을 칼라와 같은 재질로 두었더니 **아홉 개 링이 화면에서 가장
+            // 밝은 것**이 됐다. 독립 평가 실측: 링 명부 95~110 vs 도어면 70 이고,
+            // 그 차이가 캐비닛 실루엣과 벽의 차이(5~8)보다 **한 자릿수 크다.**
+            // 지시의 시각 위계 ①직사각 기계 → ②3×3 → ③레버 → ④볼트·유리 가
+            // 여기서 깨진다 — 「9개의 밝은 팔각형이 먼저 보이면 실패」다.
+            //
+            // 칼라를 통째로 낮추지 않는 이유: 칼라는 **공통축·회전 허브·구동
+            // 로드·기어박스**와 공유한다. 그 사슬은 평가자가 유일하게 「읽힌다」고
+            // 한 부분이라 같이 어두워지면 얻은 것을 잃는다.
+            //
+            // 그리고 재질을 가르는 것이 형태상 **더 옳다** — 링은 볼트 8개로 고정된
+            // 리테이너(정지 부품)이고, 칼라 계열은 움직이는 기구다.
+            Mat("RingSteel", new Color(0.415f, 0.398f, 0.362f));
+
             // ⑩ **판독면 — 낡은 전광판.**
             //
             // 두 번 빗나갔고 그 사이가 정답이다.
@@ -307,6 +323,10 @@ namespace Ascend.Prototype.EditorTools
             // 놓인 도형**이 된다 — 없애려던 「스티커」의 다른 형태다.
             // 반사율 0.055 는 이 방의 어떤 표면보다도 낮다. 의도다.
             Mat("ChamberDark", new Color(0.055f, 0.050f, 0.048f));
+
+            // ⑫ 챔버 **후면만** — 벽보다 조금 밝고 아주 희미하게 붉다.
+            // 껍질이 실루엣으로 설 배경이다. 근거는 `Mat()` 의 발광 주석에 있다.
+            Mat("ChamberGlow", new Color(0.070f, 0.052f, 0.050f));
         }
 
         /// <summary>
@@ -332,8 +352,11 @@ namespace Ascend.Prototype.EditorTools
                 case "Grease":    return (0.08f, 0.35f);   // 기름때 낀 고무·금속
                 // 칼라는 손과 공구가 닿는 곳이라 **가장 매끄럽고 가장 금속답다.**
                 case "Collar":    return (0.42f, 0.95f);
+                // 링은 정지 리테이너다. 매끄러움을 낮춰 **좁고 밝은 점**을 없앤다.
+                case "RingSteel": return (0.24f, 0.85f);
                 // 그을음이 앉은 내부 — 반짝이면 다시 밝아 보인다.
                 case "ChamberDark": return (0.05f, 0.10f);
+                case "ChamberGlow": return (0.04f, 0.00f);
                 // 꺼진 세그먼트 판. **완전 무광이다.**
                 //
                 // ⚠ 0.22 로도 창백했다. 매끄러움을 **낮추면** 스페큘러 로브가 **넓어져**
@@ -414,11 +437,32 @@ namespace Ascend.Prototype.EditorTools
             // `SaveMesh` 가 겪은 것과 **같은 종류**다 — 기존 에셋을 재사용하면서 전
             // 상태를 다시 쓰지 않는 것. 그때는 형상이 남았고 이번엔 발광이 남았다.
             // 한 배치에서 같은 뿌리의 결함을 두 번 만났으면 그건 우연이 아니다.
-            bool emissive = key == "SegmentLit";
             // ⚠ 0.95 는 블룸을 넘겼다 — 정면 p95 53 · 흰끼 0.08% 로 판 전체를
             // 발광시켰을 때(52)와 다르지 않았다. 작은 면적이라도 1 을 넘기면
             // 블룸이 번져 면적 이득이 사라진다. 1 아래로 확실히 내린다.
-            m.SetColor("_EmissionColor", emissive ? new Color(0.86f, 0.66f, 0.22f) * 0.42f : Color.black);
+            Color emission = Color.black;
+            if (key == "SegmentLit") emission = new Color(0.86f, 0.66f, 0.22f) * 0.42f;
+            // 🔴 **챔버 후면은 스스로 아주 희미하게 붉다.**
+            //
+            // 왜 필요한가: 후면이 완전한 검정이면 **어두운 껍질이 검정 위 검정**이
+            // 되어 실루엣이 성립할 수 없다. 독립 평가는 이것을 「검은 구멍 안에
+            // 뜬 점」이라고 읽었는데, 실측해 보면 껍질은 이미 45px 로 충분히 크다
+            // (`03_player_eye` 기준 껍질 45.4px · 코어 24.6px · 유리 76.7px).
+            // **크기가 아니라 배경이 없어서 안 보였다.**
+            //
+            // 광원을 쓰지 않는 이유: URP 에셋의 `maxAdditionalLightsCount` 가 **4** 다.
+            // 영혼마다 점광을 달면 아홉 개가 캐빈 주광을 화소 단위로 밀어내
+            // 장치 표면 조명이 시점에 따라 튄다.
+            //
+            // 밝기를 또 만지지 않는 이유: 껍질 밝기는 이미 두 번 바꿨고
+            // (분홍 → 어둡게), 세 번째 밝기 조정은 `visual-verify` §6 가 막는다.
+            // 필요한 것은 **대비 상대**이지 절대 밝기가 아니다.
+            //
+            // 값은 세그먼트(0.42)의 1/6 이다 — 「방을 밝히지 않고 자기 면만
+            // 겨우 보이는」 하한이다. 벽 넷은 여전히 `ChamberDark` 로 검다.
+            if (key == "ChamberGlow") emission = new Color(0.55f, 0.10f, 0.06f) * 0.070f;
+            bool emissive = emission != Color.black;
+            m.SetColor("_EmissionColor", emission);
             if (emissive) m.EnableKeyword("_EMISSION");
             else m.DisableKeyword("_EMISSION");
             // ⚠ **GI 에 기여하지 않는다.** `RealtimeEmissive` 로 두면 켜진 칸이
@@ -997,6 +1041,66 @@ namespace Ascend.Prototype.EditorTools
                         $"MountBolt_{i}");
             }
 
+            // ══ 벽 앵커 러그 6개 — **캐비닛 실루엣 밖으로 나온다** ═══════════
+            //
+            // 🔴 위의 볼트 8개와 거싯 4개는 전부 캐비닛 **뒤**에 있어 정면에서
+            // 한 개도 보이지 않았다. 독립 평가가 세 라운드 연속 「앵커·플랜지가
+            // 없다」고 판정한 것은 틀린 관측이 아니라 **정확한 관측**이었다 —
+            // 부재는 있었지만 화면에 없었다.
+            //
+            // 러그는 프레임 바깥선 **밖으로 30mm** 나간다. 그래야 정면 실루엣에서
+            // 균일폭 띠가 깨지고 「이 상자가 여기에 볼트로 매달려 있다」가 읽힌다.
+            var lugs = new GameObject("AnchorLugs");
+            lugs.transform.SetParent(mount.transform, false);
+            float lugW = ReferenceRoomSpec.AnchorLugWidth;
+            float lugH = ReferenceRoomSpec.AnchorLugHeight;
+            float lugOut = ReferenceRoomSpec.AnchorLugOverhang;
+            for (int side = 0; side < 2; side++)
+            {
+                float sgn = side == 0 ? -1f : 1f;
+                for (int i = 0; i < ReferenceRoomSpec.AnchorLugPerSide; i++)
+                {
+                    float ly = ReferenceRoomSpec.AnchorLugY(i);
+                    // 러그 판. 안쪽 절반은 마운트 프레임에 물리고 바깥 절반이 드러난다.
+                    float lx = sgn * (mow * 0.5f + lugOut - lugW * 0.5f);
+                    Slab(lugs.transform, $"AnchorLug_{side}{i}",
+                         new Vector3(lx, ly, -mt * 0.5f),
+                         new Vector3(lugW, lugH, mt), "BareSteel");
+                    // 볼트 2개 — 벽에 박히는 쪽이다. 러그 바깥 절반에 얹는다.
+                    for (int b = 0; b < 2; b++)
+                        AddBolt(lugs.transform, boltMesh,
+                                new Vector3(lx + sgn * lugW * 0.22f,
+                                            ly + (b == 0 ? -1f : 1f) * lugH * 0.24f,
+                                            -mt - 0.006f),
+                                $"AnchorLugBolt_{side}{i}{b}");
+                }
+            }
+
+            // ══ 기초 채널 + 받침 다리 — 하중이 **바닥으로** 내려간다 ══════════
+            //
+            // 캐비닛 하단이 바닥 위 0.20 m 에서 **그냥 끝나** 있었다. 매달린 것도
+            // 받쳐진 것도 아닌 상태라 하중 경로가 화면에서 끊겼다.
+            var sill = new GameObject("Sill");
+            sill.transform.SetParent(machine.transform, false);
+            float sillH = ReferenceRoomSpec.SillHeight;
+            float sillD = ReferenceRoomSpec.SillDepth;
+            float sillTop = ReferenceRoomSpec.MachineBottomY;
+            Slab(sill.transform, "SillChannel",
+                 new Vector3(0f, sillTop - sillH * 0.5f, -sillD * 0.5f),
+                 new Vector3(mw, sillH, sillD), "BareSteel");
+            // 다리 셋이 채널에서 바닥까지 내려간다. 넷이면 가운데가 무의미해지고
+            // 둘이면 1.87 m 채널이 처진 것으로 읽힌다.
+            float legH = sillTop - sillH;
+            for (int i = 0; i < ReferenceRoomSpec.SillLegCount; i++)
+            {
+                float f = ReferenceRoomSpec.SillLegCount == 1 ? 0.5f
+                        : (float)i / (ReferenceRoomSpec.SillLegCount - 1);
+                float lx = Mathf.Lerp(-mw * 0.5f + 0.16f, mw * 0.5f - 0.16f, f);
+                Slab(sill.transform, $"SillLeg_{i}",
+                     new Vector3(lx, legH * 0.5f, -sillD * 0.34f),
+                     new Vector3(0.11f, legH, sillD * 0.52f), "Steel");
+            }
+
             // 코너 거싯 넷 — 「하중이 어디로 가는가」를 형상으로 답한다.
             // 독립 평가자가 「코너 거싯 없음 · 받침 다리 없음 · 하중 경로를 증명하는
             // 것이 아무것도 없다」고 지적했다. 거싯은 장식이 아니라 사각 프레임이
@@ -1115,19 +1219,43 @@ namespace Ascend.Prototype.EditorTools
                     Slab(cab.transform, $"BankRib_{k}_{row}",
                          new Vector3(x, y, zFace - ribProud * 0.5f),
                          new Vector3(rib, ReferenceRoomSpec.ChamberDoorHeight, 0.050f + ribProud), "BareSteel");
+
+                    // 🔴 **리브 캡 — 폭이 아니라 이것이 위계를 만든다.**
+                    //
+                    // 독립 평가 실측: 폭은 사양대로 리브 26px > 격벽 13px 인데
+                    // 화면의 시각 무게는 격벽이 이겼다. 격벽이 +14mm 앞이라
+                    // 하이라이트와 그림자를 둘 다 얻었고, 리브는 7mm 라 도어면과
+                    // 같은 값이 되어 「띠」가 아니라 「틈」으로 읽혔기 때문이다.
+                    //
+                    // 리브 몸통을 통째로 18mm 앞으로 내밀지 않는 이유: 68mm 폭이
+                    // 전면에 나오면 다시 세로 채널이 되고 릴 띠가 돌아온다.
+                    // 캡은 **좁고**(28mm) **행마다 끊긴다** — 하이라이트만 가져오고
+                    // 무중단 세로 길이는 도어 높이 아래로 유지된다.
+                    Slab(cab.transform, $"RibCap_{k}_{row}",
+                         new Vector3(x, y, zFace - ReferenceRoomSpec.RibCapProud * 0.5f),
+                         new Vector3(ReferenceRoomSpec.RibCapWidth,
+                                     ReferenceRoomSpec.RibCapSegmentHeight,
+                                     0.020f + ReferenceRoomSpec.RibCapProud), "BareSteel");
                 }
             }
 
-            // 챔버 사이 가로 격벽 — 가장 얇지만 **연속이고 가장 앞이다.**
-            // 리브를 가로질러 지나가므로 교차점에서 격벽이 이긴다.
+            // 챔버 사이 가로 격벽 — **음각 채널이다.**
+            //
+            // 앞으로 내밀었을 때 화면에서 가장 밝은 선형 요소가 되어 판이
+            // 「가로 선반 3단」으로 읽혔고, `VISUAL_SPEC` §3 의 「각 통관 열 =
+            // 결과판 한 열」이 형태로 부정됐다. 릴 띠를 잡느라 열 대응을 잃은 것이다.
+            //
+            // 음각으로 뒤집으면 **가로 연속성은 그림자선으로 그대로 남고**
+            // (릴 띠 방어는 유효하다) 하이라이트만 사라진다.
             for (int k = 0; k < 2; k++)
             {
                 float y = ReferenceRoomSpec.ChamberStackBottomY
                         + ReferenceRoomSpec.ChamberDoorHeight * (k + 1)
                         + bulk * (k + 0.5f);
+                float depth = 0.040f;
                 Slab(cab.transform, $"Bulkhead_{k}",
-                     new Vector3(0f, y, zFace - bulkProud * 0.5f),
-                     new Vector3(mw - outer * 2f, bulk, 0.040f + bulkProud), "Steel");
+                     new Vector3(0f, y, zFace + ReferenceRoomSpec.BulkheadRecess + depth * 0.5f),
+                     new Vector3(mw - outer * 2f, bulk, depth), "Steel");
             }
 
             // ══ ④ 공통 잠금축 — 상단 샤프트 하우징 ═══════════════════════════
@@ -1323,7 +1451,7 @@ namespace Ascend.Prototype.EditorTools
                     // ② 낮고 두꺼운 원형 클램프 링
                     var ring = new GameObject("ClampRing");
                     ring.transform.SetParent(module.transform, false);
-                    Render(ring, ringMesh, "Collar");
+                    Render(ring, ringMesh, "RingSteel");
 
                     // 체결 볼트 — **모든 창에서 같은 개수·같은 각도.**
                     var mBolts = new GameObject("Bolts");
@@ -1691,6 +1819,17 @@ namespace Ascend.Prototype.EditorTools
             // 밝기도 칸마다 다르다. `seed % 3` 은 세 값만 만들어 **열마다 같은 밝기**가
             // 반복됐다 — 규칙적인 반복은 개체차가 아니라 패턴으로 읽힌다.
             float k = 0.68f + ProcMeshBuilder.Hash01(seed * 733 + 41) * 0.52f;
+            // 🔴 **핵과 껍질의 값 차이를 크게 벌린다** (2026-08-03).
+            //
+            // 독립 평가 둘이 같은 지적을 했다 — 「연어살빛~테라코타 **단일 존**이고
+            // 요구한 『밝은 적색 중심 + **검붉은** 외곽』이 아니다」,
+            // 「원거리 35px 에서 단일 색 점으로 붕괴한다」.
+            //
+            // 직전 값의 대비는 발광 1.15 : 0.24 = **4.8배**였다. 톤매핑을 거치면
+            // 그 정도는 한 색으로 뭉친다. 껍질을 **더 어둡고 더 검붉게** 내리고
+            // 핵은 그대로 둬서 대비를 벌린다 — 밝히는 것이 아니라 **어둡히는** 쪽이다.
+            // 이 저장소가 이미 배운 것이기도 하다: 「HDR 발광은 세게 줄수록
+            // 붉어지는 게 아니라 희어진다」.
             if (core)
             {
                 // 핵만 1 을 넘긴다. **작은 면적**이라 블룸이 넓게 번지지 않아
@@ -1701,12 +1840,14 @@ namespace Ascend.Prototype.EditorTools
             }
             else
             {
-                // 껍질은 **1 을 넘지 않는다.** 넘는 순간 다시 균일한 흰 덩어리다.
-                // 반투명이라 뒤의 핵이 비치고, 그 겹침이 밀도로 읽힌다.
-                m.SetColor("_BaseColor", new Color(0.26f, 0.030f, 0.016f, 0.48f));
-                m.SetColor("_EmissionColor", new Color(0.86f, 0.16f, 0.07f) * (0.24f * k));
+                // 껍질은 **검붉다.** 반사율을 1/3 로, 발광을 1/3 로 내린다 —
+                // 대비 4.8배 → **14배**. 녹슨 핏빛에 가깝게 초록·파랑을 더 죽인다.
+                m.SetColor("_BaseColor", new Color(0.105f, 0.011f, 0.007f, 0.62f));
+                m.SetColor("_EmissionColor", new Color(0.62f, 0.055f, 0.020f) * (0.085f * k));
                 Transparent(m);
-                m.SetFloat("_Smoothness", 0.72f);
+                // 매끄러움도 낮춘다 — 0.72 는 껍질에 흰 하이라이트를 얹어
+                // 「검붉다」를 지웠다. 영혼은 젖은 표면이 아니다.
+                m.SetFloat("_Smoothness", 0.28f);
             }
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;

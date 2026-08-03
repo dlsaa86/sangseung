@@ -57,6 +57,7 @@ namespace Ascend.Prototype.EditorTools
             // ⑧ 모듈 칼라 — **무쇠**다. `TEX_WallPaint_Peeled` 는 근접에서 자갈로
             // 읽혀 「산화 강철」이 아니라 「콘크리트 덩어리」로 보였다.
             ("Collar",    "TEX_Machine_Housing.png",   null),
+            ("RingSteel", "TEX_Machine_Housing.png",   null),
             // ⑨ 챔버 내부 — 텍스처는 붙이되 **틴트로 눌러** 거의 검게 만든다.
             ("ChamberDark", "TEX_Grating_Steel.png",   null),
         };
@@ -175,6 +176,7 @@ namespace Ascend.Prototype.EditorTools
                 case "Grease":    return new Color(0.46f, 0.45f, 0.43f);
                 // 칼라는 벽보다 **밝다** — 명세의 재질 계층에서 유일하게 밝은 금속이다.
                 case "Collar":    return new Color(1.00f, 0.96f, 0.90f);
+                case "RingSteel": return new Color(0.86f, 0.84f, 0.80f);
                 default:          return Color.white;
             }
         }
