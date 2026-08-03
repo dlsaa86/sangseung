@@ -64,12 +64,29 @@ namespace Ascend.CaptureHarness.EditorTools
         {
             "Readout", "Segment", "Emis", "Emission", "Symbol", "Sym_", "Soul",
             "Lamp", "Lens", "Light", "Glass", "Bulb", "Glow",
-            "Warning", "Stencil", "Sign", "Plaque", "Label", "TMP", "Font",
+            "Warning", "TMP", "Font",
             "Contract", "Power", "Tick", "Gauge", "Indicator", "Lock",
             "Lever", "Handle", "Knob", "Grip",   // 상호작용물은 배경에 묻히면 안 된다
             "ELV_",                               // 새 셸은 이미 대역 안에 있다
             "Absorber", "Proliferator", "Purify",
         };
+
+        /// <summary>
+        /// **완전 보호와 일반 압축 사이.** 표지·표찰은 읽혀야 하지만 화면에서
+        /// 가장 밝은 물체가 되면 안 된다.
+        ///
+        /// v1 실측 — `RM_Sign` 휘도 0.716 으로 새 셸 밴드(0.054~0.151)의 **13배**였고,
+        /// 실행 레버보다 눈을 먼저 끌었다. `VISUAL_SPEC` §5 의 상호작용 계층에서
+        /// 표지는 레버보다 **아래**인데 화면에서는 위였다 — 계층이 뒤집혀 있었다.
+        /// 그래서 지우지 않고 **천장만 낮춘다.** 여전히 비발광 물체 중 가장 밝다.
+        /// </summary>
+        private static readonly string[] SoftCapped =
+        {
+            "Stencil", "Sign", "Plaque", "Label", "Placard",
+        };
+
+        private const float SoftCeiling = 0.34f;
+        private const float SoftTarget = 0.26f;
 
         [MenuItem("Ascend/Cabin/2. 값 폭 압축 패스")]
         public static void Apply()
@@ -98,12 +115,17 @@ namespace Ascend.CaptureHarness.EditorTools
                          : m.HasProperty("_Color") ? "_Color" : null;
                 if (prop == null) continue;
 
+                bool soft = SoftCapped.Any(p => m.name.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
+                float ceiling = soft ? SoftCeiling : Ceiling;
+                float target = soft ? SoftTarget : Target;
+
                 var c = m.GetColor(prop);
                 float lum = Luminance(c);
                 Color.RGBToHSV(c, out float h, out float s, out float v);
 
-                bool tooBright = lum > Ceiling;
-                bool tooSaturated = s > MaxSaturation;
+                bool tooBright = lum > ceiling;
+                // 표지의 채도는 경고 기능이다 — 낮추지 않는다.
+                bool tooSaturated = !soft && s > MaxSaturation;
                 if (!tooBright && !tooSaturated) { skippedInBand++; continue; }
 
                 var pathOfMat = AssetDatabase.GetAssetPath(m);
@@ -116,9 +138,9 @@ namespace Ascend.CaptureHarness.EditorTools
                     r = c.r, g = c.g, b = c.b, a = c.a,
                 });
 
-                float newS = Mathf.Min(s, MaxSaturation);
+                float newS = soft ? s : Mathf.Min(s, MaxSaturation);
                 // 명도만 내린다. 색조(h)는 그대로 — 대역을 좁히는 것이지 색을 다시 칠하는 게 아니다.
-                float newV = tooBright ? v * Mathf.Clamp01(Target / Mathf.Max(lum, 1e-4f)) : v;
+                float newV = tooBright ? v * Mathf.Clamp01(target / Mathf.Max(lum, 1e-4f)) : v;
                 var nc = Color.HSVToRGB(h, newS, newV);
                 nc.a = c.a;
                 m.SetColor(prop, nc);

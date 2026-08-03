@@ -42,6 +42,25 @@ namespace Ascend.CaptureHarness.EditorTools
         /// <summary>스타일 셰이더를 쓸지. 되돌릴 일이 생기면 이 한 줄이다.</summary>
         private const bool UseStylized = true;
 
+        /// <summary>
+        /// 셸의 요(yaw). 블렌더 → FBX → Unity 축 변환에서 x 와 z 가 **함께** 뒤집혀 들어온다.
+        ///
+        /// 2026-08-04 실측 — 블렌더 (x, y, z) 가 유니티 (−x, z, −y) 로 떨어졌다.
+        ///   · 가위문 개구부는 블렌더 −x 에 팠는데 유니티 x=+2.00 에 떨어졌다.
+        ///     유니티의 <c>LeftScissorGate</c> 는 x=−1.96 이므로 **문이 벽으로 막혔다.**
+        ///   · 장치 벽감은 블렌더 (+y, x=−0.35) 에 팠는데 유니티 (z=−2.30, x=+0.35) 에
+        ///     떨어졌다. <c>SoulMachineFrame</c> 은 (z=+2.13, x=−0.35) 이므로 **반대 벽**이다.
+        ///   · 벤치는 블렌더 +x(수납 벽)인데 유니티 x=−1.72(문 쪽)에 떨어졌다.
+        ///
+        /// y 축 180° 는 (x → −x, z → −z) 라 이 셋을 한 번에 맞춘다.
+        /// 근본 원인은 <c>tools/blender/build_cabin.py</c> 헤더의 축 주석이 틀린 것이다
+        /// (「+y = 장치 벽이 Unity +z」라고 적혀 있으나 실제로는 −z 로 간다).
+        /// 거기를 고치고 FBX 를 다시 구우면 이 값은 0 이 된다.
+        /// 지금은 FBX 를 다시 굽지 않고 채택 단계에서 흡수한다 — **절대값**이므로
+        /// 몇 번을 돌려도 같은 자세가 된다.
+        /// </summary>
+        private const float ShellYaw = 180f;
+
         // ── 재질 정의 ─────────────────────────────────────────────────────────
         // 값 폭을 좁게 잡는다. 레퍼런스의 모든 면은 서로 몇 % 안쪽이고,
         // 면 분할은 밝기 차가 아니라 **음영**으로만 읽힌다.
@@ -110,6 +129,76 @@ namespace Ascend.CaptureHarness.EditorTools
             PlaceIntoScene(log);
             DisableSuperseded(log);
             Relight(log);
+
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            Debug.Log(log.ToString());
+        }
+
+        /// <summary>
+        /// 문 밖 통로. `DEVICE_DESIGN_SPEC` §2.6 이 **미달로 판정해 둔 실질 결함**이다
+        /// (Notion 요구 3~5m, 종전 `Lobby` 1.4m). v1 캡처에서 가위문 너머로
+        /// **생 스카이박스**가 보인 것(C 뷰 p99 0.561)도 같은 구멍이다.
+        /// </summary>
+        [MenuItem("Ascend/Cabin/3. 문 밖 통로 채택")]
+        public static void AdoptShaft()
+        {
+            const string shaftFbx = "Assets/Prototype_Elevator/Art/Models/ELV_Shaft.fbx";
+            const string shaftRoot = "CabinShaft";
+            var log = new StringBuilder("=== ELV_Shaft 채택 ===\n");
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(shaftFbx);
+            if (prefab == null) { Debug.LogError($"[Shaft] FBX 없음: {shaftFbx}"); return; }
+
+            var imp = AssetImporter.GetAtPath(shaftFbx) as ModelImporter;
+            if (imp != null)
+            {
+                imp.globalScale = 1f;
+                imp.importAnimation = false;
+                imp.animationType = ModelImporterAnimationType.None;
+                imp.importTangents = ModelImporterTangents.None;
+                imp.generateSecondaryUV = false;
+                imp.addCollider = false;
+                imp.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
+                imp.materialLocation = ModelImporterMaterialLocation.InPrefab;
+                imp.SaveAndReimport();
+            }
+
+            var old = GameObject.Find(shaftRoot);
+            if (old != null) UnityEngine.Object.DestroyImmediate(old);
+
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            inst.name = shaftRoot;
+            // 카 셸과 **같은 요**를 받아야 통로가 가위문 쪽(−x)에 선다.
+            // 안 주면 반대편(+x) 벽 뒤에 생겨 화면에 영향이 없다.
+            inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, ShellYaw, 0f));
+            inst.transform.localScale = Vector3.one;
+            Undo.RegisterCreatedObjectUndo(inst, "Adopt shaft");
+            ForceMaterials(inst, log);
+
+            // 종전 백드롭 판이 통로를 가린다 — 통로가 생겼으니 그 판은 역할이 끝났다.
+            var backdrop = FindByPath("ReferenceRoom/LeftScissorGate/ShaftBackdrop");
+            if (backdrop != null && backdrop.activeSelf)
+            {
+                backdrop.SetActive(false);
+                log.AppendLine("  ShaftBackdrop 비활성 (통로가 그 자리를 대신한다)");
+            }
+
+            // 통로 끝 벽등 — 이게 없으면 통로가 그냥 검은 구멍이라 깊이가 안 읽힌다.
+            var lampGo = inst.transform.Find("ShaftLamp");
+            if (lampGo == null)
+            {
+                var g = new GameObject("ShaftLamp");
+                g.transform.SetParent(inst.transform, false);
+                lampGo = g.transform;
+            }
+            lampGo.position = new Vector3(-4.51f, 1.90f, 1.28f);
+            var sl = lampGo.GetComponent<Light>() ?? lampGo.gameObject.AddComponent<Light>();
+            sl.type = LightType.Point;
+            sl.color = new Color(1.00f, 0.74f, 0.46f);
+            sl.intensity = 1.5f;
+            sl.range = 4.2f;
+            sl.shadows = LightShadows.None;
+            log.AppendLine("  통로 벽등 배치 (깊이 판독)");
 
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             Debug.Log(log.ToString());
@@ -236,17 +325,41 @@ namespace Ascend.CaptureHarness.EditorTools
             imp.generateSecondaryUV = false;
             imp.addCollider = false;
             imp.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
-            imp.materialLocation = ModelImporterMaterialLocation.External;
 
-            imp.SaveAndReimport();
-            imp.SearchAndRemapMaterials(ModelImporterMaterialName.BasedOnMaterialName,
-                                        ModelImporterMaterialSearch.Everywhere);
+            // .meta 에 External 이 **남아 있으면** 리맵이 통째로 무시된다.
+            // 2026-08-04 실측: GetExternalObjectMap() 은 Cabin 폴더를 가리키는데
+            // ForceUpdate 재임포트 뒤에도 렌더러는 Art/Models/Materials/*.mat 을 물었다.
+            // 세터를 지우는 것만으로는 부족하다 — 저장된 값을 명시적으로 되돌려야 한다.
+            imp.materialLocation = ModelImporterMaterialLocation.InPrefab;
+
+            // `materialLocation = External` 은 Unity 6 에서 obsolete 다. 켜 두면 FBX 옆에
+            // `Art/Models/Materials/*.mat` 을 자동 추출하는데, 그 추출본은 URP/Lit 이고
+            // 이름이 우리 것과 같다. 그 상태에서 SearchAndRemapMaterials(Everywhere) 를
+            // 부르면 **어느 쪽을 집을지 보장되지 않는다.**
+            //
+            // 2026-08-04 에 실제로 추출본이 걸렸다 — 리맵 6건이 전부 성공했다고 찍혔는데
+            // 렌더러는 URP/Lit 을 물고 있었고, 값 폭을 좁히려고 잡은 베이스 컬러
+            // (Iron 0.098) 대신 추출본의 0.323 이 들어가 3.3 배 밝았다. 진단 #1 을
+            // 고치려던 채택이 진단 #1 을 그대로 재현한 셈이다.
+            //
+            // 그래서 검색하지 않고 **우리 폴더를 못박아** 건다.
+            var remapped = new List<string>();
+            foreach (var d in Defs)
+            {
+                var path = $"{MatDir}/{d.Name}.mat";
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null) { log.AppendLine($"    ⚠ 리맵 대상 없음: {path}"); continue; }
+                imp.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), d.Name), mat);
+                remapped.Add(d.Name);
+            }
             imp.SaveAndReimport();
 
-            var remapped = imp.GetExternalObjectMap()
-                              .Where(kv => kv.Value is Material)
-                              .Select(kv => kv.Key.name + "→" + kv.Value.name).ToList();
-            log.AppendLine($"  임포터 설정 완료. 재질 리맵 {remapped.Count}건: {string.Join(", ", remapped)}");
+            var actual = imp.GetExternalObjectMap()
+                            .Where(kv => kv.Value is Material)
+                            .Select(kv => kv.Key.name + "→" + AssetDatabase.GetAssetPath(kv.Value))
+                            .OrderBy(s => s).ToList();
+            log.AppendLine($"  임포터 설정 완료. 재질 리맵 {actual.Count}건 (요청 {remapped.Count}건)");
+            foreach (var s in actual) log.AppendLine("    " + s);
         }
 
         // ── 씬 배치 ───────────────────────────────────────────────────────────
@@ -258,7 +371,7 @@ namespace Ascend.CaptureHarness.EditorTools
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
             var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             inst.name = RootName;
-            inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, ShellYaw, 0f));
             inst.transform.localScale = Vector3.one;
             Undo.RegisterCreatedObjectUndo(inst, "Adopt cabin shell");
 
@@ -268,6 +381,8 @@ namespace Ascend.CaptureHarness.EditorTools
                     StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic |
                     StaticEditorFlags.OccludeeStatic | StaticEditorFlags.ReflectionProbeStatic);
 
+            ForceMaterials(inst, log);
+
             var missing = new List<string>();
             foreach (var r in inst.GetComponentsInChildren<MeshRenderer>(true))
             {
@@ -275,7 +390,7 @@ namespace Ascend.CaptureHarness.EditorTools
                 if (names.Any(n => n == "(null)" || n.StartsWith("Default")))
                     missing.Add(r.name + ": " + string.Join("|", names));
             }
-            log.AppendLine($"  배치: {RootName} 자식 {inst.transform.childCount}개");
+            log.AppendLine($"  배치: {RootName} 자식 {inst.transform.childCount}개, yaw={ShellYaw}°");
             if (missing.Count > 0)
                 log.AppendLine("  ⚠ 재질 미할당: " + string.Join(" / ", missing));
             else
@@ -285,6 +400,48 @@ namespace Ascend.CaptureHarness.EditorTools
                            .Where(f => f.sharedMesh != null)
                            .Sum(f => f.sharedMesh.triangles.Length / 3);
             log.AppendLine($"  삼각형 합계 {tris}");
+        }
+
+        /// <summary>
+        /// 인스턴스의 재질을 이름으로 Cabin 폴더 것에 **못박는다.**
+        ///
+        /// 임포터 리맵만 믿지 않는 이유: FBX 옆에 같은 이름의 추출본이 있고
+        /// (`Art/Models/Materials/*.mat`, URP/Lit), 임포터 설정 한 줄이 어긋나면
+        /// 조용히 그쪽이 물린다. 실제로 그렇게 걸렸고 **로그는 리맵 6건 성공이라고
+        /// 찍혀 있었다** — 즉 리맵 성공 로그는 렌더러가 무엇을 물었는지 증명하지 않는다.
+        ///
+        /// 여기서 한 번 더 덮으면 임포터가 어떻게 굴든 결과가 같다.
+        /// 이름 기준 절대 대입이라 몇 번을 돌려도 같은 상태가 된다.
+        /// </summary>
+        private static void ForceMaterials(GameObject inst, StringBuilder log)
+        {
+            var byName = new Dictionary<string, Material>();
+            foreach (var d in Defs)
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>($"{MatDir}/{d.Name}.mat");
+                if (m != null) byName[d.Name] = m;
+            }
+
+            int swapped = 0;
+            var unmatched = new List<string>();
+            foreach (var r in inst.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null) { unmatched.Add(r.name + "[" + i + "]=(null)"); continue; }
+                    // 추출본이든 임베드본이든 이름은 ELV_* 로 같다. 이름으로 건다.
+                    if (byName.TryGetValue(mats[i].name, out var want))
+                    {
+                        if (mats[i] != want) { mats[i] = want; changed = true; swapped++; }
+                    }
+                    else unmatched.Add(r.name + "[" + i + "]=" + mats[i].name);
+                }
+                if (changed) r.sharedMaterials = mats;
+            }
+            log.AppendLine($"  재질 강제 대입: 교체 {swapped}슬롯"
+                + (unmatched.Count > 0 ? " / ⚠ 이름 매칭 실패 " + string.Join(", ", unmatched.Distinct()) : " / 매칭 실패 없음"));
         }
 
         private static IEnumerable<string> AllSuperseded()
@@ -320,15 +477,22 @@ namespace Ascend.CaptureHarness.EditorTools
         {
             // 레퍼런스의 조명은 「케이지 램프 하나의 따뜻한 웅덩이 + 빠른 감쇠 +
             // 거의 검은 구석」이다. 직전 씬은 대기광이 높아 전체가 균일하게 떴다.
+            // 🔴 v1 실측으로 상향. 직전 값(0.020~0.048 · fog 0.055)은 화면의
+            // **19~51% 를 완전 검정(<0.02)으로 뭉갰고** 실행 레버가 보이지 않았다.
+            // `VISUAL_BIBLE` §6 의 실질 기준선이 여기서 걸렸다 —
+            // 「어두워서 레버를 못 찾으면 분위기가 아니라 결함이다」.
+            // 어둡게 만드는 것 자체가 목적이 아니라 **등 하나의 웅덩이가 읽히는 것**이
+            // 목적이므로, 바닥을 올리고 대비는 점광이 만들게 둔다.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.048f, 0.055f, 0.062f);
-            RenderSettings.ambientEquatorColor = new Color(0.034f, 0.038f, 0.042f);
-            RenderSettings.ambientGroundColor = new Color(0.020f, 0.021f, 0.023f);
+            RenderSettings.ambientSkyColor = new Color(0.132f, 0.145f, 0.158f);
+            RenderSettings.ambientEquatorColor = new Color(0.096f, 0.104f, 0.112f);
+            RenderSettings.ambientGroundColor = new Color(0.058f, 0.061f, 0.066f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.030f, 0.034f, 0.038f);
-            RenderSettings.fogDensity = 0.055f;
+            RenderSettings.fogColor = new Color(0.042f, 0.047f, 0.052f);
+            // 4.6m 방에서 0.055 는 안개가 아니라 검은 커튼이었다.
+            RenderSettings.fogDensity = 0.018f;
 
             var dir = GameObject.Find("Directional Light");
             if (dir != null)
@@ -355,11 +519,57 @@ namespace Ascend.CaptureHarness.EditorTools
                     l.intensity = 3.6f;
                     l.range = 7.5f;
                     l.shadows = LightShadows.Soft;
-                    l.shadowStrength = 0.92f;
+                    l.shadowStrength = 0.80f;
                     log.AppendLine("  CabinLight: 따뜻한 점광 3.6 / range 7.5 / soft shadow");
                 }
             }
             else log.AppendLine("  ⚠ CabinLight 못 찾음 — 조명이 램프 하나로 안 잡힌다");
+
+            // 🔴 v1 실측 — `CabinLight`(y=2.724) 가 새 `ELV_CeilingLamp` 메시
+            // (y 2.245~2.765) **안에** 들어가 있고 그림자가 켜져 있었다.
+            // 등이 자기 하우징으로 자기 빛을 막았고, 그게 화면 40~51% 완전 검정의
+            // 직접 원인이다. 광원을 옮기면 램프 위치와 어긋나므로
+            // **하우징이 그림자를 던지지 않게** 한다 — 케이지 램프의 살은 어차피
+            // 얇아서 실제로도 방을 가리지 않는다.
+            var lampRoot = GameObject.Find(RootName);
+            int noShadow = 0;
+            if (lampRoot != null)
+            {
+                foreach (var r in lampRoot.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    if (!r.name.Contains("Lamp")) continue;
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    noShadow++;
+                }
+            }
+            log.AppendLine($"  램프 하우징 그림자 끔 {noShadow}개 (자기 차폐 제거)");
+
+            // 실행 레버 국소광 — 「어두워서 레버를 못 찾으면 결함」(금지 11항).
+            // 레버 자체를 밝히지 않고 **그 자리만** 약하게 든다. 스포트라 확산되지 않는다.
+            var leverBase = FindByPath("ReferenceRoom/ExecutionLeverBase");
+            if (leverBase != null)
+            {
+                var rigName = "ExecutionLeverKeyLight";
+                var rig = leverBase.transform.Find(rigName);
+                if (rig == null)
+                {
+                    var go = new GameObject(rigName);
+                    go.transform.SetParent(leverBase.transform, false);
+                    rig = go.transform;
+                }
+                rig.localPosition = new Vector3(0f, 1.55f, -0.85f);
+                rig.localRotation = Quaternion.Euler(28f, 0f, 0f);
+                var sl = rig.GetComponent<Light>() ?? rig.gameObject.AddComponent<Light>();
+                sl.type = LightType.Spot;
+                sl.color = new Color(0.98f, 0.86f, 0.70f);
+                sl.intensity = 2.1f;
+                sl.range = 3.0f;
+                sl.spotAngle = 62f;
+                sl.innerSpotAngle = 26f;
+                sl.shadows = LightShadows.None;   // 그림자까지 켜면 다시 자기 차폐로 간다
+                log.AppendLine("  실행 레버 전용 스포트 추가 (판독성 게이트)");
+            }
+            else log.AppendLine("  ⚠ ExecutionLeverBase 못 찾음 — 레버 판독성 미보장");
         }
 
         // ── 유틸 ──────────────────────────────────────────────────────────────

@@ -9,10 +9,31 @@ ELV_CABIN — 엘리베이터 카 내부 셸 절차적 조립기 (Blender)
 
 여기서 치수를 임의로 바꾸지 않는다 — 바꾸면 Unity 배치와 어긋난다.
 
-좌표계 (Blender, Z-up) — export 시 Y-up/−Z-forward 로 나가므로 Unity 와 1:1 이다.
-    x  좌우 폭      −2.00 … +2.00   (Unity x 그대로)
-    y  앞뒤 깊이    −2.30 … +2.30   (Unity z 그대로. +y = 장치 벽)
-    z  높이         0 … 2.90        (Unity y 그대로)
+좌표계 (Blender, Z-up)
+    x  좌우 폭      −2.00 … +2.00
+    y  앞뒤 깊이    −2.30 … +2.30   (+y = 장치 벽, −x = 가위문)
+    z  높이         0 … 2.90
+
+⚠ **축은 Unity 와 1:1 이 아니다. 이 주석의 직전 판본이 1:1 이라고 잘못 적고 있었다.**
+
+2026-08-04 씬 소유자 실측 — `axis_forward='-Z', axis_up='Y'` 로 내보내면
+    블렌더 (x, y, z)  →  유니티 (−x, z, −y)
+로 떨어진다. 즉 **x 와 깊이축이 함께 뒤집힌다.** 실제로 벌어진 일:
+
+  · 가위문 개구부를 블렌더 −x 에 팠는데 유니티 x=+2.00 에 떨어져 **문이 벽으로 막혔다**
+  · 장치 벽감을 블렌더 +y 에 팠는데 유니티 z=−2.30 (**반대 벽**) 에 떨어졌다
+  · 벤치가 수납 벽(+x)이 아니라 문 쪽(−x)에 떨어졌다
+
+이 뒤집힘은 y 축 **180° 회전과 정확히 같다** (x → −x, z → −z).
+그래서 `AscendCabinAdoption.ShellYaw = 180f` 가 채택 단계에서 흡수한다 —
+절대값이라 몇 번을 돌려도 같은 자세가 된다.
+
+**따라서 이 파일에서 만든 모든 FBX 는 유니티에서 y 180° 를 받아야 한다.**
+`ELV_Shaft` 도 마찬가지다 — 안 그러면 통로가 가위문 반대편(+x)에 생긴다.
+
+여기(소스)에서 뒤집지 않는 이유: 방이 비대칭이라(문 좌 · 장치 후 · 벤치 우)
+부호를 전부 뒤집으면 실수하기 쉽다. 회전 하나로 흡수하는 편이 안전하고 되돌리기 쉽다.
+대신 **블렌더 프리뷰 렌더는 유니티와 좌우가 뒤집혀 보인다** — 그건 정상이다.
 
 왜 지오메트리로 만드나:
     직전 Unity 씬은 평면 쿼드에 타일링 텍스처만 붙어 있어 그림자가 생기지 않았다.
@@ -45,10 +66,16 @@ HY = ID * 0.5       # ±2.30  앞뒤 벽 안쪽 면
 GATE_W = 2.1        # GateOpeningWidth
 GATE_H = 2.35       # GateOpeningHeight
 
-MACHINE_X = -0.35   # MachineCenterX
-MACHINE_W = 1.876   # 캐비닛 폭 (build_ovenharvest 의 W)
-MACHINE_H = 1.800   # 캐비닛 높이 (build_ovenharvest 의 H)
-MACHINE_BOTTOM = 0.20   # MachineBottomGap
+# 🔴 2026-08-04 v1 실측으로 교체. 직전 값은 `build_ovenharvest.py` 의 **캐비닛만**
+# 재고 있었다(1.876 × 1.800). 실제 씬의 `SoulMachineFrame` 은 마운트 프레임·실·
+# 레버 하드웨어까지 포함해 **2.172 × 2.126** 이고 바닥에 닿는다.
+# 그래서 벽감이 장치보다 작았고, 장치가 벽감을 완전히 덮어
+# **오목함도 둘레 프레임(309 tri)도 화면에 전혀 나오지 않았다.**
+# 벽감의 값어치는 「무거운 문틀」로 읽히는 둘레 프레임인데 그게 통째로 묻혔다.
+MACHINE_X = -0.328      # 실측 x[−1.414, 0.758] 의 중심
+MACHINE_W = 2.172       # 실측 폭
+MACHINE_H = 2.126       # 실측 높이
+MACHINE_BOTTOM = 0.0    # 실측 — 바닥에 닿는다 (직전 가정 0.20 은 틀렸다)
 
 COLL_NAME = "ELV_CABIN"
 
@@ -374,36 +401,47 @@ def build_wall_rear(coll):
     pl = Plane((0, HY, 0), (1, 0, 0), (0, 1, 0))
 
     bay_w = MACHINE_W + BAY_MARGIN * 2
-    bay_h = MACHINE_H + BAY_MARGIN * 2
     bu0 = MACHINE_X - bay_w * 0.5
     bu1 = MACHINE_X + bay_w * 0.5
-    bv0 = MACHINE_BOTTOM - BAY_MARGIN
-    bv1 = bv0 + bay_h
+    # 장치가 바닥에 닿으므로 벽감 아래로는 여백을 낼 수 없다. 0 에서 자른다 —
+    # 아래 프레임 자리는 바닥 테두리판이 이미 하고 있다.
+    bv0 = max(0.0, MACHINE_BOTTOM - BAY_MARGIN)
+    bv1 = MACHINE_BOTTOM + MACHINE_H + BAY_MARGIN
 
     # 베이 좌·우 남는 폭
     wall_elevation(mb, pl, -HX, bu0 - BAY_FRAME, IH, panel_w=0.60)
     wall_elevation(mb, pl, bu1 + BAY_FRAME, HX, IH, panel_w=0.60)
-    # 베이 아래 · 위
-    wall_elevation(mb, pl, bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv0 - BAY_FRAME,
-                   panel_w=0.60, rivets=False)
-    panel_field(mb, pl, bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv1 + BAY_FRAME, IH - CORNICE_H, 0.60)
+    # 베이 아래 — 장치가 바닥에 닿으면 여기는 존재하지 않는다
+    if bv0 > BAY_FRAME + 0.05:
+        wall_elevation(mb, pl, bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv0 - BAY_FRAME,
+                       panel_w=0.60, rivets=False)
+    # 베이 위
+    if bv1 + BAY_FRAME < IH - CORNICE_H - 0.04:
+        panel_field(mb, pl, bu0 - BAY_FRAME, bu1 + BAY_FRAME,
+                    bv1 + BAY_FRAME, IH - CORNICE_H, 0.60)
     pl.box(mb, bu0 - BAY_FRAME, bu1 + BAY_FRAME, IH - CORNICE_H, IH,
            -CORNICE_PROUD, TH, MAT_TRIM)
 
     # 오목 베이 바닥판
     pl.box(mb, bu0, bu1, bv0, bv1, BAY_DEPTH, TH, MAT_DARK)
-    # 베이 둘레 돌출 프레임 — 레퍼런스의 「무거운 문틀」
-    for (fu0, fu1, fv0, fv1) in [
-        (bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv0 - BAY_FRAME, bv0),
+
+    # 베이 둘레 돌출 프레임 — 레퍼런스의 「무거운 문틀」.
+    # 아래변은 장치가 바닥에 닿으면 생략한다 (바닥 테두리판이 그 자리를 한다).
+    frames = [
         (bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv1, bv1 + BAY_FRAME),
         (bu0 - BAY_FRAME, bu0, bv0, bv1),
         (bu1, bu1 + BAY_FRAME, bv0, bv1),
-    ]:
+    ]
+    if bv0 > BAY_FRAME:
+        frames.append((bu0 - BAY_FRAME, bu1 + BAY_FRAME, bv0 - BAY_FRAME, bv0))
+    for (fu0, fu1, fv0, fv1) in frames:
         pl.box(mb, fu0, fu1, fv0, fv1, -BAY_FRAME_PROUD, TH, MAT_TRIM)
+
     # 프레임 리벳
-    pl.rivet_row(mb, bu0 - BAY_FRAME * 0.5, bu1 + BAY_FRAME * 0.5, bv0 - BAY_FRAME * 0.5)
     pl.rivet_row(mb, bu0 - BAY_FRAME * 0.5, bu1 + BAY_FRAME * 0.5, bv1 + BAY_FRAME * 0.5)
-    for v in _span(bv0 + 0.10, bv1 - 0.10, 0.30):
+    if bv0 > BAY_FRAME:
+        pl.rivet_row(mb, bu0 - BAY_FRAME * 0.5, bu1 + BAY_FRAME * 0.5, bv0 - BAY_FRAME * 0.5)
+    for v in _span(bv0 + 0.14, bv1 - 0.14, 0.30):
         pl.rivet(mb, bu0 - BAY_FRAME * 0.5, v)
         pl.rivet(mb, bu1 + BAY_FRAME * 0.5, v)
 
@@ -577,24 +615,37 @@ def build_bench(coll):
     레퍼런스 우측의 2단 선반 벤치. 원점이 우측 벽 안쪽 면에 오도록 짓는다 —
     Unity 에서 (HX, 0, 0) 에 놓는다. −x 가 실내 방향이다.
     """
+    # 🔴 2026-08-04 v1 실측으로 교체. 직전 판본은 치수를 임의로 정해
+    # `StorageProps` 가 **하단은 벤치에 묻히고 상단은 7~13cm 떠 있었다.**
+    # 물품들은 종전 `StorageShelf` 를 기준으로 배치된 것이므로, 대신 들어가는
+    # 물건은 **그 선반의 면 높이를 그대로 물려받아야 한다.** 아래는 그 실측값이다.
+    #   TopPlate   local y 0.93, 두께 0.050, 깊이 0.580, 길이 2.700  → 윗면 0.955
+    #   LowerShelf local y 0.22, 두께 0.030, 깊이 0.520, 길이 2.600  → 윗면 0.235
+    #   Leg        local x ±0.25, z ±1.26 / ±0.42, 단면 0.045
     mb = MB()
-    depth = 0.56
-    top_z = 0.92
-    mid_z = 0.44
-    length = 3.05
-    cx = -depth * 0.5
+    depth = 0.580
+    length = 2.700
+    top_c = 0.930          # 상판 중심 → 윗면 0.955
+    low_c = 0.220          # 하단 선반 중심 → 윗면 0.235
+    cx = -depth * 0.5      # 우측 벽(원점)에서 실내 쪽으로
 
-    mb.box((cx, 0, top_z), (depth, length, 0.055), MAT_TRIM)
-    mb.box((cx - 0.008, 0, top_z - 0.055), (depth * 0.12, length, 0.075), MAT_TRIM)
-    mb.box((cx, 0, mid_z), (depth * 0.92, length * 0.985, 0.036), MAT_IRON)
-    mb.box((cx, 0, 0.115), (depth * 0.86, length * 0.97, 0.030), MAT_IRON)
+    mb.box((cx, 0, top_c), (depth, length, 0.050), MAT_TRIM)
+    # 상판 앞코 — 두께가 읽히게 한다
+    mb.box((cx - depth * 0.5 + 0.016, 0, top_c - 0.046),
+           (0.032, length, 0.042), MAT_TRIM)
+    mb.box((cx, 0, low_c), (0.520, 2.600, 0.030), MAT_IRON)
 
-    for y in (-length * 0.5 + 0.12, -length * 0.17, length * 0.17, length * 0.5 - 0.12):
-        for dx in (-depth + 0.075, -0.075):
-            mb.box((dx, y, top_z * 0.5 - 0.03), (0.052, 0.052, top_z - 0.06), MAT_TRIM)
+    # 다리 — 종전 선반과 같은 자리
+    for y in (-1.26, -0.42, 0.42, 1.26):
+        for lx in (-0.04, -0.54):
+            mb.box((lx, y, (top_c - 0.025) * 0.5),
+                   (0.045, 0.045, top_c - 0.025), MAT_TRIM)
+    # 세로 보강 레일
+    for lx in (-0.04, -0.54):
+        mb.box((lx, 0, 0.190), (0.035, 2.560, 0.035), MAT_IRON)
     # 벽 브래킷
-    for y in (-length * 0.34, length * 0.34):
-        mb.box((-0.10, y, top_z - 0.16), (0.20, 0.030, 0.22), MAT_TRIM)
+    for y in (-0.92, 0.92):
+        mb.box((-0.09, y, top_c - 0.155), (0.18, 0.030, 0.20), MAT_TRIM)
     return mb.finish("ELV_Bench", coll)
 
 
@@ -812,6 +863,11 @@ def _fresh_collection():
 PLACEMENT = {
     "ELV_Bench":       (HX, 0.0, 0.0),
     "ELV_CeilingLamp": (0.0, 0.0, IH - BEAM_DROP),
+    # 🔴 v1 실측 — 트레드 중앙판 윗면이 y=+0.008 이라 `FloorCollider`(윗면 0.000)보다
+    # 높았다. 8mm 내려 **걷는 면을 콜라이더와 같은 높이**로 맞춘다.
+    # 테두리판은 그대로 20mm 돌출된 채 남는데, 그건 결함이 아니라 레퍼런스의
+    # 「가장자리 테두리 프레임」이다 — 중앙 트레드가 그 안에 앉아 있다.
+    "ELV_Floor":       (0.0, 0.0, -0.008),
 }
 
 

@@ -8,37 +8,37 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_Brass
-    second: {fileID: 2100000, guid: 61abafe0aa961fb499436e18cc00c3cb, type: 2}
+    second: {fileID: 2100000, guid: f44978bde34ae574aac00d04a026bc98, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_Iron
-    second: {fileID: 2100000, guid: 4ca687b41392161429e4d0cfaafc2dec, type: 2}
+    second: {fileID: 2100000, guid: 86247f86b05920f46b9f6a81b2c06717, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_IronDark
-    second: {fileID: 2100000, guid: 5d53096fd1e1787429c129116be66e5b, type: 2}
+    second: {fileID: 2100000, guid: 9b081746c76e16948be4a9e25c6fb869, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_LampGlass
-    second: {fileID: 2100000, guid: f413c362a41f73546b78974a473b3de2, type: 2}
+    second: {fileID: 2100000, guid: 1db6dfc3551a4b64287bc305bee0da4a, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_Tread
-    second: {fileID: 2100000, guid: 647a6d68b7e791e46a6e1fbfd0f9599b, type: 2}
+    second: {fileID: 2100000, guid: 6d39354c1427a56479f5604f4daca96e, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: ELV_Trim
-    second: {fileID: 2100000, guid: 6d02313cc4d714d4cb2278dc5b54acd2, type: 2}
+    second: {fileID: 2100000, guid: 215f0fa2d00a06942b96dcddf7b1d647, type: 2}
   materials:
     materialImportMode: 2
     materialName: 1
     materialSearch: 2
-    materialLocation: 0
+    materialLocation: 1
     searchTexturesGlobally: 0
   animations:
     legacyGenerateAnimations: 4
