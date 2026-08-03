@@ -197,9 +197,16 @@ docs/references/elevator/mood_20260804_user_cabin.png
 | 레퍼런스 | 0.829 | 0.524 |
 | 기준선 (작업 전) | 0.901 | 0.816 |
 | v4 (작업 후) | **1.125 ~ 1.462** | 0.728 ~ 0.827 |
+| **v5 (2026-08-04 수렴)** | **0.840** | **0.513** |
 
 밝기·대역비·판독성은 개선됐지만 **색조만은 시작보다 나빠졌다.**
 값을 재는 축이 하나 빠져 있으면 그 축은 조용히 나빠진다 — 이 표가 있는 이유다.
+
+v5 원인·해법은 `AscendGraphicsBuilder.ShadowTint` 주석에 있다. 한 줄 요약:
+`ShadowsMidtonesHighlights.shadows` 가 **감마 입력**이라 (0.92, 1.00, 0.96) 의 실제 선형
+배수가 (0.828, 1.000, 0.911) 이었고, `shadowsEnd` 기본 0.3 이라 그것이 그림자 밴드가 아니라
+**화면 전체**에 걸려 있었다. 값을 (1.158, 0.931, 0.888) 로 바꾸고 `WhiteBalance` temperature
++6 을 더해 맞췄다. 레버 대비는 오히려 올랐다 (A 5.88× → 6.01×).
 
 ## ⚠ 캡처는 post-processing ON 으로 찍는다
 
@@ -207,4 +214,18 @@ docs/references/elevator/mood_20260804_user_cabin.png
 post ON 과 **2.1배** 차이가 났다. 즉 평가 대상이 플레이어가 보는 화면이 아니었다.
 
 **판정용 캡처는 반드시 post ON 이다.** post OFF 는 연속성 비교용으로만 남긴다.
-`Captures/baseline.txt` 와 과거 판정이 어느 기준이었는지는 **미확인 — 다음 세션 확인 항목.**
+
+### 확인 완료 (2026-08-04) — 하네스는 2026-08-02 부터 post ON 이다
+
+- `Captures/baseline.txt` 는 **현재 이 기기에 없다.** 이 파일은 이미지가 아니라
+  runId 를 담은 **포인터**이고 (`visual-verify` SKILL §채택), `Captures/` 는 gitignore 라
+  기기를 옮기면 사라진다. 즉 지금 이 기기에는 승인된 베이스라인 자체가 없다.
+- `CaptureSession` 은 `Camera.main` 을 그대로 쓰고 `renderPostProcessing` 을 **건드리지 않는다**
+  (`CaptureSession.cs:99`, `:211`). 그래서 하네스 캡처의 post 여부 = 씬 카메라의 플래그다.
+- 씬의 `m_RenderPostProcessing` 은 커밋 `583fe08`(2026-08-02)에서 **0 → 1** 이 됐고,
+  같은 커밋이 `PostVolume` 을 씬에 넣었다. 그 전에는 볼륨이 0개였다.
+- ⇒ **2026-08-02 이전의 모든 하네스 캡처와 시각 판정은 post OFF 였다.** 그 이후는 post ON.
+  `TenFloorCaptureRig` 도 소스 카메라의 플래그를 그대로 옮기므로(`:1067`) 같은 경계를 따른다.
+- 2026-08-04 의 `baseline_20260804`·`cabin_v1`·`cabin_v2` 가 post OFF 였던 것은 **별개 원인**이다 —
+  그 캡처들은 하네스가 아니라 즉석 카메라를 만들어 썼고, 새 카메라의 `renderPostProcessing`
+  기본값이 false 다.

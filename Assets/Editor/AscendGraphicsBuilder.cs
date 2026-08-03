@@ -97,18 +97,100 @@ namespace Ascend.Prototype.EditorTools
         // 밝은 쪽은 노출과 블룸이 만들어야 양쪽이 벌어진다.
         // 0.45 → 0.30: 비네트를 0.26 → 0.18 로 내린 만큼 화면이 통째로 밝아진다.
         // p50 상한 96 에 `02`(89)·`15`(92)가 이미 붙어 있어 그대로 두면 넘어간다.
-        public const float PostExposure = 0.30f;
+        //
+        // 🔴 2026-08-04 6라운드 — 0.30 → 0.70. **스윕 표에서 고른 값이지 새 목표가 아니다.**
+        //
+        // 5라운드가 색조(g/r·b/r)를 `VISUAL_SPEC` §12 대역 안으로 넣었지만, 밝기 축 셋이
+        // 대역 밖에 남아 있었다. 그 라운드에서 이 상수만 스윕해 재 둔 표가 근거다
+        // (뷰 A/C/D 평균, post ON. 다른 상수는 하나도 건드리지 않았다):
+        //
+        //   exp    g/r      b/r      mean            p50       <0.02    레버 A/D
+        //   0.30   0.840 ✅ 0.513 ✅ .0328 ✗(-40%)   .0186 ✗   53.0% ✗  6.01× / 5.32×
+        //   0.70   0.868 ✅ 0.603 ✅ .0535 (-2.7%)    .0418 ✅  17.8% ✅ 4.37× / 4.05×
+        //   0.95   0.856 ✅ 0.627 ✗ .0686 ✅          .0591 ✅  13.1% ✅ 3.77× / 3.56×
+        //
+        // 0.70 을 고른 이유는 **`<0.02` 가 53% → 17.8%** 이기 때문이다. 화면 절반이 완전
+        // 검정인 상태는 §12 상한 32% 를 크게 벗어나고, 그건 "어두운 분위기"가 아니라
+        // **화소가 없는 것**이다. mean 만 2.7% 모자라고 나머지 5개 지표는 대역 안이다.
+        // 0.95 는 b/r 이 대역(0.45~0.62)을 벗어나고 레버 대비를 36% 태운다 — 5라운드가
+        // 힘들게 되찾은 색조 축을 다시 내주는 거래라 쓰지 않는다.
+        //
+        // ⚠ 값은 **에셋이 아니라 이 상수**에 있어야 한다. 프로파일에만 손으로 넣으면
+        //    다음 `Build Post Chain` 이 조용히 0.30 으로 되돌린다 (이 파일 규칙 2).
+        public const float PostExposure = 0.70f;
         public const float Contrast     = 22f;
         public const float Saturation   = -12f;
 
         // Chromatic Aberration — `VISUAL_SPEC` §8 "지속적 색수차는 피한다".
-        // G-6 상한 0.15 의 2/3 로 둔다. 0 으로 두고 싶으면 이 상수만 0 으로.
-        public const float ChromaticAberration = 0.10f;
+        //
+        // 🔴 2026-08-04 7라운드 — 0.10 → **0.00**. 되돌리지 않는다.
+        //
+        // G-6 상한(0.15)의 2/3 라 "규격 안"이었지만, `visual-criteria` **금지 #17
+        // (지속적 색수차)** 은 상한이 아니라 **금지**다. 독립 평가(`visual-critic`,
+        // cabin_v5/v6)가 REJECT 하며 최우선으로 지적한 것이 이 항목이다 —
+        // B 우상단 「실행」 표찰이 파랑 획과 붉은 획으로 갈라져 **글자로 읽히지 않고**,
+        // C 층수 표시판·D 가위문 슬랫에도 적·청 이중선이 남았다. 같은 폴더 `postOFF/`
+        // 대조로 post 효과임이 확정됐고 기준선에는 없던 **신규 결함**이다.
+        //
+        // 훼손 대상이 하필 `VISUAL_SPEC` §5 상호작용 우선순위 **1위**인 레버 표찰
+        // 두 개(「실행」·「과수확」)라, §8 의 나머지 절반 —
+        // 「로우파이 스타일을 명분으로 결과 판독성을 희생하지 않는다」 — 에도 걸린다.
+        //
+        // 평가자 §E-1: **「이걸 안 끄면 이후 모든 명도 조정이 같은 위반 위에 쌓인다.」**
+        // 그래서 값을 낮추는 게 아니라 0 이다. 0.03 도 표찰 획 폭(2~3px)에서는
+        // 분리가 보인다 — 이 화면에서 CA 는 판독성과 교환 관계이지 강도 조절 대상이 아니다.
+        //
+        // ⚠ 다시 켜려면 **여기서** 켠다. 프로파일 에셋에만 넣으면 다음
+        //   `Build Post Chain` 이 조용히 0 으로 되돌린다 (이 파일 규칙 2).
+        //   그리고 켜기 전에 위 REJECT 를 뒤집을 근거가 있어야 한다.
+        public const float ChromaticAberration = 0.00f;
 
-        // 그림자를 회녹색으로, 하이라이트를 미지근하게. `VISUAL_BIBLE` 의 산업 팔레트.
-        public static readonly Vector4 ShadowTint    = new Vector4(0.92f, 1.00f, 0.96f, 0f);
+        /// 🔴 2026-08-04 실측 — **이 한 줄이 방 전체를 초록으로 물들이고 있었다.**
+        ///
+        /// 옛 값 (0.92, 1.00, 0.96) 은 "그림자를 회녹색으로"라는 의도였지만 세 가지가 겹쳤다.
+        ///  ① `PrepareShadowsMidtonesHighlights` 가 x/y/z 를 `GammaToLinearSpace` 로 통과시킨다.
+        ///     0.92 → 0.828, 0.96 → 0.911 이라 **선형 배수는 (0.828, 1.000, 0.911)** —
+        ///     감마 값이 시사하는 8% 가 아니라 실제로는 **g/r ×1.208** 이다.
+        ///  ② `shadowsEnd` 가 기본 0.3 인데 이 방은 거의 전체가 휘도 0.3 미만이다.
+        ///     즉 "그림자 밴드"가 아니라 **화면 전체**에 걸린다.
+        ///  ③ 대비 22 가 그 위에서 한 번 더 벌린다.
+        ///
+        /// 결과: 사용자 레퍼런스가 g/r 0.829 (빨강 우세)인데 화면은 1.13~1.46 (초록 우세)였다.
+        /// 기준선(작업 전 0.901)보다도 **멀어진** 유일한 축이고, 재는 축이 없어서 조용히 나빠졌다.
+        ///
+        /// ## 새 값을 어떻게 정했나 — 지어내지 않고 측정해서 풀었다
+        ///
+        /// 뷰 A/C/D · post ON 에서 레버 하나씩 단독으로 재고 로그 공간에서 연립했다.
+        ///   L1 SMH shadows (0.92,1.00,0.96)→(1.00,0.92,0.88): g/r ×0.788  b/r ×0.794
+        ///   L2 WhiteBalance temperature +30                 : g/r ×0.803  b/r ×0.582
+        ///   L3 colorFilter (0.97,0.98,1.00)→(1.00,0.96,0.90): g/r ×0.934  b/r ×0.836
+        ///   L4 WhiteBalance tint −30                        : g/r ×1.356 (**역방향** — 쓰지 않는다)
+        /// 필요한 보정 g/r ×0.625 · b/r ×0.593 을 L1·L2 로 풀면 L1 강도 1.78 · L2 +6.1 이 나온다.
+        /// L1 을 1.78 배로 늘리되 **휘도는 보존**(선형 (1.381, 0.850, 0.765), 휘도 배수 0.957 =
+        /// 옛 값과 동일)하도록 정규화한 것이 아래 (1.158, 0.931, 0.888) 이다.
+        ///
+        /// 검증 실측 (뷰 A/C/D 평균, post ON): **g/r 0.840 · b/r 0.513**
+        /// (레퍼런스 0.829 / 0.524, 허용 대역 0.78~0.90 / 0.45~0.62 — 둘 다 안쪽).
+        /// 레버 대비는 오히려 올랐다 — A 5.88× → 6.05×, D 5.24× → 5.34×.
+        ///
+        /// ⚠ 값은 **감마 입력**이다. 선형 배수를 원하면 `GammaToLinearSpace` 를 먼저 통과시켜
+        ///   계산하고 그 역함수로 돌려서 여기 적는다. 이 단위 착오가 원래 문제의 ①이었다.
+        public static readonly Vector4 ShadowTint    = new Vector4(1.158f, 0.931f, 0.888f, 0f);
         public static readonly Vector4 MidtoneTint   = new Vector4(1.00f, 1.00f, 1.00f, 0f);
         public static readonly Vector4 HighlightTint = new Vector4(1.03f, 0.99f, 0.94f, 0f);
+
+        /// <summary>
+        /// 화이트 밸런스. 위 <see cref="ShadowTint"/> 주석의 L2 레버다.
+        ///
+        /// `ColorBalanceToLMSCoeffs` 는 LMS(von Kries) 공간에서 도는 **정통 색온도 보정**이고,
+        /// LUT 체인에서 대비보다 **앞**에 있어 대비 22 가 그 효과를 한 번 더 벌려 준다.
+        /// 그래서 파랑을 내리는 데는 `colorFilter` 보다 효율이 높다 (실측 b/r 감쇠 2.6배).
+        ///
+        /// tint 는 **0 으로 둔다.** 음수 tint 가 마젠타일 거라 예상하고 −30 을 재 봤더니
+        /// g/r 이 1.327 → 1.799 로 **반대로 갔다.** 초록을 빼는 레버가 아니다.
+        /// </summary>
+        public const float WhiteBalanceTemperature = 6f;
+        public const float WhiteBalanceTint        = 0f;
 
         // 카메라 안티에일리어싱. PS1 룩에서는 각진 실루엣이 스타일이라 기본값은 None 이다.
         // A/B 를 뽑을 때만 `SetCameraAntialiasing` 으로 바꾼다.
@@ -196,6 +278,10 @@ namespace Ascend.Prototype.EditorTools
             Set(smh.midtones,   MidtoneTint);
             Set(smh.highlights, HighlightTint);
 
+            var wb = GetOrAdd<WhiteBalance>(profile);
+            Set(wb.temperature, WhiteBalanceTemperature);
+            Set(wb.tint,        WhiteBalanceTint);
+
             var ca = GetOrAdd<ChromaticAberration>(profile);
             Set(ca.intensity, ChromaticAberration);
 
@@ -210,7 +296,10 @@ namespace Ascend.Prototype.EditorTools
             report?.AppendLine($"  오버라이드 {profile.components.Count}종 — " +
                                $"Tonemapping({ToneMode}) Bloom(th {BloomThreshold} int {BloomIntensity}) " +
                                $"Vignette({VignetteIntensity}) FilmGrain({GrainIntensity}) " +
-                               $"ColorAdjustments(cont {Contrast} sat {Saturation}) SMH ChromaticAberration({ChromaticAberration})");
+                               $"ColorAdjustments(exp {PostExposure} cont {Contrast} sat {Saturation}) " +
+                               $"SMH(shadows {ShadowTint.x}/{ShadowTint.y}/{ShadowTint.z}) " +
+                               $"WhiteBalance(temp {WhiteBalanceTemperature} tint {WhiteBalanceTint}) " +
+                               $"ChromaticAberration({ChromaticAberration})");
             return profile;
         }
 

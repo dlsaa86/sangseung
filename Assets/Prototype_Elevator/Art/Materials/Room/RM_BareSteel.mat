@@ -128,7 +128,7 @@ Material:
     - _ShadeGamma: 2.6
     - _ShadeGammaEnabled: 0
     - _ShadowLift: 0.75
-    - _Smoothness: 0.3
+    - _Smoothness: 0.18
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
@@ -143,8 +143,8 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.455, g: 0.44, b: 0.404, a: 1}
-    - _Color: {r: 0.45499992, g: 0.43999997, b: 0.40399998, a: 1}
+    - _BaseColor: {r: 0.10843419, g: 0.10485943, b: 0.09628002, a: 1}
+    - _Color: {r: 0.10843416, g: 0.10485939, b: 0.096279986, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
