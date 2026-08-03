@@ -255,9 +255,24 @@ namespace Ascend.CaptureHarness.EditorTools
             return Protected.Any(p => name.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
+        /// <summary>
+        /// 🔴 v4 실측 버그 — **측정 공간이 이 파일 안에서 어긋나 있었다.**
+        ///
+        /// `Ceiling`(0.155) · `Target`(0.105) · `SoftCeiling`(0.34) 은 전부 감마 직관으로
+        /// 잡은 값이고, 이 저장소가 보고에 써 온 휘도도 sRGB 가중이다
+        /// (`RM_RedPaint` 원본 0.56/0.14/0.11 → 0.2271 — 보고서 수치와 정확히 일치).
+        /// 그런데 이 함수만 `c.linear` 를 썼다.
+        ///
+        /// 결과: `RM_RedPaint` 가 linear 기준으로는 0.0715 → 0.0625 로 **이미 내려가 있어**
+        /// 단조 보장 가드가 한 번도 발동하지 않았고, sRGB 기준으로는 0.2271 → 0.2743 으로
+        /// **올랐다.** 가드를 넣었는데 가드가 재는 공간에서는 위반이 없었던 것이다.
+        ///
+        /// 상한 값들과 **같은 공간**으로 통일한다. 이게 세 번째 수정이지만
+        /// 앞의 둘(순서 · 단조 가드)과 다른 층위다 — 값이 아니라 **단위**가 틀렸다.
+        /// </summary>
         private static float Luminance(Color c)
         {
-            return 0.2126f * c.linear.r + 0.7152f * c.linear.g + 0.0722f * c.linear.b;
+            return 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
         }
 
         private static GameObject FindByPath(string path)
