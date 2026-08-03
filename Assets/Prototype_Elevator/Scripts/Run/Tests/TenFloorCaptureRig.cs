@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
+using Ascend.Prototype.Art;
 using Ascend.Prototype.Build;
 using Ascend.Prototype.Player;
 using Ascend.Prototype.Risk;
@@ -116,7 +117,55 @@ namespace Ascend.Prototype.Run.Tests
             }
         }
 
-        // 좌표는 2026-07-31 비례 재조정 기준이다(내부 x[-1.20..1.20] · z[-1.50..1.50] · 높이 3.20).
+        // ══════════════════════════════════════════════════════════════════
+        //  🔴 좌표를 **명세에서 끌어온다** (2026-08-03 · `UP-FIX-69`)
+        // ══════════════════════════════════════════════════════════════════
+        //
+        // 아래 열 시점은 전부 **존재하지 않는 방**의 좌표였다 — 구 캐빈
+        // x[−1.20..1.20] · z[−1.50..1.50] · 높이 3.20, 장치가 **좌벽**에 붙어 있고
+        // 출입구가 +Z 이던 시절이다. 지금 방은 4.0 × 4.6 × 2.9 이고 장치는
+        // **후면 벽**(+Z), 가위문은 **좌벽**(−X), 선반은 우벽이다.
+        //
+        // 그 결과가 매니페스트에 그대로 찍혔다 —
+        //   `02_device_front` : **결과판 9칸 중 프레임 안 0칸** · 계기 글자줄 프레임밖 6줄
+        // 「필수 고정 캡처 세트」가 필수 대상을 한 칸도 담지 못했다.
+        // 매니페스트는 그것을 정직하게 적었고, 그래서 **세트가 증거가 아니라 목록**이었다.
+        //
+        // `AscendHeroCapture` 는 처음부터 명세에서 끌어왔고 방이 바뀌어도 따라왔다.
+        // 이 리그만 손으로 적혀 있었다. 같은 규약으로 맞춘다 —
+        // **좌표를 손으로 적지 않는다. 장치가 움직이면 캡처도 따라 움직여야 비교가 성립한다.**
+        //
+        // 아래 주석들에 남은 옛 좌표 서술(x=-0.9 결과판, z=1.38 계기 등)은 **구 방의
+        // 것이다.** 지우지 않고 남기는 이유는 그때의 실패와 그 해소 논리(예: 「대상을
+        // 겨눈다」가 아니라 「두 대상의 **중점**을 겨눈다」)가 지금도 유효하기 때문이다.
+        // 숫자만 낡았고 규칙은 살아 있다.
+
+        // ── 방에서 유도한 기준값 ──
+        private static float EyeY => ReferenceRoomSpec.EyeHeight;
+        private static float DeviceFaceZ => ReferenceRoomSpec.MachineFrontZ;
+        private static float LeverRightX
+            => ReferenceRoomSpec.LeverColumnCenterX + ReferenceRoomSpec.LeverColumnWidth * 0.5f;
+        /// <summary>캐비닛 좌단과 레버 우단의 중점. 둘을 한 화면에 담는 가로 중심이다.</summary>
+        private static float DevicePairX => (ReferenceRoomSpec.MachineLeftX + LeverRightX) * 0.5f;
+        /// <summary>캐비닛 하단과 경고등 상단의 중점.</summary>
+        private static float DevicePairY
+            => (ReferenceRoomSpec.MachineBottomY
+              + ReferenceRoomSpec.WarningLampCenterY + ReferenceRoomSpec.WarningLampDiameter * 0.5f) * 0.5f;
+
+        /// <summary>
+        /// 반폭·반높이를 세로 60° 화각에 담는 최소 거리(m). 두 축을 다 계산하고 먼 쪽을 쓴다.
+        /// 손으로 적은 거리는 장치 크기가 바뀌면 조용히 틀려진다.
+        /// </summary>
+        private static float FitDistance(float halfWidth, float halfHeight, float margin)
+        {
+            const float vFovDeg = 60f;
+            float halfV = vFovDeg * 0.5f * Mathf.Deg2Rad;
+            float halfH = Mathf.Atan(Mathf.Tan(halfV) * ReferenceRoomSpec.ReferenceAspect);
+            return Mathf.Max((halfHeight + margin) / Mathf.Tan(halfV),
+                             (halfWidth + margin) / Mathf.Tan(halfH));
+        }
+
+        // 좌표는 2026-07-31 비례 재조정 기준이었다(내부 x[-1.20..1.20] · z[-1.50..1.50] · 높이 3.20).
         // 눈높이 1.62를 유지한다 — 캡처가 플레이어가 실제로 보는 높이여야 판정이 성립한다.
         // 입구 시점을 두 번 틀렸다.
         //
@@ -133,7 +182,11 @@ namespace Ascend.Prototype.Run.Tests
         // 하우징을 피한 뒤에도 구도가 틀렸다 — 앞벽이 화면 중앙을 채우고 장치가
         // 오른쪽 끝으로 밀렸다. 시선을 장치 쪽으로 더 돌려 왼쪽 벽(결과판)과
         // 바닥·천장이 함께 들어오게 한다.
-        private static readonly Pose Entry       = new Pose("Entry",       new Vector3( 0.12f, 1.62f,  1.30f), new Vector3(-0.85f, 1.35f, -0.35f));
+        // 출입구는 **좌벽 가위문**이다. 그 안쪽에 서서 방을 가로질러 본다 —
+        // 시선에 바닥·장치·우측 선반이 함께 들어온다.
+        private static Pose Entry => new Pose("Entry",
+            new Vector3(ReferenceRoomSpec.WallLeftX + 0.60f, EyeY, -0.40f),
+            new Vector3(0.10f, 1.15f, 1.80f));
 
         // **`UP-FIX-01` — 이 세트에는 높이를 보여주는 프레임이 0장이었다.**
         // 1차 독립 판정의 최우선 지적이고 지금까지 **한 번도 시도된 적이 없다**.
@@ -174,9 +227,23 @@ namespace Ascend.Prototype.Run.Tests
         //
         // **기존 아홉 시점은 하나도 건드리지 않았다.** 번호가 곧 정체성이라 이 장은 24 번으로
         // 새로 세운다 — 백로그 §5.1 에 번호를 겹쳐 사고 난 기록이 있다.
-        private static readonly Pose EntryHeight = new Pose("EntryHeight", new Vector3( 0.00f, 0.95f, -1.40f), new Vector3( 0.00f, 1.48f,  1.50f));
-        private static readonly Pose DeviceFront = new Pose("DeviceFront", new Vector3( 0.35f, 1.62f,  0.00f), new Vector3(-0.85f, 1.60f,  0.00f));
-        private static readonly Pose DeviceSide  = new Pose("DeviceSide",  new Vector3(-0.20f, 1.62f, -0.80f), new Vector3(-0.90f, 1.50f,  0.15f));
+        // 낮게 서서 위를 본다 — 천장이 선이 아니라 면으로 보이고 바닥선도 함께 들어온다.
+        // 규칙은 그대로고 좌표만 새 방에서 다시 뽑았다(앞벽 앞 0.30m · 눈높이 0.95).
+        private static Pose EntryHeight => new Pose("EntryHeight",
+            new Vector3(0f, 0.95f, ReferenceRoomSpec.WallFrontZ + 0.30f),
+            new Vector3(0f, ReferenceRoomSpec.InteriorHeight * 0.66f, ReferenceRoomSpec.WallRearZ));
+
+        // 캐비닛 **과 레버**를 한 화면에. 거리는 둘의 경계 상자에서 유도한다.
+        private static Pose DeviceFront => new Pose("DeviceFront",
+            new Vector3(DevicePairX, DevicePairY,
+                        DeviceFaceZ - FitDistance((LeverRightX - ReferenceRoomSpec.MachineLeftX) * 0.5f,
+                                                  DevicePairY - ReferenceRoomSpec.MachineBottomY, 0.14f)),
+            new Vector3(DevicePairX, DevicePairY, DeviceFaceZ));
+
+        // 사선 — 깊이 단계(벽 / 후면 프레임 / 캐비닛 / 도어 / 링 / 들어간 유리)가 갈리는 각도.
+        private static Pose DeviceSide => new Pose("DeviceSide",
+            new Vector3(ReferenceRoomSpec.MachineCenterX + 1.30f, EyeY, DeviceFaceZ - 1.15f),
+            new Vector3(ReferenceRoomSpec.MachineCenterX, ReferenceRoomSpec.WindowGridCenterY + 0.06f, DeviceFaceZ));
         // 결과판은 x[-1.10..-0.76] · y[0.95..2.25] · z[-0.69..0.69]를 차지한다.
         // 처음엔 x=-0.30(판에서 0.54m)에 뒀더니 **카메라가 판 안에 들어가** 조각만
         // 잡혔다. 1.35m 물러나 가운데 줄 세 칸이 나란히 들어오게 한다 —
@@ -186,13 +253,28 @@ namespace Ascend.Prototype.Run.Tests
         // 그림**이 됐다. 독립 평가자가 "04는 02와 중복이다. 세 심볼 비교는 별도
         // 근접 샷이어야 한다"고 지적했다. 판 앞면이 x=-0.76 이므로 x=-0.05 면
         // 0.71m — 판 안에 들어가지 않으면서 심볼이 화면을 채운다.
-        private static readonly Pose SymbolClose = new Pose("SymbolClose", new Vector3(-0.05f, 1.60f,  0.00f), new Vector3(-0.90f, 1.60f,  0.00f));
+        // 가운데 줄 세 칸이 나란히 들어오는 거리. 세 심볼이 같은 크기로 놓여야 "3종 비교"다.
+        // 거리는 세 칸의 가로 폭(간격 2칸 + 링)에서 유도한다.
+        private static Pose SymbolClose => new Pose("SymbolClose",
+            new Vector3(ReferenceRoomSpec.MachineCenterX, ReferenceRoomSpec.WindowGridCenterY + 0.05f,
+                        DeviceFaceZ - FitDistance(ReferenceRoomSpec.WindowPitchX
+                                                  + ReferenceRoomSpec.WindowRingDiameter * 0.5f,
+                                                  ReferenceRoomSpec.WindowRingDiameter * 0.5f, 0.06f)),
+            new Vector3(ReferenceRoomSpec.MachineCenterX, ReferenceRoomSpec.WindowGridCenterY, DeviceFaceZ));
         // 화물칸 시점은 **문지방 위**에서 내려다본다. 처음에는 (0.60, 1.62, 1.25)에 뒀는데
         // 최대 적재 상태에서 오른쪽 열 승객(x=0.85, z=0.35)이 카메라 코앞에 서서 화면의
         // 대부분을 검게 가렸다 — "동선이 살아 있는가"를 판정할 수 없는 그림이 나왔다.
         // 문 개구부 중심(x=0.65) 위 2.35m에서 안쪽을 내려다보면 여섯 자리가 모두 들어온다.
-        private static readonly Pose CargoBay    = new Pose("CargoBay",    new Vector3( 0.65f, 2.35f,  1.42f), new Vector3(-0.20f, 0.35f, -0.80f));
-        private static readonly Pose Risk        = new Pose("Risk",        new Vector3( 0.60f, 1.62f, -0.70f), new Vector3(-0.55f, 1.55f,  0.55f));
+        // 화물칸은 **가위문 위**에서 중앙 바닥을 내려다본다. 문이 좌벽으로 옮겨졌으므로
+        // 시점도 그쪽이다. 천장 2.9 아래에서 최대한 높게.
+        private static Pose CargoBay => new Pose("CargoBay",
+            new Vector3(ReferenceRoomSpec.WallLeftX + 0.45f, ReferenceRoomSpec.InteriorHeight - 0.45f, 0.20f),
+            new Vector3(0.55f, 0.30f, -0.10f));
+
+        // 위험 단계 — 조명·진동이 방 전체에서 어떻게 변하는지 보는 시점.
+        private static Pose Risk => new Pose("Risk",
+            new Vector3(0.85f, EyeY, -0.95f),
+            new Vector3(-0.45f, 1.25f, 1.70f));
         // 과수확 레버는 x[0.25..0.85] · y[0.90..1.90] · z[0.91..1.47]을 차지한다.
         // 처음엔 0.9m 앞에 세웠더니 하우징이 화면을 통째로 덮어 "잠겼는가 열렸는가"를
         // 판정할 수 없었다. 1.5m 물러나 레버와 주변 맥락이 함께 들어오게 한다.
@@ -207,7 +289,14 @@ namespace Ascend.Prototype.Run.Tests
         // x=-1.04 z=1.38 이라 둘이 1.6m 떨어져 있는데, 옛 시점은 레버만 겨눠
         // 계기가 프레임 왼쪽으로 밀려났다. 두 목표의 중간을 보고 0.6m 물러나면
         // 수평 화각(1920×1080 · 수직 60° → 수평 약 91°) 안에 38° 벌어짐으로 둘 다 들어온다.
-        private static readonly Pose Overharvest = new Pose("Overharvest", new Vector3( 0.10f, 1.62f, -0.95f), new Vector3(-0.20f, 1.50f,  1.30f));
+        // **두 목표의 중점을 겨눈다** — 그 규칙은 그대로다. 다만 이제 레버와 계기가
+        // 서로 다른 벽이 아니라 **같은 후면 벽**에 있어 훨씬 쉬워졌다.
+        // 레버 컬럼(x 0.744)과 전력 계기(x 1.274)의 중점을 본다.
+        private static Pose Overharvest => new Pose("Overharvest",
+            new Vector3(0.45f, EyeY, DeviceFaceZ - 1.45f),
+            new Vector3((ReferenceRoomSpec.LeverColumnCenterX + ReferenceRoomSpec.PowerMeterCenterX) * 0.5f,
+                        (ReferenceRoomSpec.LeverPivotY + ReferenceRoomSpec.PowerMeterCenterY) * 0.5f,
+                        DeviceFaceZ + 0.06f));
 
         // **금지 항목 `B-5 #15` 를 정면으로 겨냥한 시점.** 「핵심 결과가 특정 위치에서만
         // 보인다」가 이 세트의 유일한 금지 항목 위반이었다 — 3×3 결과판과 전력 계기가
@@ -223,12 +312,32 @@ namespace Ascend.Prototype.Run.Tests
         // 대칭이 되어 둘 다 수평 화각(약 91°) 한가운데 들어온다.
         //
         // 「대상을 겨눈다」가 아니라 **「두 대상의 중점을 겨눈다」**가 이 문제의 규칙이다.
-        private static readonly Pose BoardAndGauge = new Pose("BoardAndGauge", new Vector3( 0.95f, 1.62f,  0.69f), new Vector3(-1.00f, 1.60f,  0.69f));
+        // 🔴 **`B-5 #15` 를 겨냥한 시점이고, 이번 리블록아웃이 그 문제를 구조적으로
+        // 풀어 줬다.** 예전에는 결과판이 좌벽, 계기가 같은 벽의 다른 끝이라 둘을 한
+        // 화면에 넣기가 기하적으로 빠듯했다. 지금은 **캐비닛과 전력 계기가 같은
+        // 후면 벽에 나란히** 있다 — 캐비닛 좌단(−1.274)부터 계기 우단(+1.634)까지.
+        //
+        // 거리는 그 폭에서 유도한다. 손으로 적으면 계기가 옮겨질 때 조용히 잘린다.
+        private static float BoardGaugeLeftX => ReferenceRoomSpec.MachineLeftX;
+        private static float BoardGaugeRightX
+            => ReferenceRoomSpec.PowerMeterCenterX + ReferenceRoomSpec.PowerMeterWidth * 0.5f;
+        private static Pose BoardAndGauge => new Pose("BoardAndGauge",
+            new Vector3((BoardGaugeLeftX + BoardGaugeRightX) * 0.5f, 1.20f,
+                        DeviceFaceZ - FitDistance((BoardGaugeRightX - BoardGaugeLeftX) * 0.5f, 0.62f, 0.16f)),
+            new Vector3((BoardGaugeLeftX + BoardGaugeRightX) * 0.5f, 1.20f, DeviceFaceZ + 0.06f));
         // 계약 선택자는 오른쪽 벽의 명판 세 장(월드 x≈0.99, y 1.21~1.80)이다.
         // 처음에는 뒷벽 계기판을 함께 담으려 했지만 둘은 서로 90° 떨어진 벽에 있어
         // 한 프레임에 둘 다 읽히게 넣을 수 없었다. 조건 문구를 명판 옆으로 옮긴 뒤로는
         // 선택자 하나만 봐도 "무엇을·얼마에" 고르는지가 전부 들어온다.
-        private static readonly Pose Contract    = new Pose("Contract",    new Vector3(-0.60f, 1.58f, -0.15f), new Vector3( 0.97f, 1.50f, -0.05f));
+        // 계약 패널은 이제 **우벽 앞쪽**에 있다(`AscendReferenceRoomRewire.RelocateInteractables`
+        // 가 후면 벽에서 뺐다 — 밝은 판이 통관 장치를 정면에서 가렸기 때문이다).
+        // 그 자리를 명세에서 다시 유도한다.
+        private static float ContractX => ReferenceRoomSpec.WallRightX - 0.06f;
+        private static float ContractZ
+            => ReferenceRoomSpec.ShelfCenterZ - ReferenceRoomSpec.ShelfLength * 0.5f - 0.45f;
+        private static Pose Contract => new Pose("Contract",
+            new Vector3(ContractX - 1.25f, 1.55f, ContractZ + 0.05f),
+            new Vector3(ContractX - 0.05f, 1.45f, ContractZ));
 
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
