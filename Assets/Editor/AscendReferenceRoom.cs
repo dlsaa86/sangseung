@@ -285,6 +285,21 @@ namespace Ascend.Prototype.EditorTools
             // 근접 캡처에서 칼라가 「자갈」로 읽힌 이유이기도 하다.
             Mat("Collar",    new Color(0.585f, 0.560f, 0.512f));
 
+            // ⑩ **판독면 — 낡은 전광판.**
+            //
+            // 두 번 빗나갔고 그 사이가 정답이다.
+            //   ① `Glass`(매끄러움 0.90) → 방에서 가장 밝은 물체. 독립 평가자가
+            //      「기능 표시 0 인 빈 밝은 사각형」으로 지목.
+            //   ② 반사율 0.048 · 완전 무광 → **평균 0.4 · 암부 100%.** 아예 사라졌다.
+            //      검은 판은 흰 판만큼 나쁘다 — 명세 §6 은 2.5m 에서 읽히기를 요구한다.
+            //
+            // 스스로 약하게 빛나되 **반사하지 않는다.** 그게 전광판이다 —
+            // 반사는 넓은 흰 얼룩을 만들고, 발광은 판 자신의 밝기만 올린다.
+            Mat("Readout",    new Color(0.030f, 0.033f, 0.031f));
+
+            // ⑪ 켜진 세그먼트 한 칸. 이것만 빛난다.
+            Mat("SegmentLit", new Color(0.34f, 0.26f, 0.09f));
+
             // ⑨ **챔버 내부 — 거의 검다.**
             //
             // 근접 캡처에서 챔버 안이 밝게 떠 「벽에 뚫린 구멍」으로 읽혔다.
@@ -319,6 +334,14 @@ namespace Ascend.Prototype.EditorTools
                 case "Collar":    return (0.42f, 0.95f);
                 // 그을음이 앉은 내부 — 반짝이면 다시 밝아 보인다.
                 case "ChamberDark": return (0.05f, 0.10f);
+                // 꺼진 세그먼트 판. **완전 무광이다.**
+                //
+                // ⚠ 0.22 로도 창백했다. 매끄러움을 **낮추면** 스페큘러 로브가 **넓어져**
+                // 큰 평판 전체에 부드러운 흰 반사가 깔린다 — 유리(0.90)의 좁고 밝은
+                // 점보다 오히려 나쁘다. 「빈 밝은 사각형」은 반사율이 아니라
+                // **반사 로브의 폭**이 만든 것이었다.
+                case "Readout":   return (0.02f, 0.00f);
+                case "SegmentLit": return (0.05f, 0.00f);
                 default:          return (0.15f, 0.50f);
             }
         }
@@ -358,8 +381,37 @@ namespace Ascend.Prototype.EditorTools
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", f.smoothness);
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", f.metallic);
             // 스펙큘러 하이라이트와 환경 반사를 켠다 — 이게 금속을 금속으로 보이게 한다.
-            if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", 1f);
-            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 1f);
+            //
+            // ⚠ **판독면만 예외다.** 꺼진 세그먼트 판은 빛을 되쏘지 않는다. 켜 두면
+            // 넓은 반사 로브가 큰 평판을 통째로 희게 덮고, 그게 독립 평가자가
+            // 지목한 「방 안에서 가장 밝은 물체」의 정체였다.
+            bool dullPanel = key == "Readout";
+            if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", dullPanel ? 0f : 1f);
+            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", dullPanel ? 0f : 1f);
+            if (dullPanel) m.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            else m.DisableKeyword("_SPECULARHIGHLIGHTS_OFF");
+
+            // ⑪ **켜진 세그먼트만 빛난다 — 판은 빛나지 않는다.**
+            //
+            // 판 전체에 발광을 주자 정면 p95 가 42 → 52 로 뛰고 다시 방에서 가장 밝은
+            // 물체가 됐다. 세 번째 빗나감이었다. 원인은 값이 아니라 **면적**이다 —
+            // 판독면 0.24㎡ 전부가 빛나면 아무리 약해도 큰 광원이다.
+            //
+            // 실제 세그먼트 표시기는 켜진 칸만 빛난다. 발광 면적이 25배 줄어든다
+            // (0.24㎡ → 약 0.0095㎡). 같은 「읽힌다」를 훨씬 적은 빛으로 산다.
+            if (key == "SegmentLit")
+            {
+                // ⚠ 0.95 는 블룸을 넘겼다 — 정면 p95 53 · 흰끼 0.08% 로 판 전체를
+                // 발광시켰을 때(52)와 다르지 않았다. 작은 면적이라도 1 을 넘기면
+                // 블룸이 번져 면적 이득이 사라진다. 1 아래로 확실히 내린다.
+                m.SetColor("_EmissionColor", new Color(0.86f, 0.66f, 0.22f) * 0.42f);
+                m.EnableKeyword("_EMISSION");
+                // ⚠ **GI 에 기여하지 않는다.** `RealtimeEmissive` 로 두면 켜진 칸이
+                // 광원이 되어 바로 위 판독면 전체를 올리브색으로 씻는다 — 면적을
+                // 줄여 얻은 이득이 간접광으로 되돌아온다. 세그먼트는 **보이기만**
+                // 하면 되고 방을 밝힐 이유가 없다.
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            }
 
             // ── 유리는 **투명이어야 한다** ──────────────────────────────────
             //
@@ -645,8 +697,8 @@ namespace Ascend.Prototype.EditorTools
             glow.SetColor("_EmissionColor", ReferenceRoomSpec.CageLampColor * 3.4f);
             glow.EnableKeyword("_EMISSION");
             glow.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            SaveMaterial(glow, "BulbGlow");
-            bulbRenderer.sharedMaterial = glow;
+            // 에셋 쪽 객체를 받아서 물린다 — 임시 객체를 물리면 씬에 인라인으로 굳는다.
+            bulbRenderer.sharedMaterial = SaveMaterial(glow, "BulbGlow");
 
             // ── 주광 ──
             // 명세 §11 「주 광원은 천장의 케이지 전구 하나」 · 색온도 2700~3000K.
@@ -1916,8 +1968,7 @@ namespace Ascend.Prototype.EditorTools
             lensMat.SetColor("_EmissionColor", new Color(0.85f, 0.12f, 0.07f) * 0.35f);
             lensMat.EnableKeyword("_EMISSION");
             lensMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            SaveMaterial(lensMat, "WarningLens");
-            lensRenderer.sharedMaterial = lensMat;
+            lensRenderer.sharedMaterial = SaveMaterial(lensMat, "WarningLens");
 
             // 보호 링과 볼트
             var ringB = new ProcMeshBuilder();
@@ -1962,29 +2013,101 @@ namespace Ascend.Prototype.EditorTools
             float h = ReferenceRoomSpec.PowerMeterHeight;
             float d = ReferenceRoomSpec.PowerMeterDepth;
             float bezel = 0.055f;
+            float uv = ReferenceRoomSpec.HeroUvPerMeter;
 
-            // 두꺼운 검은 철제 프레임. 명세 §6.
-            Slab(meter.transform, "Frame_Top",    new Vector3(0f,  h * 0.5f - bezel * 0.5f, -d * 0.5f), new Vector3(w, bezel, d), "Steel");
-            Slab(meter.transform, "Frame_Bottom", new Vector3(0f, -h * 0.5f + bezel * 0.5f, -d * 0.5f), new Vector3(w, bezel, d), "Steel");
-            Slab(meter.transform, "Frame_Left",   new Vector3(-w * 0.5f + bezel * 0.5f, 0f, -d * 0.5f), new Vector3(bezel, h, d), "Steel");
-            Slab(meter.transform, "Frame_Right",  new Vector3( w * 0.5f - bezel * 0.5f, 0f, -d * 0.5f), new Vector3(bezel, h, d), "Steel");
+            // 🔴 **「빈 밝은 사각형」을 고친다.** 독립 평가자가 지목했다 —
+            // 「기능 표시 0 인 빈 밝은 사각형이고, 재질 단계에서 방 안에서 가장 밝은
+            // 물체가 되어 영웅 오브젝트를 이긴다」. `LeverSign` 을 지운 논리가
+            // 이 판에는 적용되지 않았다는 지적도 함께 있었고, 맞는 말이었다.
+            //
+            // 지우지 않고 **계기로 만든다.** 방에 계기가 하나는 있어야 하고
+            // (명세 §6 이 요구한다), 지우면 우벽이 빈다. 대신 글자 없이도 계기로
+            // 읽히게 형상을 준다 — 차양 · 어두운 판독면 · 세그먼트 눈금.
+
+            // ① 두꺼운 검은 철제 프레임. 살짝 앞으로 내밀어 베젤이 그림자를 만든다.
+            const float meterProud = 0.012f;
+            float fd = d + meterProud;
+            float fz = (-d - meterProud) * 0.5f;
+            Slab(meter.transform, "Frame_Top",    new Vector3(0f,  h * 0.5f - bezel * 0.5f, fz), new Vector3(w, bezel, fd), "Steel");
+            Slab(meter.transform, "Frame_Bottom", new Vector3(0f, -h * 0.5f + bezel * 0.5f, fz), new Vector3(w, bezel, fd), "Steel");
+            Slab(meter.transform, "Frame_Left",   new Vector3(-w * 0.5f + bezel * 0.5f, 0f, fz), new Vector3(bezel, h, fd), "Steel");
+            Slab(meter.transform, "Frame_Right",  new Vector3( w * 0.5f - bezel * 0.5f, 0f, fz), new Vector3(bezel, h, fd), "Steel");
             Slab(meter.transform, "Back",         new Vector3(0f, 0f, -d * 0.15f), new Vector3(w, h, d * 0.3f), "Steel");
 
-            // 화면. 명세 §6 「오래된 전광판 또는 세그먼트 숫자 장치 · 유리는 약간 흐리다」.
+            // ② 차양(글레어 실드) — 산업용 계기의 실제 부품이다. 위에서 오는 빛을
+            // 막아 판독면을 읽을 수 있게 한다. 형상적으로는 **판독면 상단에 그림자를
+            // 떨어뜨려** 평평한 밝은 사각형을 끊는 것이 목적이다.
+            Slab(meter.transform, "Hood", new Vector3(0f, h * 0.5f - bezel * 0.5f, -d - meterProud - 0.026f),
+                 new Vector3(w, 0.020f, 0.058f), "BareSteel");
+
+            // ③ 판독면. 명세 §6 「오래된 전광판 또는 세그먼트 숫자 장치」.
             // **`Readout` 은 배선 지점이다** — `InstrumentPanelView` 가 여기에 숫자를 그린다.
+            //
+            // ⚠ 재질이 `Glass`(매끄러움 0.90) 였다. 그것이 방 안에서 가장 밝은 물체가
+            // 된 직접 원인이다. 꺼진 세그먼트 판은 거의 검다.
+            float sw = w - bezel * 2f, sh = h - bezel * 2f;
             var readout = new GameObject("Readout");
             readout.transform.SetParent(meter.transform, false);
             readout.transform.localPosition = new Vector3(0f, 0f, -d + 0.012f);
-            Slab(readout.transform, "Screen", Vector3.zero, new Vector3(w - bezel * 2f, h - bezel * 2f, 0.012f), "Glass");
+            Slab(readout.transform, "Screen", Vector3.zero, new Vector3(sw, sh, 0.012f), "Readout");
+
+            // ④ 세그먼트 눈금 12칸 — **글자 없이도 「지금 얼마인가」를 말하는 부분.**
+            // 판독면 아래쪽 띠에 음각으로 판다. 텍스트 영역(위 대부분)을 침범하지 않는다.
+            var segs = new GameObject("SegmentScale");
+            segs.transform.SetParent(readout.transform, false);
+            const int segCount = 12;
+            float segGap = 0.004f;
+            float segW = (sw - segGap * (segCount + 1)) / segCount;
+            float segH = 0.030f;
+            float segY = -sh * 0.5f + segH * 0.5f + 0.010f;
+            // ⚠ **켜진 칸 수는 플레이스홀더다.** 실제 값은 게임플레이가 정한다
+            // (`InstrumentPanelView` 가 붙으면 여기를 켜고 끈다). 정지 화면에서
+            // 「눈금이 있고 그중 일부가 켜져 있다」가 읽히면 형상의 목적은 달성된다.
+            // `ASSUMPTION_LOG` 대상 — 7/12 는 의미 없는 숫자다.
+            const int segLit = 7;
+            for (int i = 0; i < segCount; i++)
+            {
+                float x = -sw * 0.5f + segGap * (i + 1) + segW * (i + 0.5f);
+                // 넷째 칸마다 굵은 구분자 — 세는 단위가 있어야 계기다.
+                bool major = i % 4 == 0;
+                string mat = i < segLit ? "SegmentLit" : (major ? "BareSteel" : "Grease");
+                Slab(segs.transform, $"Seg_{i}", new Vector3(x, segY, -0.008f),
+                     new Vector3(segW, major ? segH : segH * 0.7f, 0.010f), mat);
+            }
+
+            // ⑤ 바늘 축 보스 — 요구 전력을 가리키는 바늘이 도는 자리.
+            // 보스가 없으면 바늘이 판에 그려진 선으로 읽힌다.
+            var bossB = new ProcMeshBuilder();
+            bossB.AddPrism(Vector3.zero, 0.016f, 0.014f, 0.022f, 8, MeshAxis.Z, 0f, true, true, false, uv);
+            Mesh bossMesh = SaveMesh(bossB.ToMesh("MeterNeedleBoss"), "MeterNeedleBoss");
+            var boss = new GameObject("NeedleBoss");
+            boss.transform.SetParent(readout.transform, false);
+            boss.transform.localPosition = new Vector3(0f, segY + segH * 0.5f + 0.026f, -0.018f);
+            Render(boss, bossMesh, "Collar");
+
+            // 바늘 — 보스에서 눈금 쪽으로 뻗는다. **원점이 회전축이다**(전력 표시가
+            // 붙으면 여기를 돌린다). 지금은 정지 자세다.
+            var needleB = new ProcMeshBuilder();
+            needleB.AddBox(new Vector3(0f, -0.030f, 0f), new Vector3(0.007f, 0.060f, 0.008f), 0f, uv);
+            Mesh needleMesh = SaveMesh(needleB.ToMesh("MeterNeedle"), "MeterNeedle");
+            var needle = new GameObject("Needle");
+            needle.transform.SetParent(boss.transform, false);
+            needle.transform.localPosition = new Vector3(0f, 0f, -0.016f);
+            needle.transform.localRotation = Quaternion.Euler(0f, 0f, 34f);
+            Render(needle, needleMesh, "RedPaint");
 
             // 텍스트 앵커 셋. 명세 §6 이 요구하는 세 줄의 자리를 **형상으로 남긴다** —
             // 나중에 TMP 를 붙일 때 위치를 다시 재지 않아도 되고, 캡처 판정이
             // 「어느 줄이 안 읽히는가」를 지목할 수 있다.
-            Anchor(readout.transform, "Anchor_Power",    new Vector3(0f,  (h - bezel * 2f) * 0.34f, -0.010f));
-            Anchor(readout.transform, "Anchor_Value",    new Vector3(0f,  0f,                       -0.010f));
-            Anchor(readout.transform, "Anchor_Required", new Vector3(0f, -(h - bezel * 2f) * 0.36f, -0.010f));
+            // ⚠ 세 앵커를 **위로 올린다.** 아래 띠를 눈금과 바늘이 차지했다.
+            // 그대로 두면 글자가 눈금 위에 겹치고, 그건 `UP-FIX-51`(계기판 줄 충돌)과
+            // 같은 종류의 결함이다 — 매니페스트는 둘 다 「온전」으로 적는다.
+            Anchor(readout.transform, "Anchor_Power",    new Vector3(0f,  sh * 0.40f, -0.010f));
+            Anchor(readout.transform, "Anchor_Value",    new Vector3(0f,  sh * 0.16f, -0.010f));
+            Anchor(readout.transform, "Anchor_Required", new Vector3(0f, -sh * 0.08f, -0.010f));
 
             _report.AppendLine($"  {PowerMeterName} — {w} × {h} × {d} @ x={ReferenceRoomSpec.PowerMeterCenterX:F2} y={ReferenceRoomSpec.PowerMeterCenterY} " +
+                               $"· 판독면 {sw:F2} × {sh:F2} (어두운 세그먼트판) · 눈금 {segCount}칸 · 차양·바늘 있음 " +
                                $"· 읽기 거리 요구 {ReferenceRoomSpec.PowerMeterReadDistance}m");
         }
 
@@ -2368,12 +2491,28 @@ namespace Ascend.Prototype.EditorTools
             return mesh;
         }
 
-        private static void SaveMaterial(Material m, string key)
+        /// <summary>
+        /// 머티리얼을 에셋으로 굽고 **에셋 쪽 객체를 돌려준다.**
+        ///
+        /// ⚠ `void` 였을 때 호출부가 임시 머티리얼을 그대로 렌더러에 물렸다.
+        /// 그러면 씬이 에셋이 아니라 **인라인 머티리얼**을 들고 저장되어 YAML 이
+        /// 부풀고 머지가 위험해진다 — 이 저장소가 이미 24개를 그렇게 쌓았고
+        /// `EnsurePalette` 주석이 그것을 결함으로 적고 있다.
+        /// `SaveMesh` 와 같은 규약이다: **굽고, 에셋을 돌려주고, 호출부가 그것을 쓴다.**
+        /// </summary>
+        private static Material SaveMaterial(Material m, string key)
         {
             string path = $"{MaterialDir}/RM_{key}.mat";
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null) { EditorUtility.CopySerialized(m, existing); return; }
+            if (existing != null)
+            {
+                EditorUtility.CopySerialized(m, existing);
+                Object.DestroyImmediate(m);
+                EditorUtility.SetDirty(existing);
+                return existing;
+            }
             AssetDatabase.CreateAsset(m, path);
+            return m;
         }
     }
 }

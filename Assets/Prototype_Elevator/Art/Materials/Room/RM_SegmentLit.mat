@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-4393324042252737087
+--- !u!114 &-2659776954175269932
 MonoBehaviour:
   m_ObjectHideFlags: 11
   m_CorrespondingSourceObject: {fileID: 0}
@@ -20,16 +20,13 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: RM_WarningLens
+  m_Name: RM_SegmentLit
   m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - _EMISSION
-  m_InvalidKeywords:
-  - _COLORDEPTH_ON
-  - _EMISSIONMAP_ON
-  m_LightmapFlags: 1
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
@@ -42,7 +39,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _BaseMap:
-        m_Texture: {fileID: 2800000, guid: 46ce0e647c479fa4592767e7a3b0b23a, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
@@ -50,10 +47,6 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -66,11 +59,11 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _EmissionMap:
-        m_Texture: {fileID: 2800000, guid: ae042fe9cce60394a92fbc77c58cd8c0, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: 46ce0e647c479fa4592767e7a3b0b23a, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicGlossMap:
@@ -104,64 +97,41 @@ Material:
     m_Ints: []
     m_Floats:
     - _AddPrecomputedVelocity: 0
-    - _AffineAmount: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
-    - _AmbientFloor: 0.35
-    - _BandFloor: 0.55
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
-    - _ColorDepth: 20
-    - _ColorDepthEnabled: 1
     - _Cull: 2
     - _Cutoff: 0.5
-    - _DebugOutput: 0
     - _DetailAlbedoMapScale: 1
-    - _DetailMapEnabled: 0
     - _DetailNormalMapScale: 1
-    - _DetailScale: 8
-    - _DetailStrength: 1
-    - _DitherStrength: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
-    - _EmissionMapEnabled: 1
     - _EnvironmentReflections: 1
-    - _FalloffPower: 1
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _Metallic: 0.3
+    - _Metallic: 0
     - _OcclusionStrength: 1
-    - _PS1DistortEnabled: 0
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _RimStrength: 0.18
-    - _ShadeGamma: 2.6
-    - _ShadeGammaEnabled: 0
-    - _ShadowLift: 0.75
-    - _Smoothness: 0.22
+    - _Smoothness: 0.05
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
-    - _Steps: 4
     - _Surface: 0
-    - _TriplanarBlend: 4
-    - _TriplanarEnabled: 0
-    - _TriplanarScale: 0.5
-    - _VertexSnap: 0
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.392, g: 0.098, b: 0.078, a: 1}
-    - _Color: {r: 0.39199996, g: 0.09799997, b: 0.07799999, a: 1}
-    - _EmissionColor: {r: 0.2975, g: 0.042, b: 0.0245, a: 0.35}
-    - _ShadowTint: {r: 0.2, g: 0.26, b: 0.24, a: 1}
+    - _BaseColor: {r: 0.34, g: 0.26, b: 0.09, a: 1}
+    - _Color: {r: 0.33999997, g: 0.25999996, b: 0.089999996, a: 1}
+    - _EmissionColor: {r: 0.3612, g: 0.2772, b: 0.0924, a: 0.42}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

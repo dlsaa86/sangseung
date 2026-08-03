@@ -300,7 +300,9 @@ namespace Ascend.Prototype.EditorTools
             panel.localScale = Vector3.one;
             Bounds b = Encapsulate(panel);
             float screenW = ReferenceRoomSpec.PowerMeterWidth - 0.11f;
-            float screenH = ReferenceRoomSpec.PowerMeterHeight - 0.11f;
+            // ⚠ 판독면 **아래 띠는 눈금과 바늘이 쓴다.** 화면 전체 높이로 맞추면
+            // 글자가 눈금 위로 내려와 겹친다 — `UP-FIX-51` 과 같은 종류의 결함이다.
+            float screenH = ReferenceRoomSpec.PowerMeterHeight - 0.11f - 0.10f;
             float fit = 1f;
             if (b.size.x > 0.0001f) fit = Mathf.Min(fit, screenW / b.size.x);
             if (b.size.y > 0.0001f) fit = Mathf.Min(fit, screenH / b.size.y);
@@ -308,6 +310,19 @@ namespace Ascend.Prototype.EditorTools
             EditorUtility.SetDirty(panel);
             _report.AppendLine($"     계기판 배율 {panel.localScale.x:F3} " +
                                $"(원본 {b.size.x:F2}×{b.size.y:F2} → 화면 {screenW:F2}×{screenH:F2})");
+
+            // 🔴 **구 계기판의 배경 쿼드를 숨긴다. 글자만 남긴다.**
+            //
+            // 독립 평가자가 지목한 「기능 표시 0 인 빈 밝은 사각형」의 정체가 이것이었다.
+            // 조립기가 만든 판독면을 어둡게 고쳐도 화면은 그대로였다 — 그 앞에 **구
+            // 계기판의 밝은 배경 판**이 덮여 있었기 때문이다. 근접 캡처에서 새로
+            // 만든 눈금·바늘이 그 판 **아래로** 삐져나와 보였고, 그게 단서였다.
+            //
+            // 이 저장소는 같은 실패를 세 번째 겪는다 — 구 레버 몸통, 구 조작대,
+            // 그리고 이 판. **구 형상이 새 형상 앞을 덮는 것**이 반복되는 이유는
+            // 배선 이전이 위치만 옮기고 렌더러를 그대로 두기 때문이다.
+            // TMP 글자는 남긴다(`HideRenderers` 가 건너뛴다) — 판독 내용이 그것이다.
+            HideRenderers("GrayboxWorld/Car/InstrumentPanel", "구 계기판 배경판");
 
             _report.AppendLine($"  전력 표시기 — 계기판을 Anchor_Value ({anchor.position.x:F2}, {anchor.position.y:F2}, {anchor.position.z:F2}) 로 " +
                                $"· 읽기 거리 요구 {ReferenceRoomSpec.PowerMeterReadDistance}m");
