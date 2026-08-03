@@ -205,13 +205,33 @@ namespace Ascend.Prototype.Art
         /// 반지름 0.204 보다 작아 네 모서리가 링에 완전히 가린다. 그 관계를
         /// <see cref="Violations"/> 가 단정한다.
         /// </summary>
-        public const float DoorApertureHalf = 0.132f;
+        /// 값은 유리 반지름과 같다 — **도어가 링보다 좁으면 도어가 시야를 먼저 막는다.**
+        public static float DoorApertureHalf => WindowGlassDiameter * 0.5f;   // 0.145
 
         /// <summary>도어 개구부 정사각의 대각 반지름(m). 링 안착 단이 이보다 커야 한다.</summary>
         public static float DoorApertureCornerRadius => DoorApertureHalf * Mathf.Sqrt(2f);
 
         /// <summary>링이 앉는 얕은 단의 반지름(m). 개구부 모서리를 가리는 부품이다.</summary>
-        public static float WindowSeatRadius => WindowRingDiameter * 0.5f + 0.014f;
+        public static float WindowSeatRadius => WindowRingDiameter * 0.5f + 0.022f;
+
+        /// <summary>
+        /// 🔴 **클램프 링 보어가 앞으로 벌어지는 양(m).**
+        ///
+        /// 실제 압력창의 시트는 테이퍼져 있다 — 원통형 구멍이 아니다. 그리고 그
+        /// 테이퍼가 여기서 판독성을 결정한다.
+        ///
+        /// **레버를 당기려고 선 자리에서 아홉 창이 전부 안 보였다** (붉은 화소 0.02%).
+        /// 독립 평가 둘이 각각 최우선 결함으로 지목했고, `visual-criteria.md`
+        /// `B-5 #15`「핵심 결과가 특정 위치에서만 보이는가」 금지 항목이다.
+        /// 레버를 당겨 판을 해결하는 게임인데 레버 앞이 판이 안 보이는 자리였다.
+        ///
+        /// **유리가 아니었다.** 통제 실험이 가렸다 —
+        ///   유리 제거 0.03% (무관) · 챔버 제거 0.02% (무관)
+        ///   도어 제거 **0.21%** · 링 제거 **0.32%** · 둘 다 **1.04%**
+        /// 즉 예각에서 보어 벽이 시선을 막는 **기하 비네팅**이다.
+        /// 42° 에서 깊이 60mm 는 측면으로 54mm 를 먹는다 — 반지름 145mm 의 37% 다.
+        /// </summary>
+        public const float WindowBoreFlare = 0.030f;
 
         // ── 프레임 3단 위계 ───────────────────────────────────────────────────
         //

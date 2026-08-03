@@ -399,19 +399,33 @@ namespace Ascend.Prototype.EditorTools
             //
             // 실제 세그먼트 표시기는 켜진 칸만 빛난다. 발광 면적이 25배 줄어든다
             // (0.24㎡ → 약 0.0095㎡). 같은 「읽힌다」를 훨씬 적은 빛으로 산다.
-            if (key == "SegmentLit")
-            {
-                // ⚠ 0.95 는 블룸을 넘겼다 — 정면 p95 53 · 흰끼 0.08% 로 판 전체를
-                // 발광시켰을 때(52)와 다르지 않았다. 작은 면적이라도 1 을 넘기면
-                // 블룸이 번져 면적 이득이 사라진다. 1 아래로 확실히 내린다.
-                m.SetColor("_EmissionColor", new Color(0.86f, 0.66f, 0.22f) * 0.42f);
-                m.EnableKeyword("_EMISSION");
-                // ⚠ **GI 에 기여하지 않는다.** `RealtimeEmissive` 로 두면 켜진 칸이
-                // 광원이 되어 바로 위 판독면 전체를 올리브색으로 씻는다 — 면적을
-                // 줄여 얻은 이득이 간접광으로 되돌아온다. 세그먼트는 **보이기만**
-                // 하면 되고 방을 밝힐 이유가 없다.
-                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
-            }
+            // 🔴🔴 **발광을 항상 다시 쓴다 — 켜는 쪽만 쓰면 끈 적이 없는 것이다.**
+            //
+            // 이 함수의 위쪽 주석이 스스로 「**항상 전 필드를 다시 쓴다.** 재사용하되
+            // 상태는 새로 만든 것과 같아야 한다」고 적고 있는데 **발광만 그 규칙 밖에
+            // 있었다.** 결과가 정확히 예측대로 났다 —
+            //
+            // 판독면을 잠시 발광시켰다가 그 코드를 지웠는데 `RM_Readout.mat` 에
+            // `(0.099, 0.083, 0.038)` 이 그대로 남아 계속 빛났다. 반사율을 0.030 까지
+            // 내리고 스페큘러를 끄고도 화면이 크림색이라, 독립 평가자가
+            // 「이 재질은 물리적으로 밝게 렌더될 수 없다 — 화면의 그 면은 `RM_Readout`
+            // 이 아니다」고 판정했다. **재질 저술은 맞았고 에셋에 남은 값이 문제였다.**
+            //
+            // `SaveMesh` 가 겪은 것과 **같은 종류**다 — 기존 에셋을 재사용하면서 전
+            // 상태를 다시 쓰지 않는 것. 그때는 형상이 남았고 이번엔 발광이 남았다.
+            // 한 배치에서 같은 뿌리의 결함을 두 번 만났으면 그건 우연이 아니다.
+            bool emissive = key == "SegmentLit";
+            // ⚠ 0.95 는 블룸을 넘겼다 — 정면 p95 53 · 흰끼 0.08% 로 판 전체를
+            // 발광시켰을 때(52)와 다르지 않았다. 작은 면적이라도 1 을 넘기면
+            // 블룸이 번져 면적 이득이 사라진다. 1 아래로 확실히 내린다.
+            m.SetColor("_EmissionColor", emissive ? new Color(0.86f, 0.66f, 0.22f) * 0.42f : Color.black);
+            if (emissive) m.EnableKeyword("_EMISSION");
+            else m.DisableKeyword("_EMISSION");
+            // ⚠ **GI 에 기여하지 않는다.** `RealtimeEmissive` 로 두면 켜진 칸이
+            // 광원이 되어 바로 위 판독면 전체를 올리브색으로 씻는다 — 면적을
+            // 줄여 얻은 이득이 간접광으로 되돌아온다. 세그먼트는 **보이기만**
+            // 하면 되고 방을 밝힐 이유가 없다.
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
 
             // ── 유리는 **투명이어야 한다** ──────────────────────────────────
             //
@@ -773,7 +787,10 @@ namespace Ascend.Prototype.EditorTools
             float iw = ReferenceRoomSpec.FloorIndicatorWidth;
             float ih = ReferenceRoomSpec.FloorIndicatorHeight;
             Slab(indicator.transform, "Bezel", new Vector3(0f, 0f, 0.02f), new Vector3(iw, ih, 0.04f), "Steel");
-            Slab(indicator.transform, "Readout", new Vector3(0f, 0f, -0.002f), new Vector3(iw * 0.46f, ih * 0.62f, 0.01f), "Glass");
+            // ⚠ `"Glass"`(매끄러움 0.90) 잔재였다. 전력 표시기에서 같은 재질이
+            // 「방에서 가장 밝은 물체」를 만들었고, 층수 표시기도 같은 판이다.
+            // 독립 평가자가 「동종 잔재」로 지목했다.
+            Slab(indicator.transform, "Readout", new Vector3(0f, 0f, -0.002f), new Vector3(iw * 0.46f, ih * 0.62f, 0.01f), "Readout");
             // 좌우 삼각 상승·하강 표시등. 삼각형은 3각 프리즘으로 만든다.
             var arrowB = new ProcMeshBuilder();
             arrowB.AddPrism(Vector3.zero, ih * 0.20f, ih * 0.20f, 0.012f, 3, MeshAxis.Z, 0f, true, true, false, 8f);
@@ -1473,24 +1490,32 @@ namespace Ascend.Prototype.EditorTools
             //
             // 그리고 **한 겹이다.** 「과도하게 두꺼운 이중 팔각 링」이 제거 대상이므로
             // 바깥 플랜지 + 안쪽 베젤 2단 구성을 하나로 합쳤다.
+            //
+            // 🔴 **보어를 앞으로 벌린다 (테이퍼).** 원통형 구멍이면 예각에서 근쪽
+            // 보어 벽이 시야를 먹는다 — 42° 에서 깊이 60mm 가 측면 54mm 를 가린다.
+            // 그것이 「레버 앞에서 아홉 창이 전부 안 보인다」의 원인이었다.
+            // 실제 압력창 시트도 테이퍼져 있다. 형상과 판독성이 같은 방향이다.
             var cb = new ProcMeshBuilder();
             float zFront = -prot;
             float zBack = 0f;                 // 도어 면에 그대로 앉는다 — 뜨지 않는다
+            float rBoreFront = rGlass + ReferenceRoomSpec.WindowBoreFlare;
             for (int i = 0; i < sides; i++)
             {
                 float a0 = i * Mathf.PI * 2f / sides;
                 float a1 = (i + 1) * Mathf.PI * 2f / sides;
                 var i0 = new Vector3(Mathf.Cos(a0) * rGlass, Mathf.Sin(a0) * rGlass, 0f);
                 var i1 = new Vector3(Mathf.Cos(a1) * rGlass, Mathf.Sin(a1) * rGlass, 0f);
+                var f0 = new Vector3(Mathf.Cos(a0) * rBoreFront, Mathf.Sin(a0) * rBoreFront, zFront);
+                var f1 = new Vector3(Mathf.Cos(a1) * rBoreFront, Mathf.Sin(a1) * rBoreFront, zFront);
                 var o0 = new Vector3(Mathf.Cos(a0) * rRing, Mathf.Sin(a0) * rRing, 0f);
                 var o1 = new Vector3(Mathf.Cos(a1) * rRing, Mathf.Sin(a1) * rRing, 0f);
                 var fz = new Vector3(0f, 0f, zFront);
                 var bz = new Vector3(0f, 0f, zBack);
                 Vector3 outward = ((o0 + o1) * 0.5f).normalized;
 
-                cb.AddQuad(i0 + fz, o0 + fz, o1 + fz, i1 + fz, Vector3.back, uv);      // 앞면
+                cb.AddQuad(f0, o0 + fz, o1 + fz, f1, Vector3.back, uv);                // 앞면 (좁아진 테)
                 cb.AddQuad(o0 + bz, o0 + fz, o1 + fz, o1 + bz, outward, uv);           // 바깥 옆면
-                cb.AddQuad(i0 + fz, i0 + bz, i1 + bz, i1 + fz, -outward, uv);          // 안쪽 보어
+                cb.AddQuad(f0, i0 + bz, i1 + bz, f1, -outward, uv);                    // 안쪽 보어 — 테이퍼
                 cb.AddQuad(o0 + bz, i0 + bz, i1 + bz, o1 + bz, Vector3.forward, uv);   // 뒷면
             }
             ring = SaveMesh(cb.ToMesh("PressureWindowRing"), "PressureWindowRing");
