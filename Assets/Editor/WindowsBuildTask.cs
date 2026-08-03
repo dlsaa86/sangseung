@@ -27,8 +27,9 @@ namespace Ascend.Prototype.EditorTools
         private const string ScenePath = "Assets/Prototype_Elevator/Scenes/Prototype_Elevator.unity";
 
         /// <summary>
-        /// 개발 빌드 산출물. 릴리스와 **따로 둔다** — 하나를 덮어쓰면
-        /// `verify-topdown.ps1` 의 C7 이 가리키는 실행 파일이 어느 쪽인지 알 수 없다.
+        /// 개발 빌드 산출물. 릴리스와 **따로 둔다** — 하나를 덮어쓰면 Pass 4 가 요구하는
+        /// "실행 가능한 빌드"가 개발용인지 릴리스용인지 알 수 없다.
+        /// (예전에는 `verify-topdown.ps1` 의 C7 이 이걸 확인했다. 2026-08-03 삭제.)
         /// </summary>
         public const string DevOutputDirectory = "Builds/WindowsDev";
 

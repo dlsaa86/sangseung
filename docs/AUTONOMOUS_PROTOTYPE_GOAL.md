@@ -882,7 +882,7 @@ Runner 도입 요구로 읽지 않는다.
 
 > 추가일: 2026-07-31
 > 근거: 사용자 지시 (무인 야간 실행 대비)
-> 관련 도구: `tools/unity-watchdog.ps1`, `.claude/hooks/unity-preflight.sh`
+> 관련 도구: `tools/unity-watchdog.ps1` (`.claude/hooks/unity-preflight.sh`는 2026-08-03에 지웠다 — D-2 참조)
 
 무인 실행에서 가장 비싼 실패는 기능 실패가 아니라 **아무도 없는 사이에 멈춰 있는 것**이다.
 이 부록은 그 시간을 회수하기 위한 규칙이다.
@@ -918,13 +918,19 @@ Unity MCP 호출이 연속 세 번 실패하면 같은 호출을 반복하지 �
 5. 최소 컴파일 및 씬 로드 검증을 수행한다.
 6. `ProgressLog.md`의 마지막 정상 마일스톤부터 작업을 재개한다.
 
-`.claude/hooks/unity-preflight.sh`가 **감지**를 담당한다. 이 훅은 모든 `mcp__unity-mcp__*`
-호출 앞에서 `Library/EditorInstance.json`의 PID가 실제로 살아 있는지 확인하고, 죽어 있으면
-즉시 거부한다. 따라서 에디터가 죽었을 때 120초 툴 타임아웃을 기다리는 일은 없고, 대신
-**거부 메시지가 곧 진단 결과**다. 그 메시지를 보면 위 1번은 이미 확인된 것이다.
+**감지를 담당하던 `.claude/hooks/unity-preflight.sh`는 2026-08-03에 지웠다(`9723ffb`).**
+그 훅은 모든 `mcp__unity-mcp__*` 호출 앞에서 `Library/EditorInstance.json`의 PID가 실제로
+살아 있는지 확인하고 죽어 있으면 즉시 거부했다. 지금은 그 확인이 없으므로 **에디터가
+죽어 있으면 호출마다 120초 툴 타임아웃을 그대로 기다린다.** 위 1번(프로세스 확인)을
+자동으로 대신해 주던 것이 사라졌다는 뜻이니, 연속 실패 시 손으로 확인한다.
 
-`tools/unity-watchdog.ps1`가 **복구**를 담당한다. 둘은 짝이며 하나만으로는 부족하다.
-훅만 있으면 죽은 채로 밤을 보내고, watchdog만 있으면 재시작 중에 MCP 호출을 계속 던진다.
+```bash
+cat Library/EditorInstance.json    # process_id 확인 후 그 PID 가 살아 있는지 본다
+```
+
+`tools/unity-watchdog.ps1`가 **복구**를 담당한다. 이건 그대로 있다. 다만 둘은 짝이었고
+지금은 한쪽뿐이다 — watchdog 만으로는 재시작 중에 MCP 호출을 계속 던지는 것을 못 막는다.
+되살리려면 `855c724`에서 `.claude/hooks/unity-preflight.sh`를 꺼낸다.
 
 ## D-3. 재시작 이후의 상태 가정 금지
 

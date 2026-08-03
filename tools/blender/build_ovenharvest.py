@@ -70,7 +70,22 @@ CHAMBER_PROUD = 0.085  # 방이 캐비닛 면에서 앞으로 나온 깊이
 # 구슬이 이 관을 **지나다니는** 물건이므로 이건 비례가 아니라 **논리**의 문제다.
 # 구슬 핵 지름 116mm, 헤일로까지 200mm. 관 지름 320mm 면 둘 다 여유롭게 통과한다.
 # 방 폭 440mm 보다는 작아야 「관」으로 읽히므로 그 사이에 둔다.
-PIPE_R = 0.160
+PIPE_R = 0.155
+PIPE_WALL = 0.022      # 관 벽 두께 — 창 가장자리에서 이 두께가 「관」임을 말한다
+PIPE_BORE = PIPE_R - PIPE_WALL          # 0.133 — 헤일로 지름 200mm 가 지나간다
+# 관이 캐비닛 면에서 앞으로 나온 깊이.
+# 🔴 사용자 지적: 「통관이 다른 요소랑 겹치고, 조금 앞에 튀어나온 느낌이라 살짝
+# 들어가야 할 것 같다.」 옳다 — 직전 판본은 관 앞면이 y=−130mm 로 **방(−85mm)보다
+# 45mm 더 앞에** 있었다. 지나가는 곳이 멈추는 곳보다 앞에 서면 위계가 뒤집힌다.
+# 관을 방 뒤로 물리면 방이 앞, 관이 뒤 — 「방 사이를 관이 잇는다」가 읽힌다.
+PIPE_PROUD = 0.060     # < CHAMBER_PROUD 0.085. 관은 방보다 25mm 들어가 있다
+# 창(구슬이 지나가는 것을 보는 구멍)의 각폭. 앞(−y)을 중심으로 벌린다.
+# 방 사이 간격이 110mm 뿐이라 관을 앞으로 빼서 「둥근 관」으로 읽히게 만들 수 없다 —
+# 44° 까지 좁혀 곡면 어깨를 남겨 봤지만, 그 어깨는 한쪽만 스펙큘러를 받아
+# **정면에서 원인 모를 밝은 직사각형**이 됐다. 좁은 틈에서 곡률은 계조가 아니라 잡음이다.
+# 그래서 반대로 간다 — 관을 20mm 까지 물리고 창을 넓혀, 남는 것이 어깨가 아니라
+# **구멍 자체**가 되게 한다. 사용자가 요구한 것도 관의 볼륨이 아니라 구멍이다
+PIPE_WIN_DEG = 64.0
 
 # 돌출 위계 — 90mm@20 > 68mm@12 > 30mm@6. 굵은 것이 앞에 온다
 PROUD_OUTER = 0.020
@@ -83,7 +98,11 @@ SILL_D = 0.140         # SillDepth
 
 # 레버 컬럼 — 룸 좌표를 캐비닛 로컬(z = roomY − 0.2)로 옮긴 값
 COL_W = 0.34           # LeverColumnWidth
-COL_BOTTOM = 0.22      # LeverColumnBottomY 0.42 − MachineBottomY 0.2
+# 🔴 사용자 지적: 「우측 레버 박스 높이가 좌측 3×3 통관 높이랑 맞아야 하는데 지금 다르다.」
+# 옳다 — 220mm 로 띄워 두면 두 덩어리가 **같은 기계로 안 읽힌다.** 옆에 붙은 것은
+# 바닥선을 공유해야 붙어 있는 것이고, 아니면 기대어 놓은 별개의 물건이다.
+# 캐비닛과 같은 0 에서 시작해 같은 H 에서 끝나고, 기초 채널도 이어 붙인다
+COL_BOTTOM = 0.0
 PIVOT_Z = 1.05         # LeverPivotY 1.25 − 0.2
 GRIP_D = 0.045
 GRIP_LEN = 0.18
@@ -296,6 +315,32 @@ def prism_z(bm, center_xy, r, z0, z1, n=16, phase=0.0):
     for i in range(n):
         j = (i + 1) % n
         bm.faces.new((a[i], b[i], b[j], a[j]))
+
+
+def tube_z(bm, center_xy, r_out, r_in, z0, z1, a0, a1, n=14):
+    """
+    세로(z축) **부분** 관 셸. a0~a1 구간의 벽만 세우므로 나머지 각도가 열린 창이 된다.
+
+    🔴 사용자 지적: 「통관에 구슬이 위아래로 옮겨다닐 구멍이 있어야 하는데 그게 없다.」
+    옳다 — 직전 판본의 관은 `prism_z` 로 만든 **꽉 찬 기둥**이었다. 속이 없으니
+    지나갈 수 있는 물건으로 읽힐 방법이 없었다. 관은 통이 아니라 **벽**이다.
+    벽만 세우면 창 가장자리에 벽 두께가 드러나고, 그 두께가 「속이 비어 있다」를 말한다.
+    """
+    cx, cy = center_xy
+
+    def ring(r, z):
+        return [bm.verts.new((cx + r * math.cos(a0 + (a1 - a0) * k / n),
+                              cy + r * math.sin(a0 + (a1 - a0) * k / n), z))
+                for k in range(n + 1)]
+    lo_o, lo_i = ring(r_out, z0), ring(r_in, z0)
+    hi_o, hi_i = ring(r_out, z1), ring(r_in, z1)
+    for k in range(n):
+        bm.faces.new((lo_o[k], lo_o[k + 1], lo_i[k + 1], lo_i[k]))   # 아래 링 단면
+        bm.faces.new((hi_o[k], hi_o[k + 1], hi_i[k + 1], hi_i[k]))   # 위 링 단면
+        bm.faces.new((lo_o[k], lo_o[k + 1], hi_o[k + 1], hi_o[k]))   # 바깥 벽
+        bm.faces.new((lo_i[k], lo_i[k + 1], hi_i[k + 1], hi_i[k]))   # 보어
+    bm.faces.new((lo_o[0], lo_i[0], hi_i[0], hi_o[0]))               # 창 가장자리 — 벽 두께
+    bm.faces.new((lo_o[n], lo_i[n], hi_i[n], hi_o[n]))
 
 
 def shallow_arch(bm, cx, z_base, chord, rise, band, y0, y1, up=True, n=20):
@@ -612,8 +657,18 @@ def build_cabinet(M, coll):
     for x in (COL_X[0] + PITCH_X * 0.5, COL_X[1] + PITCH_X * 0.5):
         box(b_iron, (x, (FACE_T + y_back) * 0.5, H * 0.5),
             (RIB, y_back - FACE_T, H))
+    # 행 격벽은 **관이 지나갈 자리를 비운다.** 통판으로 두면 속이 빈 관의 창 너머로
+    # 무쇠 슬래브가 채널을 가로지르는 것이 보인다 — 지나갈 수 없는 통로가 된다
+    bulk_xs = [-W * 0.5 + FACE_T]
+    for cx in COL_X:
+        bulk_xs += [cx - PIPE_R - 0.010, cx + PIPE_R + 0.010]
+    bulk_xs.append(W * 0.5 - FACE_T)
     for z in (ROW_Z[0] + (DH + BULK) * 0.5, ROW_Z[1] + (DH + BULK) * 0.5):
-        box(b_iron, (0, (FACE_T + y_back) * 0.5, z), (W - FACE_T * 2, y_back - FACE_T, BULK))
+        for k in range(0, len(bulk_xs), 2):
+            x0, x1 = bulk_xs[k], bulk_xs[k + 1]
+            if x1 - x0 > 0.002:
+                box(b_iron, ((x0 + x1) * 0.5, (FACE_T + y_back) * 0.5, z),
+                    (x1 - x0, y_back - FACE_T, BULK))
 
     # ── ② 전면 격자 — 외곽대 · 뱅크 리브 · 격벽. 아홉 칸이 뚫려 있다 ────
     grid_top = OUTER + DH * 3 + BULK * 2          # 1.590
@@ -649,24 +704,64 @@ def build_cabinet(M, coll):
     #
     # 진행 문서가 이미 적어 둔 지적이기도 하다:
     # 「지금 아홉 밀폐 챔버는 통관이 아니라 **진열장**이다.」
-    # 관은 방보다 **더 앞으로** 나온다. 앞면을 같은 평면에 두면(직전 판본) 방과 방
-    # 사이 62mm 구간만 보여 「띠」로 읽힌다 — 둥근 것이 둥글게 보이려면 옆에 있는
-    # 것보다 튀어나와 곡률이 빛을 받아야 한다
-    pipe_cy = PIPE_R - (CHAMBER_PROUD + 0.045)
+    #
+    # 이 판본에서 고친 것 넷 —
+    #   ① 관 앞면을 방 뒤로 65mm 물렸다 (PIPE_PROUD 20mm ≪ CHAMBER_PROUD 85mm).
+    #      직전 판본은 관이 방보다 45mm 앞이라 위계가 뒤집혔고, 상단 매니폴드·기초
+    #      메달리온·클램프 링과 전부 부딪쳤다.
+    #   ② 관을 **속 빈 벽**으로 바꾸고 앞을 열었다 — 구슬이 지나갈 구멍이다.
+    #   ③ **이음 플랜지를 뺐다.** 방 사이 간격이 110mm 뿐인데 그 안에 플랜지 두 개와
+    #      볼트 열두 개를 넣으면 관으로 안 읽히고 「클립 덩어리」로 읽힌다.
+    #      실제로 앞선 캡처에서 관은 안 보이고 플랜지만 띠처럼 보였다.
+    #   ④ 대신 **보이는 구간에만 강재 칼라**를 씌운다. 어두운 구멍은 어두운 판
+    #      한가운데에서 사라진다 — 구멍이 구멍으로 읽히려면 테두리가 밝아야 한다.
+    #      칼라는 앞으로 나오지 않고 관을 감싸기만 하므로 클램프로 읽히지 않는다.
+    pipe_cy = PIPE_R - PIPE_PROUD
     hh = CHAMBER_H * 0.5
+    win_a0 = R(-90.0 - PIPE_WIN_DEG * 0.5)        # 창은 앞(−y)을 향한다
+    win_a1 = R(-90.0 + PIPE_WIN_DEG * 0.5)
+    shell_a0, shell_a1 = win_a1, win_a0 + TAU     # 창을 뺀 나머지가 벽
+
+    # 관은 방 벽을 **뚫고 들어간다.** 방 바닥·천장에서 딱 끊으면 두 물건이
+    # 맞대어 있을 뿐이고, 뚫고 들어가야 하나의 통로로 읽힌다
+    # (z0, z1, 실제로 눈에 보이는 구간). 칼라는 보이는 구간에만 씌운다 —
+    # 방 앞판에 가려질 자리에 강재를 두면 각도가 바뀔 때마다 없던 조각이 튀어나온다
+    pipe_segs = [(0.004, ROW_Z[0] - hh + 0.030, (0.004, ROW_Z[0] - hh)),
+                 (ROW_Z[0] + hh - 0.030, ROW_Z[1] - hh + 0.030,
+                  (ROW_Z[0] + hh, ROW_Z[1] - hh)),
+                 (ROW_Z[1] + hh - 0.030, ROW_Z[2] - hh + 0.030,
+                  (ROW_Z[1] + hh, ROW_Z[2] - hh)),
+                 (ROW_Z[2] + hh - 0.030, grid_top + SHAFT, (ROW_Z[2] + hh, grid_top))]
     for cx in COL_X:
-        segs = [(-SILL_H + 0.030, ROW_Z[0] - hh)]               # 바닥 회수 트로프에서
-        segs += [(ROW_Z[k] + hh, ROW_Z[k + 1] - hh) for k in range(2)]
-        segs.append((ROW_Z[2] + hh, grid_top + SHAFT))          # 상단 투입 매니폴드로
-        for z0, z1 in segs:
-            prism_z(b_iron, (cx, pipe_cy), PIPE_R, z0, z1, 16, R(11.25))
-            for zf in ((z0, z0 + 0.024), (z1 - 0.024, z1)):     # 이음 플랜지
-                prism_z(b_trim, (cx, pipe_cy), PIPE_R + 0.026, zf[0], zf[1], 16, R(11.25))
-                for k in range(6):                              # 플랜지 볼트
-                    a = TAU * k / 6 + R(30)
-                    prism_z(b_trim, (cx + (PIPE_R + 0.014) * math.cos(a),
-                                     pipe_cy + (PIPE_R + 0.014) * math.sin(a)),
-                            0.011, zf[0] - 0.007, zf[1] + 0.007, 6)
+        for z0, z1, vis in pipe_segs:
+            # 셸은 캐비닛과 같은 무쇠다. 강재로 밝게 두면 좁은 틈에서 어깨 한쪽만
+            # 하얗게 떠서 「부품이 잘못 겹친 자국」으로 읽힌다 (한 판본 해 봤다)
+            tube_z(b_iron, (cx, pipe_cy), PIPE_R, PIPE_BORE, z0, z1, shell_a0, shell_a1, 14)
+            # 어두운 라이너 — 채널 안이 강재로 번들거리면 「속」으로 안 보인다
+            tube_z(dark.bm, (cx, pipe_cy), PIPE_BORE - 0.001, PIPE_BORE - 0.011,
+                   z0 + 0.002, z1 - 0.002, shell_a0, shell_a1, 14)
+            for zc in (z0, z1 - 0.014):                        # 채널 끝을 막는다
+                prism_z(dark.bm, (cx, pipe_cy), PIPE_BORE - 0.002, zc, zc + 0.014, 14)
+            # ⚠ 여기에 강재 칼라를 씌워 봤고 **뺐다.** 방이 85mm 나와 있어 방 사이
+            # 110mm 구간은 위아래가 처마인 그늘 골이다. 그 안의 물건은 정면에서
+            # 아예 안 보이고, 3/4 에서는 칼라의 얇은 조각만 하얗게 떠서 예전
+            # 클램프 더미와 똑같이 「붙다 만 부품」으로 읽혔다.
+            # 그늘 골 안을 밝히는 방법은 물건을 더 넣는 것이 아니라 **골에서 꺼내는
+            # 것**이다 — 그래서 PIPE_PROUD 를 60mm 로 올렸다. 방보다 25mm 뒤,
+            # 「살짝 들어간」 자리이면서 처마 그늘은 벗어난다
+            _ = vis
+            # 창 가장자리 레일 — 창이 「뚫린 자리」임을 선으로 확정한다.
+            # 가늘게 둔다. 두꺼우면 세로선이 아니라 밝은 조각이 된다
+            for sa in (win_a0, win_a1):
+                rx = cx + (PIPE_R + 0.004) * math.cos(sa)
+                ry = pipe_cy + (PIPE_R + 0.004) * math.sin(sa)
+                strut(b_trim, (rx, ry, z0 + 0.008), (rx, ry, z1 - 0.008), 0.018, 0.014)
+            # ⚠ 창에 유리를 끼우지 않는다. 사용자가 요구한 것은 **구멍**이고,
+            # 높이 110mm 짜리 좁은 창에 유리를 끼우면 정면 스펙큘러가 창 전체를
+            # 밝게 덮어 「뚫린 자리」가 아니라 「밝은 판」이 된다. 방은 유리로
+            # 막고 관은 열어 두면 둘의 역할 차이도 형태로 드러난다.
+            # ⚠ 받침 플랜지도 두지 않는다. 밝은 강재 원반이 기초 띠 위에 반쯤 박힌
+            # 채로 튀어나와, 지우려던 「겹쳐서 부자연스러운」 인상을 밑단에 되살린다
 
     # ── ③ 상단 공통 샤프트 하우징 ────────────────────────────────────────
     sh_c = grid_top + SHAFT * 0.5
@@ -686,8 +781,14 @@ def build_cabinet(M, coll):
             for s_ in (-1, 1):
                 box(b_iron, (cx + s_ * (hw - 0.018), (f_door + FACE_T) * 0.5, cz),
                     (0.036, FACE_T - f_door, CHAMBER_H))
-                box(b_iron, (cx, (f_door + FACE_T) * 0.5, cz + s_ * (hh - 0.018)),
-                    (CHAMBER_W - 0.072, FACE_T - f_door, 0.036))
+                # 천장·바닥은 **가운데가 뚫려 있다** — 관이 그리로 들어온다.
+                # 통판으로 두면 방과 관이 맞대어 있을 뿐 이어져 있지 않다
+                ww = hw - 0.036                       # 벽 반폭 0.184
+                wb = PIPE_R - 0.008                   # 보어 반폭 — 관과 확실히 물리게
+                for sx_ in (-1, 1):
+                    box(b_iron, (cx + sx_ * (ww + wb) * 0.5, (f_door + FACE_T) * 0.5,
+                                 cz + s_ * (hh - 0.018)),
+                        (ww - wb, FACE_T - f_door, 0.036))
             # 앞판 — 원형 구멍 둘레 네 조각
             box(b_iron, (cx - (hw + ap) * 0.5, f_door + 0.014, cz),
                 (hw - ap, 0.028, CHAMBER_H))
@@ -723,10 +824,15 @@ def build_cabinet(M, coll):
             sphere(halo.bm, (cx, sy, cz), SOUL_R * 1.72, seg=20, ring=12)
 
     # ── ⑤ 리벳 — 외곽대와 모서리 보강판 ─────────────────────────────────
-    def rivet_row(x0, x1, z, step=0.082, y=-PROUD_OUTER):
+    def rivet_row(x0, x1, z, step=0.082, y=-PROUD_OUTER, clear_pipes=False):
         n = max(2, int(round(abs(x1 - x0) / step)))
         for i in range(n + 1):
-            dome(b_trim, (x0 + (x1 - x0) * i / n, z), 0.0125, 0.0080, y)
+            x = x0 + (x1 - x0) * i / n
+            # 관이 앞을 지나가는 자리의 리벳은 넣지 않는다 — 넣어 봤자 관에 먹히고,
+            # 반쯤 먹힌 돔은 「겹쳐서 부자연스러운」 바로 그 인상을 만든다
+            if clear_pipes and any(abs(x - cx) < PIPE_R + 0.028 for cx in COL_X):
+                continue
+            dome(b_trim, (x, z), 0.0125, 0.0080, y)
 
     def rivet_col(z0, z1, x, step=0.082, y=-PROUD_OUTER):
         n = max(2, int(round(abs(z1 - z0) / step)))
@@ -734,7 +840,7 @@ def build_cabinet(M, coll):
             dome(b_trim, (x, z0 + (z1 - z0) * i / n), 0.0125, 0.0080, y)
 
     inset = OUTER * 0.5
-    rivet_row(-W * 0.5 + inset, W * 0.5 - inset, inset)
+    rivet_row(-W * 0.5 + inset, W * 0.5 - inset, inset, clear_pipes=True)
     rivet_row(-W * 0.5 + inset, W * 0.5 - inset, H - inset)
     rivet_col(inset, H - inset, -W * 0.5 + inset)
     rivet_col(inset, H - inset, W * 0.5 - inset)
@@ -755,11 +861,18 @@ def build_cabinet(M, coll):
                     dome(b_trim, (sx * (W * 0.5 - 0.075) + dx, gz + dz),
                          0.0125, 0.0080, -PROUD_OUTER - 0.010)
 
-    # 측면 장착 러그 — 옆에서 봤을 때 벽에 물린 물건으로 읽히게
-    for sx in (-1, 1):
-        for lz in (0.30, H - 0.30):
-            box(b_trim, (sx * (W * 0.5 + 0.030), 0.150, lz), (0.060, 0.100, 0.110))
-            prism(b_trim, (sx * (W * 0.5 + 0.030), lz), 0.022, 0.130, 0.170, 8)
+    # 측면 장착 러그 — 옆에서 봤을 때 벽에 물린 물건으로 읽히게.
+    #
+    # 🔴 **왼쪽에만 붙인다.** 오른쪽 러그는 x 0.938~0.998 을 차지하는데 레버 컬럼이
+    # x 0.944 에서 시작한다 — 즉 러그가 컬럼 **몸통 안에 박혀 있었다.** 밖에서는
+    # 러그의 잘린 단면만 보이고, 그것이 「모델과 모델이 겹쳐 부자연스럽다」의
+    # 실물이다. 오른쪽 벽 고정은 컬럼 바깥면이 맡는다(build_column)
+    # 무쇠로 둔다 — 밝은 강재로 두면 실루엣 밖에서 림 라이트를 정면으로 받아
+    # 흰 정육면체가 공중에 떠 보인다. 무엇에 쓰는지 모를 밝은 덩어리가 가장자리에
+    # 뜨는 것이 「모델이 부자연스럽게 겹쳐 보인다」의 또 다른 원인이다
+    for lz in (0.30, H - 0.30):
+        box(b_iron, (-(W * 0.5 + 0.030), 0.150, lz), (0.060, 0.100, 0.110))
+        prism(b_iron, (-(W * 0.5 + 0.030), lz), 0.022, 0.130, 0.170, 8)
 
     # ── ⑥ 기초 채널 — 육각 볼트가 박힌 점검 패널 셋 ─────────────────────
     box(b_iron, (0, SILL_D * 0.5, -SILL_H * 0.5), (W, SILL_D, SILL_H))
@@ -811,10 +924,19 @@ def build_column(M, coll):
     cz = (COL_BOTTOM + top) * 0.5
     ch = top - COL_BOTTOM
 
-    slot_hw, slot_z0, slot_z1 = 0.058, 0.55, 1.25     # 막대가 도는 구멍
-    slot_depth = 0.120
-    fp0, fp1 = -0.036, 0.0                             # 앞판 두께
+    # 🔴 사용자 지적: 「오른쪽 레버는 깊이가 더 있어야 할 것 같다 — 레버 안이 깊게
+    # 보이게.」 옳다. 직전 판본이 얕아 보인 이유는 깊이 수치가 아니라 셋이었다 —
+    #   ① 홈 폭 116mm 에 막대가 60mm. 막대 옆에 남는 어둠이 28mm 뿐이라 눈에 안 띈다.
+    #   ② 채널 벽이 **밝은 강재**였다. 빛을 받는 벽은 구멍을 메운다.
+    #   ③ 앞판이 36mm 라 개구부 가장자리에 보일 만한 리빌이 없었다.
+    # 그래서 넓히고(144mm), 어둡게 하고, 앞판을 두껍게 한 뒤 개구부에 10mm 솟은
+    # 베젤을 둘러 **그림자를 안으로 던진다.** 깊이는 숫자가 아니라 그림자로 읽힌다.
+    slot_hw, slot_z0, slot_z1 = 0.072, 0.55, 1.25     # 막대가 오르내리는 구멍
+    slot_depth = 0.185
+    fp0, fp1 = -0.052, 0.0                             # 앞판 두께
     px = COL_W * 0.5 - 0.008                           # 앞판 반폭
+    fs = fp0                  # 앞판 앞면 — 표면 부착물의 기준. 앞판이 두꺼워지면
+                              # 붙어 있던 것들도 같이 나와야 한다. 안 그러면 파묻힌다
 
     box(b, (ox, DEPTH * 0.5, cz), (COL_W, DEPTH, ch))  # 몸통
 
@@ -826,36 +948,65 @@ def build_column(M, coll):
     box(b, (ox, fy, (COL_BOTTOM + 0.006 + slot_z0) * 0.5),
         (slot_hw * 2, ft, slot_z0 - COL_BOTTOM - 0.006))
 
-    # 채널 벽 — 깊이가 여기서 나온다
+    # 채널 벽 — **어두운 재질이다.** 깊이는 여기서 나온다
     for s_ in (-1, 1):
-        box(t, (ox + s_ * (slot_hw + 0.007), (fp0 + slot_depth) * 0.5, (slot_z0 + slot_z1) * 0.5),
-            (0.014, slot_depth - fp0, slot_z1 - slot_z0))
-        box(t, (ox, (fp0 + slot_depth) * 0.5, slot_z0 + (slot_z1 - slot_z0) * (0 if s_ < 0 else 1)),
-            (slot_hw * 2 + 0.028, slot_depth - fp0, 0.014))
-    box(dark.bm, (ox, slot_depth + 0.008, (slot_z0 + slot_z1) * 0.5),
+        box(dark.bm, (ox + s_ * (slot_hw + 0.009), (fp0 + slot_depth) * 0.5,
+                      (slot_z0 + slot_z1) * 0.5),
+            (0.018, slot_depth - fp0, slot_z1 - slot_z0))
+        box(dark.bm, (ox, (fp0 + slot_depth) * 0.5,
+                      slot_z0 + (slot_z1 - slot_z0) * (0 if s_ < 0 else 1)),
+            (slot_hw * 2 + 0.036, slot_depth - fp0, 0.018))
+    box(dark.bm, (ox, slot_depth - 0.008, (slot_z0 + slot_z1) * 0.5),
         (slot_hw * 2 + 0.020, 0.016, slot_z1 - slot_z0))
+    # 채널 안쪽 사다리 — 안이 비어 있지 않다는 증거이자 깊이 척도
+    for k in range(9):
+        zz = slot_z0 + 0.045 + (slot_z1 - slot_z0 - 0.09) * k / 8
+        box(t, (ox, slot_depth - 0.026, zz), (slot_hw * 2 - 0.010, 0.014, 0.010))
+
+    # 개구부 베젤 — 10mm 솟아 채널 안으로 그림자를 던진다
+    bez = 0.026
+    for s_ in (-1, 1):
+        box(t, (ox + s_ * (slot_hw + bez * 0.5), fp0 - 0.010, (slot_z0 + slot_z1) * 0.5),
+            (bez, 0.020, slot_z1 - slot_z0 + bez * 2))
+        box(t, (ox, fp0 - 0.010,
+                slot_z0 + (slot_z1 - slot_z0) * (0 if s_ < 0 else 1) + s_ * bez * 0.5),
+            (slot_hw * 2, 0.020, bez))
 
     # 테두리 스트랩 + 리벳
     for s_ in (-1, 1):
-        box(b, (ox + s_ * (COL_W * 0.5 - 0.026), -0.030, cz), (0.052, 0.024, ch))
-    box(b, (ox, -0.030, COL_BOTTOM + 0.030), (COL_W, 0.024, 0.060))
-    box(b, (ox, -0.030, top - 0.030), (COL_W, 0.024, 0.060))
-    for i in range(11):
-        z = COL_BOTTOM + 0.030 + (ch - 0.060) * i / 10
+        box(b, (ox + s_ * (COL_W * 0.5 - 0.026), fs - 0.012, cz), (0.052, 0.024, ch))
+    box(b, (ox, fs - 0.012, COL_BOTTOM + 0.030), (COL_W, 0.024, 0.060))
+    box(b, (ox, fs - 0.012, top - 0.030), (COL_W, 0.024, 0.060))
+    for i in range(15):
+        z = COL_BOTTOM + 0.030 + (ch - 0.060) * i / 14
         for s_ in (-1, 1):
-            dome(t, (ox + s_ * (COL_W * 0.5 - 0.026), z), 0.0090, 0.0052, -0.030)
+            dome(t, (ox + s_ * (COL_W * 0.5 - 0.026), z), 0.0090, 0.0052, fs - 0.024)
 
-    # 디텐트 이빨 — 어디에 멈추는 물건인지 말한다
+    # 디텐트 이빨 — 어디에 멈추는 물건인지 말한다. 베젤 바깥에 선다
     for k in range(6):
-        box(t, (ox + slot_hw + 0.026, -0.044,
+        box(t, (ox + slot_hw + bez + 0.022, fp0 - 0.010,
                 slot_z0 + 0.055 + (slot_z1 - slot_z0 - 0.11) * k / 5), (0.032, 0.020, 0.016))
 
+    # 기초 채널 — 캐비닛의 것과 이어 붙인다. 바닥선을 공유해야 한 기계다
+    box(b, (ox, SILL_D * 0.5, -SILL_H * 0.5), (COL_W + 0.012, SILL_D, SILL_H))
+    box(b, (ox, -0.012, -SILL_H * 0.5), (COL_W - 0.012, 0.024, SILL_H - 0.014))
+    prism(t, (ox, -SILL_H * 0.5), 0.030, -0.040, -0.026, 8)
+    prism(t, (ox, -SILL_H * 0.5), 0.014, -0.050, -0.040, 6)
+
+    # 측면 장착 러그 — 캐비닛 왼쪽 러그의 짝. 조립체 양 끝이 벽에 물린다.
+    # 캐비닛 쪽과 같은 이유로 무쇠다
+    for lz in (0.30, H - 0.30):
+        box(b, (ox + COL_W * 0.5 + 0.030, 0.150, lz), (0.060, 0.100, 0.110))
+        prism(b, (ox + COL_W * 0.5 + 0.030, lz), 0.022, 0.130, 0.170, 8)
+
     # ── 막대와 손잡이 — 채널 **안**에 있다 ────────────────────────────────
-    rod_y = slot_depth * 0.32          # 막대는 홈 앞쪽에 있어야 빛을 받는다
+    # 홈이 깊어진 만큼 막대를 앞으로 당긴다. 안 그러면 「깊은 빈 구멍」이 된다 —
+    # 깊이는 그 안에 무언가 보일 때에만 깊이로 읽히고, 아니면 그냥 검은 사각형이다
+    rod_y = slot_depth * 0.20          # 앞판 앞면에서 90mm 뒤
     gl_z = slot_z0 - 0.010             # 막대가 들어가는 글랜드 높이
     z_car = 1.16                                        # 정지 위치(내리기 전, 위)
-    prism_z(t, (ox, rod_y), 0.030, gl_z, z_car + 0.055, 12)      # 막대
-    box(t, (ox, rod_y, z_car), (0.076, 0.070, 0.086))            # 캐리지
+    prism_z(t, (ox, rod_y), 0.032, gl_z, z_car + 0.060, 12)      # 막대
+    box(t, (ox, rod_y, z_car), (0.104, 0.082, 0.104))            # 캐리지
     for s_ in (-1, 1):                                           # 채널을 타는 롤러
         cyl_x(t, (ox + s_ * slot_hw, rod_y, z_car + 0.030), 0.016, 0.030, 10)
         cyl_x(t, (ox + s_ * slot_hw, rod_y, z_car - 0.030), 0.016, 0.030, 10)
@@ -887,16 +1038,16 @@ def build_column(M, coll):
     # 크랭크로 이어져 있던 부품인데, 기구를 직선으로 바꾸면서 남겨 둔 것이다.
     # 근거 없는 부품은 빼는 것이 맞다. 막대는 그냥 하우징으로 들어간다.
     box(b, (ox, (fp0 + slot_depth) * 0.5, gl_z - 0.045), (0.170, slot_depth - fp0, 0.090))
-    box(t, (ox, -0.048, gl_z - 0.030), (0.130, 0.028, 0.048))
+    box(t, (ox, fs - 0.014, gl_z - 0.030), (0.130, 0.028, 0.048))
     for s_ in (-1, 1):
-        dome(t, (ox + s_ * 0.046, gl_z - 0.030), 0.0095, 0.0058, -0.048)
+        dome(t, (ox + s_ * 0.046, gl_z - 0.030), 0.0095, 0.0058, fs - 0.028)
     prism_z(t, (ox, rod_y), 0.036, gl_z - 0.014, gl_z + 0.014, 12)   # 패킹 글랜드
 
     # ── 사이렌 경고등 — 레버 **위** ──────────────────────────────────────
-    sy, sz = -0.098, 1.44
-    box(b, (ox, -0.058, sz - 0.035), (0.150, 0.056, 0.044))       # 받침 브래킷
+    sy, sz = fs - 0.062, 1.44
+    box(b, (ox, fs - 0.022, sz - 0.035), (0.150, 0.056, 0.044))   # 받침 브래킷
     for s_ in (-1, 1):
-        dome(t, (ox + s_ * 0.052, sz - 0.035), 0.0095, 0.0058, -0.086)
+        dome(t, (ox + s_ * 0.052, sz - 0.035), 0.0095, 0.0058, fs - 0.050)
     prism_z(t, (ox, sy), 0.080, sz - 0.014, sz + 0.018, 14)       # 베이스
     siren = Part("OH_SirenLens", M["siren"])
     prism_z(siren.bm, (ox, sy), 0.070, sz + 0.018, sz + 0.118, 14)

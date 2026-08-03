@@ -87,10 +87,11 @@ namespace Ascend.Prototype.EditorTools
             sb.Append($"합계: {passed} PASS / {failed} FAIL");
             string report = sb.ToString();
 
-            // **산출물을 손으로 유지하지 않는다.** `tools/verify-topdown.ps1`이 이 파일의
-            // "합계:" 줄을 읽어 완료를 판정하는데, 지금까지 이 파일은 아무도 쓰지 않아
-            // 스위트가 늘어도 옛 숫자가 그대로 남아 있었다. 판정 근거가 되는 파일은
-            // 판정 대상을 실제로 돌린 쪽이 써야 한다.
+            // **산출물을 손으로 유지하지 않는다.** 이 파일의 "합계:" 줄은 완료 판정의
+            // 근거다 — 예전에는 `tools/verify-topdown.ps1` 이 읽었고(2026-08-03 삭제),
+            // 지금은 사람과 감사자가 읽는다. 읽는 주체가 바뀌어도 규칙은 같다.
+            // 한때 이 파일을 아무도 쓰지 않아 스위트가 늘어도 옛 숫자가 그대로 남았다.
+            // 판정 근거가 되는 파일은 판정 대상을 실제로 돌린 쪽이 써야 한다.
             WriteArtifact("editmode_tests.txt", report);
 
             if (failed > 0) Debug.LogError($"[상승]\n{report}");

@@ -118,7 +118,7 @@ param(
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
-# ── 루트 결정 (verify-topdown.ps1 과 같은 규칙) ───────────────────────────────
+# ── 루트 결정 (지운 verify-topdown.ps1 과 같은 규칙: CLAUDE_PROJECT_DIR → 스크립트 상위) ──
 if ([string]::IsNullOrWhiteSpace($Root)) {
     if (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_PROJECT_DIR)) { $Root = $env:CLAUDE_PROJECT_DIR }
     else { $Root = Split-Path -Parent $PSScriptRoot }

@@ -51,11 +51,15 @@ git config merge.unityyamlmerge.driver '"C:/Program Files/Unity/Hub/Editor/6000.
 
 안 하면 씬 충돌 시 병합 드라이버가 없어 YAML이 깨진다.
 
-## 2.3 에이전트 훅
+## 2.3 에이전트 훅 — 지금은 없다
 
-`.claude/settings.json`이 `.claude/hooks/*.sh`를 `bash`로 호출한다.
-Windows에서는 **Git Bash가 PATH에** 있어야 한다. `font-atlas-guard.sh`는 추가로 **Node**를 쓴다.
-둘 중 하나라도 없으면 훅이 조용히 동작하지 않는다 — 특히 폰트 아틀라스 보호가 풀린다.
+**2026-08-03에 훅을 전부 걷어냈다(`9723ffb`).** `.claude/settings.json`은 비어 있고
+`.claude/hooks/`도 없다. 이 절에서 준비할 것은 없다.
+
+예전에는 `.claude/settings.json`이 `.claude/hooks/*.sh`를 `bash`로 호출했고, 그래서
+Windows에서는 **Git Bash가 PATH에** 있어야 했다(`font-atlas-guard.sh`는 추가로 **Node**).
+`855c724`에서 훅을 되살린다면 그 두 가지가 다시 필요하고, 없으면 훅이 조용히 동작하지
+않는다 — 특히 폰트 아틀라스 보호가 풀린다.
 
 ## 2.4 첫 오픈
 
@@ -162,8 +166,10 @@ Player/InteractableOverharvestLever.cs                        과수확 레버
   씬은 이미 완성 상태로 커밋돼 있다. 돌리면 재생성 후 저장돼 불필요한 diff가 생긴다.
   씬 오브젝트를 실제로 고칠 때만 쓴다.
 - **폰트 에셋(`NanumGothic SDF.asset`)을 무심코 커밋하지 말 것.**
-  플레이 중 동적 아틀라스가 자라면 4 MB짜리 리비전이 생긴다. `font-atlas-guard.sh` 훅은
-  글리프가 **줄어드는** 경우만 막는다(한글 렌더링 깨짐 방지). 늘어나는 건 통과시킨다.
+  플레이 중 동적 아틀라스가 자라면 4 MB짜리 리비전이 생긴다.
+  예전에는 `font-atlas-guard.sh` 훅이 글리프가 **줄어드는** 경우를 막아 줬지만
+  (한글 렌더링 깨짐 방지) **2026-08-03에 지웠다 — 지금은 아무도 안 막는다.**
+  커밋 전에 이 파일이 diff 에 들어 있는지 직접 본다.
 - **패키지·Unity·URP 버전을 승인 없이 바꾸지 말 것** (`TECH_SPEC.md` §1).
 - **폐기 코드를 정리한다며 손대지 말 것** — `Core/` `Roulette/` `Effects/` `Data/Ball*` `Sim/`
   약 5,000줄은 컴파일에만 참여한다. 제거는 Gate에 기여하지 않고 위험만 크다.

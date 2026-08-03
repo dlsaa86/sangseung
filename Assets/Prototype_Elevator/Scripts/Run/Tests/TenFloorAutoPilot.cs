@@ -1520,13 +1520,41 @@ namespace Ascend.Prototype.Run.Tests
             float effectiveFloorFps = Mathf.Max(PrdHardFloorFps, profileFloorFps);
             float floorMs = 1000f / effectiveFloorFps;
 
+            // 🔴 **95% 하나만 적으면 원인을 못 가른다.**
+            //
+            // `UP-FIX-70` 이 이것 때문에 막혔다. p95 89.65ms 만 로그에 남아서
+            // 「전 구간이 89ms 인가(지속형 — 드로우콜·배칭 축)」와 「대부분 14ms 인데
+            // 5%가 튀는가(스파이크형 — GC·스트리밍·연출 축)」를 **원리적으로 가를 수
+            // 없었다.** 원인 축이 완전히 다른데 증거가 그것을 구분하지 못한다.
+            //
+            // `Report()` 는 중앙·최악·드로우콜·SetPass·삼각형을 이미 다 만들고 있었다.
+            // 검사가 거기서 **95% 한 개만 뽑아 적고 나머지를 버린 것**이 결함이다.
+            // 판정은 그대로 p95 로 하되(하한이 바뀌면 안 된다), 원본 줄을 남긴다.
+            _report.AppendLine("  " + frameLine.Trim());
+            AppendProbeLine(report, "[드로우콜]");
+            AppendProbeLine(report, "[SetPass]");
+            AppendProbeLine(report, "[삼각형]");
             _report.AppendLine($"  프레임타임 p95 {p95:F2} ms — 측정기의 마지막 600표본 창이다 " +
-                               $"(런 전체가 아니다). 하한 {effectiveFloorFps:F0} FPS = {floorMs:F2} ms");
+                               $"(런 전체가 아니다. 런 전체 표본 {probe.TotalSamples}개). " +
+                               $"하한 {effectiveFloorFps:F0} FPS = {floorMs:F2} ms");
             Check($"프레임타임 p95 가 하드 플로어 안이다 — {p95:F2} ms / 하한 {floorMs:F2} ms",
                   p95 <= floorMs,
                   $"p95 {p95:F2} ms 는 {1000f / Mathf.Max(0.01f, p95):F0} FPS 다 — " +
                   $"PRD §13.1 의 하한 {effectiveFloorFps:F0} FPS 를 밑돈다. " +
                   "목표(90 FPS)가 아니라 바닥이 뚫린 것이다");
+        }
+
+        /// <summary>
+        /// 측정기 보고서의 한 줄을 진단용으로 그대로 옮긴다.
+        ///
+        /// **판정에 쓰지 않는다** — 없으면 없다고 적고 넘어간다. 진단 줄이 없다고
+        /// 런을 실패시키면, 증거를 늘리려던 변경이 새 실패 원인이 된다.
+        /// </summary>
+        private void AppendProbeLine(string report, string marker)
+        {
+            string line = ExtractLine(report, marker);
+            _report.AppendLine(line != null ? "  " + line.Trim()
+                                            : $"  {marker} 줄 없음 — 측정기가 이 항목을 내지 않았다");
         }
 
         /// <summary>

@@ -2,7 +2,9 @@
 
 > 생성: 2026-08-01 · 출처: Notion 11개 문서 + 저장소 실제 구현 감사
 > 이 문서는 **탑다운 자율 개발의 단일 작업 목록**이다. 범위 판정은 `MASTER PRD`가 최상위다.
-> 상태 값은 사람이 아니라 `tools/verify-topdown.ps1`이 읽는다. 형식을 바꾸면 검증기가 깨진다.
+> 상태 줄의 형식(`- 상태: … · 패스: …`)을 바꾸지 않는다. 예전에는 `tools/verify-topdown.ps1`이
+> 이 형식을 파싱했고 그 검증기는 2026-08-03에 지웠지만(`9723ffb`), 지금은 **사람과 에이전트가
+> 이 형식을 세어** 남은 일을 판단한다. 형식이 흐트러지면 세는 것 자체가 불가능해진다.
 
 ---
 
@@ -238,7 +240,9 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 - 미사용 레거시와 임시 코드 정리
 - 모든 Required 항목을 `VERIFIED`로 전환
 
-완료 조건: `tools/verify-topdown.ps1`이 `TOPDOWN_ALL_PASSES_COMPLETE`를 출력.
+완료 조건: 모든 Required 가 `VERIFIED`. 예전에는 `tools/verify-topdown.ps1`이
+`TOPDOWN_ALL_PASSES_COMPLETE`를 출력하는 것으로 판정했지만 그 검증기는 지웠다
+(2026-08-03, `9723ffb`). **지금은 자동 판정이 없다** — §6 통계를 직접 세어 대조한다.
 
 ---
 
@@ -2059,8 +2063,17 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 
 # 6. 통계
 
-> 아래 수치는 `tools/verify-topdown.ps1 -Stats`가 이 파일에서 직접 세어 대조한다.
-> 손으로 고치지 말고 검증기 출력과 맞춘다. **최종 갱신: 2026-08-01 실증 감사.**
+> 아래 수치는 예전에 `tools/verify-topdown.ps1 -Stats`가 이 파일에서 직접 세어 대조했다.
+> **그 검증기는 2026-08-03에 지웠다(`9723ffb`) — 이제 아무도 대신 세어 주지 않는다.**
+> 그러니 기억으로 더하고 빼지 말고 **파일을 세어** 적고, 센 날짜를 함께 남긴다.
+>
+> ```bash
+> for s in VERIFIED CONNECTED VISIBLE SKELETON NOT_STARTED BLOCKED_EXTERNAL OUT_OF_SESSION_SCOPE DEFERRED; do
+>   printf "%-22s %s\n" "$s" "$(grep -c "^- 상태: $s" docs/TOPDOWN_MASTER_BACKLOG.md)"
+> done
+> ```
+>
+> **최종 갱신: 2026-08-04 직접 셈.** (그 이전 갱신: 2026-08-01 실증 감사.)
 
 | 분류 | 개수 |
 |---|---|
@@ -2071,28 +2084,37 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 | 수정 백로그 (§5) | 22 |
 | 감사 발견 결함 (§5.1) | 10 |
 
-<!-- 아래 표는 손으로 적는 것이 아니다. `verify-topdown.ps1 -Stats` 출력을 그대로 옮긴다.
+<!-- 이 표는 기억으로 적는 것이 아니라 세어서 적는다. 위 셸 조각을 쓴다.
      2026-08-02 감사가 이 표를 「NOT_STARTED 6」인 채로 잡아냈다 — 실제는 0 이었다.
+     2026-08-04 에도 74/46/2/7 로 남아 있었다 — 실제는 84/38/0/2 였다.
+     검증기가 없어진 뒤로는 이 표가 낡는 것을 아무도 안 잡는다.
      통계표가 틀리면 「얼마나 남았는가」를 묻는 모든 판단이 함께 틀린다. -->
 
-| 상태 | Required 중 개수 | 2026-08-02 세션 시작 |
+| 상태 | Required 중 개수 (2026-08-04 직접 셈) | 2026-08-02 세션 시작 |
 |---|---|---|
-| `VERIFIED` | **74** | 73 |
-| `CONNECTED` | **46** | 37 |
-| `VISIBLE` | **2** | 0 |
-| `SKELETON` | **7** | 15 |
+| `VERIFIED` | **84** | 73 |
+| `CONNECTED` | **38** | 37 |
+| `OUT_OF_SESSION_SCOPE` | **5** | — |
+| `SKELETON` | **2** | 15 |
+| `VISIBLE` | **0** | 0 |
 | `NOT_STARTED` | **0** | 4 |
-| `BLOCKED_EXTERNAL` | 0 | 0 |
+| `BLOCKED_EXTERNAL` | **0** | 0 |
+| 합계 | **129** | 129 |
 
-**Pass 1 완료** (모든 Required 가 `SKELETON`·`VISIBLE` 이상). **Pass 2 바 미달 9건.**
+**Pass 1 완료** (모든 Required 가 `SKELETON`·`VISIBLE` 이상).
+**Pass 2 바 미달: `SKELETON` 2건.**
 
-패스별 미달 수는 검증기가 `-Stats` 로 직접 센다 — 여기에 옮겨 적지 말고 그쪽을 볼 것.
+⚠ `OUT_OF_SESSION_SCOPE` 5건은 이 표를 만든 뒤에 생긴 상태값이라 **어느 바에 세는지 정해져
+있지 않다.** 정하기 전까지 미달로도 통과로도 세지 말고 따로 본다. 임의로 한쪽에 넣으면
+남은 일이 5건 단위로 틀린다.
+
+패스별 미달 수도 이제 자동으로 세어 주는 것이 없다. 필요하면 §2 를 직접 세고 센 날짜를 적는다.
 
 > **이 표는 손으로 적는 것이 아니다.** 2026-08-01 독립 감사가 항목 헤더를 직접 세어
 > 여기 적힌 66/25/31 이 실제(67/33/22)와 다르다는 것을 찾았다. 통계표가 틀리면
 > "얼마나 남았는가"를 묻는 모든 판단이 함께 틀린다.
-> **갱신 방법**: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-topdown.ps1 -Stats`
-> 의 출력을 그대로 옮긴다. 기억으로 더하고 빼지 않는다.
+> **갱신 방법**: 검증기가 없으므로 위 셸 조각으로 `- 상태:` 줄을 직접 센다.
+> 기억으로 더하고 빼지 않는다.
 
 > **2026-08-01 Pass 1 Wave A.** `NOT_STARTED` 가 23 → 7 로 내려갔다. 옮겨간 16건은
 > 대부분 `SKELETON` 이다 — **코드와 테스트는 생겼지만 씬에 붙지 않아 게임 안에서는
