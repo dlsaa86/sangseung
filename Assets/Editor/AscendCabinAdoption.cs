@@ -170,8 +170,22 @@ namespace Ascend.CaptureHarness.EditorTools
             inst.name = shaftRoot;
             // 카 셸과 **같은 요**를 받아야 통로가 가위문 쪽(−x)에 선다.
             // 안 주면 반대편(+x) 벽 뒤에 생겨 화면에 영향이 없다.
-            inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, ShellYaw, 0f));
-            inst.transform.localScale = Vector3.one;
+            // 루트의 **회전도 덮어쓰지 않는다.** 스케일과 똑같은 이유다 —
+            // 단일 메시 FBX 는 축 변환(−90° X)이 루트에 붙어 있어서
+            // `Quaternion.Euler(0, yaw, 0)` 로 통째로 갈면 통로가 옆으로 눕는다.
+            // 실측: y[−1.53,1.53] z[−2.73,0.18] (기대 y[−0.18,2.73] z[−1.53,1.53]).
+            // 요를 **곱해서** 얹는다. 프리팹 값 기준이라 절대값이고 멱등하다.
+            inst.transform.position = Vector3.zero;
+            inst.transform.localRotation = Quaternion.Euler(0f, ShellYaw, 0f) * prefab.transform.localRotation;
+
+            // **`Vector3.one` 을 넣지 않는다.** 2026-08-04 실측 —
+            // `ELV_Cabin` 은 오브젝트가 10개라 FBX 가 빈 래퍼 루트를 만들고
+            // 자식들이 단위 보정 스케일 100 을 갖는다. 루트를 1 로 눌러도 무해하다.
+            // `ELV_Shaft` 는 오브젝트가 **하나**라 그 메시가 곧 루트고,
+            // 보정 스케일 100 이 **루트에 붙어 있다.** 여기를 1 로 누르면
+            // 통로가 100 배 작아져 원점의 4cm 티끌이 된다 (실제로 그렇게 났다).
+            // 프리팹이 들고 있는 값을 그대로 쓴다 — 절대값이라 멱등하다.
+            inst.transform.localScale = prefab.transform.localScale;
             Undo.RegisterCreatedObjectUndo(inst, "Adopt shaft");
             ForceMaterials(inst, log);
 
@@ -192,13 +206,40 @@ namespace Ascend.CaptureHarness.EditorTools
                 lampGo = g.transform;
             }
             lampGo.position = new Vector3(-4.51f, 1.90f, 1.28f);
-            var sl = lampGo.GetComponent<Light>() ?? lampGo.gameObject.AddComponent<Light>();
+            // `??` 를 쓰지 않는다 — UnityEngine.Object 는 `==` 를 오버로드해 「없음」을
+            // 표현하는데 `??` 는 그 오버로드를 **건너뛰고** 런타임 참조만 본다.
+            // 그래서 컴포넌트가 없어도 가짜 null 이 그대로 통과하고, 다음 줄에서
+            // MissingComponentException 이 난다 (2026-08-04 실제로 여기서 났다).
+            var sl = lampGo.GetComponent<Light>();
+            if (sl == null) sl = lampGo.gameObject.AddComponent<Light>();
             sl.type = LightType.Point;
             sl.color = new Color(1.00f, 0.74f, 0.46f);
-            sl.intensity = 1.5f;
-            sl.range = 4.2f;
+            // 🔴 v2 실측 — 1.5 / 4.2 는 3.8m 통로에 부족했다. 스카이박스는 사라졌지만
+            // 그 자리를 **읽을 수 있는 것이 대신하지 못해** 검은 구멍이 됐다
+            // (C 뷰 평균 −76%, <0.02 가 77.6%). 구멍은 스카이박스보다 나을 게 없다.
+            sl.intensity = 4.6f;
+            sl.range = 6.2f;
             sl.shadows = LightShadows.None;
-            log.AppendLine("  통로 벽등 배치 (깊이 판독)");
+
+            // 문 입구 쪽 보조등 — 등 하나로는 3.8m 를 못 채운다. 먼 등과 가까운 등이
+            // 있어야 **깊이가 단계로 읽힌다** (레퍼런스의 물러나는 어둠).
+            var nearName = "ShaftLampNear";
+            var nearT = inst.transform.Find(nearName);
+            if (nearT == null)
+            {
+                var g2 = new GameObject(nearName);
+                g2.transform.SetParent(inst.transform, false);
+                nearT = g2.transform;
+            }
+            nearT.position = new Vector3(-2.62f, 2.20f, 0f);
+            var nl = nearT.GetComponent<Light>();
+            if (nl == null) nl = nearT.gameObject.AddComponent<Light>();
+            nl.type = LightType.Point;
+            nl.color = new Color(0.98f, 0.80f, 0.58f);
+            nl.intensity = 2.4f;
+            nl.range = 4.0f;
+            nl.shadows = LightShadows.None;
+            log.AppendLine("  통로 벽등 2개 배치 (먼 등 4.6 + 입구 보조 2.4 — 깊이 단계)");
 
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             Debug.Log(log.ToString());
@@ -260,9 +301,14 @@ namespace Ascend.CaptureHarness.EditorTools
                 if (mat.HasProperty("_Steps")) mat.SetFloat("_Steps", 4f);
                 if (mat.HasProperty("_FalloffPower")) mat.SetFloat("_FalloffPower", 2.9f);
                 if (mat.HasProperty("_ShadowTint")) mat.SetColor("_ShadowTint", new Color(0.15f, 0.19f, 0.18f));
-                if (mat.HasProperty("_ShadowLift")) mat.SetFloat("_ShadowLift", 0.42f);
+                // 🔴 v2 실측 — 「벽 패널·리벳 릴리프가 안 읽힌다」. v1 의 **유일한 확실한
+                // 성과**가 가시 임계 아래로 내려갔다. 릴리프는 그림자 쪽 면에서 읽히는데
+                // 그 면이 검정으로 붙으면 형상이 있어도 화면에 없다.
+                // 대기광만 올리면 전체가 뜨므로, 그림자 쪽에 **기본색을 얼마나 남길지**를
+                // 셰이더에서 직접 올린다 — 계단 명암(스타일)은 유지한 채 암부만 산다.
+                if (mat.HasProperty("_ShadowLift")) mat.SetFloat("_ShadowLift", 0.60f);
                 // 실내 점광에서 계단 0 번 칸이 0 이 되면 직접광이 통째로 사라진다.
-                if (mat.HasProperty("_BandFloor")) mat.SetFloat("_BandFloor", 0.10f);
+                if (mat.HasProperty("_BandFloor")) mat.SetFloat("_BandFloor", 0.18f);
 
                 if (d.Emission.maxColorComponent > 0f)
                 {
@@ -483,10 +529,20 @@ namespace Ascend.CaptureHarness.EditorTools
             // 「어두워서 레버를 못 찾으면 분위기가 아니라 결함이다」.
             // 어둡게 만드는 것 자체가 목적이 아니라 **등 하나의 웅덩이가 읽히는 것**이
             // 목적이므로, 바닥을 올리고 대비는 점광이 만들게 둔다.
+            // 🔴 v2 실측으로 다시 상향 — **직전 상향은 화면에 도달하지 않았다.**
+            // 씬 소유자가 뷰 A 에서 배수를 바꿔가며 잰 곡선:
+            //     ×0 → mean .0334 · ×1 → .0349 · ×3 → .0498 · ×8 → .1086 · ×20 → .1353
+            // 대기광을 **통째로 꺼도 평균이 4.5% 밖에 안 떨어졌다.** 0.048→0.132 는 +.0015.
+            // 즉 동작점이 약 8배 낮은 구간에 있었고, 거기서는 조정해도 아무 일이 없다.
+            //
+            // 왜 이렇게 많이 필요한가 — URP 에서 베이크 GI 없이 점광 하나면 비조명면이
+            // **완전 검정**이 된다. 레퍼런스 이미지는 GI 바운스가 있어 어두운 데도 형태가
+            // 남는데, 여기서 그 바운스를 대신하는 것이 대기광이다.
+            // ×3.5 — 곡선상 v1 평균(.062)을 회복하면서 대비(등 하나의 웅덩이)는 유지한다.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.132f, 0.145f, 0.158f);
-            RenderSettings.ambientEquatorColor = new Color(0.096f, 0.104f, 0.112f);
-            RenderSettings.ambientGroundColor = new Color(0.058f, 0.061f, 0.066f);
+            RenderSettings.ambientSkyColor = new Color(0.462f, 0.508f, 0.553f);
+            RenderSettings.ambientEquatorColor = new Color(0.336f, 0.364f, 0.392f);
+            RenderSettings.ambientGroundColor = new Color(0.203f, 0.214f, 0.231f);
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
@@ -519,7 +575,9 @@ namespace Ascend.CaptureHarness.EditorTools
                     l.intensity = 3.6f;
                     l.range = 7.5f;
                     l.shadows = LightShadows.Soft;
-                    l.shadowStrength = 0.80f;
+                    // 그림자 세기 0.80 은 암부를 거의 검정으로 붙인다. GI 가 없으므로
+                    // 그림자에서 빠진 빛을 채워 줄 것이 없다 — 세기 자체를 낮춘다.
+                    l.shadowStrength = 0.62f;
                     log.AppendLine("  CabinLight: 따뜻한 점광 3.6 / range 7.5 / soft shadow");
                 }
             }
@@ -559,7 +617,9 @@ namespace Ascend.CaptureHarness.EditorTools
                 }
                 rig.localPosition = new Vector3(0f, 1.55f, -0.85f);
                 rig.localRotation = Quaternion.Euler(28f, 0f, 0f);
-                var sl = rig.GetComponent<Light>() ?? rig.gameObject.AddComponent<Light>();
+                // `??` 금지 — 위 ShaftLamp 와 같은 이유다 (가짜 null 통과).
+                var sl = rig.GetComponent<Light>();
+                if (sl == null) sl = rig.gameObject.AddComponent<Light>();
                 sl.type = LightType.Spot;
                 sl.color = new Color(0.98f, 0.86f, 0.70f);
                 sl.intensity = 2.1f;

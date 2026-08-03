@@ -138,9 +138,20 @@ namespace Ascend.CaptureHarness.EditorTools
                     r = c.r, g = c.g, b = c.b, a = c.a,
                 });
 
+                // 🔴 v2 실측 버그 — 탈채도와 명도 상한을 **따로** 계산하면 어두운 고채도색이
+                // 오히려 밝아진다. `RM_RedPaint` .227 → .444, `RM_Rust` .327 → .442 로
+                // 올라가 비발광 중 최댓값이 됐다. 채도를 빼면 같은 v 라도 휘도가 오르는데
+                // 그 오른 값을 다시 재지 않았기 때문이다.
+                // **순서를 고친다 — 먼저 탈채도하고, 그 결과의 휘도를 다시 재서 상한을 건다.**
                 float newS = soft ? s : Mathf.Min(s, MaxSaturation);
-                // 명도만 내린다. 색조(h)는 그대로 — 대역을 좁히는 것이지 색을 다시 칠하는 게 아니다.
-                float newV = tooBright ? v * Mathf.Clamp01(target / Mathf.Max(lum, 1e-4f)) : v;
+                var desat = Color.HSVToRGB(h, newS, v);
+                float lumAfterDesat = Luminance(desat);
+
+                float newV = v;
+                if (lumAfterDesat > ceiling)
+                    newV = v * Mathf.Clamp01(target / Mathf.Max(lumAfterDesat, 1e-4f));
+
+                // 색조(h)는 그대로 — 대역을 좁히는 것이지 색을 다시 칠하는 게 아니다.
                 var nc = Color.HSVToRGB(h, newS, newV);
                 nc.a = c.a;
                 m.SetColor(prop, nc);
