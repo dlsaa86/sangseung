@@ -154,6 +154,19 @@ namespace Ascend.CaptureHarness.EditorTools
                 // 색조(h)는 그대로 — 대역을 좁히는 것이지 색을 다시 칠하는 게 아니다.
                 var nc = Color.HSVToRGB(h, newS, newV);
                 nc.a = c.a;
+
+                // 🔴 v3 실측 — 순서를 고친 뒤에도 `RM_RedPaint` 가 0.2271 → 0.2733 으로
+                // **여전히 올랐다.** 상한(선형 0.155)이 그 색의 원래 휘도보다 위에 있어서
+                // 탈채도가 만든 상승을 막을 게 없었기 때문이다.
+                //
+                // 「압축」이라는 이름이 보장해야 하는 것은 **단조 비증가**다 —
+                // 어떤 재질도 이 패스를 지나서 밝아지면 안 된다. 그게 아니면
+                // 압축 패스가 밝기를 만드는 자기모순이 된다 (v2 에서 실제로 그랬다).
+                if (Luminance(nc) > lum)
+                {
+                    float k = Mathf.Clamp01(lum / Mathf.Max(Luminance(nc), 1e-4f));
+                    nc = new Color(nc.r * k, nc.g * k, nc.b * k, c.a);
+                }
                 m.SetColor(prop, nc);
                 if (m.HasProperty("_Smoothness"))
                     m.SetFloat("_Smoothness", Mathf.Min(m.GetFloat("_Smoothness"), 0.18f));

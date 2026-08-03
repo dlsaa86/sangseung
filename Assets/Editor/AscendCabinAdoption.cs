@@ -67,23 +67,97 @@ namespace Ascend.CaptureHarness.EditorTools
         private struct MatDef
         {
             public string Name;
+            /// <summary>레퍼런스 기준 상대 명도. 실제 알베도는 <see cref="Gain"/> 을 곱한 값이다.</summary>
             public Color Base;
+            /// <summary>알베도 배수. <see cref="Base"/> 사이의 위계는 유지하고 대역만 옮긴다.</summary>
+            public float Gain;
             public string Tex;
             public float Smooth;
             public Color Emission;
             public float Rim;
         }
 
+        /// <summary>
+        /// **알베도 배수 — 이 파일에서 가장 잘못 잡혀 있던 값.**
+        ///
+        /// 레퍼런스 이미지에서 벽이 「명도 약 15%」로 보이길래 <c>ELV_Iron</c> 을 0.098 로 잡았다.
+        /// 그게 틀렸다 — 15% 는 **렌더된 결과**이지 알베도가 아니다.
+        /// 어두운 방에서 렌더 결과 = 알베도 × 조도이고, 조도가 1 을 한참 밑도는 실내에서
+        /// 알베도 0.098 이면 결과는 0.03~0.05 밖에 안 나온다.
+        /// v2 에서 **장치 바로 옆 벽조차 검게 사라진 직접 원인**이 이것이다 —
+        /// 빛이 닿는데 반사할 알베도가 없었다.
+        ///
+        /// ## 왜 대기광이 아니라 알베도인가
+        ///
+        /// 목표에 「비발광 최대 휘도 / 셸 밴드 ≤ 5×」가 있다.
+        ///   · 대기광을 올리면 셸과 <c>RM_*</c> 가 **같이** 올라가 비율이 안 좁혀진다.
+        ///   · 셸 알베도를 올리면 **셸만** 올라가 비율이 직접 좁혀진다.
+        /// v2 는 8.14× 였고(<c>RM_RedPaint</c> 0.444 / <c>ELV_IronDark</c> 0.0546),
+        /// 대기광으로는 이 8.14 가 절대 줄지 않는다.
+        ///
+        /// 값 사이의 **위계**(IronDark &lt; Tread &lt; Iron &lt; Trim &lt; Brass)가 면 분할을
+        /// 읽히게 하는 구조이므로 비율은 건드리지 않고 배수만 건다.
+        /// 절대값이라 몇 번을 돌려도 같은 색이 된다.
+        /// </summary>
+        /// 2026-08-04 v3 실측 스윕(뷰 A · post OFF · 8점):
+        ///   alb2.6/amb3.5 mean .0641 | alb3.0/amb3.5 .0662 | alb3.5/amb3.5 .0689
+        ///   alb2.6/amb5.5 .0928 | alb3.0/amb5.5 .0946 | **alb3.5/amb5.5 .0970**
+        ///   alb2.6/amb8.0 .1151 | alb3.0/amb7.0 .1137
+        /// 알베도는 평균을 크게 못 올리지만(2.6→3.5 에서 +7.5%) **8×8 블록 std 를 올린다**
+        /// (1.55→1.96). 대기광은 평균을 올리지만 std 를 **내린다**(3.5→8.0 에서 1.55→1.21).
+        /// 그래서 알베도를 허용 상한까지 쓰고 모자란 평균만 대기광으로 채운다.
+        private const float AlbedoGain = 3.5f;
+
+        /// <summary>황동은 이미 대역 위쪽이라 덜 올린다 — 전 화면 금속 glint(금지 21항 #21) 방지.</summary>
+        private const float BrassGain = 1.9f;
+
+        /// <summary>
+        /// 대기광 배수. 아래 <c>Ambient*Unit</c> 세 색이 ×1 기준이다.
+        ///
+        /// 이 값을 **배수 한 개로** 뽑아 둔 이유: v1→v2 에서 색 세 개를 손으로 고쳐 넣다
+        /// 「올렸다고 적었는데 화면은 그대로」인 상태가 났다. 배수가 코드에 있으면
+        /// 로그에 배수를 찍을 수 있고, 찍힌 배수와 화면이 어긋나면 그 자리에서 잡힌다.
+        ///
+        /// GI 베이크가 없어 점광 하나로는 비조명면이 완전 검정이 된다. 레퍼런스의
+        /// 어두운 면에 형태가 남는 것은 바운스 때문이고, 여기서 그 바운스를 대신하는 것이
+        /// 대기광이다. 다만 대기광은 셸과 <c>RM_*</c> 를 **같이** 올리므로
+        /// 대역 비율(≤5×)은 못 좁힌다 — 그건 <see cref="AlbedoGain"/> 담당이다.
+        /// </summary>
+        private const float AmbientGain = 5.5f;
+
+        // 🔴 v3 실측 지적 — ×5.5 에서 방 전체가 눈에 띄게 teal 로 떴다.
+        // 원인은 이 세 색이 **파랑 쪽**(b > g > r)이었던 것이고, 배수를 올리면서
+        // 그 편향까지 5.5 배가 됐다.
+        //
+        // `VISUAL_BIBLE.md` §3 이 요구하는 것은 「탁한 갈색 · 목탄 검정 · 더러운 올리브」이고,
+        // **차가운 회녹색은 「그림자 색」으로 한정**돼 있다(§2.1). 지금은 그림자가 아니라
+        // 방 전체가 차가웠다 — 한정 조건을 잃은 것이다.
+        //
+        // 그래서 대기광은 **중립~따뜻한 올리브**로 옮기고, 차가운 회녹색은 셰이더의
+        // `_ShadowTint`(0.15, 0.19, 0.18) 가 그림자 쪽에서만 만들게 둔다.
+        // 역할을 갈라야 「따뜻한 방에 차가운 그림자」라는 레퍼런스의 대비가 나온다.
+        // 휘도는 유지했다 (구 0.143 → 신 0.149) — 밝기 목표를 되돌리지 않기 위해서다.
+        private static readonly Color AmbientSkyUnit = new Color(0.150f, 0.150f, 0.130f);
+        private static readonly Color AmbientEquatorUnit = new Color(0.110f, 0.109f, 0.094f);
+        private static readonly Color AmbientGroundUnit = new Color(0.068f, 0.066f, 0.056f);
+
         private static readonly MatDef[] Defs =
         {
-            new MatDef { Name = "ELV_Iron",      Base = new Color(0.098f, 0.089f, 0.077f), Tex = "TEX_Iron_Rust",       Smooth = 0.10f, Rim = 0.22f },
-            new MatDef { Name = "ELV_IronDark",  Base = new Color(0.058f, 0.054f, 0.050f), Tex = "TEX_Iron_Rust",       Smooth = 0.06f, Rim = 0.14f },
-            new MatDef { Name = "ELV_Tread",     Base = new Color(0.076f, 0.068f, 0.059f), Tex = "TEX_FloorPlate_Rust", Smooth = 0.13f, Rim = 0.16f },
-            new MatDef { Name = "ELV_Trim",      Base = new Color(0.116f, 0.103f, 0.085f), Tex = "TEX_Iron_Rust",       Smooth = 0.17f, Rim = 0.30f },
-            new MatDef { Name = "ELV_Brass",     Base = new Color(0.196f, 0.150f, 0.086f), Tex = "TEX_Brass_Aged",      Smooth = 0.28f, Rim = 0.34f },
-            new MatDef { Name = "ELV_LampGlass", Base = new Color(0.92f,  0.76f,  0.50f),  Tex = null,                  Smooth = 0.42f, Rim = 0.10f,
+            new MatDef { Name = "ELV_Iron",      Base = new Color(0.098f, 0.089f, 0.077f), Gain = AlbedoGain, Tex = "TEX_Iron_Rust",       Smooth = 0.10f, Rim = 0.22f },
+            new MatDef { Name = "ELV_IronDark",  Base = new Color(0.058f, 0.054f, 0.050f), Gain = AlbedoGain, Tex = "TEX_Iron_Rust",       Smooth = 0.06f, Rim = 0.14f },
+            new MatDef { Name = "ELV_Tread",     Base = new Color(0.076f, 0.068f, 0.059f), Gain = AlbedoGain, Tex = "TEX_FloorPlate_Rust", Smooth = 0.13f, Rim = 0.16f },
+            new MatDef { Name = "ELV_Trim",      Base = new Color(0.116f, 0.103f, 0.085f), Gain = AlbedoGain, Tex = "TEX_Iron_Rust",       Smooth = 0.17f, Rim = 0.30f },
+            new MatDef { Name = "ELV_Brass",     Base = new Color(0.196f, 0.150f, 0.086f), Gain = BrassGain,  Tex = "TEX_Brass_Aged",      Smooth = 0.28f, Rim = 0.34f },
+            // 발광체 — 배수를 걸지 않는다. 여기를 올리면 램프가 화면을 통째로 태운다.
+            new MatDef { Name = "ELV_LampGlass", Base = new Color(0.92f,  0.76f,  0.50f),  Gain = 1f,         Tex = null,                  Smooth = 0.42f, Rim = 0.10f,
                          Emission = new Color(2.30f, 1.62f, 0.86f) },
         };
+
+        /// <summary>알파를 건드리지 않고 RGB 만 배수한다. <c>Color * float</c> 는 알파까지 곱해 버린다.</summary>
+        private static Color Scaled(Color c, float g)
+        {
+            return new Color(Mathf.Clamp01(c.r * g), Mathf.Clamp01(c.g * g), Mathf.Clamp01(c.b * g), c.a);
+        }
 
         /// <summary>종전 셸에서 새 셸이 대신하는 오브젝트들. 경로는 씬 루트부터.</summary>
         private static readonly string[] Superseded =
@@ -291,8 +365,9 @@ namespace Ascend.CaptureHarness.EditorTools
                     mat.shader = shader;
                 }
 
-                SetColor(mat, "_BaseColor", d.Base);
-                SetColor(mat, "_Color", d.Base);
+                var albedo = Scaled(d.Base, d.Gain <= 0f ? 1f : d.Gain);
+                SetColor(mat, "_BaseColor", albedo);
+                SetColor(mat, "_Color", albedo);
                 if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", d.Smooth);
                 if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
                 if (mat.HasProperty("_RimStrength")) mat.SetFloat("_RimStrength", d.Rim);
@@ -328,7 +403,8 @@ namespace Ascend.CaptureHarness.EditorTools
                     else log.AppendLine($"    ⚠ 텍스처 못 찾음: {d.Tex} (색만 적용)");
                 }
                 EditorUtility.SetDirty(mat);
-                log.AppendLine($"    {d.Name}  shader={mat.shader.name}");
+                float lum = 0.2126f * albedo.r + 0.7152f * albedo.g + 0.0722f * albedo.b;
+                log.AppendLine($"    {d.Name,-14} gain={d.Gain:F2} albedo=({albedo.r:F3},{albedo.g:F3},{albedo.b:F3}) lum={lum:F4} shader={mat.shader.name}");
             }
             AssetDatabase.SaveAssets();
         }
@@ -540,10 +616,14 @@ namespace Ascend.CaptureHarness.EditorTools
             // 남는데, 여기서 그 바운스를 대신하는 것이 대기광이다.
             // ×3.5 — 곡선상 v1 평균(.062)을 회복하면서 대비(등 하나의 웅덩이)는 유지한다.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.462f, 0.508f, 0.553f);
-            RenderSettings.ambientEquatorColor = new Color(0.336f, 0.364f, 0.392f);
-            RenderSettings.ambientGroundColor = new Color(0.203f, 0.214f, 0.231f);
+            RenderSettings.ambientSkyColor = Scaled(AmbientSkyUnit, AmbientGain);
+            RenderSettings.ambientEquatorColor = Scaled(AmbientEquatorUnit, AmbientGain);
+            RenderSettings.ambientGroundColor = Scaled(AmbientGroundUnit, AmbientGain);
             RenderSettings.ambientIntensity = 1f;
+            // 세터만으로는 앰비언트 프로브 SH 가 즉시 갱신되지 않는 경우가 있다.
+            // 갱신 안 된 상태로 캡처하면 「올렸는데 화면은 그대로」가 그대로 재현된다.
+            DynamicGI.UpdateEnvironment();
+            log.AppendLine($"  대기광 ×{AmbientGain:F1} (sky {RenderSettings.ambientSkyColor.r:F3}) / 알베도 ×{AlbedoGain:F1}");
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = new Color(0.042f, 0.047f, 0.052f);
