@@ -141,6 +141,16 @@ public static class GrayboxWorldBuilder
         return go.transform;
     }
 
+    /// <summary>
+    /// 이 프로젝트의 월드 라벨은 전부 한글이다. `AddComponent&lt;TextMeshPro&gt;()` 는
+    /// 폰트를 TMP 기본값(`LiberationSans SDF`)으로 붙이는데 **그 폰트에는 한글
+    /// 글리프가 없다** — 라벨이 씬에 있고 렌더러도 켜져 있는데 글자가 단 하나도
+    /// 그려지지 않는다(vtx 4, 바운즈 0). 실제로 「실행」·「계약」·「탑승구」가 그
+    /// 상태로 오래 방치돼 독립 평가에서 「표찰이 글자로 안 읽힌다」는 지적을 받았다.
+    /// 그래서 생성 지점에서 한글 폰트를 못 박는다.
+    /// </summary>
+    private const string KoreanFontPath = "Assets/Prototype_Elevator/Fonts/NanumGothic SDF.asset";
+
     private static TextMeshPro Text(Transform parent, string name, Vector3 pos, float size,
                                     string content, Vector2 box, Vector3 euler)
     {
@@ -149,6 +159,9 @@ public static class GrayboxWorldBuilder
         go.transform.localPosition = pos;
         go.transform.localRotation = Quaternion.Euler(euler);
         var tmp = go.AddComponent<TextMeshPro>();
+        var koreanFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath);
+        if (koreanFont != null) tmp.font = koreanFont;
+        else Debug.LogWarning("[상승] " + KoreanFontPath + " 없음 — " + name + " 의 한글이 안 그려진다.");
         tmp.text = content;
         tmp.fontSize = size;
         tmp.alignment = TextAlignmentOptions.Center;
