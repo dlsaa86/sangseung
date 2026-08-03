@@ -91,6 +91,7 @@ public static class PrototypeSelfTest
         FoldInSuite("런 요약 9종", Ascend.Prototype.UI.Tests.RunSummaryBuilderTests.RunAll());
         FoldInSuite("연출 프로파일 배선", Ascend.Prototype.Effects.Tests.PresentationBindingTests.RunAll());
         FoldInSuite("과수확 5단계 연출", Ascend.Prototype.View.Tests.OverharvestStageTests.RunAll());
+        FoldInSuite("통관 공통 잠금 전달", Ascend.Prototype.View.Tests.CustomsLockViewTests.RunAll());
         FoldInSuite("실행 레버 상태 기계", Ascend.Prototype.View.Tests.LeverStateMachineTests.RunAll());
         FoldInSuite("계기판 줄 충돌", Ascend.Prototype.View.Tests.InstrumentPanelLineTests.RunAll());
         // 표현 계층 물리. 등록처가 둘인 것은 실수가 아니라 구조다 —

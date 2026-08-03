@@ -42,6 +42,10 @@ namespace Ascend.Prototype.EditorTools
             Effects.Tests.PresentationBindingTests.RunAll(),
             View.Tests.OverharvestStageTests.RunAll(),
             View.Tests.LeverStateMachineTests.RunAll(),
+            // 레버 → 9개 챔버 동력 전달. 첫 구현이 화면에서 **아무것도 움직이지
+            // 않았는데** 임시 검사가 공허하게 통과했다(움직인 적 없음끼리 순서 비교).
+            // 이 스위트는 순서를 재기 **전에** 각 단계가 실제로 움직였는지 단정한다.
+            View.Tests.CustomsLockViewTests.RunAll(),
             View.Tests.InstrumentPanelLineTests.RunAll(),
             // 표현 계층 물리(관성 반응자·고정 스텝 적분). 등록을 빼먹으면
             // **합계가 그대로라서 「테스트가 없다」와 「테스트가 통과했다」가 구분되지 않는다** —

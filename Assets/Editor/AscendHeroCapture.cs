@@ -44,44 +44,211 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
-        /// 고정 시점 넷. **좌표를 손으로 적지 않고 명세에서 끌어온다** — 장치나
+        /// 고정 시점 다섯. **좌표를 손으로 적지 않고 명세에서 끌어온다** — 장치나
         /// 레버가 움직이면 캡처도 따라 움직여야 비교가 성립한다.
+        ///
+        /// 2026-08-03 지시가 최종 결과에 남길 이미지 다섯을 직접 열거했고,
+        /// 그 다섯이 이 배열이다. 순서도 지시 그대로다.
+        ///   ① 무재질 정면 그레이박스        → <see cref="CaptureGreybox"/> 가 ①②만 찍는다
+        ///   ② 무재질 45도 측면 그레이박스
+        ///   ③ 재질 적용 후 플레이어 기본 시점
+        ///   ④ 레버와 본체 연결부 클로즈업
+        ///   ⑤ 유리와 영혼의 깊이가 보이는 창 하나의 클로즈업
         /// </summary>
+        /// <summary>
+        /// 반폭·반높이를 **화면 안에 담는** 최소 거리(m).
+        ///
+        /// ⚠ 첫 판본은 거리를 손으로 1.95 라고 적었고, 캐비닛 위아래가 잘렸다 —
+        /// 세로가 부족했는데 가로만 계산해 본 것이다. 이 파일의 첫 규칙이
+        /// 「좌표를 손으로 적지 않고 명세에서 끌어온다」인데 거리만 예외였다.
+        /// 두 축을 다 계산하고 **더 먼 쪽**을 쓴다.
+        /// </summary>
+        private static float FitDistance(float halfWidth, float halfHeight, float vFovDeg, float margin)
+        {
+            float halfV = vFovDeg * 0.5f * Mathf.Deg2Rad;
+            float halfH = Mathf.Atan(Mathf.Tan(halfV) * ReferenceRoomSpec.ReferenceAspect);
+            float byHeight = (halfHeight + margin) / Mathf.Tan(halfV);
+            float byWidth = (halfWidth + margin) / Mathf.Tan(halfH);
+            return Mathf.Max(byHeight, byWidth);
+        }
+
         public static Pose[] Standard()
         {
-            float gy = ReferenceRoomSpec.WindowGridCenterY;
             float mx = ReferenceRoomSpec.MachineCenterX;
             float lx = ReferenceRoomSpec.LeverColumnCenterX;
-            float face = ReferenceRoomSpec.WallRearZ - ReferenceRoomSpec.MachineDepth;
+            float face = ReferenceRoomSpec.MachineFrontZ;
+
+            // ── 담아야 할 것의 실제 경계 ──
+            // 지시의 합격 기준이 「플레이어 기본 시점에서 9개 창과 레버가 함께 보임」
+            // 이므로 캐비닛 **+ 레버 컬럼 + 경고등**이 한 상자 안에 들어가야 한다.
+            float boxLeft = ReferenceRoomSpec.MachineLeftX;
+            float boxRight = lx + ReferenceRoomSpec.LeverColumnWidth * 0.5f;
+            float boxBottom = ReferenceRoomSpec.MachineBottomY;
+            float boxTop = ReferenceRoomSpec.WarningLampCenterY + ReferenceRoomSpec.WarningLampDiameter * 0.5f;
+            float pairX = (boxLeft + boxRight) * 0.5f;
+            float pairY = (boxBottom + boxTop) * 0.5f;
+            float halfW = (boxRight - boxLeft) * 0.5f;
+            float halfH = (boxTop - boxBottom) * 0.5f;
+
+            const float frontFov = 46f;
+            float frontDist = FitDistance(halfW, halfH, frontFov, 0.14f);
+
+            // 사선은 깊이가 폭에 더해지므로 조금 더 물러난다.
+            const float obliqueFov = 44f;
+            float obliqueDist = FitDistance(halfW, halfH, obliqueFov, 0.14f) * 1.08f;
+            const float yaw = 42f;
+            float yawRad = yaw * Mathf.Deg2Rad;
 
             return new[]
             {
-                // 장치 정면 — 아홉 창이 모두 들어오는 최소 거리
-                new Pose("device_front", new Vector3(mx, gy, face - 1.55f), Vector3.zero, 44f),
-                // 모듈 하나 근접 — 「유리 뒤의 물질」이 읽히는지 보는 시점
-                new Pose("module_macro",
-                         new Vector3(mx + ReferenceRoomSpec.WindowPitch, gy + ReferenceRoomSpec.WindowPitch, face - 0.46f),
-                         Vector3.zero, 30f),
-                // 장치 사선 — 층의 두께가 실루엣으로 읽히는지
-                new Pose("device_oblique", new Vector3(mx + 1.05f, gy + 0.28f, face - 1.15f),
-                         new Vector3(6f, -34f, 0f), 40f),
-                // 레버 — 사람이 실제로 서서 보는 눈높이·거리
-                // ⚠ **온축(정면)으로 잡지 않는다.** 레버 팔이 방 쪽을 향하므로
-                // 정면에서는 전체가 그립 끝면 하나로 압축되어 **붉은 원반**으로만
-                // 보인다 — 실제로 그렇게 찍혔다. 팔 길이와 회전축이 읽히려면
-                // 옆에서 비스듬히 봐야 한다. 사람이 레버 앞에 설 때의 자세다.
-                new Pose("lever",
-                         new Vector3(lx + 0.62f, ReferenceRoomSpec.EyeHeight, face - 1.05f),
-                         new Vector3(18f, -38f, 0f), 50f),
-                // 레버 근접 — 잠금핀·스토퍼·허브가 개별 부품으로 읽히는지
-                new Pose("lever_macro",
-                         new Vector3(lx + 0.26f, ReferenceRoomSpec.LeverPivotY + 0.10f, face - 0.52f),
-                         new Vector3(4f, -22f, 0f), 40f),
+                // ① 정면 — 하나의 직사각형 기계로 읽히는지. 3×3·뱅크 셋·레버 컬럼.
+                new Pose("01_front", new Vector3(pairX, pairY, face - frontDist), Vector3.zero, frontFov),
+
+                // ② 사선 — **깊이 단계가 실루엣으로 갈라지는지.**
+                // 벽 / 후면 장착 프레임 / 외곽 프레임 / 뱅크 리브 / 도어 / 클램프 링 / 들어간 유리.
+                // 정면에서만 원이 보이고 측면에서 전부 같은 깊이면 실패다.
+                //
+                // 궤도로 잡는다 — 장치 중심을 기준으로 회전시키므로 거리가 바뀌어도
+                // 대상이 화면 밖으로 나가지 않는다. 손으로 x·z 를 적으면 반드시 어긋난다.
+                new Pose("02_oblique45",
+                         new Vector3(pairX + Mathf.Sin(yawRad) * obliqueDist, pairY + 0.10f,
+                                     face - Mathf.Cos(yawRad) * obliqueDist),
+                         new Vector3(3f, -yaw, 0f), obliqueFov),
+
+                // ③ 플레이어 기본 시점 — 사람이 실제로 서는 자리·눈높이·화각.
+                // **여기서 읽히지 않으면 다른 어디서 읽혀도 소용없다.**
+                new Pose("03_player_eye",
+                         new Vector3(0f, ReferenceRoomSpec.EyeHeight, ReferenceRoomSpec.CameraZ),
+                         Vector3.zero, ReferenceRoomSpec.VerticalFov),
+
+                // ④ 레버와 본체 연결부 — 베이스 플레이트가 캐비닛을 물고,
+                // 구동 로드가 상단 하우징으로 올라가는 그 지점.
+                new Pose("04_lever_join",
+                         new Vector3(lx + 0.54f, ReferenceRoomSpec.LeverPivotY + 0.34f, face - 0.92f),
+                         new Vector3(10f, -42f, 0f), 44f),
+
+                // ⑤ 창 하나 근접 — 유리와 영혼 **사이의 공간**이 보이는 각도.
+                // ⚠ 온축으로 잡지 않는다. 정면에서는 패럴랙스가 0 이라
+                // 「유리에 붙은 스티커」와 「유리 뒤 115mm 의 물질」이 구분되지 않는다.
+                new Pose("05_window_macro",
+                         new Vector3(mx + 0.34f, ReferenceRoomSpec.WindowGridCenterY + 0.09f, face - 0.52f),
+                         new Vector3(6f, -30f, 0f), 32f),
             };
         }
 
         [MenuItem("Ascend/Room/Capture Hero Objects")]
         public static void CaptureStandard() => Capture(Standard(), "");
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  무재질 그레이박스 — 형태가 재질 없이 읽히는가
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 🔴 지시 「모든 녹, 텍스처, 발광과 조명을 제거한 중성 회색 상태에서 먼저
+        /// 확인한다. **그레이박스 상태에서도 장치의 기능이 이해되지 않으면 텍스처
+        /// 작업으로 넘어가지 마라.**」
+        ///
+        /// ## 왜 재질을 「지우지」 않고 **빌려 바꾸는가**
+        ///
+        /// `.mat` 에셋을 회색으로 덮어쓰고 되돌리는 방식은 두 번 실패할 수 있다 —
+        /// 되돌리기 전에 예외가 나면 프로젝트의 재질이 통째로 회색으로 남고,
+        /// 그것은 **직렬화 에셋 손상**이다. 이 저장소가 이미 겪은 종류다.
+        ///
+        /// 그래서 에셋을 건드리지 않는다. 렌더러의 `sharedMaterial` 포인터만
+        /// 메모리 상에서 갈아 끼우고 `finally` 에서 원복한다. 에셋 파일은 한 바이트도
+        /// 바뀌지 않으므로 최악의 경우에도 씬을 다시 열면 끝난다.
+        /// </summary>
+        [MenuItem("Ascend/Room/Capture Greybox (No Materials)")]
+        public static void CaptureGreybox()
+        {
+            GameObject room = GameObject.Find(AscendReferenceRoom.RootName);
+            if (room == null) { Debug.LogError("[상승] ReferenceRoom 이 없다 — 먼저 Build Reference Room."); return; }
+
+            // 중성 회색 하나. 반사율 0.5, 금속성 0 — 형상만 남기고 재질 정보를 지운다.
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            var grey = new Material(lit) { name = "TEMP_Greybox", hideFlags = HideFlags.HideAndDontSave };
+            grey.SetColor("_BaseColor", new Color(0.52f, 0.52f, 0.52f, 1f));
+            grey.SetFloat("_Smoothness", 0.18f);
+            grey.SetFloat("_Metallic", 0f);
+
+            Renderer[] renderers = room.GetComponentsInChildren<Renderer>(false);
+            var saved = new Material[renderers.Length][];
+
+            // 🔴 **유리와 영혼은 그레이박스에서 숨긴다.**
+            //
+            // 첫 그레이박스에서 유리가 **불투명 회색 원반**이 되어 보어를 막았고,
+            // 독립 평가자가 아홉 창을 「평판에 뚫린 얕은 열린 구멍」으로 읽었다.
+            // 챔버가 170mm 깊이로 실제로 있는데 **캡처가 그것을 가린 것이다** —
+            // 평가가 틀린 게 아니라 내가 못 보이게 찍었다.
+            //
+            // 지시의 그레이박스 확인 목록에 유리도 영혼도 없다(실루엣·3×3 정렬·
+            // 캐비닛 깊이·도어와 창의 관계·외곽 프레임·레버 연결·시점 크기).
+            // 형태를 보는 캡처가 형태를 가리면 안 된다.
+            var hiddenParts = new List<Renderer>();
+            foreach (Renderer r in renderers)
+            {
+                string n = r.gameObject.name;
+                if (n != AscendReferenceRoom.GlassName && n != AscendReferenceRoom.SoulName && n != "Core") continue;
+                if (!r.enabled) continue;
+                r.enabled = false;
+                hiddenParts.Add(r);
+            }
+
+            // 그레이박스에서는 **발광도 끈다.** 영혼이 빛나면 그것이 화면에서 가장
+            // 밝은 물체가 되어 시선을 독점하고, 판단 대상이 「형태」에서 「구슬」로 바뀐다.
+            Light[] lights = room.GetComponentsInChildren<Light>(false);
+            var lightHome = new float[lights.Length];
+            for (int i = 0; i < lights.Length; i++) lightHome[i] = lights[i].intensity;
+
+            try
+            {
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    saved[i] = renderers[i].sharedMaterials;
+                    var swap = new Material[saved[i].Length];
+                    for (int m = 0; m < swap.Length; m++) swap[m] = grey;
+                    renderers[i].sharedMaterials = swap;
+                }
+
+                // 형태를 보는 조명으로 바꾼다 — 점광 하나로는 구석이 죽어 실루엣이
+                // 안 보인다. 앰비언트를 올려 **면의 방향**만 읽히게 한다.
+                Color ambient = RenderSettings.ambientLight;
+                float ambIntensity = RenderSettings.ambientIntensity;
+                try
+                {
+                    RenderSettings.ambientLight = new Color(0.42f, 0.43f, 0.46f, 1f);
+                    RenderSettings.ambientIntensity = 1f;
+                    for (int i = 0; i < lights.Length; i++) lights[i].intensity = lightHome[i] * 0.45f;
+
+                    Pose[] all = Standard();
+                    Debug.Log("[상승] 무재질 그레이박스 캡처\n" + Capture(new[] { all[0], all[1] }, "grey_"));
+                }
+                finally
+                {
+                    RenderSettings.ambientLight = ambient;
+                    RenderSettings.ambientIntensity = ambIntensity;
+                    for (int i = 0; i < lights.Length; i++)
+                        if (lights[i] != null) lights[i].intensity = lightHome[i];
+                }
+            }
+            finally
+            {
+                // ⚠ 반드시 되돌린다. 여기서 실패하면 씬이 회색으로 남는다.
+                for (int i = 0; i < renderers.Length; i++)
+                    if (renderers[i] != null && saved[i] != null) renderers[i].sharedMaterials = saved[i];
+
+                // 🔴 **끈 렌더러를 되살린다.** 이 두 줄을 빠뜨려서 그레이박스 캡처가
+                // 유리와 영혼을 **영구히** 꺼 버렸고, 바로 다음 재질 캡처가
+                // 붉은 화소 **0.00%** 로 나왔다(직전 정상값 0.89%).
+                //
+                // 이 파일에 「반드시 되돌린다」를 두 번이나 적어 놓고 새로 추가한
+                // 상태 하나를 되돌리지 않았다. 껐다 켜는 코드는 **끄는 줄과 켜는 줄이
+                // 같은 화면에 없으면** 반드시 한쪽을 빠뜨린다.
+                foreach (Renderer r in hiddenParts) if (r != null) r.enabled = true;
+
+                UnityEngine.Object.DestroyImmediate(grey);
+            }
+        }
 
         /// <summary>
         /// 찍고, 컷마다 판단 근거가 되는 화소 통계를 함께 돌려준다.
@@ -119,6 +286,28 @@ namespace Ascend.Prototype.EditorTools
                 if (r != null && r.enabled) { r.enabled = false; hidden.Add(r); }
             }
 
+            // 🔴 **색수차를 끄고 찍는다.**
+            //
+            // 독립 평가자가 그레이박스 캡처에서 세로 마젠타/시안 프린지를 지적했다.
+            // 그건 `VISUAL_SPEC` §8 이 금지한 「지속적 색수차」이면서, 동시에
+            // **형상 판정용 증거를 오염시킨다** — 부재 경계마다 색 분리가 생겨
+            // 「이 선이 부품 경계인가 렌즈 수차인가」가 구분되지 않는다.
+            // 씬 설정은 건드리지 않고 컴포넌트만 잠시 끄고 되돌린다.
+            var caOff = new List<UnityEngine.Rendering.VolumeComponent>();
+            foreach (UnityEngine.Rendering.Volume v in
+                     UnityEngine.Object.FindObjectsByType<UnityEngine.Rendering.Volume>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (v.profile == null) continue;
+                foreach (UnityEngine.Rendering.VolumeComponent c in v.profile.components)
+                {
+                    if (c == null || !c.active) continue;
+                    if (c.GetType().Name != "ChromaticAberration") continue;
+                    c.active = false;
+                    caOff.Add(c);
+                }
+            }
+
             try
             {
                 foreach (Pose p in poses)
@@ -127,10 +316,16 @@ namespace Ascend.Prototype.EditorTools
                     cam.transform.SetPositionAndRotation(p.Position, Quaternion.Euler(p.Euler));
                     cam.fieldOfView = p.Fov;
                     sb.AppendLine(Shoot(cam, prefix + p.Name));
+                    // 카메라 좌표를 **캡처와 함께** 남긴다. 좌표 없는 캡처는
+                    // 평가자가 역산해야 하고, 역산은 틀릴 수 있다.
+                    sb.AppendLine($"      pos=({p.Position.x:F3}, {p.Position.y:F3}, {p.Position.z:F3}) " +
+                                  $"rot=({p.Euler.x:F1}, {p.Euler.y:F1}, {p.Euler.z:F1}) vFov={p.Fov:F2}");
                 }
+                WriteManifest(poses, prefix, sb.ToString());
             }
             finally
             {
+                foreach (UnityEngine.Rendering.VolumeComponent c in caOff) if (c != null) c.active = true;
                 // ⚠ 반드시 되돌린다. 캡처가 씬을 영구히 바꾸면 다음 사람이
                 // 「안내문이 사라졌다」를 버그로 쫓게 된다.
                 foreach (Renderer r in hidden) if (r != null) r.enabled = true;
@@ -142,6 +337,42 @@ namespace Ascend.Prototype.EditorTools
 
             Debug.Log("[상승] 영웅 캡처\n" + sb);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 🔴 **좌표 없는 캡처는 증거가 아니다.**
+        ///
+        /// 독립 평가자가 `Captures/Hero/` 에 manifest 가 없어 카메라를 소스에서
+        /// **역산**해야 했다고 보고했다. 역산은 성립했지만, 성립하지 않았다면
+        /// 판정 전체가 틀린 전제 위에 서게 된다. `Captures/TenFloor/` 는 이미
+        /// manifest 를 쓰고 있었고 여기만 빠져 있었다.
+        /// </summary>
+        private static void WriteManifest(IEnumerable<Pose> poses, string prefix, string stats)
+        {
+            var m = new StringBuilder();
+            m.AppendLine("# Hero Capture Manifest");
+            m.AppendLine($"machineFingerprint: {SystemInfo.deviceName} / {SystemInfo.graphicsDeviceName} / {SystemInfo.graphicsDeviceType}");
+            m.AppendLine($"unity: {Application.unityVersion}");
+            m.AppendLine($"resolution: 1600x900");
+            m.AppendLine($"prefix: {(string.IsNullOrEmpty(prefix) ? "(none)" : prefix)}");
+            m.AppendLine($"chromaticAberration: disabled during capture");
+            m.AppendLine();
+            m.AppendLine("## 카메라");
+            foreach (Pose p in poses)
+                m.AppendLine($"  {prefix}{p.Name}: pos=({p.Position.x:F3}, {p.Position.y:F3}, {p.Position.z:F3}) " +
+                             $"euler=({p.Euler.x:F1}, {p.Euler.y:F1}, {p.Euler.z:F1}) vFov={p.Fov:F2}");
+            m.AppendLine();
+            m.AppendLine("## 장치 치수 (ReferenceRoomSpec 실측)");
+            m.AppendLine($"  캐비닛 {ReferenceRoomSpec.MachineWidth:F3} × {ReferenceRoomSpec.MachineHeight:F3} × {ReferenceRoomSpec.MachineDepth:F2}");
+            m.AppendLine($"  프레임 굵기 외곽 {ReferenceRoomSpec.OuterFrameBand * 1000f:F0} / 리브 {ReferenceRoomSpec.BankRibWidth * 1000f:F0} / 격벽 {ReferenceRoomSpec.BulkheadHeight * 1000f:F0} mm");
+            m.AppendLine($"  프레임 돌출 외곽 {ReferenceRoomSpec.OuterFrameProud * 1000f:F0} / 격벽 {ReferenceRoomSpec.BulkheadProud * 1000f:F0} / 리브 {ReferenceRoomSpec.BankRibProud * 1000f:F0} mm");
+            m.AppendLine($"  세로 무중단 비 {ReferenceRoomSpec.LongestVerticalRunRatio:P1} (상한 {ReferenceRoomSpec.MaxVerticalRunRatio:P0})");
+            m.AppendLine($"  간격 이방비 {ReferenceRoomSpec.WindowPitchAnisotropy:F3}");
+            m.AppendLine();
+            m.AppendLine("## 화소 통계");
+            m.Append(stats);
+
+            File.WriteAllText($"{OutDir}/manifest{(string.IsNullOrEmpty(prefix) ? "" : "_" + prefix.TrimEnd('_'))}.txt", m.ToString());
         }
 
         private static string Shoot(Camera cam, string name)

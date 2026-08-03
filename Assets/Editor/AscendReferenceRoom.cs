@@ -50,6 +50,14 @@ namespace Ascend.Prototype.EditorTools
         public const string WindowModuleName = "SoulWindowModule";
         public const string GlassName        = "SoulWindowGlass";
         public const string SoulName         = "SoulObject";
+        // ── 공통 잠금 기구 (2026-08-03) ──
+        // 연출(`CustomsLockView`)이 **이름으로** 찾아 움직인다. 오타가 나면 조용히
+        // 아무것도 안 움직이고, 그건 「레버를 당겼는데 외부 연결부는 가만히 있는」
+        // 지시가 실패로 규정한 바로 그 상태다.
+        public const string CommonShaftName  = "CommonLockShaft";
+        public const string StatusTabName    = "LockStatusTab";
+        public const string LockClampName    = "LockClamp";
+        public const string DriveRodName     = "LeverDriveRod";
         public const string LeverBaseName    = "ExecutionLeverBase";
         public const string LeverHandleName  = "ExecutionLeverHandle";
         /// <summary>잠금핀. 잠긴 상태에서 암을 **물리적으로** 막는 부품이라
@@ -140,15 +148,108 @@ namespace Ascend.Prototype.EditorTools
             }
             else
             {
+                // 🔴 **파괴 전에 남의 물건을 빼낸다.** 2026-08-03 에 이것 없이 돌려
+                // 결과판 9칸을 통째로 날렸다(`SpinBoardView._cells` 가 9/9 null 이 됐다).
+                //
+                // 원인은 두 파일의 전제가 어긋난 것이다 —
+                //   `AscendReferenceRoomRewire.MoveBoardCells` 는 칸을 이 루트 **안으로**
+                //   옮기고, 여기 `ResetRoot` 는 이 루트의 자식을 **전부** 지운다.
+                //   각각은 옳고, 둘을 이어 놓으면 재조립이 게임플레이를 파괴한다.
+                //
+                // 그리고 이 손상은 **조용하다.** 컴파일도 되고 조립 보고서도 정상이며,
+                // 다음 PlayMode 에서 결과판이 안 그려질 때야 드러난다.
+                // 그래서 감지가 아니라 **원리적으로 불가능**하게 만든다.
+                int rescued = RescueForeignCarriers(root.transform, scene);
                 int killed = root.transform.childCount;
                 for (int i = killed - 1; i >= 0; i--)
                     Object.DestroyImmediate(root.transform.GetChild(i).gameObject);
-                _report.AppendLine($"  {RootName} 재구성 — 기존 자식 {killed}개 제거");
+                _report.AppendLine($"  {RootName} 재구성 — 기존 자식 {killed}개 제거" +
+                                   (rescued > 0 ? $" · 게임플레이 운반체 {rescued}개 구조" : ""));
             }
 
             root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             root.transform.localScale = Vector3.one;
             return root;
+        }
+
+        /// <summary>재조립에서 구조된 게임플레이 운반체가 잠시 머무는 곳.</summary>
+        public const string RescueRootName = "RescuedFromRebuild";
+
+        /// <summary>
+        /// 조립기가 **만들지 않은** 오브젝트를 파괴 전에 루트 밖으로 빼낸다.
+        ///
+        /// 판정 기준은 「누가 만들었나」가 아니라 **「무엇을 들고 있나」**다.
+        /// 이름으로 가르면 반드시 틀린다 — 이 저장소가 이미 그렇게 당했다
+        /// (`ParkLegacyVisuals` 가 눈으로 껍데기와 게임플레이를 갈랐고,
+        ///  눈은 컴포넌트를 못 봐서 10층 검증이 첫 줄에서 죽었다).
+        ///
+        /// 그래서 `Ascend.` 네임스페이스의 컴포넌트나 TMP 텍스트를 들고 있으면
+        /// 무조건 구조한다. 조립기가 스스로 붙이는 것들만 예외다.
+        ///
+        /// **원래 부모 이름을 보존해서** park 한다. 아홉 칸이 전부 `Cell_0`~`Cell_2`
+        /// 라 평평하게 모아 두면 어느 칸이 어느 창이었는지 잃는다.
+        /// </summary>
+        private static int RescueForeignCarriers(Transform root, Scene scene)
+        {
+            var carriers = new List<Transform>();
+            CollectForeign(root, carriers);
+            if (carriers.Count == 0) return 0;
+
+            GameObject park = null;
+            foreach (GameObject go in scene.GetRootGameObjects())
+                if (go.name == RescueRootName) { park = go; break; }
+            if (park == null)
+            {
+                park = new GameObject(RescueRootName);
+                SceneManager.MoveGameObjectToScene(park, scene);
+            }
+
+            foreach (Transform t in carriers)
+            {
+                string parentName = t.parent != null ? t.parent.name : "_";
+                Transform slot = park.transform.Find(parentName);
+                if (slot == null)
+                {
+                    var s = new GameObject(parentName);
+                    s.transform.SetParent(park.transform, false);
+                    slot = s.transform;
+                }
+                t.SetParent(slot, false);
+            }
+            return carriers.Count;
+        }
+
+        private static void CollectForeign(Transform t, List<Transform> found)
+        {
+            for (int i = 0; i < t.childCount; i++)
+            {
+                Transform c = t.GetChild(i);
+                // 운반체를 찾으면 **자식째** 빼낸다. 심볼 세 개가 칸의 자식이다.
+                if (IsForeignCarrier(c)) { found.Add(c); continue; }
+                CollectForeign(c, found);
+            }
+        }
+
+        private static bool IsForeignCarrier(Transform t)
+        {
+            var comps = t.GetComponents<MonoBehaviour>();
+            for (int i = 0; i < comps.Length; i++)
+            {
+                MonoBehaviour mb = comps[i];
+                if (mb == null) continue;                      // 스크립트가 빠진 컴포넌트
+                System.Type ty = mb.GetType();
+                // 조립기가 직접 붙이는 것 — 이건 조립기 소유다.
+                if (ty == typeof(Prototype.View.LeverStateMachine)) continue;
+                if (mb is TMPro.TMP_Text) return true;
+                if (ty.Namespace != null && ty.Namespace.StartsWith("Ascend.")) return true;
+            }
+            // 결과판 칸은 **컴포넌트가 없는 순수 트랜스폼**이다(`SpinBoardView` 가
+            // 자식 이름으로 심볼을 켠다). 컴포넌트 검사만으로는 절대 안 걸린다 —
+            // 실제로 그래서 파괴됐다. 자식 심볼 이름으로 알아본다.
+            for (int i = 0; i < t.childCount; i++)
+                if (Prototype.View.SpinBoardView.KindOf(t.GetChild(i).name) != Prototype.Spin.SymbolKind.Empty)
+                    return true;
+            return false;
         }
 
         /// <summary>
@@ -365,9 +466,22 @@ namespace Ascend.Prototype.EditorTools
                 Slab(shell.transform, $"Rail_Right_{tag}",
                      new Vector3(ReferenceRoomSpec.WallRightX - p * 0.5f, y, 0f),
                      new Vector3(p, ReferenceRoomSpec.WallRailHeight, d), "BareSteel");
-                Slab(shell.transform, $"Rail_Rear_{tag}",
-                     new Vector3(0f, y, ReferenceRoomSpec.WallRearZ - p * 0.5f),
-                     new Vector3(w, ReferenceRoomSpec.WallRailHeight, p), "BareSteel");
+                // 🔴 **후면 레일은 장치를 피해 왼쪽 구간만 지난다.**
+                //
+                // 독립 평가자가 「벽 몰딩이 레버 플레이트로 그대로 파고든다 —
+                // 접합이 아니라 관통이다」를 지적했다. 실제로 낮은 레일(y=0.95)이
+                // 캐비닛과 레버 베이스 플레이트를 통과하고 있었다.
+                //
+                // 실제 벽 보강재는 벽에 붙은 기계를 관통하지 않는다. 장치가 차지한
+                // 구간에서 끊고 **왼쪽 빈 벽에만** 남긴다 — 그 구간이 바로
+                // 「장치 왼쪽에 남는 후면 벽」이고, 거기서는 레일이 제 역할을 한다.
+                float machineLeft = ReferenceRoomSpec.MachineLeftX - 0.06f;
+                float railSpan = machineLeft - ReferenceRoomSpec.WallLeftX;
+                if (railSpan > 0.10f)
+                    Slab(shell.transform, $"Rail_Rear_{tag}",
+                         new Vector3((ReferenceRoomSpec.WallLeftX + machineLeft) * 0.5f, y,
+                                     ReferenceRoomSpec.WallRearZ - p * 0.5f),
+                         new Vector3(railSpan, ReferenceRoomSpec.WallRailHeight, p), "BareSteel");
                 Slab(shell.transform, $"Rail_Front_{tag}",
                      new Vector3(0f, y, ReferenceRoomSpec.WallFrontZ + p * 0.5f),
                      new Vector3(w, ReferenceRoomSpec.WallRailHeight, p), "BareSteel");
@@ -737,6 +851,21 @@ namespace Ascend.Prototype.EditorTools
         //  §4 후면 3×3 영혼 통관 장치
         // ══════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// **9실 영혼 통관 장치** — 하나의 밀폐 캐비닛 안에 동일 규격 챔버 9개.
+        ///
+        /// 🔴 2026-08-03 사용자 지시로 형태 아키텍처를 다시 정의했다. 직전 판본은
+        /// 「원형 기계 9개를 벽에 붙인 것」이었고, 지금은 **하나의 캐비닛**이다.
+        /// 무엇이 왜 사라졌는지는 각 자리에 적었다 — 지운 이유를 안 적으면
+        /// 다음 사람이 「빠뜨렸구나」로 읽고 되돌린다.
+        ///
+        /// 다섯 부분만 만든다(지시 §전체 구조).
+        ///   ① MountFrame   벽에 고정된 직사각형 하중 프레임
+        ///   ② Cabinet      9개 챔버가 들어 있는 하나의 금속 캐비닛
+        ///   ③ WindowGrid   각 챔버를 관찰하는 원형 압력창 9개
+        ///   ④ ShaftHousing 세 뱅크를 동시에 제어하는 공통 잠금축
+        ///   ⑤ (레버 컬럼은 <see cref="BuildLeverColumn"/>)
+        /// </summary>
         private static void BuildSoulMachine(GameObject root)
         {
             GameObject machine = Child(root.transform, MachineName);
@@ -746,66 +875,284 @@ namespace Ascend.Prototype.EditorTools
             float mw = ReferenceRoomSpec.MachineWidth;
             float mh = ReferenceRoomSpec.MachineHeight;
             float md = ReferenceRoomSpec.MachineDepth;
-            float band = ReferenceRoomSpec.MachineFrameBand;
+            float outer = ReferenceRoomSpec.OuterFrameBand;
+            float rib = ReferenceRoomSpec.BankRibWidth;
+            float bulk = ReferenceRoomSpec.BulkheadHeight;
+            float uv = ReferenceRoomSpec.HeroUvPerMeter;
             float cy = ReferenceRoomSpec.MachineBottomY + mh * 0.5f;
 
-            // 뒷판. 프레임 안쪽을 메운다.
-            Slab(machine.transform, "BackPlate", new Vector3(0f, cy, -md * 0.35f), new Vector3(mw - band * 2f, mh - band * 2f, md * 0.3f), "Steel");
+            // 깊이 축의 기준면 넷. −z 가 실내 쪽이므로 전부 음수다.
+            float zMount = -ReferenceRoomSpec.MountFrameThickness;                          // −0.038
+            float zBack = zMount - ReferenceRoomSpec.CabinetBackThickness;                  // −0.062
+            float zFace = -md;                                                              // −0.260
 
-            // ── 두꺼운 사각 철제 프레임 ──
-            // 명세 §4 「모서리는 완전히 둥글지 않고 각지고 투박한 형태」 — 모따기 없음.
-            Slab(machine.transform, "Frame_Top",    new Vector3(0f, ReferenceRoomSpec.MachineTopY - band * 0.5f, -md * 0.5f), new Vector3(mw, band, md), "BareSteel");
-            Slab(machine.transform, "Frame_Bottom", new Vector3(0f, ReferenceRoomSpec.MachineBottomY + band * 0.5f, -md * 0.5f), new Vector3(mw, band, md), "BareSteel");
-            Slab(machine.transform, "Frame_Left",   new Vector3(-mw * 0.5f + band * 0.5f, cy, -md * 0.5f), new Vector3(band, mh, md), "BareSteel");
-            Slab(machine.transform, "Frame_Right",  new Vector3( mw * 0.5f - band * 0.5f, cy, -md * 0.5f), new Vector3(band, mh, md), "BareSteel");
+            // ══ ① 벽에 고정된 직사각형 하중 프레임 ═══════════════════════════
+            //
+            // 캐비닛과 벽 사이에 낀다. 이것이 있어야 캐비닛이 **벽에 걸려 있다**로
+            // 읽히고, 지시가 제거를 요구한 「벽과 장치 사이에 남아 있는 큰 빈 구멍」이
+            // 구조적으로 메워진다.
+            var mount = new GameObject("MountFrame");
+            mount.transform.SetParent(machine.transform, false);
+            float mb = ReferenceRoomSpec.MountFrameBand;
+            float mt = ReferenceRoomSpec.MountFrameThickness;
+            // 🔴 캐비닛보다 **눈에 띄게** 크다. 첫 판본은 26mm 였고 캐비닛 뒤에
+            // 완전히 가려, 독립 평가자가 「벽 앵커·볼트·거싯이 없다 · 액자 몰딩으로
+            // 읽힌다」고 판정했다. 벽에 고정하는 부재가 안 보이면 고정돼 있지 않은
+            // 것과 같다. 76mm 로 키워 캐비닛 둘레에 25mm 씩 테가 드러나게 한다.
+            float mow = mw + 0.076f, moh = mh + 0.076f;
+            Slab(mount.transform, "Mount_Top", new Vector3(0f, cy + moh * 0.5f - mb * 0.5f, -mt * 0.5f),
+                 new Vector3(mow, mb, mt), "Steel");
+            Slab(mount.transform, "Mount_Bottom", new Vector3(0f, cy - moh * 0.5f + mb * 0.5f, -mt * 0.5f),
+                 new Vector3(mow, mb, mt), "Steel");
+            Slab(mount.transform, "Mount_Left", new Vector3(-mow * 0.5f + mb * 0.5f, cy, -mt * 0.5f),
+                 new Vector3(mb, moh - mb * 2f, mt), "Steel");
+            Slab(mount.transform, "Mount_Right", new Vector3(mow * 0.5f - mb * 0.5f, cy, -mt * 0.5f),
+                 new Vector3(mb, moh - mb * 2f, mt), "Steel");
 
-            // 벽 고정 볼트. 명세 §4 「큰 육각 볼트와 리벳으로 벽에 고정」.
+            // 벽 고정 볼트 — **8개뿐이다.** 직전 판본은 20개를 캐비닛 앞면 둘레에
+            // 둘렀고, 지시가 그것을 「작동 구조와 무관한 볼트 및 브래킷」으로 지목했다.
+            // 앞면 볼트는 아무것도 붙잡지 않는다. 벽에 박히는 볼트만 남긴다.
             var boltB = new ProcMeshBuilder();
-            boltB.AddPrism(Vector3.zero, 0.021f, 0.019f, 0.016f, 6, MeshAxis.Z, 0f, true, true, false, 12f);
-            Mesh boltMesh = SaveMesh(boltB.ToMesh("MachineBolt"), "MachineBolt");
-            var bolts = new GameObject("FrameBolts");
-            bolts.transform.SetParent(machine.transform, false);
-            int perSide = 5;
-            for (int i = 0; i < perSide; i++)
+            boltB.AddPrism(Vector3.zero, 0.020f, 0.018f, 0.015f, 6, MeshAxis.Z, 0f, true, true, false, uv);
+            Mesh boltMesh = SaveMesh(boltB.ToMesh("MountBolt"), "MountBolt");
+            var mountBolts = new GameObject("MountBolts");
+            mountBolts.transform.SetParent(mount.transform, false);
+            for (int i = 0; i < 8; i++)
             {
-                float f = i / (float)(perSide - 1);
-                AddBolt(bolts.transform, boltMesh, new Vector3(Mathf.Lerp(-mw * 0.5f + band * 0.5f, mw * 0.5f - band * 0.5f, f), ReferenceRoomSpec.MachineTopY - band * 0.5f, -md - 0.008f), $"Bolt_T{i}");
-                AddBolt(bolts.transform, boltMesh, new Vector3(Mathf.Lerp(-mw * 0.5f + band * 0.5f, mw * 0.5f - band * 0.5f, f), ReferenceRoomSpec.MachineBottomY + band * 0.5f, -md - 0.008f), $"Bolt_B{i}");
-                AddBolt(bolts.transform, boltMesh, new Vector3(-mw * 0.5f + band * 0.5f, Mathf.Lerp(ReferenceRoomSpec.MachineBottomY + band, ReferenceRoomSpec.MachineTopY - band, f), -md - 0.008f), $"Bolt_L{i}");
-                AddBolt(bolts.transform, boltMesh, new Vector3( mw * 0.5f - band * 0.5f, Mathf.Lerp(ReferenceRoomSpec.MachineBottomY + band, ReferenceRoomSpec.MachineTopY - band, f), -md - 0.008f), $"Bolt_R{i}");
+                bool top = i < 4;
+                float f = (i % 4) / 3f;
+                AddBolt(mountBolts.transform, boltMesh,
+                        new Vector3(Mathf.Lerp(-mow * 0.5f + mb * 0.6f, mow * 0.5f - mb * 0.6f, f),
+                                    top ? cy + moh * 0.5f - mb * 0.5f : cy - moh * 0.5f + mb * 0.5f,
+                                    -mt - 0.006f),
+                        $"MountBolt_{i}");
             }
 
-            // ── 9개 관찰창 모듈 ──
-            // 명세 §12 「SoulWindowModule 하나를 제작한 뒤 9개를 인스턴스로 배치한다」.
-            BuildWindowMeshes(out Mesh plateMesh, out Mesh bracketMesh, out Mesh collarMesh,
-                              out Mesh chamberMesh, out Mesh glassMesh, out Mesh soulMesh,
-                              out Mesh windowBoltMesh, out Mesh clampMesh);
+            // 코너 거싯 넷 — 「하중이 어디로 가는가」를 형상으로 답한다.
+            // 독립 평가자가 「코너 거싯 없음 · 받침 다리 없음 · 하중 경로를 증명하는
+            // 것이 아무것도 없다」고 지적했다. 거싯은 장식이 아니라 사각 프레임이
+            // 마름모로 무너지는 것을 막는 부재이고, 없으면 프레임은 액자가 맞다.
+            var gussets = new GameObject("MountGussets");
+            gussets.transform.SetParent(mount.transform, false);
+            for (int i = 0; i < 4; i++)
+            {
+                float sx = (i & 1) == 0 ? -1f : 1f;
+                float sy = (i & 2) == 0 ? -1f : 1f;
+                var gsb = new ProcMeshBuilder();
+                // 직각삼각형 판. 두 변이 프레임 두 부재에 닿는다.
+                var a = new Vector3(0f, 0f, 0f);
+                var b2 = new Vector3(sx * 0.16f, 0f, 0f);
+                var c2 = new Vector3(0f, sy * 0.16f, 0f);
+                float th = 0.026f;
+                var zf = new Vector3(0f, 0f, -th);
+                Vector3 nrm = sx * sy > 0f ? Vector3.back : Vector3.back;
+                gsb.AddTriangle(a, b2, c2, nrm, uv);
+                gsb.AddTriangle(a + zf, c2 + zf, b2 + zf, Vector3.forward, uv);
+                gsb.AddQuad(b2, a, a + zf, b2 + zf, new Vector3(0f, -sy, 0f), uv);
+                gsb.AddQuad(a, c2, c2 + zf, a + zf, new Vector3(-sx, 0f, 0f), uv);
+                gsb.AddQuad(c2, b2, b2 + zf, c2 + zf, new Vector3(sx, sy, 0f).normalized, uv);
+                Mesh gm = SaveMesh(gsb.ToMesh($"MountGusset_{i}"), $"MountGusset_{i}");
+                var g = new GameObject($"Gusset_{i}");
+                g.transform.SetParent(gussets.transform, false);
+                g.transform.localPosition = new Vector3(
+                    sx * (mow * 0.5f - mb), cy + sy * (moh * 0.5f - mb), -mt);
+                Render(g, gm, "BareSteel");
+            }
+
+            // ══ ② 하나의 금속 캐비닛 ═════════════════════════════════════════
+            var cab = new GameObject("Cabinet");
+            cab.transform.SetParent(machine.transform, false);
+
+            // 후면판 — 챔버 아홉의 **공통 뒷벽**이다.
+            Slab(cab.transform, "CabinetBack", new Vector3(0f, cy, zMount - ReferenceRoomSpec.CabinetBackThickness * 0.5f),
+                 new Vector3(mw, mh, ReferenceRoomSpec.CabinetBackThickness), "Steel");
+
+            // ⚠ **연속 전면 셸을 두지 않는다 — 두면 챔버를 통째로 막는다.**
+            //
+            // 지시의 「링 뒤에는 하나의 연속된 어두운 금속 캐비닛 표면이 있어야
+            // 한다」를 도어 평면에 판 한 장 깔아서 만족시키려 했다. 그런데 그 판이
+            // 도어 바로 뒤에 있으니 **챔버 아홉의 앞을 전부 막았다.**
+            //
+            // 벽 노출을 막는 것은 이미 `CabinetBack`(전면적 후면판)이 한다 —
+            // 이음매로 새어 보이는 것은 벽이 아니라 캐비닛 안쪽이다. 그게 맞는 그림이다.
+            //
+            // 「빈틈을 막는 판」을 하나 더 까는 것은 싸 보이지만, 그 판이 무엇을
+            // 가리는지 세어 보지 않으면 이렇게 된다.
+
+            // ── 프레임 3단 위계 ──────────────────────────────────────────────
+            // 굵기가 위계다. 여기서 하중 경로가 형상으로 보인다.
+
+            // 🔴 **위계는 굵기만이 아니라 깊이로도 나온다.**
+            //
+            // 첫 그레이박스에서 셋이 전부 도어와 **같은 평면**에 있었고, 그래서
+            // 외곽 프레임이 「하중을 받는 테」가 아니라 그냥 더 넓은 벽으로 보였다.
+            // 지시의 합격 기준 하나가 「외곽 프레임이 장식을 위한 테두리가 아니라
+            // 본체 하중을 지지함」이라, 평면에 그린 테로는 통과할 수 없다.
+            //
+            // 앞으로 나온 순서가 하중 순서와 같아야 한다 — 프레임이 도어를 **물고**
+            // 있는 것으로 읽힌다. (−z 가 실내 쪽이므로 뺄수록 앞이다.)
+            // 🔴 **굵기 위계와 깊이 위계를 일부러 어긋나게 둔다.**
+            //
+            // 굵기는 지시대로 외곽 > 뱅크 리브 > 격벽 (86 > 58 > 30mm) 이다.
+            // 깊이는 **뒤집는다** — 외곽 > 격벽 > 리브.
+            //
+            // 왜: 리브를 가장 앞에 두고 캐비닛 전 높이로 이었더니 판이 **끊기지 않는
+            // 세로 채널 둘**로 3분할됐다. 독립 평가가 「무중단 713px · 세로 띠 셋 ·
+            // 재질을 입힐수록 나빠진다」로 잡았고, 그건 이 저장소가 `G-SLOT` 축으로
+            // 12라운드 싸운 슬롯머신 릴 띠의 재발이다. 지시의 계층 요구
+            // 「가장 먼저 **하나의** 직사각형 통관 기계가 보임」과도 정면으로 충돌한다.
+            //
+            // 압력 챔버 랙의 실제 구성이 답을 준다 — **수평 선반판이 연속이고
+            // 수직 스티프너가 그 사이에 끼워진다.** 굵기 위계는 지키면서
+            // 연속성만 가로로 넘긴다.
+            float outerProud = ReferenceRoomSpec.OuterFrameProud;
+            float ribProud = ReferenceRoomSpec.BankRibProud;
+            float bulkProud = ReferenceRoomSpec.BulkheadProud;
+
+            // 외곽 하중 프레임 — 가장 두껍고 가장 앞. 캐비닛 전체 자중 + 벽 고정.
+            float ofd = md + outerProud;
+            float ofz = (zFace - outerProud) * 0.5f;
+            // ⚠ **상단 프레임은 캐비닛 꼭대기가 아니라 챔버 적층 바로 위다.**
+            // 그 위에 샤프트 하우징이 얹힌다(높이 유도식이 그렇게 쌓았다).
+            // 첫 판본은 `MachineTopY − outer/2` 로 잡아 **하우징과 같은 자리를
+            // 차지했고**, 화면에서 둘이 한 덩어리 뚜껑으로 보였다.
+            Slab(cab.transform, "Frame_Top", new Vector3(0f, ReferenceRoomSpec.ChamberStackTopY + outer * 0.5f, ofz),
+                 new Vector3(mw, outer, ofd), "BareSteel");
+            Slab(cab.transform, "Frame_Bottom", new Vector3(0f, ReferenceRoomSpec.MachineBottomY + outer * 0.5f, ofz),
+                 new Vector3(mw, outer, ofd), "BareSteel");
+            Slab(cab.transform, "Frame_Left", new Vector3(-mw * 0.5f + outer * 0.5f, cy, ofz),
+                 new Vector3(outer, mh, ofd), "BareSteel");
+            Slab(cab.transform, "Frame_Right", new Vector3(mw * 0.5f - outer * 0.5f, cy, ofz),
+                 new Vector3(outer, mh, ofd), "BareSteel");
+
+            // 세로 뱅크 프레임 — 중간 굵기, 중간 깊이. 챔버 3개 적층 하중을 받고,
+            // 챔버 간 격벽이며, **공통 잠금 링크(캠 로드)를 보호하고**, 정비 시
+            // 한 열씩 분리하는 경계다.
+            // 🔴 **리브를 행마다 끊는다.** 전 높이로 이으면 세로 채널이 되고,
+            // 그 채널이 판을 3분할해 슬롯머신 릴 띠가 된다(위 주석).
+            //
+            // 세 토막으로 나누면 「뱅크가 나뉜다」는 그대로 읽히면서
+            // **무중단 세로 길이가 도어 한 장 높이(0.48)로 떨어진다** —
+            // 캐비닛 높이의 27%다. 불변식이 이 비를 40% 이하로 고정한다.
+            for (int k = 0; k < 2; k++)
+            {
+                float x = ReferenceRoomSpec.BankCenterX(k) - ReferenceRoomSpec.MachineCenterX
+                        + ReferenceRoomSpec.WindowPitchX * 0.5f;
+                for (int row = 0; row < 3; row++)
+                {
+                    float y = ReferenceRoomSpec.ChamberStackBottomY
+                            + ReferenceRoomSpec.ChamberDoorHeight * (row + 0.5f)
+                            + bulk * row;
+                    Slab(cab.transform, $"BankRib_{k}_{row}",
+                         new Vector3(x, y, zFace - ribProud * 0.5f),
+                         new Vector3(rib, ReferenceRoomSpec.ChamberDoorHeight, 0.050f + ribProud), "BareSteel");
+                }
+            }
+
+            // 챔버 사이 가로 격벽 — 가장 얇지만 **연속이고 가장 앞이다.**
+            // 리브를 가로질러 지나가므로 교차점에서 격벽이 이긴다.
+            for (int k = 0; k < 2; k++)
+            {
+                float y = ReferenceRoomSpec.ChamberStackBottomY
+                        + ReferenceRoomSpec.ChamberDoorHeight * (k + 1)
+                        + bulk * (k + 0.5f);
+                Slab(cab.transform, $"Bulkhead_{k}",
+                     new Vector3(0f, y, zFace - bulkProud * 0.5f),
+                     new Vector3(mw - outer * 2f, bulk, 0.040f + bulkProud), "Steel");
+            }
+
+            // ══ ④ 공통 잠금축 — 상단 샤프트 하우징 ═══════════════════════════
+            //
+            // 「세 개의 세로 뱅크를 동시에 제어하는 공통 잠금축」. 지시가 「캐비닛
+            // 상단 또는 측면」을 허용했고 상단을 골랐다 — 측면에 두면 레버 쪽
+            // 한 변에만 몰려 세 뱅크가 대칭으로 물린다는 것이 안 읽힌다.
+            var housing = new GameObject("ShaftHousing");
+            housing.transform.SetParent(cab.transform, false);
+            float shH = ReferenceRoomSpec.ShaftHousingHeight;
+            float shY = ReferenceRoomSpec.CommonShaftY;
+
+            // ⚠ **하우징이 얼마나 튀어나오는지를 유도한다.** 첫 판본은 중심과 깊이를
+            // 따로 적어 앞면이 도어 면보다 **130mm** 앞으로 나갔고, 그 결과
+            // 상태 탭 셋이 하우징 **안에** 파묻혀 화면에서 사라졌다.
+            // 「밖에서 보이는 유일한 잠금 상태」가 안 보이면 그건 없는 것과 같다.
+            float zHousingFront = ReferenceRoomSpec.ShaftHousingFrontZ;   // 외곽 프레임보다 10mm 앞
+            float housingDepth = -zHousingFront;                          // 벽면(0)부터 앞면까지
+            Slab(housing.transform, "HousingBody", new Vector3(0f, shY, zHousingFront * 0.5f),
+                 new Vector3(mw - outer * 2f, shH, housingDepth), "Steel");
+
+            // 공통 수평축 — 하우징 앞면에서 절반쯤 드러난다. 완전히 감추면
+            // 「무엇이 도는가」가 화면에 없고, 완전히 노출하면 지시가 금지한
+            // 「밖으로 노출된 복잡한 링크」가 된다. 반쯤이 답이다.
+            // 🔴 **축이 모서리 기어박스까지 닿아야 한다.**
+            //
+            // 첫 판본은 길이를 `mw − outer*2` 로 잡아 오른쪽 끝이 x=0.478 에서 끝났고,
+            // 기어박스는 x=0.684 에서 시작했다 — **206mm 벌어져 있었다.**
+            // 독립 평가가 「기어박스와 공통축이 만나는 것이 보이지 않는다 · 거기서
+            // 사슬이 끊긴다」로 잡았고, 좌표로 확인하니 그대로였다.
+            //
+            // 원인은 치수가 두 함수에 나뉘어 있던 것이다. 이제 양 끝을
+            // `ReferenceRoomSpec` 이 유도하고 **두 함수가 같은 값을 읽는다.**
+            float csr = ReferenceRoomSpec.CommonShaftRadius;
+            float shaftLen = ReferenceRoomSpec.CommonShaftLength;
+            var shaftB = new ProcMeshBuilder();
+            shaftB.AddPrism(Vector3.zero, csr, csr, shaftLen, 10, MeshAxis.X, 0f, true, true, false, uv);
+            // 축받이 넷 — 축이 어디에 얹혀 도는지 말한다.
+            for (int i = 0; i < 4; i++)
+            {
+                float t = (i / 3f - 0.5f) * (shaftLen - 0.18f);
+                shaftB.AddBox(new Vector3(t, 0f, 0.010f), new Vector3(0.034f, csr * 2.6f, csr * 2.2f), 0f, uv);
+            }
+            Mesh shaftMesh = SaveMesh(shaftB.ToMesh("CommonLockShaft"), "CommonLockShaft");
+            var shaft = new GameObject(CommonShaftName);
+            shaft.transform.SetParent(housing.transform, false);
+            // 하우징 앞면에 **반쯤 걸친다.** 완전히 감추면 무엇이 도는지 화면에 없고,
+            // 완전히 노출하면 지시가 금지한 「밖으로 노출된 복잡한 링크」가 된다.
+            // 탭보다 아래에 둬서 둘이 겹치지 않게 한다 — 겹치면 탭이 도는 축에
+            // 파묻혀 이동이 안 읽힌다.
+            //
+            // x 는 **양 끝의 중점**이다. 손으로 0 을 적으면 캐비닛 중심에 놓여
+            // 오른쪽 끝이 기어박스에 못 닿는다 — 그것이 직전 결함이었다.
+            float shaftMidX = (ReferenceRoomSpec.CommonShaftLeftX + ReferenceRoomSpec.CommonShaftRightX) * 0.5f
+                            - ReferenceRoomSpec.MachineCenterX;
+            shaft.transform.localPosition = new Vector3(shaftMidX, shY - 0.026f, ReferenceRoomSpec.CommonShaftZ);
+            Render(shaft, shaftMesh, "Collar");
+
+            // 축이 우측 외곽 프레임을 통과하는 지점의 **베어링 보스.**
+            // 축이 프레임을 그냥 뚫고 지나가면 「어떻게 지지되는가」가 화면에 없다.
+            var bossB = new ProcMeshBuilder();
+            bossB.AddPrism(Vector3.zero, csr * 2.1f, csr * 1.9f, 0.052f, 8, MeshAxis.X, 0f, true, true, false, uv);
+            Mesh bossMesh = SaveMesh(bossB.ToMesh("ShaftBearingBoss"), "ShaftBearingBoss");
+            var boss = new GameObject("ShaftBearingBoss");
+            boss.transform.SetParent(housing.transform, false);
+            boss.transform.localPosition = new Vector3(
+                mw * 0.5f - outer * 0.5f, shY - 0.026f, ReferenceRoomSpec.CommonShaftZ);
+            Render(boss, bossMesh, "BareSteel");
+
+            // 상태 탭 셋 — **뱅크 위에 정렬한다.** 밖에서 보이는 유일한 잠금 상태다.
+            var tabB = new ProcMeshBuilder();
+            tabB.AddBox(Vector3.zero, new Vector3(ReferenceRoomSpec.StatusTabWidth,
+                                                  ReferenceRoomSpec.StatusTabHeight, 0.030f), 0f, uv);
+            tabB.AddBox(new Vector3(0f, ReferenceRoomSpec.StatusTabHeight * 0.5f, -0.004f),
+                        new Vector3(ReferenceRoomSpec.StatusTabWidth * 0.42f, 0.018f, 0.022f), 0f, uv);
+            Mesh tabMesh = SaveMesh(tabB.ToMesh("LockStatusTab"), "LockStatusTab");
+            for (int bank = 0; bank < ReferenceRoomSpec.BankCount; bank++)
+            {
+                var tab = new GameObject($"{StatusTabName}_{bank}");
+                tab.transform.SetParent(housing.transform, false);
+                tab.transform.localPosition = new Vector3(
+                    ReferenceRoomSpec.BankCenterX(bank) - ReferenceRoomSpec.MachineCenterX,
+                    shY + ReferenceRoomSpec.StatusTabTravel * 0.62f,
+                    zHousingFront - 0.016f);   // 하우징 앞면 위에 올라탄다
+                Render(tab, tabMesh, "RedPaint");
+            }
+
+            // ══ ③ 원형 압력창 9개 ════════════════════════════════════════════
+            BuildWindowMeshes(out Mesh doorMesh, out Mesh ringMesh, out Mesh chamberMesh,
+                              out Mesh glassMesh, out Mesh soulMesh,
+                              out Mesh windowBoltMesh, out Mesh hingeMesh, out Mesh clampMesh);
 
             var grid = new GameObject("WindowGrid");
             grid.transform.SetParent(machine.transform, false);
-
-            // ── 격자 보강 프레임 ──────────────────────────────────────────
-            // 「9개 모듈이 하나의 큰 철판에 단순히 박혀 있지 않도록 세로·가로 보강
-            // 프레임을 사용한다. 프레임이 각 모듈의 무게를 실제로 지탱하는 것처럼
-            // 보여야 한다.」 — 모듈 **뒤에서** 지나가야 지탱하는 것으로 읽힌다.
-            var ribs = new GameObject("GridRibs");
-            ribs.transform.SetParent(machine.transform, false);
-            float pitch = ReferenceRoomSpec.WindowPitch;
-            float gridHalf = pitch + ReferenceRoomSpec.WindowRingDiameter * 0.5f;
-            float ribZ = -md - 0.012f;
-            for (int k = -1; k <= 1; k++)
-            {
-                // 세로 리브 — 열 사이를 지난다(열 위가 아니라 **사이**여야 모듈이 얹힌다).
-                if (k != 0)
-                    Slab(ribs.transform, $"Rib_V{(k < 0 ? "L" : "R")}",
-                         new Vector3(k * pitch * 0.5f, ReferenceRoomSpec.WindowGridCenterY, ribZ),
-                         new Vector3(0.052f, gridHalf * 2f + 0.10f, 0.030f), "Steel");
-                // 가로 리브 — 각 행 뒤를 받친다.
-                Slab(ribs.transform, $"Rib_H{k + 1}",
-                     new Vector3(0f, ReferenceRoomSpec.WindowGridCenterY - k * pitch, ribZ),
-                     new Vector3(gridHalf * 2f + 0.10f, 0.044f, 0.026f), "Steel");   // ⚠ 노출 강철(밝음)로 두면
-                // 챔버 안에서 리브가 영혼보다 밝아 시선을 뺏는다. 안쪽은 배경이다.
-            }
 
             for (int row = 0; row < 3; row++)
             {
@@ -815,64 +1162,81 @@ namespace Ascend.Prototype.EditorTools
                     int seed = col * 3 + row;
                     var module = new GameObject($"{WindowModuleName}_{col}{row}");
                     module.transform.SetParent(grid.transform, false);
-                    module.transform.localPosition = new Vector3(c.x - ReferenceRoomSpec.MachineCenterX, c.y, -md);
+                    module.transform.localPosition = new Vector3(c.x - ReferenceRoomSpec.MachineCenterX, c.y, zFace);
 
-                    // ⚠ **모듈 자체는 회전시키지 않는다.** 「9개 모듈의 중심과 간격은
-                    // 정확히 정렬한다」가 명세다. 차이는 아래 영혼과 표면 마모에만 준다 —
-                    // 칼라를 돌리면 정렬이 깨져 「같은 규격 부품」으로 안 읽힌다.
+                    // ⚠ **모듈을 회전시키지 않는다.** 규격품 9개가 정확히 정렬해야
+                    // 「하나의 시스템」으로 읽힌다. 개체차는 **내용물(영혼)에만** 준다.
 
-                    // ① 후면 장착판
-                    var plate = new GameObject("BackPlate");
-                    plate.transform.SetParent(module.transform, false);
-                    Render(plate, plateMesh, "Steel");
+                    // ① 사각 챔버 도어
+                    var door = new GameObject("Door");
+                    door.transform.SetParent(module.transform, false);
+                    Renderer doorRenderer = Render(door, doorMesh, "Steel");
 
-                    // ② 지지 브래킷
-                    var brk = new GameObject("Brackets");
-                    brk.transform.SetParent(module.transform, false);
-                    Render(brk, bracketMesh, "Steel");
+                    // 🔴 **도어는 그림자를 드리우지 않는다.**
+                    //
+                    // 통제 실험이 이것을 강제했다. 도어에 0.264m 정사각 구멍이
+                    // 뚫려 있고(정점 실측·메시 콜라이더 레이캐스트로 확인), 영혼은
+                    // 그 한가운데 0.136m 크기로 있는데도 **도어를 켜면 붉은 화소가
+                    // 0.53% → 0.00% 로 사라졌다.** 기하로는 완전히 열려 있다.
+                    //
+                    // 남는 설명은 그림자 맵이다 — 주광이 점광이라 큐브맵 6면을
+                    // 나눠 쓰고, 4.4m 범위에서 0.26m 구멍은 몇 텍셀에 불과해
+                    // **구멍이 그림자 맵에서 메워진다.** 그러면 챔버 안이 통째로
+                    // 그림자에 들어가 영혼이 검게 죽는다.
+                    //
+                    // 그리고 도어의 그림자는 얻는 것이 없다 — 벽에 붙은 평판이라
+                    // 자기 뒤 말고는 드리울 곳이 없다. 이 저장소는 같은 이유로
+                    // 볼트 그림자를 껐고 프레임타임이 89ms → 8.4ms 가 됐다.
+                    doorRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-                    // ⑤ 내부 챔버 (칼라보다 먼저 — 안쪽이 먼저 있어야 들여다보인다)
+                    // 힌지 둘 — 왼쪽 가장자리. 「실제로 열릴 것처럼」.
+                    for (int h = 0; h < ReferenceRoomSpec.DoorHingeCount; h++)
+                    {
+                        var hinge = new GameObject($"Hinge_{h}");
+                        hinge.transform.SetParent(module.transform, false);
+                        hinge.transform.localPosition = new Vector3(
+                            -ReferenceRoomSpec.ChamberDoorWidth * 0.5f + ReferenceRoomSpec.DoorHingeWidth * 0.5f + 0.006f,
+                            (h == 0 ? 1f : -1f) * ReferenceRoomSpec.ChamberDoorHeight * 0.30f,
+                            -0.014f);
+                        Render(hinge, hingeMesh, "BareSteel");
+                    }
+
+                    // 잠금 클램프 하나 — 오른쪽 가장자리. **캠 로드가 이것을 돌린다.**
+                    // 좌우 두 개였던 직전 판본과 다르다: 두 개면 어느 쪽이 구동인지
+                    // 안 읽히고, 지시도 「반대쪽에 잠금 클램프 **하나**」다.
+                    var clamp = new GameObject(LockClampName);
+                    clamp.transform.SetParent(module.transform, false);
+                    clamp.transform.localPosition = new Vector3(
+                        ReferenceRoomSpec.ChamberDoorWidth * 0.5f - ReferenceRoomSpec.DoorClampWidth * 0.5f - 0.006f,
+                        0f, -0.016f);
+                    Render(clamp, clampMesh, "BareSteel");
+
+                    // ④ 챔버 내부 — 도어 뒤의 실제 공간
                     var cham = new GameObject("Chamber");
                     cham.transform.SetParent(module.transform, false);
                     Render(cham, chamberMesh, "ChamberDark");
 
-                    // 영혼 — 유리 뒤로 **떨어져** 있다. 이 거리가 패럴랙스를 만든다.
+                    // 영혼 — 유리 뒤 115mm. 이 거리가 패럴랙스의 전부다.
                     var soul = new GameObject(SoulName);
                     soul.transform.SetParent(module.transform, false);
-                    // ⚠ **아홉 개가 같아 보이면 LED 배열이다.** 정면 캡처에서 정확히
-                    // 그렇게 읽혔다 — 같은 크기, 같은 밝기, 같은 자리. 명세가
-                    // 「크기·회전·밝기가 칸마다 다르다」를 요구하는 이유가 이것이다.
-                    // 모듈 간격은 정확히 정렬하고(부품은 규격품이다), **내용물만** 흩는다.
                     float jitter = ProcMeshBuilder.HashSigned(seed * 977 + 13);
                     float scale = 1f + jitter * 0.22f;
                     soul.transform.localPosition = new Vector3(
-                        ProcMeshBuilder.HashSigned(seed * 131 + 7) * 0.024f,
-                        ProcMeshBuilder.HashSigned(seed * 197 + 3) * 0.024f,
-                        -ReferenceRoomSpec.WindowProtrusion + ReferenceRoomSpec.WindowGlassInset
-                            + ReferenceRoomSpec.SoulStandoff);
+                        ProcMeshBuilder.HashSigned(seed * 131 + 7) * 0.026f,
+                        ProcMeshBuilder.HashSigned(seed * 197 + 3) * 0.026f,
+                        ReferenceRoomSpec.SoulDepthFromDoorFace);
                     soul.transform.localScale = new Vector3(scale, scale * (1f + jitter * 0.06f), scale);
-                    // 회전 방향도 칸마다 다르다 (명세: 회전 방향)
                     soul.transform.localRotation = Quaternion.Euler(
                         ProcMeshBuilder.HashSigned(seed * 419) * 26f,
                         ProcMeshBuilder.HashSigned(seed * 523) * 26f,
                         ProcMeshBuilder.Hash01(seed * 313) * 360f);
-                    // 🔴 **한 겹이면 반드시 「분홍 스티커」가 된다.**
-                    //
-                    // 발광은 메시 전체에 균일하게 실린다. 균일한 밝기 + 둥근 실루엣
-                    // = UI 아이콘이다. 실측 캡처에서 정확히 그렇게 보였고, 명세는
-                    // 「붉은 중심부가 버튼이나 UI 아이콘처럼 보이면 실패」라고 못박는다.
-                    //
-                    // 밝기 차이를 **기하로** 만든다 — 어둡고 반투명한 껍질 안에
-                    // 작고 뜨거운 핵. 시선이 껍질을 통과해 핵에 닿으므로 두께가
-                    // 읽히고, 껍질의 울퉁불퉁한 실루엣이 핵을 부분적으로 가려
-                    // 밝기가 균일해지지 않는다. 셰이더를 새로 쓰지 않고 얻는다.
+                    // 🔴 **한 겹이면 반드시 「분홍 스티커」가 된다.** 발광은 메시 전체에
+                    // 균일하게 실리고, 균일한 밝기 + 둥근 실루엣 = UI 아이콘이다.
+                    // 밝기 차이를 **기하로** 만든다 — 어둡고 반투명한 껍질 안의 뜨거운 핵.
                     Renderer soulRenderer = Render(soul, soulMesh, "RedPaint");
                     soulRenderer.sharedMaterial = SoulMaterial(seed, core: false);
-                    // 영혼은 그림자를 만들지 않는다 — 챔버 안이라 보이지 않는데 비용만 든다.
                     soulRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-                    // 핵 — 껍질의 절반 크기. **부모의 자식**이라 릴 애니메이션
-                    // (`SoulReelView`)이 부모만 움직여도 함께 따라온다.
                     var soulCore = new GameObject("Core");
                     soulCore.transform.SetParent(soul.transform, false);
                     soulCore.transform.localScale = Vector3.one * 0.52f;
@@ -882,157 +1246,184 @@ namespace Ascend.Prototype.EditorTools
                     coreRenderer.sharedMaterial = SoulMaterial(seed, core: true);
                     coreRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-                    // ④ 유리 (칼라보다 먼저 그려도 되지만 계층 순서를 층 순서와 맞춘다)
+                    // ③ 두꺼운 유리 — 링 보어 안쪽
                     var glass = new GameObject(GlassName);
                     glass.transform.SetParent(module.transform, false);
                     Render(glass, glassMesh, "Glass");
 
-                    // ③ 외부 보호 칼라
-                    var collar = new GameObject("Collar");
-                    collar.transform.SetParent(module.transform, false);
-                    Render(collar, collarMesh, "Collar");
+                    // ② 낮고 두꺼운 원형 클램프 링
+                    var ring = new GameObject("ClampRing");
+                    ring.transform.SetParent(module.transform, false);
+                    Render(ring, ringMesh, "Collar");
 
-                    // 체결 볼트 — 칼라 앞면에 박힌다
+                    // 체결 볼트 — **모든 창에서 같은 개수·같은 각도.**
                     var mBolts = new GameObject("Bolts");
                     mBolts.transform.SetParent(module.transform, false);
                     for (int i = 0; i < ReferenceRoomSpec.WindowBoltCount; i++)
                     {
                         float a = i * Mathf.PI * 2f / ReferenceRoomSpec.WindowBoltCount
                                 + Mathf.PI / ReferenceRoomSpec.WindowBoltCount;
-                        float r = (ReferenceRoomSpec.WindowGlassDiameter + ReferenceRoomSpec.WindowRingDiameter) * 0.25f;
+                        float r = ReferenceRoomSpec.WindowBoltRadius;
                         AddBolt(mBolts.transform, windowBoltMesh,
                                 new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r,
-                                            -ReferenceRoomSpec.WindowProtrusion - 0.007f),
+                                            -ReferenceRoomSpec.WindowProtrusion - 0.006f),
                                 $"Bolt_{i}");
                     }
-
-                    // 잠금 클램프 (좌우) — 「실제로 분리할 수 있어 보이는」 부품
-                    var clamps = new GameObject("Clamps");
-                    clamps.transform.SetParent(module.transform, false);
-                    for (int i = 0; i < ReferenceRoomSpec.WindowClampCount; i++)
-                    {
-                        var cl = new GameObject($"Clamp_{i}");
-                        cl.transform.SetParent(clamps.transform, false);
-                        float sx = i == 0 ? -1f : 1f;
-                        cl.transform.localPosition = new Vector3(
-                            sx * (ReferenceRoomSpec.WindowRingDiameter * 0.5f + 0.014f), 0f, -md * 0.30f);
-                        cl.transform.localRotation = Quaternion.Euler(0f, 0f, sx * 90f);
-                        Render(cl, clampMesh, "BareSteel");
-                    }
-
-                    // 케이블 소켓 — 모듈 하단에서 프레임으로 들어간다.
-                    // 「프레임과 연결되는 짧은 케이블 소켓 또는 기계식 커넥터」.
-                    var sockB = new ProcMeshBuilder();
-                    float sr = ReferenceRoomSpec.WindowSocketRadius;
-                    sockB.AddPrism(Vector3.zero, sr, sr * 0.8f, 0.030f, 6, MeshAxis.Y, 0f, true, true, false, 16f);
-                    sockB.AddPrism(new Vector3(0f, -0.026f, 0f), sr * 0.55f, sr * 0.55f, 0.026f,
-                                   6, MeshAxis.Y, 0f, true, true, false, 16f);
-                    Mesh sockMesh = SaveMesh(sockB.ToMesh("SoulWindowSocket"), "SoulWindowSocket");
-                    var sock = new GameObject("Socket");
-                    sock.transform.SetParent(module.transform, false);
-                    sock.transform.localPosition = new Vector3(
-                        0f, -ReferenceRoomSpec.WindowRingDiameter * 0.5f - 0.016f, -md * 0.35f);
-                    Render(sock, sockMesh, "Grease");
                 }
             }
 
-            // ── 하단 정비 패널 3개 ──
-            // 명세 §4 「각각 위쪽 세로 열과 정렬 · 원형 잠금장치 하나씩 · 추가 버튼·모니터 없음」.
-            var panels = new GameObject("ServicePanels");
-            panels.transform.SetParent(machine.transform, false);
-            var latchB = new ProcMeshBuilder();
-            latchB.AddPrism(Vector3.zero, 0.042f, 0.038f, 0.022f, 8, MeshAxis.Z, 0f, true, true, false, 10f);
-            latchB.AddBox(new Vector3(0f, 0f, -0.016f), new Vector3(0.062f, 0.014f, 0.012f), 0f, 10f);
-            Mesh latchMesh = SaveMesh(latchB.ToMesh("ServiceLatch"), "ServiceLatch");
+            // ⚠ **정비 패널 3개와 케이블 소켓 9개를 만들지 않는다.** 지시가 각각
+            // 「각 열 아래에 매달린 기능 불명의 작은 원판」·「실제 연결 대상을 알 수
+            // 없는 선과 케이블」로 지목해 제거를 요구했다. 지웠다는 사실을 여기 적어
+            // 두지 않으면 다음 배치가 「빠뜨렸다」로 읽고 되돌린다.
 
-            float panelW = (mw - band * 2f) / ReferenceRoomSpec.ServicePanelCount;
-            for (int i = 0; i < ReferenceRoomSpec.ServicePanelCount; i++)
-            {
-                float x = -mw * 0.5f + band + panelW * (i + 0.5f);
-                var panel = new GameObject($"ServicePanel_{i}");
-                panel.transform.SetParent(panels.transform, false);
-                panel.transform.localPosition = new Vector3(x, ReferenceRoomSpec.ServicePanelCenterY, -md * 0.5f);
-                Slab(panel.transform, "Plate", new Vector3(0f, 0f, -md * 0.5f + 0.02f),
-                     new Vector3(panelW - 0.012f, ReferenceRoomSpec.ServicePanelHeight - 0.012f, 0.04f), "Steel");
-                var latch = new GameObject("Latch");
-                latch.transform.SetParent(panel.transform, false);
-                latch.transform.localPosition = new Vector3(0f, 0f, -md * 0.5f - 0.012f);
-                Render(latch, latchMesh, "BareSteel");
-            }
-
-            _report.AppendLine($"  {MachineName} — {mw} × {mh} × {md} · 벽 점유 {ReferenceRoomSpec.MachineWallCoverage * 100f:F1}% " +
-                               $"· 관찰창 9 (링 {ReferenceRoomSpec.WindowRingDiameter:F3} · 유리 {ReferenceRoomSpec.WindowGlassDiameter} · 간격 {ReferenceRoomSpec.WindowPitch}) " +
-                               $"· 정비 패널 {ReferenceRoomSpec.ServicePanelCount}");
+            _report.AppendLine($"  {MachineName} — 캐비닛 {mw:F3} × {mh:F3} × {md:F2} " +
+                               $"(벽 폭 {ReferenceRoomSpec.MachineWallCoverage * 100f:F1}% · 벽 높이 {mh / ReferenceRoomSpec.InteriorHeight * 100f:F1}%)");
+            _report.AppendLine($"    프레임 위계 — 외곽 {outer * 1000f:F0} > 뱅크 {rib * 1000f:F0} > 격벽 {bulk * 1000f:F0} mm");
+            _report.AppendLine($"    챔버 9 — 도어 {ReferenceRoomSpec.ChamberDoorWidth} × {ReferenceRoomSpec.ChamberDoorHeight} " +
+                               $"· 링 ⌀{ReferenceRoomSpec.WindowRingDiameter} (돌출 {ReferenceRoomSpec.WindowProtrusion * 1000f:F0}mm) " +
+                               $"· 유리 ⌀{ReferenceRoomSpec.WindowGlassDiameter} (인셋 {ReferenceRoomSpec.WindowGlassInset * 1000f:F0}mm)");
+            _report.AppendLine($"    깊이 4단 — 도어 0 / 링앞 −{ReferenceRoomSpec.WindowProtrusion * 1000f:F0} / " +
+                               $"유리 −{ReferenceRoomSpec.WindowGlassFrontOffset * 1000f:F0} / 영혼 +{ReferenceRoomSpec.SoulDepthFromDoorFace * 1000f:F0} / " +
+                               $"챔버후면 +{ReferenceRoomSpec.ChamberBackFromDoorFace * 1000f:F0} mm");
+            _report.AppendLine($"    공통 잠금축 y={shY:F3} · 상태 탭 {ReferenceRoomSpec.BankCount} · 캠 로드 {ReferenceRoomSpec.BankCount}");
         }
 
         /// <summary>
-        /// 관찰창 모듈의 메시 넷. **한 번 만들어 9번 인스턴스한다**(명세 §12).
-        /// 실루엣은 12각형이다(명세 §14 「완전한 원보다 12~16각형」).
-        /// </summary>
-        /// <summary>
-        /// 관찰창 모듈의 메시 **여덟** 장. 한 번 만들어 9번 인스턴스한다(명세 §12).
+        /// 압력 관찰창의 메시 여덟 장. **한 번 만들어 9번 인스턴스한다.**
         ///
-        /// ## 5층 구조가 이 함수의 목적이다
+        /// ## 층이 다섯이 아니라 **넷**이다 — 이것이 이번 개정의 요점이다
         ///
-        /// 직전 판본은 넷(링·우물·유리·영혼)이었고 근접 캡처에서 **「평면 판에 원형
-        /// 장식 9개」**로 읽혔다. 원인이 둘이었다 —
+        /// 직전 판본은 후면 장착판·지지 브래킷을 넣어 다섯 층이었다. 그 둘은
+        /// 「원형 모듈을 벽에 붙인다」는 전제에서만 필요한 부품이고, 캐비닛이
+        /// 연속면이 된 지금은 **받을 하중이 없다.** 하중을 안 받는 브래킷은
+        /// 정의상 장식이고, 지시가 그것을 「기능적 관계 없이 추가된」 것으로 지목했다.
         ///
-        /// ① **후면 장착판과 지지 브래킷이 아예 없었다.** 링이 벽에서 바로 튀어나와
-        ///    「붙였다」가 아니라 「그렸다」로 보였다.
-        /// ② **링이 상자 12개로 끊겨 있었다.** 조각 사이에 틈이 벌어져 하나의 칼라가
-        ///    아니라 돌맹이 무더기였다.
-        ///
-        /// 이제 층이 깊이 축에서 실제로 겹친다 (−z 가 실내 쪽) —
+        /// 지금은 넷뿐이다 (−z 가 실내 쪽) —
         /// <code>
-        ///   z  0.000   ① 후면 장착판 — 링보다 1.18배 넓어 테가 보인다
-        ///   z −0.02..  ② 지지 브래킷 4개 — 장착판과 칼라를 잇는다
-        ///   z −0.160   ③ 외부 보호 칼라 — 12각, **이어진** 고리
-        ///   z −0.085   ④ 유리 — 칼라 앞면에서 75mm 들어가 있다
-        ///   z −0.108.. ⑤ 챔버 — 안쪽을 향한 벽과 바닥, 영혼은 유리 뒤 55mm
+        ///   z +0.198   ④ 챔버 후면 — 영혼 뒤의 어두운 배경
+        ///   z +0.100      영혼 (유리에서 115mm 뒤)
+        ///   z +0.028      챔버 입구 (도어 판 안쪽면)
+        ///   z  0.000   ① 사각 챔버 도어 바깥면 = 캐비닛 전면
+        ///   z −0.015   ③ 유리 — 링 앞면에서 45mm 안쪽
+        ///   z −0.060   ② 클램프 링 앞면 — 도어에서 60mm 돌출
         /// </code>
+        ///
+        /// 지시 「측면에서 최소 네 단계의 깊이가 구분됨」이 이 표다.
         /// </summary>
-        private static void BuildWindowMeshes(out Mesh backPlate, out Mesh bracket, out Mesh collar,
-                                              out Mesh chamber, out Mesh glass, out Mesh soul,
-                                              out Mesh bolt, out Mesh clamp)
+        private static void BuildWindowMeshes(out Mesh door, out Mesh ring, out Mesh chamber,
+                                              out Mesh glass, out Mesh soul,
+                                              out Mesh bolt, out Mesh hinge, out Mesh clamp)
         {
             int sides = ReferenceRoomSpec.WindowSilhouetteSides;
             float rGlass = ReferenceRoomSpec.WindowGlassDiameter * 0.5f;
             float rRing = ReferenceRoomSpec.WindowRingDiameter * 0.5f;
             float prot = ReferenceRoomSpec.WindowProtrusion;
+            float face = ReferenceRoomSpec.CabinetFaceThickness;
             float uv = ReferenceRoomSpec.HeroUvPerMeter;
 
-            // ── ① 후면 장착판 ──────────────────────────────────────────────
-            // 링보다 넓어서 **테가 보인다.** 그 테가 「모듈이 프레임에 볼트로 붙어
-            // 있다」를 말한다 — 없으면 링이 벽에서 자라난 것처럼 보인다.
-            float rPlate = rRing * ReferenceRoomSpec.WindowBackPlateOversize;
-            var pb = new ProcMeshBuilder();
-            pb.AddPrism(new Vector3(0f, 0f, -ReferenceRoomSpec.WindowBackPlateThickness * 0.5f),
-                        rPlate, rPlate, ReferenceRoomSpec.WindowBackPlateThickness,
-                        sides, MeshAxis.Z, 15f, true, true, false, uv);
-            backPlate = SaveMesh(pb.ToMesh("SoulWindowBackPlate"), "SoulWindowBackPlate");
+            // ── ① 사각 챔버 도어 ───────────────────────────────────────────
+            // 원형 창이 붙는 **판**이다. 판 자체가 챔버를 밀폐하므로 두께가 있다.
+            // 가장자리를 살짝 접어(0.008 단) 판이 프레임 안에 앉은 것으로 읽히게 한다.
+            //
+            // 🔴 **판이 아니라 「문」으로 읽혀야 한다.** 첫 판본은 이음매 5mm 짜리
+            // 민판이었고 독립 평가자가 「도어가 없다 — 리브 격자만 있고 그 안은
+            // 통짜 면이다」로 읽었다. 세 가지를 더한다 —
+            //   ① 이음매를 11mm 로 넓혀 판의 경계가 그림자로 보이게
+            //   ② 둘레에 개스킷 압착 프레임 (문을 눌러 밀폐하는 실제 부품)
+            //   ③ 링이 앉는 얕은 단
+            float dw = ReferenceRoomSpec.ChamberDoorWidth - ReferenceRoomSpec.DoorSeamWidth * 2f;
+            float dh = ReferenceRoomSpec.ChamberDoorHeight - ReferenceRoomSpec.DoorSeamWidth * 2f;
+            var db = new ProcMeshBuilder();
 
-            // ── ② 지지 브래킷 ──────────────────────────────────────────────
-            // 장착판과 칼라를 잇는 네 리브. **하중을 나르는 것처럼 보여야** 하므로
-            // 원주 방향으로 납작하고 깊이 방향으로 길다.
-            float bt = ReferenceRoomSpec.WindowBracketThickness;
-            var kb = new ProcMeshBuilder();
-            for (int i = 0; i < ReferenceRoomSpec.WindowBracketCount; i++)
+            // 🔴 **판에 구멍이 있어야 한다. 통짜 상자면 챔버가 통째로 가려진다.**
+            //
+            // 첫 판본은 `AddBox` 하나였다. 그 판이 도어 전체(0.52 × 0.48)를 막아
+            // **영혼도 챔버도 단 한 화소도 렌더되지 않았다.** 통제 실험이 그것을
+            // 증명했다 — 유리를 꺼도, 발광을 ×8 해도 화소 통계가 **비트 단위로
+            // 동일**했다(평균 9.7 / 붉은 0.00% / 암부 65.6%, 세 번 모두).
+            //
+            // 독립 평가자가 「9개가 전부 평판에 뚫린 얕은 열린 구멍이다 · 챔버가
+            // 없다」로 판정한 것이 이것이다. 그가 본 「얕은 바닥」은 챔버 후면이
+            // 아니라 **막힌 도어 판**이었다. 판정이 맞았고 원인만 달랐다.
+            //
+            // 🔴 **네 조각으로 만든다. 부채꼴로 이으면 뚫렸는지 증명할 수 없다.**
+            //
+            // 첫 판본은 사각 판과 12각 구멍을 부채꼴 `AddQuad` 로 이었다. 그 메시는
+            // **모든 검사를 통과했다** — 중심을 덮는 삼각형 0개, 메시 콜라이더
+            // 레이캐스트 r≤0.14 전부 통과, 삼각형 수도 정확히 예상대로 176.
+            // **그런데 화면에서는 막혀 있었다.** 그 도어 하나만 렌더러를 끄면
+            // 붉은 화소가 0.00% → 0.58% 로 살아났다.
+            //
+            // 원인을 끝내 형상 수준에서 특정하지 못했다(삼각화 순서나 노멀 처리로
+            // 의심되지만 증거가 없다). **증명할 수 없는 구조는 쓰지 않는다** —
+            // 사각 조각 넷은 「구멍이 있다」가 좌표만 봐도 자명하고, 같은 종류의
+            // 실패가 원리적으로 불가능하다.
+            //
+            // 개구부는 정사각이고 그 대각(0.187)이 링 안착 단(0.204)보다 작으므로
+            // **네 모서리가 밖에서 보이지 않는다.** 보이는 것은 원형 보어뿐이다.
+            float hwD = dw * 0.5f, hhD = dh * 0.5f;
+            float ap = ReferenceRoomSpec.DoorApertureHalf;
+            float bandY = hhD - ap, bandX = hwD - ap;
+            db.AddBox(new Vector3(0f, (ap + hhD) * 0.5f, face * 0.5f), new Vector3(dw, bandY, face), 0f, uv);
+            db.AddBox(new Vector3(0f, -(ap + hhD) * 0.5f, face * 0.5f), new Vector3(dw, bandY, face), 0f, uv);
+            db.AddBox(new Vector3(-(ap + hwD) * 0.5f, 0f, face * 0.5f), new Vector3(bandX, ap * 2f, face), 0f, uv);
+            db.AddBox(new Vector3((ap + hwD) * 0.5f, 0f, face * 0.5f), new Vector3(bandX, ap * 2f, face), 0f, uv);
+
+            // ② 개스킷 압착 프레임 — 네 변. 문의 윤곽을 그림자로 그린다.
+            float gb2 = ReferenceRoomSpec.DoorGasketBand;
+            float gp = ReferenceRoomSpec.DoorGasketProud;
+            db.AddBox(new Vector3(0f, dh * 0.5f - gb2 * 0.5f, -gp * 0.5f), new Vector3(dw, gb2, gp), 0f, uv);
+            db.AddBox(new Vector3(0f, -dh * 0.5f + gb2 * 0.5f, -gp * 0.5f), new Vector3(dw, gb2, gp), 0f, uv);
+            db.AddBox(new Vector3(-dw * 0.5f + gb2 * 0.5f, 0f, -gp * 0.5f), new Vector3(gb2, dh - gb2 * 2f, gp), 0f, uv);
+            db.AddBox(new Vector3(dw * 0.5f - gb2 * 0.5f, 0f, -gp * 0.5f), new Vector3(gb2, dh - gb2 * 2f, gp), 0f, uv);
+
+            // ③ 링이 앉는 얕은 단 — 링이 판 위에 그냥 떠 있지 않다.
+            //
+            // 🔴 **고리여야 한다. 원기둥이면 보어를 막는다.**
+            //
+            // 첫 판본은 `AddPrism(..., capA:true, capB:true, ...)` 였다. 뚜껑 달린
+            // 원기둥은 반지름 0.204 짜리 **꽉 찬 원반**이고, 그것이 도어에 뚫어 놓은
+            // 구멍을 그대로 덮었다. 그래서 도어 정점을 세어 「중심 0.10m 이내 0개」로
+            // 확인하고도 화면은 여전히 막혀 있었다 — 캡은 테두리 정점만으로
+            // 부채꼴을 만들기 때문에 **중심에 정점이 없으면서 중심을 덮는다.**
+            //
+            // 통제 실험이 결론을 냈다: 도어만 끄면 붉은 화소 0.00% → **2.11%**.
+            // 이 한 부품이 지시의 「영혼 내부 표현」 전체를 무효화하고 있었고,
+            // 독립 평가자가 본 「얕은 열린 구멍」의 바닥이 바로 이 원반이다.
+            float rSeat = ReferenceRoomSpec.WindowSeatRadius;
+            float rBore = rGlass;
+            const float seatDepth = 0.012f;
+            for (int i = 0; i < sides; i++)
             {
-                float a = (i + 0.5f) * Mathf.PI * 2f / ReferenceRoomSpec.WindowBracketCount;
-                float r = (rGlass + rRing) * 0.5f;
-                kb.AddBox(new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, -prot * 0.42f),
-                          new Vector3(bt * 2.2f, bt, prot * 0.72f),
-                          Quaternion.Euler(0f, 0f, a * Mathf.Rad2Deg + 90f), 0f, uv);
-            }
-            bracket = SaveMesh(kb.ToMesh("SoulWindowBracket"), "SoulWindowBracket");
+                float a0 = i * Mathf.PI * 2f / sides, a1 = (i + 1) * Mathf.PI * 2f / sides;
+                Vector3 si0 = new Vector3(Mathf.Cos(a0) * rBore, Mathf.Sin(a0) * rBore, -seatDepth);
+                Vector3 si1 = new Vector3(Mathf.Cos(a1) * rBore, Mathf.Sin(a1) * rBore, -seatDepth);
+                Vector3 so0 = new Vector3(Mathf.Cos(a0) * rSeat, Mathf.Sin(a0) * rSeat, -seatDepth);
+                Vector3 so1 = new Vector3(Mathf.Cos(a1) * rSeat, Mathf.Sin(a1) * rSeat, -seatDepth);
+                Vector3 outward = ((so0 + so1) * 0.5f).normalized;
+                var down = new Vector3(0f, 0f, seatDepth);
 
-            // ── ③ 외부 보호 칼라 ───────────────────────────────────────────
+                db.AddQuad(si0, so0, so1, si1, Vector3.back, uv);                         // 단 앞면 (고리)
+                db.AddQuad(so0 + down, so0, so1, so1 + down, outward, uv);                // 단 바깥 옆면
+            }
+            door = SaveMesh(db.ToMesh("ChamberDoor"), "ChamberDoor");
+
+            // ── ② 낮고 두꺼운 원형 클램프 링 ───────────────────────────────
+            //
+            // 🔴 지시 「외부 링은 12~16각형의 저폴리 원형으로 만든다. 현재처럼
+            // 장식적인 톱니나 꽃잎 모양의 팔각 실루엣을 사용하지 마라.」
+            //
             // **끊긴 상자가 아니라 이어진 고리다.** 인접 세그먼트가 같은 점을 공유하도록
-            // 각 변마다 안팎 네 점을 직접 잇는다. 직전 판본은 `AddBox` 12개를 각도만
-            // 돌려 놓아 모서리마다 틈이 벌어졌고, 그것이 「돌맹이」의 정체였다.
+            // 각 변마다 안팎 네 점을 직접 잇는다. `AddBox` 를 각도만 돌려 늘어놓으면
+            // 모서리마다 틈이 벌어지고, 그 틈이 「톱니·꽃잎」으로 보인다 —
+            // 직전 판본이 정확히 그랬다.
+            //
+            // 그리고 **한 겹이다.** 「과도하게 두꺼운 이중 팔각 링」이 제거 대상이므로
+            // 바깥 플랜지 + 안쪽 베젤 2단 구성을 하나로 합쳤다.
             var cb = new ProcMeshBuilder();
             float zFront = -prot;
-            float zBack = -prot + 0.052f;
+            float zBack = 0f;                 // 도어 면에 그대로 앉는다 — 뜨지 않는다
             for (int i = 0; i < sides; i++)
             {
                 float a0 = i * Mathf.PI * 2f / sides;
@@ -1047,38 +1438,40 @@ namespace Ascend.Prototype.EditorTools
 
                 cb.AddQuad(i0 + fz, o0 + fz, o1 + fz, i1 + fz, Vector3.back, uv);      // 앞면
                 cb.AddQuad(o0 + bz, o0 + fz, o1 + fz, o1 + bz, outward, uv);           // 바깥 옆면
-                cb.AddQuad(i0 + fz, i0 + bz, i1 + bz, i1 + fz, -outward, uv);          // 안쪽 옆면
+                cb.AddQuad(i0 + fz, i0 + bz, i1 + bz, i1 + fz, -outward, uv);          // 안쪽 보어
                 cb.AddQuad(o0 + bz, i0 + bz, i1 + bz, o1 + bz, Vector3.forward, uv);   // 뒷면
             }
-            collar = SaveMesh(cb.ToMesh("SoulWindowCollar"), "SoulWindowCollar");
+            ring = SaveMesh(cb.ToMesh("PressureWindowRing"), "PressureWindowRing");
 
-            // ── ⑤ 내부 챔버 ────────────────────────────────────────────────
-            // 유리 뒤의 **실제 공간**이다. 안쪽을 향한 원뿔대 벽 + 바닥.
-            // 직전 「우물」은 바깥을 향한 원통이라 챔버가 아니라 벽처럼 보였다.
+            // ── ④ 챔버 내부 ────────────────────────────────────────────────
+            //
+            // 🔴 **사각 상자다.** 직전 판본은 유리 지름의 원뿔대였고, 그래서 유리
+            // 바로 뒤가 곧 벽이었다 — 지시가 「원형창과 영혼 사이의 의미 없는 검은
+            // 빈 공간」이라고 부른 것이 그 원뿔이다. 밀폐 챔버는 도어 뒤의 **방**이지
+            // 창에 뚫린 구멍이 아니다.
+            //
+            // 안쪽을 향한 다섯 면(벽 넷 + 후면). 앞면은 도어가 막으므로 없다.
             var mb = new ProcMeshBuilder();
-            float cd = ReferenceRoomSpec.WindowChamberDepth;
-            float zMouth = -prot + 0.052f;
-            var floorC = new Vector3(0f, 0f, zMouth + cd);
-            for (int i = 0; i < sides; i++)
-            {
-                float a0 = i * Mathf.PI * 2f / sides;
-                float a1 = (i + 1) * Mathf.PI * 2f / sides;
-                var m0 = new Vector3(Mathf.Cos(a0) * rGlass, Mathf.Sin(a0) * rGlass, zMouth);
-                var m1 = new Vector3(Mathf.Cos(a1) * rGlass, Mathf.Sin(a1) * rGlass, zMouth);
-                float rb = rGlass * 0.86f;   // 바닥으로 갈수록 좁아진다 — 깊이가 강조된다
-                var f0 = new Vector3(Mathf.Cos(a0) * rb, Mathf.Sin(a0) * rb, zMouth + cd);
-                var f1 = new Vector3(Mathf.Cos(a1) * rb, Mathf.Sin(a1) * rb, zMouth + cd);
-                Vector3 inward = -((m0 + m1) * 0.5f).normalized;
-                mb.AddQuad(m0, f0, f1, m1, inward, uv);
-                mb.AddTriangle(f0, floorC, f1, Vector3.back, uv);
-            }
-            chamber = SaveMesh(mb.ToMesh("SoulWindowChamber"), "SoulWindowChamber");
+            float hw = ReferenceRoomSpec.ChamberInnerWidth * 0.5f;
+            float hh = ReferenceRoomSpec.ChamberInnerHeight * 0.5f;
+            float z0 = face;                                        // 입구 (도어 안쪽면)
+            float z1 = ReferenceRoomSpec.ChamberBackFromDoorFace;   // 후면
+            var b000 = new Vector3(-hw, -hh, z0); var b100 = new Vector3(hw, -hh, z0);
+            var b110 = new Vector3(hw, hh, z0);   var b010 = new Vector3(-hw, hh, z0);
+            var b001 = new Vector3(-hw, -hh, z1); var b101 = new Vector3(hw, -hh, z1);
+            var b111 = new Vector3(hw, hh, z1);   var b011 = new Vector3(-hw, hh, z1);
+            mb.AddQuad(b001, b101, b111, b011, Vector3.back, uv);      // 후면 (실내를 향한다)
+            mb.AddQuad(b000, b010, b011, b001, Vector3.right, uv);     // 좌벽 → 안쪽
+            mb.AddQuad(b100, b101, b111, b110, Vector3.left, uv);      // 우벽 → 안쪽
+            mb.AddQuad(b000, b001, b101, b100, Vector3.up, uv);        // 바닥 → 위
+            mb.AddQuad(b010, b110, b111, b011, Vector3.down, uv);      // 천장 → 아래
+            chamber = SaveMesh(mb.ToMesh("SoulChamberBox"), "SoulChamberBox");
 
-            // ── ④ 유리 ─────────────────────────────────────────────────────
-            // 칼라 앞면에서 **안쪽으로** 들어간다. 두께가 있어 가장자리가 어둡게 읽힌다.
+            // ── ③ 두꺼운 유리 ──────────────────────────────────────────────
+            // 링 앞면에서 45mm 안쪽. 두께 18mm 라 가장자리가 어둡게 읽힌다.
             var gb = new ProcMeshBuilder();
-            gb.AddPrism(new Vector3(0f, 0f, -prot + ReferenceRoomSpec.WindowGlassInset),
-                        rGlass * 0.97f, rGlass * 0.97f, 0.014f,
+            gb.AddPrism(new Vector3(0f, 0f, -ReferenceRoomSpec.WindowGlassFrontOffset),
+                        rGlass * 0.98f, rGlass * 0.98f, ReferenceRoomSpec.WindowGlassThickness,
                         sides, MeshAxis.Z, 0f, true, true, false, uv);
             glass = SaveMesh(gb.ToMesh("SoulWindowGlass"), "SoulWindowGlass");
 
@@ -1088,13 +1481,11 @@ namespace Ascend.Prototype.EditorTools
             // 「평면 분홍 아이콘」의 정체였다. 이제 표본마다 반지름을 결정론적으로
             // 흔들어 어느 각도에서도 대칭이 아니게 만든다.
             var sb2 = new ProcMeshBuilder();
-            // ⚠ **유리를 뚫지 않는 크기여야 한다.** 0.44 는 두께 0.225 를 만들어
-            // 영혼이 유리 앞으로 튀어나왔다(실측 bounds.min.z 1.962 < 유리 2.008).
-            // 그러면 「유리 뒤의 물질」이 아니라 「유리에 붙은 스티커」가 된다 —
-            // 고치려던 그 결함으로 되돌아간다.
-            //   z 반경 = rs × 1.16 × 최대흔들림(1.26) 이고, 이것이 standoff(0.055)
-            //   보다 작아야 유리 뒤에 머문다. 0.26 이면 z 반경 ≈ 0.053.
-            float rs = rGlass * 0.22f;
+            // ⚠ **유리도 챔버 후면도 뚫지 않는 크기여야 한다.**
+            // `ReferenceRoomSpec.SoulMaxHalfDepth` 가 인스턴스 크기 흔들림까지 곱해
+            // 그 두 여유(standoff 0.105 · 후면 0.108)와 비교되고, 불변식이 그것을 단정한다.
+            // 첫 값(지름의 0.30)이 실제로 후면을 뚫었고 검사가 즉시 잡았다.
+            float rs = ReferenceRoomSpec.SoulRadius;
             const int lat = 4, lon = 7;
             Vector3 V(float ph, float th, int seed)
             {
@@ -1122,18 +1513,39 @@ namespace Ascend.Prototype.EditorTools
             soul = SaveMesh(sb2.ToMesh("SoulObject"), "SoulObject");
 
             // ── 체결 볼트 ──────────────────────────────────────────────────
+            // 링을 도어에 물리는 볼트. **8개, 등간격, 모든 창이 같다.**
             var bb = new ProcMeshBuilder();
-            bb.AddPrism(Vector3.zero, 0.0155f, 0.0135f, 0.016f, 6, MeshAxis.Z, 0f, true, true, false, 16f);
-            bolt = SaveMesh(bb.ToMesh("SoulWindowBolt"), "SoulWindowBolt");
+            bb.AddPrism(Vector3.zero, 0.0145f, 0.0125f, 0.014f, 6, MeshAxis.Z, 0f, true, true, false, uv);
+            bolt = SaveMesh(bb.ToMesh("WindowClampBolt"), "WindowClampBolt");
+
+            // ── 도어 힌지 ──────────────────────────────────────────────────
+            // 경첩 몸통 + 핀. 「실제로 열릴 것처럼 보이는 작은 힌지」.
+            var hb2 = new ProcMeshBuilder();
+            hb2.AddBox(new Vector3(0f, 0f, -0.010f),
+                       new Vector3(ReferenceRoomSpec.DoorHingeWidth,
+                                   ReferenceRoomSpec.DoorHingeHeight, 0.020f), 0f, uv);
+            hb2.AddPrism(new Vector3(-ReferenceRoomSpec.DoorHingeWidth * 0.5f, 0f, -0.020f),
+                         0.011f, 0.011f, ReferenceRoomSpec.DoorHingeHeight * 1.15f,
+                         8, MeshAxis.Y, 0f, true, true, false, uv);
+            hinge = SaveMesh(hb2.ToMesh("ChamberDoorHinge"), "ChamberDoorHinge");
 
             // ── 잠금 클램프 ────────────────────────────────────────────────
-            // 「실제로 분리할 수 있어 보이는」 부품 — 몸통 + 회전축 + 젖히는 손잡이.
+            //
+            // **원점이 회전축이다.** 이 메시는 체결될 때 z 축으로 34도 돈다
+            // (`CustomsLockView`). 회전축이 원점이 아니면 클램프가 제자리에서
+            // 도는 게 아니라 궤도를 그려 「부품이 날아간다」로 보인다.
+            //
+            // 몸통은 회전축에서 **한쪽으로만** 뻗는다 — 대칭이면 돌아도 실루엣이
+            // 그대로라 「움직였다」가 화면에 없다. 이것이 상태 탭과 함께
+            // 「9개 챔버 잠금장치가 한 번에 체결됨」을 보여 주는 유일한 형상이다.
             var lb = new ProcMeshBuilder();
-            lb.AddBox(new Vector3(0f, 0f, -0.012f), new Vector3(0.030f, 0.058f, 0.024f), 0f, uv);
-            lb.AddPrism(new Vector3(0f, 0.024f, -0.026f), 0.010f, 0.010f, 0.028f, 6, MeshAxis.Z, 0f, true, true, false, uv);
-            lb.AddBox(new Vector3(0f, -0.028f, -0.030f), new Vector3(0.019f, 0.034f, 0.013f),
-                      Quaternion.Euler(28f, 0f, 0f), 0f, uv);
-            clamp = SaveMesh(lb.ToMesh("SoulWindowClamp"), "SoulWindowClamp");
+            lb.AddPrism(Vector3.zero, 0.013f, 0.013f, 0.026f, 8, MeshAxis.Z, 0f, true, true, false, uv);
+            lb.AddBox(new Vector3(0f, -ReferenceRoomSpec.DoorClampHeight * 0.55f, -0.008f),
+                      new Vector3(ReferenceRoomSpec.DoorClampWidth * 0.5f,
+                                  ReferenceRoomSpec.DoorClampHeight * 1.1f, 0.018f), 0f, uv);
+            lb.AddBox(new Vector3(0f, -ReferenceRoomSpec.DoorClampHeight * 1.05f, -0.014f),
+                      new Vector3(ReferenceRoomSpec.DoorClampWidth, 0.016f, 0.024f), 0f, uv);
+            clamp = SaveMesh(lb.ToMesh("ChamberLockClamp"), "ChamberLockClamp");
         }
 
         /// <summary>
@@ -1291,6 +1703,41 @@ namespace Ascend.Prototype.EditorTools
             // 한 덩어리 콘크리트로 읽힌다 — 실제로 그렇게 보였다.
             Render(hub, hubMesh, "Collar");
 
+            // ②b 구동 로드 — 허브의 회전을 **상단 공통축까지 올린다.**
+            //
+            // ⚠ 지시의 사슬(허브 → 공통 수평축)에 없는 부품이라 근거를 남긴다.
+            // 공통축은 상단 하우징(y≈1.93)에 있고 허브는 손이 닿아야 하므로 1.25 다.
+            // 둘을 직결하려면 공통축을 내리거나(→ 하우징이 3×3 격자 한가운데를
+            // 가로질러 「하나의 직사각형 기계」가 깨진다) 허브를 올려야 한다
+            // (→ 눈높이 1.62 에서 손이 안 닿는다). 그래서 세로 로드를 **명시적
+            // 부품으로** 넣는다. 이름이 있고, 무엇을 무엇으로 옮기는지 한 문장으로
+            // 답할 수 있고, 없으면 사슬이 끊긴다 — 지시의 부품 판단 규칙을 통과한다.
+            float rodW = ReferenceRoomSpec.LeverDriveRodWidth;
+            float rodTop = ReferenceRoomSpec.CommonShaftY;
+            float rodLen = rodTop - ReferenceRoomSpec.LeverPivotY;
+            Slab(column.transform, DriveRodName,
+                 new Vector3(0f, ReferenceRoomSpec.LeverPivotY + rodLen * 0.5f, -cd - bpt - 0.018f),
+                 new Vector3(rodW, rodLen, 0.036f), "Collar");
+
+            // 로드를 컬럼에 잡아 두는 가이드 셋. 「이 로드는 여기를 지난다」.
+            for (int i = 0; i < 3; i++)
+            {
+                float t = (i + 0.5f) / 3f;
+                Slab(column.transform, $"RodGuide_{i}",
+                     new Vector3(0f, Mathf.Lerp(ReferenceRoomSpec.LeverPivotY, rodTop, t), -cd - bpt - 0.006f),
+                     new Vector3(rodW * 1.9f, 0.026f, 0.030f), "BareSteel");
+            }
+
+            // ②c 모서리 기어박스 — 세로 로드가 가로 공통축으로 방향을 바꾸는 자리.
+            //
+            // ⚠ **z 를 손으로 적지 않는다.** 첫 판본은 `-cd - bpt - 0.020` 이었고,
+            // 공통축(캐비닛 쪽에서 계산됨)과 **206mm 어긋났다.** 두 부품이 만나는
+            // 지점의 좌표는 한 곳에서만 나와야 한다 — `CommonShaftZ` 가 그 한 곳이다.
+            float cbx = ReferenceRoomSpec.LeverCornerBoxSize;
+            Slab(column.transform, "CornerGearbox",
+                 new Vector3(0f, rodTop, ReferenceRoomSpec.CommonShaftZ),
+                 new Vector3(cbx * 1.3f, cbx, cbx * 0.62f), "Collar");
+
             // ③ 시작·끝 스토퍼 — 「이 범위를 넘지 않는다」를 형상으로 말한다.
             // 각도 계산 없이 슬롯 양 끝에 둔다. 두 개가 마주 보아야 범위로 읽힌다.
             float stop = ReferenceRoomSpec.LeverStopperSize;
@@ -1330,46 +1777,22 @@ namespace Ascend.Prototype.EditorTools
                 -cd - bpt - hubD - 0.062f);
             Render(pin, pinMesh, "RedPaint");
 
-            // ⑤ 링크 샤프트 — 레버에서 **장치 쪽으로** 이어지는 축. 이것이 없으면
-            // 레버와 3×3 장치가 같은 기계라는 근거가 화면에 없다.
-            var link = new GameObject("LinkShaft");
-            link.transform.SetParent(column.transform, false);
-            float linkR = ReferenceRoomSpec.LeverLinkRadius;
-            float linkSpan = Mathf.Abs(ReferenceRoomSpec.LeverColumnCenterX - ReferenceRoomSpec.MachineCenterX)
-                           - ReferenceRoomSpec.MachineWidth * 0.5f - cw * 0.5f + 0.14f;
-            var linkB = new ProcMeshBuilder();
-            linkB.AddPrism(Vector3.zero, linkR, linkR, linkSpan, 8, MeshAxis.X, 0f, true, true, false, uv);
-            // 축을 벽에 잡아 두는 베어링 브래킷 셋
-            for (int i = 0; i < 3; i++)
-            {
-                float t = (i + 0.5f) / 3f - 0.5f;
-                linkB.AddBox(new Vector3(t * linkSpan, 0f, 0.012f),
-                             new Vector3(0.030f, linkR * 3.2f, 0.034f), 0f, uv);
-            }
-            Mesh linkMesh = SaveMesh(linkB.ToMesh("LeverLinkShaft"), "LeverLinkShaft");
-            link.transform.localPosition = new Vector3(
-                -(cw * 0.5f + linkSpan * 0.5f - 0.06f),
-                ReferenceRoomSpec.LeverPivotY - 0.30f,
-                -cd * 0.45f);
-            Render(link, linkMesh, "BareSteel");
+            // ⚠ **`LinkShaft` 를 만들지 않는다.** 레버에서 장치로 가로질러 가던
+            // 그 축은 「레버와 장치가 같은 기계다」를 말하려던 것인데, 지금은
+            // 컬럼이 캐비닛에 **직접 결합**돼 있고(간격 0, 베이스 플레이트가
+            // 캐비닛을 10mm 물고 들어간다) 구동 로드가 상단 하우징까지 올라간다.
+            // 그 둘이 같은 말을 이미 하므로, 세 번째 축은 지시가 금지한
+            // 「실제 연결 대상을 알 수 없는 선」이 된다.
 
-            // 수직 슬롯. 명세 §5 「레버는 수직 슬롯을 따라 약 55도 범위로 움직인다」.
-            // 슬롯이 보여야 회전축과 이동 방향이 읽힌다(명세 §5 마지막 줄).
+            // ⑥ 수직 슬롯. 레버가 움직이는 범위를 형상으로 말한다.
             float slotH = 2f * ReferenceRoomSpec.LeverHandleLength * Mathf.Sin(ReferenceRoomSpec.LeverSwingDegrees * 0.5f * Mathf.Deg2Rad);
             Slab(column.transform, "Slot", new Vector3(0f, ReferenceRoomSpec.LeverPivotY, -cd - 0.004f),
-                 new Vector3(0.055f, slotH, 0.02f), "Grease");
+                 new Vector3(ReferenceRoomSpec.LeverSlotWidth, slotH, 0.02f), "Grease");
 
-            // 기계식 걸쇠와 톱니형 잠금 홈. 명세 §5 「실제로 고정되고 움직일 수 있는 구조로 보이게」.
-            var teeth = new GameObject("LatchTeeth");
-            teeth.transform.SetParent(column.transform, false);
-            int toothCount = 7;
-            for (int i = 0; i < toothCount; i++)
-            {
-                float y = Mathf.Lerp(ReferenceRoomSpec.LeverPivotY - slotH * 0.5f, ReferenceRoomSpec.LeverPivotY + slotH * 0.5f, i / (float)(toothCount - 1));
-                Slab(teeth.transform, $"Tooth_{i}", new Vector3(0.048f, y, -cd - 0.012f), new Vector3(0.030f, 0.012f, 0.026f), "BareSteel");
-            }
-            Slab(column.transform, "SpringGuide", new Vector3(-0.052f, ReferenceRoomSpec.LeverPivotY, -cd - 0.014f),
-                 new Vector3(0.018f, slotH * 0.8f, 0.018f), "BareSteel");
+            // ⚠ **톱니 7개와 스프링 가이드를 만들지 않는다.** 지시 「레버 옆에
+            // 의미 없는 작은 장치, 손잡이, 다이얼을 추가하지 마라」 — 컬럼에 허용된
+            // 부품 여덟에 톱니는 없다. 그 톱니는 「기계식 걸쇠처럼 보이게」 하려고
+            // 넣은 것이고, 실제로 무엇을 거는지 답할 수 없었다.
 
             // ── 손잡이 ──
             // 명세 §12 「레버: 손잡이 하단의 실제 회전축」 — 피벗을 별도 트랜스폼으로 둔다.
@@ -1511,20 +1934,17 @@ namespace Ascend.Prototype.EditorTools
             guard.transform.SetParent(lamp.transform, false);
             Render(guard, guardMesh, "BareSteel");
 
-            // ── 표지판 ──
-            // 명세 §5 「OVERHARVEST / CRITICAL SYSTEM · 페인트가 일부 벗겨진 공업용 스텐실」.
-            // 글자는 텍스처가 나른다(명세 §14). 여기서는 판만 세운다.
-            var sign = new GameObject("LeverSign");
-            sign.transform.SetParent(column.transform, false);
-            // 컬럼 원점이 이미 후면 벽이므로 z 는 상대값이다. 컬럼 전면(−cd)보다
-            // 조금 더 앞에 붙여야 판이 하우징에 묻히지 않는다.
-            sign.transform.localPosition = new Vector3(0f, ReferenceRoomSpec.LeverSignCenterY, -cd - 0.008f);
-            Slab(sign.transform, "Plate", Vector3.zero,
-                 new Vector3(ReferenceRoomSpec.LeverSignWidth, ReferenceRoomSpec.LeverSignHeight, 0.012f), "Sign");
+            // ⚠ **표지판을 세우지 않는다.** 지시가 「단순 장식용 위험 표지판」을
+            // 제거 대상으로 명시했다. 「글자는 나중에 텍스처로」라는 계획이 세
+            // 배치째 이어졌고, 그동안 그것은 기능을 설명할 수 없는 밝은 사각형이었다.
 
-            _report.AppendLine($"  {LeverBaseName} — 컬럼 {cw} × {ch} × {cd} @ x={ReferenceRoomSpec.LeverColumnCenterX:F2} " +
-                               $"· 회전축 y={ReferenceRoomSpec.LeverPivotY} · 가동 {ReferenceRoomSpec.LeverSwingDegrees}° (슬롯 {slotH:F3}m) " +
-                               $"· {WarningLampName} ⌀{ReferenceRoomSpec.WarningLampDiameter} @ y={ReferenceRoomSpec.WarningLampCenterY}");
+            _report.AppendLine($"  {LeverBaseName} — 컬럼 {cw:F2} × {ch:F3} × {cd:F2} @ x={ReferenceRoomSpec.LeverColumnCenterX:F3} " +
+                               $"· 캐비닛과 간격 {ReferenceRoomSpec.LeverGapFromMachine:F2} " +
+                               $"· 베이스 플레이트 겹침 {ReferenceRoomSpec.LeverPlateOverlap * 1000f:F0}mm");
+            _report.AppendLine($"    사슬 — 그립 → 암 → 허브(y={ReferenceRoomSpec.LeverPivotY}) → 구동 로드 {rodLen:F3}m " +
+                               $"→ 기어박스(y={rodTop:F3}) → 공통축 → 캠 로드 3 → 클램프 9");
+            _report.AppendLine($"    가동 {ReferenceRoomSpec.LeverSwingDegrees}° (슬롯 {slotH:F3}m) " +
+                               $"· {WarningLampName} ⌀{ReferenceRoomSpec.WarningLampDiameter} @ y={ReferenceRoomSpec.WarningLampCenterY:F3}");
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -1675,8 +2095,16 @@ namespace Ascend.Prototype.EditorTools
                 // 셸 — 바닥·벽·천장. 바닥이 이 목록의 존재 이유다.
                 "Wall_Left", "Wall_Right", "Wall_Rear", "Wall_Front", "Ceiling",
                 "Border_Left", "Border_Right", "Border_Front", "Border_Rear",
-                // 장치 — 통과해 들어갈 수 없어야 한다
-                "BackPlate", "Frame_Top", "Frame_Bottom", "Frame_Left", "Frame_Right",
+                // 장치 — 통과해 들어갈 수 없어야 한다.
+                // ⚠ 구 `BackPlate` 는 사라졌다(모듈 후면 장착판 삭제). 캐비닛의
+                // 연속 전면 셸이 그 역할을 대신하므로 **이름을 갈아 끼운다** —
+                // 안 갈면 장치 앞면에 콜라이더가 하나도 없어 플레이어가 통과한다.
+                // ⚠ `CabinetShell` 은 사라졌다(챔버를 막아서). 장치 앞면을 막는 것은
+                // 이제 **챔버 도어 9장**이다 — 없으면 플레이어가 캐비닛 안으로 걸어
+                // 들어간다. 상자 콜라이더는 메시 경계(도어 사각형 전체)로 잡히므로
+                // 보어가 뚫려 있어도 통과하지 못한다.
+                "Door", "CabinetBack",
+                "Frame_Top", "Frame_Bottom", "Frame_Left", "Frame_Right",
                 // 레버 컬럼과 전력 표시기
                 "Housing", "Back",
                 // 선반 — 명세 §7 「벽과 선반에는 단순한 Box Collider」

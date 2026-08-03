@@ -83,32 +83,122 @@ namespace Ascend.Prototype.EditorTools
             Transform grid = FindDeep(root.transform, "WindowGrid");
             if (grid == null) { _report.AppendLine("  ⚠ WindowGrid 를 찾지 못했다 — 결과판 이전 실패"); return; }
 
-            int moved = 0;
+            var board = Object.FindAnyObjectByType<View.SpinBoardView>(FindObjectsInactive.Include);
+            if (board == null) { _report.AppendLine("  ⚠ SpinBoardView 가 없다 — 결과판 이전 실패"); return; }
+
+            // 🔴 **인덱스가 정본이다. 경로도 이름도 아니다.**
+            //
+            // 직전 판본은 `GameObject.Find("TubesRoot/Tube_c/Cell_r")` 로 찾았다.
+            // 그 경로는 **첫 실행에서만 참이다** — 한 번 옮기고 나면 칸은 관찰창
+            // 안에 있고, 두 번째 실행부터 영원히 「없음」이 된다. 2026-08-03 에
+            // 그 상태에서 재조립이 돌아 아홉 칸을 통째로 파괴했고, 보고서는
+            // 「0/9」한 줄만 남겼다.
+            //
+            // `SpinBoardView._cells[i]` 를 읽으면 위치와 무관하게 정확히 그 칸이다.
+            // 살아 있으면 옮기고, 죽었으면 **새로 만든다** — 그러면 이 함수가
+            // 손상 복구기도 겸하게 되어 같은 사고에서 저절로 회복된다.
+            var so = new SerializedObject(board);
+            SerializedProperty cells = so.FindProperty("_cells");
+            if (cells == null) { _report.AppendLine("  ⚠ SpinBoardView._cells 를 찾지 못했다"); return; }
+            cells.arraySize = 9;
+
+            int moved = 0, created = 0;
             for (int col = 0; col < 3; col++)
             {
                 for (int row = 0; row < 3; row++)
                 {
-                    Transform cell = GameObject.Find($"TubesRoot/Tube_{col}/Cell_{row}")?.transform;
+                    // 인덱스 규약은 `SoulReelView`·`CustomsLockView` 와 **같다** — 열 우선.
+                    int index = col * 3 + row;
                     Transform module = grid.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
-                    if (cell == null || module == null)
-                    {
-                        _report.AppendLine($"  ⚠ 칸 ({col},{row}) — cell={(cell == null ? "없음" : "있음")} module={(module == null ? "없음" : "있음")}");
-                        continue;
-                    }
+                    if (module == null)
+                    { _report.AppendLine($"  ⚠ 칸 ({col},{row}) — 관찰창 모듈이 없다"); continue; }
 
-                    Undo.SetTransformParent(cell, module, "rewire board cell");
-                    // 유리 뒤, 우물 앞. 심볼이 유리에 파묻히거나 뚫고 나오지 않는 자리다.
-                    cell.localPosition = new Vector3(0f, 0f, -0.028f);
+                    SerializedProperty slot = cells.GetArrayElementAtIndex(index);
+                    var cell = slot.objectReferenceValue as Transform;
+
+                    // 구조 보관소에 있으면 거기서 꺼낸다(재조립이 빼 둔 것).
+                    if (cell == null) cell = FindRescued(col, row);
+                    // 최초 1회 — 아직 옛 위치에 있다.
+                    if (cell == null) cell = GameObject.Find($"TubesRoot/Tube_{col}/Cell_{row}")?.transform;
+
+                    if (cell == null) { cell = CreateCell(module, row); created++; }
+                    else { Undo.SetTransformParent(cell, module, "rewire board cell"); moved++; }
+
+                    // 심볼은 **챔버 안**, 영혼 바로 뒤에 놓는다. 유리 앞에 두면
+                    // 「유리에 붙은 스티커」가 되고, 영혼과 같은 z 면 겹쳐서 둘 다 안 읽힌다.
+                    cell.localPosition = new Vector3(0f, 0f,
+                        ReferenceRoomSpec.SoulDepthFromDoorFace + 0.030f);
                     cell.localRotation = Quaternion.identity;
-                    // 구 심볼은 통관 크기(0.15~0.17)에 맞춰 저작됐다. 새 유리 지름은
-                    // 0.32 라 그대로 두면 창을 꽉 채운다 — 명세 §4 「유리 전체를 밝히지
-                    // 말고 중앙에 작은 불규칙한 빛」에 어긋난다.
-                    cell.localScale = Vector3.one * 0.62f;
+                    // 심볼 원본이 0.15~0.17m 다. 유리 지름 0.29 안에서 둘레에 어둠이
+                    // 남아야 「챔버 안의 물체」로 읽히므로 0.85 로 줄인다.
+                    cell.localScale = Vector3.one * 0.85f;
+                    slot.objectReferenceValue = cell;
                     EditorUtility.SetDirty(cell);
-                    moved++;
                 }
             }
-            _report.AppendLine($"  결과판 — {moved}/9 칸을 관찰창 안으로 (행 0 = 위, 열 0 = 왼쪽)");
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(board);
+
+            // 구조 보관소가 비었으면 치운다. 빈 노드를 남기면 다음 사람이
+            // 「이게 뭐지」를 쫓게 된다.
+            GameObject park = GameObject.Find(AscendReferenceRoom.RescueRootName);
+            if (park != null && park.GetComponentsInChildren<Transform>(true).Length <= 1 + park.transform.childCount)
+            {
+                bool empty = true;
+                foreach (Transform s in park.transform) if (s.childCount > 0) { empty = false; break; }
+                if (empty) Object.DestroyImmediate(park);
+            }
+
+            _report.AppendLine($"  결과판 — 이전 {moved} · 신규 {created} / 9 칸 " +
+                               "(행 0 = 위, 열 0 = 왼쪽 · 인덱스 = 열×3+행)");
+            if (created > 0)
+                _report.AppendLine("     ℹ 신규는 재조립이 파괴한 칸을 복구한 것이다 — 정상 경로다.");
+        }
+
+        /// <summary>재조립이 빼 둔 칸을 원래 모듈 이름으로 되찾는다.</summary>
+        private static Transform FindRescued(int col, int row)
+        {
+            GameObject park = GameObject.Find(AscendReferenceRoom.RescueRootName);
+            if (park == null) return null;
+            Transform slot = park.transform.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
+            return slot != null ? slot.Find($"Cell_{row}") : null;
+        }
+
+        /// <summary>
+        /// 결과판 칸 하나를 새로 만든다. 심볼 세 종을 **미리** 만들고 전부 꺼 둔다 —
+        /// `SpinBoardView` 가 이름으로 하나만 켠다. 런타임 생성은 첫 스핀에서
+        /// 끊기고 결정론 캡처를 깨뜨린다(`HumanScaleLayout` 이 같은 이유를 적어 뒀다).
+        /// </summary>
+        private static Transform CreateCell(Transform module, int row)
+        {
+            var cell = new GameObject($"Cell_{row}");
+            cell.transform.SetParent(module, false);
+            Undo.RegisterCreatedObjectUndo(cell, "create board cell");
+
+            Symbol(cell.transform, "Sym_NormalSoul", PrimitiveType.Sphere, 0.17f);
+            Symbol(cell.transform, "Sym_Absorber", PrimitiveType.Cube, 0.16f);
+            Symbol(cell.transform, "Sym_Proliferator", PrimitiveType.Capsule, 0.15f);
+            return cell.transform;
+        }
+
+        private static void Symbol(Transform cell, string name, PrimitiveType type, float size)
+        {
+            GameObject go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(cell, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localScale = Vector3.one * size;
+            Undo.RegisterCreatedObjectUndo(go, "create symbol");
+
+            // 심볼은 조준 대상이 아니다. 콜라이더를 두면 뒤의 통관·벽 조준을 방해한다.
+            Collider c = go.GetComponent<Collider>();
+            if (c != null) Object.DestroyImmediate(c);
+
+            // 챔버 안이라 그림자를 만들 이유가 없다 — 보이지 않는데 비용만 든다.
+            var r = go.GetComponent<Renderer>();
+            if (r != null) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            go.SetActive(false);   // SpinBoardView 가 켠다
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -143,11 +233,26 @@ namespace Ascend.Prototype.EditorTools
             // `FindAnyObjectByType<InteractableOverharvestLever>()` 가 못 찾아
             // 10층 검증이 첫 줄에서 죽는다 (이미 한 번 그렇게 죽였다).
             //
-            // ⚠ **덮개(`CoverPivot`)와 잠금등(`LockLight`)은 남긴다.**
-            // `OverharvestUnlockEffect` 가 그것들을 움직여 「2단 구간이 열렸다」를
-            // 표현하고, 그건 `D-20260802-10` 의 통합 레버가 요구하는 바로 그 신호다.
-            // 형상이 겹치는 것과 연출이 사는 것은 다른 문제다.
-            string[] duplicateBody = { "Housing", "HandleShaft", "HandleGrip", "WarningStripe", "WarningStripe_Upper" };
+            // 🔴 **2026-08-03 정정 — 「덮개와 잠금등은 남긴다」가 사실이 아니었다.**
+            //
+            // 직전 판본의 이 자리에는 「`OverharvestUnlockEffect` 가 덮개(`CoverPivot`)와
+            // 잠금등(`LockLight`)을 움직여 2단 구간이 열렸음을 표현하므로 남긴다」고
+            // 적혀 있었다. **씬을 직접 읽어 보니 거짓이다** — 그 컴포넌트의 필드는
+            // `_warningStripes` = [WarningStripe, WarningStripe_Upper] · `_shakeTarget` =
+            // Housing · `_spotLight` = UnlockSpot 뿐이고, 덮개·리브·잠금등을 가리키는
+            // 참조가 씬 어디에도 없다.
+            //
+            // 그리고 그 남겨 둔 덮개가 실제 피해를 냈다 — 0.44 × 0.56 짜리 판이
+            // 레버 컬럼 앞 0.31m 에 떠서 **새 컬럼과 캐비닛 우측 뱅크를 가렸다.**
+            // 그레이박스 캡처에서 검은 사각형으로 나타났고, 지시의 합격 기준
+            // 「9개 창과 레버가 함께 보임」을 정면으로 깼다.
+            //
+            // 기록이 실물과 다를 때는 실물이 이긴다. 덮개 셋도 함께 숨긴다.
+            string[] duplicateBody =
+            {
+                "Housing", "HandleShaft", "HandleGrip", "WarningStripe", "WarningStripe_Upper",
+                "CoverPlate", "CoverRib", "LockLight",
+            };
             int hiddenBody = 0;
             foreach (Renderer r in legacy.GetComponentsInChildren<Renderer>(true))
             {
@@ -182,9 +287,27 @@ namespace Ascend.Prototype.EditorTools
             // 구 계기판은 −45° 로 비스듬했다. 명세 §6 은 벽에 붙은 정면 표시기를
             // 요구하므로 실내(−Z)를 정면으로 세운다.
             panel.rotation = Quaternion.Euler(0f, 180f, 0f);
-            // 구 패널은 0.62 로 눌려 있었다. 새 표시기 안에 들어가게 정규화한다.
-            panel.localScale = Vector3.one * 0.5f;
+
+            // 🔴 **크기를 눈으로 정하지 않고 화면에 맞춘다.**
+            //
+            // 0.5 로 고정해 뒀더니 계기판이 표시기 화면보다 커서 **왼쪽으로
+            // 넘쳐 레버 컬럼을 가렸다.** 그레이박스 캡처에서 컬럼 앞에 검은
+            // 판이 덮여 있었고, 그건 지시의 합격 기준 「플레이어 기본 시점에서
+            // 9개 창과 **레버**가 함께 보임」을 바로 깨뜨린다.
+            //
+            // 실제 경계를 재서 화면 안에 들어갈 배율을 계산한다. 원본 크기를
+            // 모르는 채 상수를 적으면 원본이 바뀔 때마다 같은 사고가 난다.
+            panel.localScale = Vector3.one;
+            Bounds b = Encapsulate(panel);
+            float screenW = ReferenceRoomSpec.PowerMeterWidth - 0.11f;
+            float screenH = ReferenceRoomSpec.PowerMeterHeight - 0.11f;
+            float fit = 1f;
+            if (b.size.x > 0.0001f) fit = Mathf.Min(fit, screenW / b.size.x);
+            if (b.size.y > 0.0001f) fit = Mathf.Min(fit, screenH / b.size.y);
+            panel.localScale = Vector3.one * Mathf.Clamp(fit, 0.05f, 1f);
             EditorUtility.SetDirty(panel);
+            _report.AppendLine($"     계기판 배율 {panel.localScale.x:F3} " +
+                               $"(원본 {b.size.x:F2}×{b.size.y:F2} → 화면 {screenW:F2}×{screenH:F2})");
 
             _report.AppendLine($"  전력 표시기 — 계기판을 Anchor_Value ({anchor.position.x:F2}, {anchor.position.y:F2}, {anchor.position.z:F2}) 로 " +
                                $"· 읽기 거리 요구 {ReferenceRoomSpec.PowerMeterReadDistance}m");
@@ -233,11 +356,28 @@ namespace Ascend.Prototype.EditorTools
             // 장치 왼쪽에 남는 후면 벽 (x −2.00 ~ −1.40) 이 유일하게 빈 벽면이다.
             float freeWallX = (ReferenceRoomSpec.WallLeftX + ReferenceRoomSpec.MachineLeftX) * 0.5f;
 
-            Place("GrayboxWorld/Car/Console",
-                  new Vector3(ReferenceRoomSpec.LeverColumnCenterX,
-                              ReferenceRoomSpec.LeverPivotY,
-                              ReferenceRoomSpec.WallRearZ - ReferenceRoomSpec.LeverColumnDepth - 0.05f),
+            // 🔴 **실행 레버 상호작용체는 새 그립 **위에** 놓고 형상은 숨긴다.**
+            //
+            // 그레이박스 캡처에서 이 오브젝트가 레버 컬럼 앞을 **검은 판으로 덮고
+            // 있었다.** 구 조작대 슬래브라 새 컬럼과 같은 자리를 차지하고, 그 결과
+            // 지시의 합격 기준 「9개 창과 **레버**가 함께 보임」이 깨졌다.
+            //
+            // 이 저장소는 같은 실패를 이미 한 번 겪었다 — 구 레버 몸통이 새 축 보스와
+            // 그립을 통째로 가렸고, 사용자가 「모델링 디테일이 왜 반영 안 됐냐」고
+            // 물었다. 반영은 됐고 **가려져** 있었다.
+            //
+            // 오브젝트를 끄지 않는다. `TenFloorAutoPilot` 이 `FindAnyObjectByType<T>()`
+            // 를 인자 없이 불러 **비활성을 찾지 못하고**, 그러면 10층 검증이 첫 줄에서
+            // 죽는다(실제로 죽였다). 콜라이더는 살려 두고 **렌더러만** 끈다 —
+            // 조준은 그대로 되고 화면에서만 사라진다.
+            Transform grip = FindDeep(root.transform, "Grip");
+            Vector3 leverSpot = grip != null
+                ? grip.position
+                : new Vector3(ReferenceRoomSpec.LeverColumnCenterX, ReferenceRoomSpec.LeverPivotY,
+                              ReferenceRoomSpec.WallRearZ - ReferenceRoomSpec.LeverColumnDepth - 0.30f);
+            Place("GrayboxWorld/Car/Console", leverSpot,
                   Quaternion.Euler(0f, 180f, 0f), 0.5f, "실행 레버(InteractableLever)");
+            HideRenderers("GrayboxWorld/Car/Console", "구 조작대 슬래브");
 
             // ⚠ **후면 벽에 두지 않는다.** 첫 판본이 장치 왼쪽(freeWallX)에 뒀더니
             // 밝은 판이 통관 장치를 정면에서 가렸다 — 명세 §2 의 시각적 우선순위 1 이
@@ -267,6 +407,36 @@ namespace Ascend.Prototype.EditorTools
                   new Vector3(ReferenceRoomSpec.WallLeftX + 0.10f, 1.30f,
                               ReferenceRoomSpec.WallFrontZ + 0.55f),
                   Quaternion.Euler(0f, 90f, 0f), 0.8f, "사고 기록기");
+        }
+
+        /// <summary>
+        /// 오브젝트는 살려 두고 **렌더러만** 끈다.
+        ///
+        /// 끄지 않는 이유가 하네스에 있다 — `FindAnyObjectByType&lt;T&gt;()` 는 비활성
+        /// 오브젝트를 찾지 않는다. 콜라이더도 남겨야 조준이 된다.
+        /// TMP 텍스트는 남긴다(월드 안내문은 캡처 쪽에서 따로 끈다).
+        /// </summary>
+        private static void HideRenderers(string path, string what)
+        {
+            GameObject go = GameObject.Find(path);
+            if (go == null)
+            {
+                string leaf = path.Substring(path.LastIndexOf('/') + 1);
+                foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include))
+                    if (t.name == leaf) { go = t.gameObject; break; }
+            }
+            if (go == null) { _report.AppendLine($"  ⚠ {what} — `{path}` 를 찾지 못했다"); return; }
+
+            int hidden = 0;
+            foreach (Renderer r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.GetComponent<TMPro.TMP_Text>() != null) continue;
+                if (!r.enabled) continue;
+                r.enabled = false;
+                EditorUtility.SetDirty(r);
+                hidden++;
+            }
+            _report.AppendLine($"     {what} 렌더러 {hidden}개 비표시 (오브젝트·콜라이더는 살린다)");
         }
 
         private static void Place(string path, Vector3 pos, Quaternion rot, float scale, string what)
@@ -347,6 +517,13 @@ namespace Ascend.Prototype.EditorTools
                 _report.AppendLine($"  릴 연출 — 구슬 {found}/9 배선 · 총 {reel.TotalDuration:F2}초 " +
                                    $"(열 정지 {reel.StopTimeOf(0):F2} / {reel.StopTimeOf(1):F2} / {reel.StopTimeOf(2):F2}초)");
             }
+
+            // ── 공통 잠금 기구 — 「외부 연결부가 가만히 있으면 실패다」 ────────
+            //
+            // 지시(2026-08-03)가 실패 조건을 한 문장으로 못박았다: 「레버를 당겼는데
+            // 외부 연결부는 가만히 있고 영혼만 갑자기 멈추면 실패다.」
+            // 그래서 구동 로드·공통축·상태 탭·클램프 9개를 한 컴포넌트에 묶는다.
+            WireCustomsLock(root, grid);
 
             var so = new SerializedObject(impact);
             Set(so, "_keyLight", lamp != null ? lamp.GetComponentInChildren<Light>(true) : null);
@@ -435,6 +612,74 @@ namespace Ascend.Prototype.EditorTools
                 _report.AppendLine("     ⚠ `LeverStateMachine` 이 씬에 없다 — 타격이 발동하지 않는다.");
             if (pulled == 0)
                 _report.AppendLine("     ⚠ `InteractableLever` 와 연결되지 않았다 — **레버가 움직이지 않는다.**");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  공통 잠금 기구 — 레버에서 9개 클램프까지의 동력 전달
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// <see cref="View.CustomsLockView"/> 를 세우고 부품 14개를 물린다.
+        ///
+        /// **개수를 보고한다.** 하나라도 비면 그 단계가 조용히 안 움직이고,
+        /// 「전달 경로를 추적할 수 있다」는 합격 기준이 그 자리에서 깨진다.
+        /// 조용한 실패를 화면이 아니라 로그에서 먼저 잡으려는 것이다.
+        /// </summary>
+        private static void WireCustomsLock(GameObject root, Transform grid)
+        {
+            Transform machine = root.transform.Find(AscendReferenceRoom.MachineName);
+            Transform column = root.transform.Find(AscendReferenceRoom.LeverBaseName);
+            if (machine == null || column == null)
+            { _report.AppendLine("  ⚠ 잠금 기구 미배선 — 장치 또는 레버 컬럼이 없다"); return; }
+
+            var fsm = Object.FindAnyObjectByType<View.LeverStateMachine>(FindObjectsInactive.Include);
+            var lockView = root.GetComponent<View.CustomsLockView>();
+            if (lockView == null) lockView = root.AddComponent<View.CustomsLockView>();
+
+            Transform rod = FindDeep(column, AscendReferenceRoom.DriveRodName);
+            Transform shaft = FindDeep(machine, AscendReferenceRoom.CommonShaftName);
+            Transform pin = FindDeep(column, AscendReferenceRoom.LeverLockPinName);
+
+            var tabs = new Transform[View.CustomsLockView.Banks];
+            int tabCount = 0;
+            for (int b = 0; b < View.CustomsLockView.Banks; b++)
+            {
+                tabs[b] = FindDeep(machine, $"{AscendReferenceRoom.StatusTabName}_{b}");
+                if (tabs[b] != null) tabCount++;
+            }
+
+            // 클램프 인덱스 규약은 `SoulReelView.Index` 와 **같다** — 열 우선.
+            // 다르게 두면 「어느 뱅크가 먼저 물리는가」가 릴과 어긋나 인과가 깨진다.
+            var clamps = new Transform[View.CustomsLockView.Chambers];
+            int clampCount = 0;
+            for (int col = 0; col < 3; col++)
+                for (int row = 0; row < 3; row++)
+                {
+                    Transform module = grid.Find($"{AscendReferenceRoom.WindowModuleName}_{col}{row}");
+                    Transform c = module != null ? module.Find(AscendReferenceRoom.LockClampName) : null;
+                    clamps[col * 3 + row] = c;
+                    if (c != null) clampCount++;
+                }
+
+            lockView.Configure(fsm, rod, shaft, pin, tabs, clamps);
+            EditorUtility.SetDirty(lockView);
+
+            // 발동은 배선으로 건다. `onLatched` 는 레버가 바닥에 걸린 그 순간이고,
+            // 그것이 「동력이 전달되기 시작하는」 시각의 정의다.
+            if (fsm != null)
+            {
+                var fso = new SerializedObject(fsm);
+                SerializedProperty latch = Calls(fso, "onLatched");
+                if (latch != null) Hook(latch, lockView, typeof(View.CustomsLockView), "Engage");
+                fso.ApplyModifiedProperties();
+                EditorUtility.SetDirty(fsm);
+            }
+
+            _report.AppendLine($"  공통 잠금 기구 — 구동 로드 {(rod != null ? "○" : "×")} · 공통축 {(shaft != null ? "○" : "×")} " +
+                               $"· 잠금핀 {(pin != null ? "○" : "×")} · 상태 탭 {tabCount}/3 · 클램프 {clampCount}/9 " +
+                               $"· 레버 {(fsm != null ? "○" : "×")}");
+            if (rod == null || shaft == null || tabCount < 3 || clampCount < 9)
+                _report.AppendLine("     ⚠ 전달 경로에 빈 곳이 있다 — 「외부 연결부가 가만히 있는」 실패 조건이다.");
         }
 
         /// <summary>UnityEvent 의 영구 호출 목록을 꺼낸다. 없으면 null.</summary>
@@ -596,6 +841,19 @@ namespace Ascend.Prototype.EditorTools
         }
 
         // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 자식 렌더러 전체의 월드 경계. 없으면 크기 0.
+        /// 배율을 상수로 적지 않고 **재서** 정하기 위한 것이다.
+        /// </summary>
+        private static Bounds Encapsulate(Transform t)
+        {
+            Renderer[] rs = t.GetComponentsInChildren<Renderer>(true);
+            if (rs.Length == 0) return new Bounds(t.position, Vector3.zero);
+            Bounds b = rs[0].bounds;
+            for (int i = 1; i < rs.Length; i++) b.Encapsulate(rs[i].bounds);
+            return b;
+        }
 
         private static Transform FindDeep(Transform parent, string name)
         {
