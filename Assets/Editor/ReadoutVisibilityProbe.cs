@@ -312,7 +312,7 @@ namespace Ascend.Prototype.EditorTools
             if (EditorApplication.isPlaying)
             { Debug.LogError("[상승] Play 모드에서는 찍지 않는다."); return; }
 
-            const string dir = "Captures/symbols_v5_20260805";
+            const string dir = "Captures/symbols_v6_20260805";
             var log = new StringBuilder($"[상승] === 고정 캡처 세트 → {dir} ===\n");
 
             // 🔴 찍기 **전에** 유령 서브메시를 지운다. 3차 평가의 「전력 0 /」가
@@ -328,7 +328,7 @@ namespace Ascend.Prototype.EditorTools
             cam.targetTexture = rt;
 
             var man = new StringBuilder();
-            man.AppendLine("symbols_v5_20260805 capture manifest");
+            man.AppendLine("symbols_v6_20260805 capture manifest");
             man.AppendLine($"resolution {Width}x{Height}  fovVertical {FovVertical}  antialiasing None  " +
                            $"RT ARGB32 sRGB  MSAA off  post {(data != null && data.renderPostProcessing ? "ON" : "OFF")}");
             man.AppendLine($"machineFingerprint {SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
@@ -860,6 +860,21 @@ namespace Ascend.Prototype.EditorTools
             return x1 >= 0f && x0 <= Width && y1 >= 0f && y0 <= Height;
         }
 
+        /// <summary>
+        /// 상자가 프레임 **밖으로 걸쳐 있는가** (UP-FIX-102).
+        ///
+        /// 🔴 프러스텀 확인만으로는 부족하다. 7차 독립 평가가 잡았다 —
+        /// `D_wide_corner` 에서 반복기가 프레임 왼쪽 끝에 잘려 화면에는 「0 0%」만
+        /// 남는데, 매니페스트는 그것을 「전력줄 20px」로 **온전히 잰다.**
+        /// 「닿는가」와 「다 들어왔는가」는 다른 물음이고, 판독 화소는 뒤쪽이어야 한다.
+        /// </summary>
+        private static bool BoxClipped(Vector3 a, Vector3 b)
+        {
+            float x0 = Mathf.Min(a.x, b.x), x1 = Mathf.Max(a.x, b.x);
+            float y0 = Mathf.Min(a.y, b.y), y1 = Mathf.Max(a.y, b.y);
+            return x0 < 0f || x1 > Width || y0 < 0f || y1 > Height;
+        }
+
         private static Transform FindIn(Transform root, string name)
         {
             if (root.name == name) return root;
@@ -943,7 +958,7 @@ namespace Ascend.Prototype.EditorTools
                     if (tmp != null)
                     {
                         tmp.ForceMeshUpdate();
-                        float h = 0f; int n = 0;
+                        float h = 0f; int n = 0, clip = 0;
                         var info = tmp.textInfo;
                         for (int c = 0; c < info.characterCount; c++)
                         {
@@ -953,9 +968,11 @@ namespace Ascend.Prototype.EditorTools
                             Vector3 b = cam.WorldToScreenPoint(tmp.transform.TransformPoint(ch.topRight));
                             if (a.z <= 0f || b.z <= 0f) continue;
                             if (!BoxTouchesFrame(a, b)) continue;
+                            if (BoxClipped(a, b)) { clip++; continue; }
                             h = Mathf.Max(h, Mathf.Abs(b.y - a.y)); n++;
                         }
-                        linepx = n == 0 ? "화각밖" : $"{h:F0}px";
+                        linepx = n == 0 ? (clip > 0 ? "잘림" : "화각밖")
+                               : clip > 0 ? $"{h:F0}px(잘림{clip})" : $"{h:F0}px";
                     }
                     row.Append($"{(bore <= 0 ? "화각밖" : bore + "px"),-10}{linepx,-12}");
                 }
@@ -969,7 +986,7 @@ namespace Ascend.Prototype.EditorTools
             TMPro.TMP_Text t = TmpIn(col.transform, parent, leaf);
             if (t == null) return "-";
             t.ForceMeshUpdate();
-            float h = 0f; int n = 0;
+            float h = 0f; int n = 0, clipped = 0;
             var info = t.textInfo;
             for (int i = 0; i < info.characterCount; i++)
             {
@@ -979,9 +996,11 @@ namespace Ascend.Prototype.EditorTools
                 Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
                 if (a.z <= 0f || b.z <= 0f) continue;
                 if (!BoxTouchesFrame(a, b)) continue;   // 화면에 없는 글자를 판독 화소로 세지 않는다
+                if (BoxClipped(a, b)) { clipped++; continue; }   // 잘린 글자는 판독 화소가 아니다
                 h = Mathf.Max(h, Mathf.Abs(b.y - a.y)); n++;
             }
-            return n == 0 ? "화각밖" : $"{h:F0}px";
+            if (n == 0) return clipped > 0 ? "잘림" : "화각밖";
+            return clipped > 0 ? $"{h:F0}px(잘림{clipped})" : $"{h:F0}px";
         }
 
         private static string BorePx(Camera cam, GameObject col)

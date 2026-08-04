@@ -385,10 +385,24 @@ namespace Ascend.Prototype.EditorTools
                 pips.Add(mr);
             }
 
-            TextMeshPro powerLine = Label(data.transform, "PowerLine", new Vector3(-0.192f, -0.087f, faceZ - 0.020f),
+            // 🔴 **x −0.192 → −0.120 (UP-FIX-101).**
+            //
+            // 7차 독립 평가가 `A`·`B`·`D`·`H` 네 포즈 전부에서 「전력 0 0%」가
+            // **「력 0 0%」**로 읽힌다고 잡았다. 원인은 글자도 재질도 아니라 **겹침**이다 —
+            // `LockPinHousing` 이 x −0.201…−0.163 을 차지하고 글자보다 32mm 앞에 있어서,
+            // 왼쪽 정렬 첫 글자 `전`(−0.192…−0.122)을 사선 화각에서 가린다.
+            // C·E 반복기가 같은 문자열을 온전히 그리는 것이 증거였다(거기엔 잠금핀이 없다).
+            //
+            // 글자를 줄이거나 밝히지 않는다. **자리를 비켜난다** — 잠금핀 하우징
+            // 오른쪽 끝(−0.163)에서 43mm 떨어뜨려 사선 시차까지 흡수한다.
+            // 예비줄도 같은 x 로 맞춘다(왼쪽 정렬선이 둘로 갈라지면 판이 어수선해진다).
+            // 예비줄 최장 문구 `배수 2.40배   손실 62` 는 0.067 상자에서 폭 ≈0.50 이라
+            // −0.120 에서 시작해 0.38 에 끝난다 — 판 오른쪽 끝 0.402 안이다.
+            const float lineX = -0.120f;
+            TextMeshPro powerLine = Label(data.transform, "PowerLine", new Vector3(lineX, -0.087f, faceZ - 0.020f),
                                           AscentColumnSpec.PowerLineBox, "전력 0   0%", InkSupport,
                                           TextAlignmentOptions.MidlineLeft, 26f);
-            TextMeshPro reserveLine = Label(data.transform, "ReserveLine", new Vector3(-0.192f, -0.171f, faceZ - 0.020f),
+            TextMeshPro reserveLine = Label(data.transform, "ReserveLine", new Vector3(lineX, -0.171f, faceZ - 0.020f),
                                             AscentColumnSpec.ReserveLineBox, "배수 0.00배   손실 —", InkReserve,
                                             TextAlignmentOptions.MidlineLeft, 34f);
 
