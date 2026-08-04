@@ -5116,7 +5116,7 @@ FUN_CRITERIA §1 에 정정을 적고 대역을 방문률에서 역산하도록 
 | 과수확 레버 덮개가 `OverharvestProfile.UnlockThreshold` 를 무시 | **고침** — 판정식을 `CanTakeExtraSpin` 하나로 통일 |
 | 정산 스냅샷이 층에 **주입되지 않음** (`_settlement` 대입 코드 0곳) | **고침** — 생성자 층 추가 + `RunSessionBehaviour` 슬롯 + 회귀 검사 3건 |
 | `RouletteInteractionBridge` 주석이 **뒤집힌 §7** 을 근거로 인용 | **고침** — 사실로 정정 (구현은 플레이스홀더로 명시) |
-| 2단 통합 레버 미구현 (0.7~1.0초 유지 입력 0곳) | `PENDING_DECISIONS` P-20260804-01 |
+| 2단 통합 레버 미구현 — ⚠ **부분 해소 (2026-08-04 `4a5dc12`)**: 유지 입력 0.85초는 붙었으나 **레버는 여전히 둘이다.** 아래 「(7) 절」 참조 | `PENDING_DECISIONS` P-20260804-01 |
 | 「예상 정산 가치」 화면 표시 0곳 | `PENDING_DECISIONS` P-20260804-02 |
 
 ### 🔑 통과한 검사 10개가 죽은 배선을 하나도 못 잡았다
@@ -5746,3 +5746,60 @@ b/r             0.6083   .45  ~ .62       안       .6032 (안)
 
 `Captures/symbols_v2_20260804/manifest.txt` 를 독립 평가에 넘긴다.
 `VERIFIED` 로 올리지 않는다 — 이 세션은 구현자다.
+
+---
+
+## 2026-08-04 (7) — 빠진 진행 기록을 뒤늦게 채운다 (과수확 유지 입력)
+
+**이 절은 사후 기록이다.** `4a5dc12`(과수확 유지 입력)가 이 문서를 갱신하지 않고 커밋됐다 —
+`CLAUDE.md` 규칙 7 위반이다. 그 결과 위쪽 표가 「유지 입력 0곳」이라고 **사실이 아닌 것**을
+계속 적고 있었다. 다음 세션이 이 문서만 읽으면 이미 붙은 것을 다시 붙이려 든다.
+
+### 무엇이 구현됐나
+
+| 파일 | 내용 |
+|---|---|
+| `Scripts/Player/IHoldInteractable.cs` (신규 44줄) | `HoldSeconds` / `OnHoldProgress(float)` / `OnHoldCancelled()`. `IInteractable` 상속 |
+| `Scripts/Player/CrosshairInteractor.cs:174-231` | 유지 루프. `leftButton.isPressed` 동안 `_holdElapsed += Time.deltaTime`, `t >= 1f` 에 `Interact()` |
+| `Scripts/Player/CrosshairInteractor.cs:216-219` | `CancelHold()` — 조준 이탈·마우스 null·`OnDisable` 전부 여기로 수렴 |
+| `Scripts/Player/InteractableOverharvestLever.cs` | `IInteractable` → `IHoldInteractable`. `_holdSeconds` 기본 **0.85** |
+| `Scripts/Player/Tests/HoldInputTests.cs` (신규 212줄) | 검사 7건 |
+| `Scenes/Prototype_Elevator.unity:2263` | `_holdSeconds: 0.85` 직렬화됨 |
+
+설계 특징 — **진행도가 곧 손잡이 각도**이고 별도 UI 링이 없다. `OnHoldProgress` 가
+**같은 프레임에** `ApplyHandle()` 을 부른다(Update 에 맡기면 한 프레임 지연).
+
+### PRD §7 충족 여부 — **미충족. 자기 신고된 플레이스홀더다**
+
+씬 실측(GUID 인스턴스 카운트): `InteractableLever` 1개 + `InteractableOverharvestLever` 1개
+→ **레버는 여전히 둘이다.**
+
+| §7 요구 | 상태 |
+|---|---|
+| 「물리 레버는 하나다」 | ❌ 둘 |
+| 첫 걸림점 = 일반 스핀 / 붉은 두 번째 구간 노출 | ❌ 걸림점 개념 없음 |
+| 0.7~1.0초 유지 입력 | ✅ 0.85 |
+| 선택 전 **예상 정산 가치** 표시 | ❌ `P-20260804-02` 미해결 |
+
+이것은 `PENDING_DECISIONS.md` 의 **선택지 C** 를 실행한 것이고, 커밋 메시지·클래스 주석·
+PENDING 문서 셋 다 플레이스홀더임을 명시한다.
+
+### 함께 고친 것 — 뒤집힌 근거 두 번째
+
+`InteractableOverharvestLever` 의 클래스 주석이 「일반 실행 레버와 **다른 물체**여야 하는 이유」를
+`MASTER_PRD §7` 을 근거로 적고 있었다. §7 은 2026-08-02 에 **정확히 그 반대**로 확정됐으므로
+**미구현을 뒤집힌 근거로 정당화**하고 있었다. `RouletteInteractionBridge` 에서 같은 부류를
+이미 한 번 고쳤고 이번이 두 번째다.
+
+### 함께 정리한 것 (2026-08-04, 문서 정합성)
+
+`docs/TOPDOWN_MASTER_BACKLOG.md` 가 구현·평가 실제 상태보다 **8커밋 뒤처져 있었다.**
+`UP-FIX-80·82·83·86·87` 이 실질 해결됐는데 전부 「열림」이었고,
+`UP-FIX-87` 의 기록된 추정 하나(「`PanelBack` 에 가려 있다」)는 차분 렌더로 **반증됐는데도**
+원문에 남아 있었다. 다섯 항목을 근거·커밋·남은 미달과 함께 갱신했다.
+
+4차 평가가 지적했으나 어디에도 기록되지 않았던 **회귀 3건**을 신규 등록했다 —
+`UP-FIX-88`(B·F 계기판 프레임 절단) / `UP-FIX-89`(정보 위계 역전) /
+`UP-FIX-90`(방 안 최고 백색이 계기 텍스트). `UP-FIX-91` 로 이 정합성 작업 자체를 기록했다.
+
+**`VERIFIED` 로 올린 것은 없다.** 「열림 → 조치 완료·평가 대기」는 자기 승인이 아니다.
