@@ -46,6 +46,10 @@ namespace Ascend.Prototype.UI.Tests
             Case("런이 null 이어도 9줄이다", TestNullRunStillNineLines, ref passed, ref failed, report);
             Case("문장을 코드가 아니라 에셋이 정한다", TestTemplateIsActuallyRead, ref passed, ref failed, report);
 
+            // PRD §10 「위험 상태 변화」 — 최고치가 아니라 **변화**를 요구한다.
+            Case("위험 전이 이력이 기록에 실린다", TestRiskTransitionsRecorded, ref passed, ref failed, report);
+            Case("전이가 없으면 그 줄이 아예 안 나온다", TestNoTransitionsNoLine, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Run Summary Builder Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -77,6 +81,73 @@ namespace Ascend.Prototype.UI.Tests
         /// 대신 그것이 부르는 것과 **같은 함수**(`FloorRecord.Capture`)를 같은 시점에 부른다 —
         /// 다른 경로로 만든 기록으로 검사하면 화면이 보는 것을 검사한 것이 아니다.
         /// </summary>
+        /// <summary>
+        /// 위험 전이 목록이 기록을 거쳐 보고서 문장까지 살아 나오는가.
+        ///
+        /// **「Capture 가 받는가」가 아니라 「보고서에 보이는가」를 묻는다.** 받아 놓고
+        /// 출력하지 않으면 플레이어에게는 없는 것과 같고, 이 저장소는 정확히 그
+        /// 부류(계산되지만 소비자가 0곳)를 이번 세션에 이미 한 번 발견했다.
+        /// </summary>
+        private static string TestRiskTransitionsRecorded()
+        {
+            // Arrange — 전이 셋을 손으로 만든다. 씬 없이 `RiskStateView` 를 못 쓰기 때문이다.
+            var transitions = new List<FloorRecord.RiskTransition>
+            {
+                new FloorRecord.RiskTransition(1, RiskLevel.Strain,   "잔류 저항"),
+                new FloorRecord.RiskTransition(3, RiskLevel.Critical, "과적"),
+                new FloorRecord.RiskTransition(4, RiskLevel.Strain,   "정화"),
+            };
+
+            var run = new RunSession(4242, 0f, 0f, FloorSession.DefaultAnteRatio,
+                                     FloorSession.DefaultAnteEscalation, new TenFloorSource());
+            FloorSession floor = run.Current;
+            if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
+            if (floor.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
+            while (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0) run.Spin();
+            FloorResult result = floor.CanBank ? run.Bank() : run.ForceResolve();
+            if (result == null) return "1층이 확정되지 않았다 — 전제가 성립하지 않는다";
+
+            // Act
+            FloorRecord record = FloorRecord.Capture(run.Seed, floor, result,
+                RiskLevel.Critical, "과적", null, transitions);
+
+            // Assert
+            if (record.RiskTransitions.Count != 3)
+                return $"전이 {record.RiskTransitions.Count}개 — 3개여야 한다";
+            if (record.RiskTransitions[1].Level != RiskLevel.Critical)
+                return "두 번째 전이의 단계가 다르다 — 순서가 보존되지 않았다";
+            if (record.RiskTransitions[2].Level != RiskLevel.Strain)
+                return "내려가는 전이가 사라졌다 — 오르내림 둘 다 정보다";
+
+            string summary = record.Summary();
+            if (!summary.Contains("위험 변화"))
+                return "요약에 「위험 변화」 줄이 없다 — 기록만 하고 보여 주지 않으면 없는 것과 같다";
+            if (!summary.Contains("3스핀"))
+                return "요약에 전이 시점이 없다 — 「언제부터」가 이 항목의 전부다: " + summary;
+            return null;
+        }
+
+        /// <summary>전이가 없으면 빈 줄을 만들지 않는다 — 「기록 없음」도 노이즈다.</summary>
+        private static string TestNoTransitionsNoLine()
+        {
+            var run = new RunSession(7, 0f, 0f, FloorSession.DefaultAnteRatio,
+                                     FloorSession.DefaultAnteEscalation, new TenFloorSource());
+            FloorSession floor = run.Current;
+            if (floor.Phase == FloorPhase.Boarding) run.FinishBoarding();
+            if (floor.Phase == FloorPhase.ContractSelection) run.SelectContract(0);
+            while (floor.Phase == FloorPhase.Spinning && floor.SpinsRemaining > 0) run.Spin();
+            FloorResult result = floor.CanBank ? run.Bank() : run.ForceResolve();
+            if (result == null) return "1층이 확정되지 않았다";
+
+            FloorRecord record = FloorRecord.Capture(run.Seed, floor, result,
+                RiskLevel.Stable, "위험 요인 없음");
+
+            if (record.RiskTransitions.Count != 0) return "전이를 안 넘겼는데 목록이 비어 있지 않다";
+            if (record.Summary().Contains("위험 변화"))
+                return "전이가 없는데 「위험 변화」 줄이 나온다";
+            return null;
+        }
+
         private static List<FloorRecord> Play(int seed, bool overharvest, out RunSession run)
         {
             run = new RunSession(seed, 0f, 0f,

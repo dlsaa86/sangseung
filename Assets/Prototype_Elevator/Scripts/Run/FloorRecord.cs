@@ -88,12 +88,41 @@ namespace Ascend.Prototype.Run
         }
 
         /// <summary>
+        /// 위험 단계가 **바뀐 순간** 하나. PRD §10 「잔류 저항과 위험 상태 변화」의
+        /// 「변화」 쪽이 이것이다 — 최고치 하나만 남기면 「언제부터 위험해졌는가」가
+        /// 사라지고, 그건 실패 원인을 설명하는 데 최고치보다 중요할 때가 많다.
+        /// </summary>
+        public readonly struct RiskTransition
+        {
+            /// <summary>이 변화가 일어났을 때 이미 쓴 스핀 수. 0 이면 첫 스핀 전이다.</summary>
+            public readonly int SpinsUsed;
+            public readonly RiskLevel Level;
+            public readonly string Reason;
+
+            public RiskTransition(int spinsUsed, RiskLevel level, string reason)
+            {
+                SpinsUsed = spinsUsed;
+                Level = level;
+                Reason = reason;
+            }
+
+            public override string ToString()
+                => $"{SpinsUsed}스핀 → {Level.DisplayName()}({Reason})";
+        }
+
+        private RiskTransition[] _riskTransitions = System.Array.Empty<RiskTransition>();
+
+        /// <summary>위험 단계가 바뀐 순간들. 시간순. 변화가 없었으면 비어 있다.</summary>
+        public IReadOnlyList<RiskTransition> RiskTransitions => _riskTransitions;
+
+        /// <summary>
         /// 끝난 층에서 기록을 만든다. <paramref name="result"/>가 null이면 아직 확정되지
         /// 않은 층이므로 진행 중 스냅샷이 된다.
         /// </summary>
         public static FloorRecord Capture(int runSeed, FloorSession floor, FloorResult result,
                                           RiskLevel peakRisk, string riskReason,
-                                          string jettison = null)
+                                          string jettison = null,
+                                          IReadOnlyList<RiskTransition> riskTransitions = null)
         {
             var record = new FloorRecord
             {
@@ -128,6 +157,13 @@ namespace Ascend.Prototype.Run
                 Jettison = result != null && result.RequiresJettison ? jettison : null,
             };
 
+            if (riskTransitions != null && riskTransitions.Count > 0)
+            {
+                var copy = new RiskTransition[riskTransitions.Count];
+                for (int i = 0; i < riskTransitions.Count; i++) copy[i] = riskTransitions[i];
+                record._riskTransitions = copy;
+            }
+
             // 추가 스핀은 뒤쪽부터 ExtraSpinsTaken 개다 — 판돈을 걸고 돌린 스핀이 어느 것인지
             // 표시하지 않으면 "왜 전력이 줄었는가"를 설명할 수 없다.
             var history = floor.History;
@@ -158,6 +194,12 @@ namespace Ascend.Prototype.Run
                 sb.AppendLine("과수확 없음 — 달성 시점에 확정");
 
             sb.AppendLine($"위험 최고 {PeakRisk.DisplayName()}  ({RiskReason})");
+            // 「최고 얼마였나」와 「언제부터 그랬나」는 다른 정보다. PRD §10 이 요구하는
+            // 것은 「위험 상태 **변화**」이고, 실패 원인을 설명할 때 더 쓸모 있는 쪽은
+            // 대개 시점이다 — 「3스핀째부터 Critical 이었다」가 「최고 Critical」보다 많이 말한다.
+            if (_riskTransitions.Length > 0)
+                sb.AppendLine("위험 변화 — " + string.Join(" · ",
+                    System.Array.ConvertAll(_riskTransitions, t => t.ToString())));
             sb.AppendLine(FinalResidual.IsClean ? "잔류 없음" : $"잔류 — {FinalResidual.Describe()}");
 
             // 무게는 허용치와 함께 적어야 뜻이 생긴다. 33kg 이 위험한지 아닌지는

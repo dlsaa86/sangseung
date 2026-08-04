@@ -27,6 +27,20 @@ namespace Ascend.Prototype.Run
         private RiskLevel _peakRisk = RiskLevel.Stable;
         private string _peakReason = "위험 요인 없음";
 
+        /// <summary>
+        /// 이 층에서 위험 단계가 바뀐 순간들. **최고치와 별개로 필요하다** —
+        /// PRD §10 이 요구하는 것은 「위험 상태 **변화**」이고, 실패 원인을 설명할 때
+        /// 「3스핀째부터 Critical 이었다」가 「최고 Critical」보다 많이 말한다.
+        ///
+        /// 매 프레임이 아니라 **단계가 실제로 바뀐 프레임만** 담는다. 그러지 않으면
+        /// 60fps × 층 길이만큼의 쓰레기가 되고, 기록도 못 읽는다.
+        /// </summary>
+        private readonly List<FloorRecord.RiskTransition> _riskTransitions =
+            new List<FloorRecord.RiskTransition>();
+
+        /// <summary>직전 프레임의 단계. 전이 검출의 기준점이다.</summary>
+        private RiskLevel _lastRisk = RiskLevel.Stable;
+
         /// <summary>지금까지 기록된 층. 마지막 원소가 가장 최근이다.</summary>
         public IReadOnlyList<FloorRecord> Records => _records;
 
@@ -85,8 +99,17 @@ namespace Ascend.Prototype.Run
                         recordedReason = "층 실패";
                 }
 
+                // 결과에서 유도한 Collapse 는 전이 목록에도 들어가야 한다.
+                // 요약에는 「최고 붕괴」라고 적혀 있는데 변화 목록에는 없으면
+                // 같은 화면 안에서 두 줄이 서로를 부정한다 — 이 파일이 이미
+                // 한 번 겪은 자기모순이다(위 주석 참조).
+                if (recordedRisk == RiskLevel.Collapse && _lastRisk != RiskLevel.Collapse)
+                    _riskTransitions.Add(new FloorRecord.RiskTransition(
+                        _tracked.SpinsUsed, RiskLevel.Collapse, recordedReason));
+
                 _records.Add(FloorRecord.Capture(session.Seed, _tracked, _tracked.Result,
-                                                 recordedRisk, recordedReason, session.LastJettison));
+                                                 recordedRisk, recordedReason, session.LastJettison,
+                                                 _riskTransitions));
                 if (_logFullReport) Debug.Log($"[상승]\n{_records[_records.Count - 1].FullReport()}");
                 _tracked = null;
                 ResetPeak();
@@ -105,6 +128,16 @@ namespace Ascend.Prototype.Run
         private void TrackPeakRisk()
         {
             if (_risk == null || _tracked == null) return;
+
+            // 전이는 **오르내림 둘 다** 잡는다. 내려가는 것도 정보다 —
+            // 「Critical 까지 갔다가 정화로 Strain 으로 내려왔다」는 그 층의 이야기다.
+            if (_risk.Level != _lastRisk)
+            {
+                _riskTransitions.Add(new FloorRecord.RiskTransition(
+                    _tracked.SpinsUsed, _risk.Level, _risk.Reason));
+                _lastRisk = _risk.Level;
+            }
+
             if (_risk.Level > _peakRisk)
             {
                 _peakRisk = _risk.Level;
@@ -116,6 +149,10 @@ namespace Ascend.Prototype.Run
         {
             _peakRisk = RiskLevel.Stable;
             _peakReason = "위험 요인 없음";
+            _riskTransitions.Clear();
+            // 층이 바뀌면 기준점도 돌아간다. 안 그러면 새 층의 첫 전이가
+            // 「이미 그 단계였다」로 읽혀 기록에서 사라진다.
+            _lastRisk = RiskLevel.Stable;
         }
     }
 }
