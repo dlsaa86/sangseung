@@ -386,9 +386,13 @@ public static class HumanScaleLayout
 
                 // 심볼 3종을 미리 만들어두고 하나만 켠다. 런타임에 프리미티브를 만들면
                 // 첫 스핀에서 끊기고, 결정론 캡처에서도 프레임마다 결과가 달라진다.
-                MakeSymbol(cell.transform, "Sym_NormalSoul",   PrimitiveType.Sphere,  0.17f);
-                MakeSymbol(cell.transform, "Sym_Absorber",     PrimitiveType.Cube,    0.16f);
-                MakeSymbol(cell.transform, "Sym_Proliferator", PrimitiveType.Capsule, 0.15f);
+                //
+                // 🔴 **형상 정의는 여기 없다.** `SymbolShapeFactory` 한 곳에만 있다.
+                // 예전엔 이 파일과 `AscendReferenceRoomRewire` 가 각각
+                // 구/정육면체/캡슐을 적어 두었고, 그래서 「어느 메뉴로 조립했는가」에
+                // 따라 화면이 달라질 수 있었다. 두 경로가 같은 함수를 부른다.
+                Ascend.Prototype.EditorTools.SymbolShapeFactory.Build(cell.transform);
+                Ascend.Prototype.EditorTools.SymbolShapeFactory.ClearCell(cell.transform);
             }
         }
 
@@ -407,30 +411,11 @@ public static class HumanScaleLayout
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        _log.AppendLine("  결과칸 9개 + 칸막이 6개 생성 — 심볼은 구/정육면체/캡슐로 형태 구분");
+        _log.AppendLine("  결과칸 9개 + 칸막이 6개 생성 — 심볼 형상은 `SymbolShapeFactory` 소유 " +
+                        "(구 1개 0.168 / 뾰족 1개 0.124 / 덩어리 3개 0.058)");
     }
 
     private const int SpinBoard_Cells = 9;
-
-    private static void MakeSymbol(Transform cell, string name, PrimitiveType type, float size)
-    {
-        Transform existing = cell.Find(name);
-        GameObject go;
-        if (existing != null) go = existing.gameObject;
-        else
-        {
-            go = GameObject.CreatePrimitive(type);
-            go.name = name;
-            go.transform.SetParent(cell, false);
-            Undo.RegisterCreatedObjectUndo(go, "Create " + name);
-            // 심볼은 조준 대상이 아니다. 콜라이더를 두면 뒤의 통관·벽 조준을 방해한다.
-            Collider c = go.GetComponent<Collider>();
-            if (c != null) Object.DestroyImmediate(c);
-        }
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localScale = Vector3.one * size;
-        go.SetActive(false);   // SpinBoardView가 켠다
-    }
 
     private static GameObject EnsurePlainChild(Transform parent, string name)
     {

@@ -102,7 +102,8 @@ namespace Ascend.Prototype.EditorTools
             if (cells == null) { _report.AppendLine("  ⚠ SpinBoardView._cells 를 찾지 못했다"); return; }
             cells.arraySize = 9;
 
-            int moved = 0, created = 0;
+            int moved = 0, created = 0, hiddenSouls = 0;
+            var wired = new Transform[9];
             for (int col = 0; col < 3; col++)
             {
                 for (int row = 0; row < 3; row++)
@@ -124,20 +125,38 @@ namespace Ascend.Prototype.EditorTools
                     if (cell == null) { cell = CreateCell(module, row); created++; }
                     else { Undo.SetTransformParent(cell, module, "rewire board cell"); moved++; }
 
-                    // 심볼은 **챔버 안**, 영혼 바로 뒤에 놓는다. 유리 앞에 두면
-                    // 「유리에 붙은 스티커」가 되고, 영혼과 같은 z 면 겹쳐서 둘 다 안 읽힌다.
-                    cell.localPosition = new Vector3(0f, 0f,
-                        ReferenceRoomSpec.SoulDepthFromDoorFace + 0.030f);
+                    // 🔴 **심볼이 영혼의 자리를 차지한다** (`UP-FIX-82`).
+                    //
+                    // 직전 판본은 칸을 영혼보다 **30mm 뒤**(z = 영혼 + 0.030)에 두고
+                    // 0.85 로 줄였다. 실측하면 그 배치는 심볼을 화면에서 완전히 지운다 —
+                    // 장식 `SoulObject` 의 월드 폭이 0.177 이고 심볼은 0.145 인데
+                    // **장식이 더 크고 더 앞에** 있다. 정면 가림률 100% 다.
+                    // 평가자가 「아홉 칸이 전부 같은 붉은 덩어리」로 본 것이 그것이고,
+                    // 실제로 아홉 칸은 **같은 물체**를 보여 주고 있었다.
+                    //
+                    // 그래서 칸을 영혼과 **같은 z** 에 놓고 배율을 1 로 되돌린다.
+                    // 크기는 메시에 구워져 있다(`SymbolShapeFactory`) — 배율로
+                    // 조절하면 두 경로가 또 달라진다.
+                    cell.localPosition = new Vector3(0f, 0f, ReferenceRoomSpec.SoulDepthFromDoorFace);
                     cell.localRotation = Quaternion.identity;
-                    // 심볼 원본이 0.15~0.17m 다. 유리 지름 0.29 안에서 둘레에 어둠이
-                    // 남아야 「챔버 안의 물체」로 읽히므로 0.85 로 줄인다.
-                    cell.localScale = Vector3.one * 0.85f;
+                    cell.localScale = Vector3.one;
+
+                    // **매번 다시 만든다.** 「없으면 만든다」였을 때 이미 있던 칸 아홉이
+                    // 옛 프리미티브를 그대로 들고 있어 형상 개정이 화면에 도달하지 않았다.
+                    SymbolShapeFactory.Build(cell);
+
                     slot.objectReferenceValue = cell;
+                    wired[index] = cell;
                     EditorUtility.SetDirty(cell);
+
+                    // 장식 영혼을 끈다 — 그 자리를 심볼이 대신한다. 오브젝트는 남긴다.
+                    hiddenSouls += HideSoulDecoration(module);
                 }
             }
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(board);
+
+            SeedPreviewBoard(wired);
 
             // 구조 보관소가 비었으면 치운다. 빈 노드를 남기면 다음 사람이
             // 「이게 뭐지」를 쫓게 된다.
@@ -151,8 +170,71 @@ namespace Ascend.Prototype.EditorTools
 
             _report.AppendLine($"  결과판 — 이전 {moved} · 신규 {created} / 9 칸 " +
                                "(행 0 = 위, 열 0 = 왼쪽 · 인덱스 = 열×3+행)");
+            _report.AppendLine($"     심볼 형상 재적용 9칸 · 장식 영혼 렌더러 {hiddenSouls}개 비표시 " +
+                               $"· 칸 z={ReferenceRoomSpec.SoulDepthFromDoorFace:F3} 배율 1.000");
             if (created > 0)
                 _report.AppendLine("     ℹ 신규는 재조립이 파괴한 칸을 복구한 것이다 — 정상 경로다.");
+        }
+
+        /// <summary>
+        /// 관찰창의 장식 영혼(`SoulObject` + 그 `Core`) **렌더러를 끈다.**
+        ///
+        /// 오브젝트는 지우지도 끄지도 않는다 — 조립기가 매 재조립마다 다시 만들고,
+        /// 지우면 다음 재조립이 「빠뜨렸다」로 읽어 되돌린다. 렌더러만 끄면
+        /// 조립기가 다시 켜도 이 함수가 다시 끄므로 두 builder 가 싸우지 않는다.
+        ///
+        /// 왜 꺼야 하는가: 이것이 아홉 칸을 같아 보이게 만든 물체다. 모든 창에
+        /// 같은 형상·같은 크기로 항상 켜져 있었고 결과판 심볼보다 크고 앞이었다.
+        /// 심볼이 같은 자리에 같은 재질로 서므로 **붉은 광원은 사라지지 않는다** —
+        /// 형태만 칸마다 달라진다 (`UP-FIX-53` 회귀 방지).
+        /// </summary>
+        private static int HideSoulDecoration(Transform module)
+        {
+            Transform soul = module.Find(AscendReferenceRoom.SoulName);
+            if (soul == null) return 0;
+            int hidden = 0;
+            foreach (Renderer r in soul.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r.enabled) continue;
+                Undo.RecordObject(r, "hide soul decoration");
+                r.enabled = false;
+                EditorUtility.SetDirty(r);
+                hidden++;
+            }
+            return hidden;
+        }
+
+        /// <summary>
+        /// 저장된 씬의 **기본 판**을 세운다.
+        ///
+        /// 왜 필요한가: 장식 영혼을 끄고 나면 빈 판은 아홉 개의 검은 구멍이다.
+        /// 그런데 에디트 모드 캡처(`Ascend/Room/Capture Hero Objects` 등)는
+        /// 게임을 돌리지 않으므로 판이 항상 비어 있고, 그러면 시각 평가가
+        /// **플레이어가 실제로 보는 화면이 아닌 것**을 판정하게 된다.
+        /// `EyeLevelCapture` 는 이미 같은 이유로 촬영 전에 판을 채운다.
+        ///
+        /// 값은 고정 패턴이다 — 정상 5 · 흡수 2 · 증식 2. 직선을 만들지 않아
+        /// 「정화 직전」처럼 보이지 않고, 세 종류가 한 화면에 다 들어온다.
+        /// 플레이가 시작되면 `SpinBoardView.Awake` 의 `ClearAll` 이 즉시 지운다.
+        /// </summary>
+        private static void SeedPreviewBoard(Transform[] cells)
+        {
+            // 열 우선 인덱스(= 열×3 + 행). 행 0 이 위다.
+            Spin.SymbolKind[] pattern =
+            {
+                Spin.SymbolKind.NormalSoul,   Spin.SymbolKind.Absorber,     Spin.SymbolKind.NormalSoul,
+                Spin.SymbolKind.Proliferator, Spin.SymbolKind.NormalSoul,   Spin.SymbolKind.Absorber,
+                Spin.SymbolKind.NormalSoul,   Spin.SymbolKind.Proliferator, Spin.SymbolKind.NormalSoul,
+            };
+            int shown = 0;
+            for (int i = 0; i < cells.Length && i < pattern.Length; i++)
+            {
+                if (cells[i] == null) continue;
+                SymbolShapeFactory.ShowKind(cells[i], pattern[i]);
+                shown++;
+            }
+            _report.AppendLine($"     기본 판 {shown}/9 칸 (정상 5 · 흡수 2 · 증식 2) " +
+                               "— 에디트 모드 캡처용. 플레이 진입 시 ClearAll 이 지운다");
         }
 
         /// <summary>재조립이 빼 둔 칸을 원래 모듈 이름으로 되찾는다.</summary>
@@ -165,40 +247,17 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
-        /// 결과판 칸 하나를 새로 만든다. 심볼 세 종을 **미리** 만들고 전부 꺼 둔다 —
-        /// `SpinBoardView` 가 이름으로 하나만 켠다. 런타임 생성은 첫 스핀에서
-        /// 끊기고 결정론 캡처를 깨뜨린다(`HumanScaleLayout` 이 같은 이유를 적어 뒀다).
+        /// 결과판 칸 하나를 **껍데기만** 새로 만든다. 심볼 형상은 곧바로
+        /// <see cref="SymbolShapeFactory.Build"/> 가 채운다 — 호출부가 신규·기존을
+        /// 가리지 않고 매번 부르므로, 여기서 형상을 적으면 정의가 둘이 된다.
+        /// 그것이 `UP-FIX-82` 가 화면에 도달하지 못한 이유였다.
         /// </summary>
         private static Transform CreateCell(Transform module, int row)
         {
             var cell = new GameObject($"Cell_{row}");
             cell.transform.SetParent(module, false);
             Undo.RegisterCreatedObjectUndo(cell, "create board cell");
-
-            Symbol(cell.transform, "Sym_NormalSoul", PrimitiveType.Sphere, 0.17f);
-            Symbol(cell.transform, "Sym_Absorber", PrimitiveType.Cube, 0.16f);
-            Symbol(cell.transform, "Sym_Proliferator", PrimitiveType.Capsule, 0.15f);
             return cell.transform;
-        }
-
-        private static void Symbol(Transform cell, string name, PrimitiveType type, float size)
-        {
-            GameObject go = GameObject.CreatePrimitive(type);
-            go.name = name;
-            go.transform.SetParent(cell, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localScale = Vector3.one * size;
-            Undo.RegisterCreatedObjectUndo(go, "create symbol");
-
-            // 심볼은 조준 대상이 아니다. 콜라이더를 두면 뒤의 통관·벽 조준을 방해한다.
-            Collider c = go.GetComponent<Collider>();
-            if (c != null) Object.DestroyImmediate(c);
-
-            // 챔버 안이라 그림자를 만들 이유가 없다 — 보이지 않는데 비용만 든다.
-            var r = go.GetComponent<Renderer>();
-            if (r != null) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            go.SetActive(false);   // SpinBoardView 가 켠다
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -311,6 +370,26 @@ namespace Ascend.Prototype.EditorTools
             _report.AppendLine($"     계기판 배율 {panel.localScale.x:F3} " +
                                $"(원본 {b.size.x:F2}×{b.size.y:F2} → 화면 {screenW:F2}×{screenH:F2})");
 
+            // 🔴 **배율만 맞추고 위치를 안 맞췄다** (`UP-FIX-87`).
+            //
+            // `panel.position = anchor.position` 은 **루트**를 옮긴다. 그런데 이
+            // 계기판의 자식들은 구 그레이박스 시절의 **월드 좌표**를 로컬로 들고 있어
+            // 루트에서 크게 떨어져 있다. 실측 — 루트 (1.288, 1.412, 2.162) 인데
+            // 실제 그려지는 덩어리의 중심은 (1.543, 1.961, 1.681) 이었다.
+            // 즉 판독면에서 **0.26 오른쪽 · 0.55 위 · 0.48 앞**의 허공이다.
+            //
+            // 재는 값이 하나 빠져 있으면 그 축은 조용히 어긋난다 — 배율은 화면에
+            // 맞췄는데 그 화면 위에 있지 않았다. 실제 경계를 다시 재서 **차이만큼**
+            // 루트를 민다. 상수를 적지 않으므로 원본이 바뀌어도 따라간다.
+            Bounds fitted = Encapsulate(panel);
+            Vector3 want = anchor.position + panel.forward * (fitted.size.z * 0.5f + 0.006f);
+            panel.position += want - fitted.center;
+            EditorUtility.SetDirty(panel);
+            Bounds after = Encapsulate(panel);
+            _report.AppendLine($"     계기판 정렬 — 덩어리 중심 ({fitted.center.x:F3}, {fitted.center.y:F3}, {fitted.center.z:F3}) → " +
+                               $"({after.center.x:F3}, {after.center.y:F3}, {after.center.z:F3}) " +
+                               $"· 판독면 ({anchor.position.x:F3}, {anchor.position.y:F3}, {anchor.position.z:F3})");
+
             // 🔴 **구 계기판의 배경 쿼드를 숨긴다. 글자만 남긴다.**
             //
             // 독립 평가자가 지목한 「기능 표시 0 인 빈 밝은 사각형」의 정체가 이것이었다.
@@ -321,8 +400,25 @@ namespace Ascend.Prototype.EditorTools
             // 이 저장소는 같은 실패를 세 번째 겪는다 — 구 레버 몸통, 구 조작대,
             // 그리고 이 판. **구 형상이 새 형상 앞을 덮는 것**이 반복되는 이유는
             // 배선 이전이 위치만 옮기고 렌더러를 그대로 두기 때문이다.
-            // TMP 글자는 남긴다(`HideRenderers` 가 건너뛴다) — 판독 내용이 그것이다.
-            HideRenderers("GrayboxWorld/Car/InstrumentPanel", "구 계기판 배경판");
+            // TMP 글자는 남긴다 — 판독 내용이 그것이다.
+            //
+            // 🔴 **2026-08-04 정정 (`UP-FIX-87`) — 여기서 계기판이 통째로 꺼져 있었다.**
+            //
+            // 직전 판본은 `HideRenderers("…/InstrumentPanel")` 을 불렀고, 그 함수는
+            // **TMP 가 아닌 자식 렌더러를 전부** 끈다. 주석은 「배경 쿼드만」이라고
+            // 적고 있었지만 실제로 꺼진 것은 열 개였다 —
+            //
+            //   PanelBack · PowerBarBg · PowerBarFill · OverloadLight · OverloadHousing
+            //   Tick_100 · Tick_130 · Tick_170 · Tick_220 · Tick_300
+            //
+            // 즉 **전력 막대 자체와 임계점 눈금 다섯이 화면에서 사라졌다.** 독립 평가가
+            // 「현재 전력과 위험 이해」에 2점을 준 라운드의 캡처 네 장 전부에서
+            // 이 열 개의 기여 화소가 0 이었다. 게이지 없이 글자만 남은 계기판이었다.
+            //
+            // 이름으로 **정확히 하나만** 끈다. 나머지는 명시적으로 **켠다** —
+            // 이미 꺼진 채 저장된 씬을 고쳐야 하므로 「끄기」만으로는 멱등이 아니다.
+            ShowPanelExceptBackplate("GrayboxWorld/Car/InstrumentPanel", "PanelBack");
+            LiftOverloadLamp(panel);
 
             _report.AppendLine($"  전력 표시기 — 계기판을 Anchor_Value ({anchor.position.x:F2}, {anchor.position.y:F2}, {anchor.position.z:F2}) 로 " +
                                $"· 읽기 거리 요구 {ReferenceRoomSpec.PowerMeterReadDistance}m");
@@ -470,17 +566,101 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
+        /// 과적등을 **하우징 앞으로** 꺼낸다. (`UP-FIX-87`)
+        ///
+        /// 렌더러를 되살리고 나서 차분 렌더로 재 보니 `OverloadLight` 만 여전히
+        /// 네 포즈 전부 0 화소였다. 실측 — 등은 z 2.117…2.147(⌀0.031),
+        /// 하우징은 z 2.111…2.127(0.054 각). **하우징이 6mm 더 앞이고 1.7배 넓다.**
+        /// 즉 등이 자기 케이스 안에 들어가 있었다. 「방향」도 「가림 대상」도 아닌
+        /// **깊이 순서**였고, 그건 재기 전에는 알 수 없는 종류다.
+        ///
+        /// 하우징의 앞면 + 등 반지름의 35% 로 놓아 반쯤 튀어나오게 한다.
+        /// 상수를 적지 않고 실제 스케일에서 유도하므로 원본이 바뀌어도 따라간다.
+        /// </summary>
+        private static void LiftOverloadLamp(Transform panel)
+        {
+            Transform housing = panel.Find("OverloadHousing");
+            Transform lamp = panel.Find("OverloadLight");
+            if (housing == null || lamp == null) { _report.AppendLine("     ⚠ 과적등/하우징을 찾지 못했다"); return; }
+
+            // 계기판 루트가 y 180° 라 **로컬 +z 가 실내 쪽**이다. 앞 = z 가 큰 쪽.
+            float front = housing.localPosition.z + housing.localScale.z * 0.5f;
+            float radius = lamp.localScale.z * 0.5f;
+            Undo.RecordObject(lamp, "lift overload lamp");
+            Vector3 before = lamp.localPosition;
+            lamp.localPosition = new Vector3(housing.localPosition.x, housing.localPosition.y,
+                                             front + radius * 0.35f);
+            EditorUtility.SetDirty(lamp);
+            _report.AppendLine($"     과적등 z {before.z:F3} → {lamp.localPosition.z:F3} " +
+                               $"(하우징 앞면 {front:F3} + 반지름 {radius:F3}×0.35)");
+        }
+
+        /// <summary>
+        /// 계기판에서 **배면판 하나만** 끄고 나머지 계기 부재는 **켠다.** (`UP-FIX-87`)
+        ///
+        /// `HideRenderers` 와 갈라 놓은 이유는 방향이 반대이기 때문이다 —
+        /// 저쪽은 「끈다」만 하고, 그래서 한 번 잘못 꺼진 것을 스스로 되돌리지 못했다.
+        /// 여기는 두 상태를 **둘 다 절대값으로** 쓴다. 그것이 멱등의 정의다.
+        /// </summary>
+        private static void ShowPanelExceptBackplate(string path, string hideName)
+        {
+            GameObject go = GameObject.Find(path);
+            if (go == null) { _report.AppendLine($"  ⚠ 계기판 렌더러 복원 — `{path}` 를 찾지 못했다"); return; }
+
+            int shown = 0, hidden = 0;
+            foreach (Renderer r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.GetComponent<TMPro.TMP_Text>() != null) continue;
+                bool want = r.gameObject.name != hideName;
+                if (r.enabled == want) { if (want) shown++; else hidden++; continue; }
+                Undo.RecordObject(r, "restore instrument renderer");
+                r.enabled = want;
+                EditorUtility.SetDirty(r);
+                if (want) shown++; else hidden++;
+            }
+            _report.AppendLine($"     계기 부재 표시 {shown}개 · `{hideName}` 비표시 {hidden}개 " +
+                               "(전력 막대·임계 눈금·과적등이 여기 포함된다 — UP-FIX-87)");
+        }
+
+        /// <summary>
         /// 계약 명판 셋과 그 글자를 계약 패널 옆 우벽에 나란히 세운다.
         ///
         /// **판을 되살리는 것이 요점이다.** 파킹 목록이 판만 끄고 글자는 안 꺼서
         /// 흰 글자가 벽에 떠 있었다. 자리는 계약 패널과 같은 벽·같은 z 로 잡는다 —
         /// 「무엇을·얼마에」를 한 시선 안에서 읽어야 하기 때문이다.
         /// </summary>
+        /// <summary>
+        /// 명판 한 장의 크기(로컬). 메시가 **단위 정육면체**라 이 값이 곧 미터다.
+        /// 폭 0.34 × 높이 0.17 × 두께 0.024 — 세 장이 y 로 0.23 씩 떨어져 있으므로
+        /// 높이 0.17 이면 사이에 0.06 의 틈이 남아 셋으로 읽힌다.
+        /// </summary>
+        private static readonly Vector3 PlaqueScale = new Vector3(0.34f, 0.17f, 0.024f);
+
         private static void RelocateContractPlaques()
         {
             float x = ReferenceRoomSpec.WallRightX - 0.05f;
             float z = ReferenceRoomSpec.ShelfCenterZ - ReferenceRoomSpec.ShelfLength * 0.5f - 0.45f;
-            var rot = Quaternion.Euler(0f, -90f, 0f);   // 실내(−X)를 향한다
+
+            // 🔴 **`Euler(0, −90, 0)` 이었다. 180° 반대였다** (`UP-FIX-87`).
+            //
+            // 주석은 「실내(−X)를 향한다」였고 `transform.forward` 도 정말 (−1, 0, 0) 이었다.
+            // 그런데 이 씬의 월드 TMP 표찰은 **`forward` 의 반대쪽에서 읽힌다.**
+            // 재질 `NanumGothic SDF Material SingleSided` 가 `_CullMode = 2`(Back) 인데
+            // TMP 글리프 쿼드의 감김이 로컬 −Z 를 앞면으로 만들기 때문이다.
+            // 씬 전체가 이미 그 규약을 따르고 있었다 —
+            //
+            //   OverharvestLabel  rotY   0  fwd (0,0,+1)  ← 플레이어는 −Z 에서 읽는다
+            //   ExecutionLabel    rotY  90  fwd (+1,0,0)  ← 플레이어는 −X 에서 읽는다
+            //   ContractPlaqueLabel rotY 270 fwd (−1,0,0) ← **혼자만 반대**
+            //
+            // 차분 렌더로 확정했다: 같은 자리에서 rotY 270 → **0 화소**,
+            // rotY 90 → 글자가 뜨고 좌우도 뒤집히지 않는다(캡처로 확인).
+            // 「단면 재질이라 벽 뒤에서만 보인다」는 직전 세션의 추정이 맞았고,
+            // 다만 **어느 축이 앞면인지**가 `forward` 와 반대였다.
+            //
+            // 명판 자체는 대칭 상자라 이 회전에서도 폭·두께가 그대로다
+            // (로컬 x → 월드 z 폭 0.34 · 로컬 z → 월드 x 두께 0.024).
+            var rot = Quaternion.Euler(0f, 90f, 0f);
             int revived = 0, moved = 0;
 
             for (int i = 0; i < 3; i++)
@@ -493,7 +673,18 @@ namespace Ascend.Prototype.EditorTools
                     Undo.RecordObject(plaque.gameObject, "revive contract plaque");
                     if (!plaque.gameObject.activeSelf) { plaque.gameObject.SetActive(true); revived++; }
                     plaque.SetPositionAndRotation(new Vector3(x, y, z), rot);
-                    plaque.localScale = Vector3.one;
+                    // 🔴 **`Vector3.one` 이었다 — 그래서 명판이 한 변 1m 짜리 강철
+                    // 정육면체였다** (`UP-FIX-87`). 메시가 단위 `Cube` 프리미티브라
+                    // 배율 1 은 「원래 크기」가 아니라 「1 미터」다.
+                    //
+                    // 결과: 세 명판이 서로를 삼키고 벽을 0.55m 뚫고 나와 우측 앞
+                    // 모서리를 채웠고, 글자는 판 앞 30mm 에 있으니 **정육면체 안**에
+                    // 갇혔다. 캡처 네 장 전부에서 계약 글자 화소가 0 이었던 이유가 이것이다.
+                    // 「안쪽을 안 향한다」도 「`ContractPanel` 이 가린다」도 아니었다 —
+                    // **자기 판 안에 들어가 있었다.**
+                    //
+                    // 회전이 Y −90° 라 로컬 x → 월드 z(벽을 따라 폭), 로컬 z → 월드 −x(두께).
+                    plaque.localScale = PlaqueScale;
                     EditorUtility.SetDirty(plaque);
                 }
 
@@ -504,6 +695,28 @@ namespace Ascend.Prototype.EditorTools
                     // 글자는 판보다 **앞**에 — 30mm 띄우면 판이 배경이 된다.
                     label.SetPositionAndRotation(new Vector3(x - 0.030f, y, z), rot);
                     EditorUtility.SetDirty(label);
+
+                    // 🔴 **정렬이 `Left` 였고 렉트 폭이 17 이었다** (`UP-FIX-87`).
+                    //
+                    // 그래서 글자는 트랜스폼이 아니라 **렉트 왼쪽 끝**에서 시작했고,
+                    // 실측 글리프 중심이 z −2.361 — 트랜스폼(z −1.800)에서 **0.561m**
+                    // 옆이었다. 명판 폭은 0.34 다. 즉 글자는 판 위가 아니라
+                    // 판에서 한 뼘 반 떨어진 허공에 있었고, 그 자리는 벽 안이다.
+                    //
+                    // 「안쪽을 안 향한다」도 「무언가에 가려 있다」도 아니었다 —
+                    // **좌표가 정렬 규칙 때문에 옆으로 밀려 있었다.** 가운데로 맞춘다.
+                    var tmp = label.GetComponent<TMPro.TMP_Text>();
+                    if (tmp != null)
+                    {
+                        Undo.RecordObject(tmp, "align contract label");
+                        tmp.alignment = TMPro.TextAlignmentOptions.Center;
+                        // 유효 글자 크기 = fontSize × lossyScale. 7.0 × 0.070 = 0.49 로
+                        // 씬에서 이미 읽히는 `OverharvestLabel`(10 × 0.050 = 0.50)과 맞춘다.
+                        // 값을 지어내지 않고 **같은 씬의 읽히는 표찰**에서 가져왔다.
+                        tmp.fontSize = 7.0f;
+                        tmp.ForceMeshUpdate();
+                        EditorUtility.SetDirty(tmp);
+                    }
                     moved++;
                 }
             }

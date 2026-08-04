@@ -13,10 +13,11 @@ namespace Ascend.Prototype.View
     /// 심볼은 색이 아니라 **형태**로 구분한다. 시각 기준 B-2.5가 "회색조로 바꿨을 때
     /// 구분이 사라지면 실패"라고 요구하고, 이 씬은 지금 사실상 무채색이라 색에 기대면
     /// 아무것도 구분되지 않는다.
-    ///   정상 영혼 — 구
-    ///   흡수체   — 정육면체
-    ///   증식체   — 캡슐(세로로 긴 알약)
-    /// 실루엣이 셋 다 다르다.
+    ///   정상 영혼 — 매끈한 구 하나, 지름 0.168 (가장 크다)
+    ///   흡수체   — 뾰족한 다면체 하나, 스파이크 끝 지름 0.124
+    ///   증식체   — 작은 덩어리 **셋**, 조각 지름 0.058 (가장 작다)
+    /// 색 외 차이가 넷이다 — 형태 종류 · 크기 · **개수** · 표면 각짐.
+    /// 형상 정의는 `SymbolShapeFactory` 한 곳에만 있다(`UP-FIX-82`).
     ///
     /// 갱신 주체가 둘이다:
     ///   · <see cref="SpinPresenter"/>가 붙으면 연출자가 단계별로 밀어 넣는다.
@@ -56,15 +57,27 @@ namespace Ascend.Prototype.View
         /// <summary>
         /// 칸별 심볼 자식과 **씬에서 저작된 원래 스케일**.
         ///
-        /// 캐시가 필요한 이유: 심볼들은 저마다 다른 크기로 배치돼 있다(구 0.17 / 정육면체 0.16 /
-        /// 캡슐 0.15 — 실루엣 대비를 위한 값이다). 하이라이트가 이걸 모른 채 스케일을 1로
-        /// 덮어쓰면 심볼이 6배로 부풀어 결과판을 통째로 가린다. 실제로 첫 캡처에서 그렇게 나왔다.
+        /// 캐시가 필요한 이유: 하이라이트가 저작된 스케일을 모른 채 스케일을 1로
+        /// 덮어쓰면 심볼이 부풀어 결과판을 통째로 가린다. 실제로 첫 캡처에서 그렇게 나왔다.
+        /// 지금은 조각들이 전부 스케일 1 로 저작되지만(크기는 메시에 구워져 있다)
+        /// 핵은 0.52 다 — 「전부 1 이니까 캐시가 필요 없다」는 참이 아니다.
         /// </summary>
         private struct SymbolSlot
         {
             public Transform Child;
             public Vector3 BaseScale;
-            public Renderer Renderer;
+
+            /// <summary>
+            /// 이 심볼이 쓰는 렌더러 **전부**. 하나가 아니다.
+            ///
+            /// 🔴 예전엔 `child.GetComponent&lt;Renderer&gt;()` 하나였고, 그것이
+            /// `UP-FIX-82` 의 새 형상에서 조용히 깨졌다 — 증식체는 최상위에 렌더러가
+            /// 없는 **빈 부모 + 조각 셋**이고, 정상 영혼·흡수체도 껍질 안에 핵을 갖는다.
+            /// 하나만 잡으면 증식체는 정화 점등이 통째로 사라지고(부모 렌더러 null)
+            /// 나머지 둘은 핵만 안 빛난다. 「점등이 왜 어떤 칸에서만 안 보이지」는
+            /// 원인 추적이 가장 오래 걸리는 종류의 결함이라, 계약을 배열로 바꾼다.
+            /// </summary>
+            public Renderer[] Renderers;
         }
 
         private SymbolSlot[][] _slots;
@@ -103,7 +116,8 @@ namespace Ascend.Prototype.View
                     {
                         Child = child,
                         BaseScale = child.localScale,
-                        Renderer = child.GetComponent<Renderer>(),
+                        // 비활성 자식도 포함한다 — 심볼 하위 전체가 부모와 함께 켜지고 꺼진다.
+                        Renderers = child.GetComponentsInChildren<Renderer>(true),
                     };
                 }
                 _slots[i] = slots;
@@ -270,7 +284,7 @@ namespace Ascend.Prototype.View
                     // 저작된 스케일에 **곱한다**. 덮어쓰지 않는다.
                     slot.Child.localScale = slot.BaseScale * scale;
 
-                    if (slot.Renderer == null) continue;
+                    if (slot.Renderers == null) continue;
                     // **`GetPropertyBlock` 을 부르지 않는다.** 그것이 할당의 실제 출처다.
                     //
                     // 처음엔 「매 프레임 무조건 도는 것」이 원인인 줄 알고 값이 안 바뀌면
@@ -282,7 +296,9 @@ namespace Ascend.Prototype.View
                     // `_EmissionColor` 하나다. 기존 값을 읽어 올 이유가 없다 —
                     // 읽어 오는 그 호출이 매번 새 저장소를 만든다.
                     _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
-                    slot.Renderer.SetPropertyBlock(_block);
+                    Renderer[] rs = slot.Renderers;
+                    for (int k = 0; k < rs.Length; k++)
+                        if (rs[k] != null) rs[k].SetPropertyBlock(_block);
                 }
             }
         }
