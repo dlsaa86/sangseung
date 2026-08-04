@@ -810,7 +810,25 @@ namespace Ascend.Prototype.EditorTools
             Slab(gate.transform, "Header",     new Vector3(prot * 0.5f, oh + (h - oh) * 0.5f, 0f), new Vector3(prot, h - oh, ow), "Steel");
 
             // 승강로 어둠. 명세 §3 「문이 닫혔을 때도 바깥의 어두운 승강로가 좁은 틈 사이로 보인다」.
-            Slab(gate.transform, "ShaftBackdrop", new Vector3(-0.42f, oh * 0.5f, 0f), new Vector3(0.05f, oh, ow), "Grease");
+            GameObject backdrop = Slab(gate.transform, "ShaftBackdrop", new Vector3(-0.42f, oh * 0.5f, 0f), new Vector3(0.05f, oh, ow), "Grease");
+            // 🔴 **이 한 줄이 없어서 3차 독립 평가가 회귀 하나를 잡았다** (2026-08-04).
+            //
+            // `AdoptShaft`(Cabin/3) 가 실제 통로 지오메트리를 세우면서 이 판을 껐는데,
+            // 재질·조명 사고를 복구하느라 `Room/Build` 를 다시 돌리자 `ResetRoot` 가
+            // 자식을 전부 지우고 이 판을 **활성 상태로** 다시 만들었다. 복구 순서
+            // (Build → Wire Textures → Cabin/1 → Cabin/2 → Rewire) 에 Cabin/3 이
+            // 빠져 있었으므로 아무도 다시 끄지 않았고, 가위문 너머가 닫힌 셔터가 됐다.
+            // `C_toward_gate` 는 전면 흑색 프레임이 됐고 그 대가로 얻은 것은 없었다.
+            //
+            // 「다시 끄는 것을 잊지 말자」로는 못 막는다. 상태를 **불변식**으로 만든다 —
+            // 이 판은 통로가 없을 때의 대역이므로, **통로가 있으면 존재 이유가 없다.**
+            // 절대값이라 몇 번을 돌려도 같고, 조립기가 통로를 알 필요도 없다
+            // (씬에 `CabinShaft` 가 있는지만 본다).
+            bool hasShaft = false;
+            foreach (GameObject g in SceneManager.GetActiveScene().GetRootGameObjects())
+                if (g.name == "CabinShaft") { hasShaft = true; break; }
+            backdrop.SetActive(!hasShaft);
+            _report.AppendLine($"  ShaftBackdrop {(hasShaft ? "비활성 — 실제 승강로(CabinShaft)가 그 자리를 대신한다" : "활성 — 승강로 지오메트리가 없다")}");
 
             // 가이드 레일. 명세 §3 「바닥과 천장에 각각 철제 가이드 레일」.
             float rail = ReferenceRoomSpec.GateRailSize;

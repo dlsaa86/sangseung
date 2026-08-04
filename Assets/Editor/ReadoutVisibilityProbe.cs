@@ -257,31 +257,43 @@ namespace Ascend.Prototype.EditorTools
             if (EditorApplication.isPlaying)
             { Debug.LogError("[상승] Play 모드에서는 찍지 않는다."); return; }
 
-            const string dir = "Captures/symbols_v1_20260804";
+            const string dir = "Captures/symbols_v2_20260804";
             var log = new StringBuilder($"[상승] === 고정 캡처 세트 → {dir} ===\n");
+
+            // 🔴 찍기 **전에** 유령 서브메시를 지운다. 3차 평가의 「전력 0 /」가
+            // 이것을 안 하고 찍은 결과다 — 씬 데이터에 없는 글자가 캡처에 있었다.
+            // 깨끗하면 0 이라 멱등하고, 아니면 캡처가 거짓 증거가 되는 것을 막는다.
+            var ghostLog = new StringBuilder();
+            int ghosts = PrototypeEditor.KoreanLabelFontFix.ClearGhostSubMeshes(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene(), ghostLog);
+
             Camera cam = MakeCamera(out UniversalAdditionalCameraData data);
             var rt = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32,
                                        RenderTextureReadWrite.sRGB) { antiAliasing = 1 };
             cam.targetTexture = rt;
 
             var man = new StringBuilder();
-            man.AppendLine("symbols_v1_20260804 capture manifest");
+            man.AppendLine("symbols_v2_20260804 capture manifest");
             man.AppendLine($"resolution {Width}x{Height}  fovVertical {FovVertical}  antialiasing None  " +
                            $"RT ARGB32 sRGB  MSAA off  post {(data != null && data.renderPostProcessing ? "ON" : "OFF")}");
             man.AppendLine($"machineFingerprint {SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
                            $"{SystemInfo.graphicsDeviceName}|{Application.unityVersion}");
             man.AppendLine("gray/ 는 같은 프레임의 sRGB 가중 휘도(0.2126/0.7152/0.0722) 변환이다.");
+            man.AppendLine($"촬영 전 유령 서브메시 정리 {ghosts}개 (TMP 가 안 지운 옛 글리프. 0 이면 이미 깨끗)");
             man.AppendLine();
 
+            var bands = new List<(string name, Band b)>();
             foreach (var pose in Poses)
             {
                 Aim(cam, pose.eye, pose.look);
                 Color32[] px = Shot(cam, rt);
                 SavePng(px, $"{dir}/{pose.name}.png");
                 SaveGrayPng(ToGray(px), $"{dir}/gray/{pose.name}.png");
+                bands.Add((pose.name, Measure(px)));
                 man.AppendLine($"{pose.name}  eye=({pose.eye.x:F2}, {pose.eye.y:F2}, {pose.eye.z:F2}) " +
                                $"lookAt=({pose.look.x:F2}, {pose.look.y:F2}, {pose.look.z:F2})" +
                                GlyphNote(cam));
+                man.AppendLine("   " + LeverLabelNote(cam));
             }
 
             // 결과판 정면 — 심볼 3종 판정의 본 그림.
@@ -304,6 +316,11 @@ namespace Ascend.Prototype.EditorTools
                 man.AppendLine("보드 상태(저장된 씬의 기본 판): 정상 5 · 흡수 2 · 증식 2");
                 man.AppendLine("  열0 [정상/흡수/정상]  열1 [증식/정상/흡수]  열2 [정상/증식/정상]  (행 0 = 위)");
             }
+
+            man.AppendLine();
+            AppendBandTable(man, bands);
+            man.AppendLine();
+            AppendShaftNote(man);
 
             Write(Encoding.UTF8.GetBytes(man.ToString()), $"{dir}/manifest.txt");
             log.Append(man);
@@ -346,6 +363,189 @@ namespace Ascend.Prototype.EditorTools
             }
             if (lines == 0) return "   계기 글리프: 화각 밖";
             return $"   계기 글리프 높이 {min:F0}~{max:F0} px ({lines} 글자)";
+        }
+
+        /// <summary>
+        /// 두 레버 표찰이 이 포즈에서 **몇 화소인가.** 「키웠다」가 아니라 「B 에서 몇 px」이다.
+        ///
+        /// 세로만 재던 <see cref="GlyphNote"/> 로는 이 항목을 못 잡는다 —
+        /// 3차 평가가 지적한 `실행` 9 px 은 **가로**였고, 그 가로를 뭉갠 것이 크기가
+        /// 아니라 면 방향(rotY 90°)이었다. 그래서 가로·세로·면 방향을 함께 적는다.
+        /// `과수확` 은 손대지 않은 대조군이다.
+        /// </summary>
+        private static string LeverLabelNote(Camera cam)
+        {
+            var parts = new List<string>();
+            foreach (string p in new[] { "GrayboxWorld/Car/Console/ExecutionLabel",
+                                         "GrayboxWorld/Car/OverharvestLever/OverharvestLabel" })
+            {
+                GameObject go = GameObject.Find(p);
+                string leaf = Leaf(p).Replace("Label", string.Empty);
+                if (go == null) { parts.Add($"{leaf}: 없음"); continue; }
+                var t = go.GetComponent<TMPro.TMP_Text>();
+                if (t == null) { parts.Add($"{leaf}: TMP 없음"); continue; }
+                t.ForceMeshUpdate();
+
+                float wMin = float.MaxValue, hMin = float.MaxValue;
+                int n = 0;
+                TMP_TextInfoScan(t, cam, ref wMin, ref hMin, ref n);
+                float facing = Vector3.Dot(go.transform.forward,
+                                           (go.transform.position - cam.transform.position).normalized);
+                if (n == 0) parts.Add($"{leaf}: 화각 밖");
+                else parts.Add($"{leaf} {wMin:F0}x{hMin:F0}px/자 (facing {facing:+0.00;-0.00})");
+            }
+            return "레버 표찰 — " + string.Join(" · ", parts);
+        }
+
+        /// <summary>보이는 글리프의 화면 가로·세로 **최솟값**. 최악의 글자가 기준이다.</summary>
+        private static void TMP_TextInfoScan(TMPro.TMP_Text t, Camera cam, ref float wMin, ref float hMin, ref int n)
+        {
+            var info = t.textInfo;
+            for (int i = 0; i < info.characterCount; i++)
+            {
+                TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                if (!ch.isVisible) continue;
+                Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
+                Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
+                Vector3 c = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topLeft));
+                Vector3 d = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomRight));
+                if (a.z <= 0f || b.z <= 0f || c.z <= 0f || d.z <= 0f) continue;
+                float h = Mathf.Max(Mathf.Abs(b.y - a.y), Mathf.Abs(c.y - d.y));
+                float w = Mathf.Max(Mathf.Abs(b.x - a.x), Mathf.Abs(c.x - d.x));
+                if (h <= 0.01f) continue;
+                wMin = Mathf.Min(wMin, w); hMin = Mathf.Min(hMin, h);
+                n++;
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  VISUAL_SPEC §12 수치 대역 — 매니페스트에 되살린다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 한 프레임의 §12 지표. 계수와 정의는 `tools/measure_reference_band.py` 와 같다 —
+        /// sRGB 인코딩된 값을 그대로 0..1 로 나눠 가중 휘도를 낸다(선형화하지 않는다).
+        /// 파이썬과 다른 식을 쓰면 v7·v8 매니페스트의 수치와 비교가 성립하지 않는다.
+        /// </summary>
+        private struct Band { public float mean, p50, p99, darkPct, brightPct, gr, br; }
+
+        /// <summary>
+        /// 🔴 **3차 평가가 §12 를 「판정 불가」로 남긴 이유가 이 표의 부재였다.**
+        /// 평가자에게 화소 통계 도구가 없고, 없으면 눈으로 대체하는 대신 판정을 비운다.
+        /// 그래서 캡처 하네스가 직접 낸다 — 다음 라운드가 다시 비지 않도록.
+        /// </summary>
+        private static Band Measure(Color32[] px)
+        {
+            const int Bins = 4096;
+            var hist = new int[Bins];
+            double sum = 0, rs = 0, gs = 0, bs = 0;
+            int dark = 0, bright = 0;
+            for (int i = 0; i < px.Length; i++)
+            {
+                float r = px[i].r / 255f, g = px[i].g / 255f, b = px[i].b / 255f;
+                float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                sum += lum; rs += r; gs += g; bs += b;
+                if (lum < 0.02f) dark++;
+                if (lum > 0.50f) bright++;
+                hist[Mathf.Clamp((int)(lum * (Bins - 1) + 0.5f), 0, Bins - 1)]++;
+            }
+            var band = new Band
+            {
+                mean = (float)(sum / px.Length),
+                darkPct = 100f * dark / px.Length,
+                brightPct = 100f * bright / px.Length,
+                gr = (float)(gs / System.Math.Max(rs, 1e-9)),
+                br = (float)(bs / System.Math.Max(rs, 1e-9)),
+                p50 = Percentile(hist, px.Length, 0.50f, Bins),
+                p99 = Percentile(hist, px.Length, 0.99f, Bins),
+            };
+            return band;
+        }
+
+        private static float Percentile(int[] hist, int total, float q, int bins)
+        {
+            int want = Mathf.Clamp(Mathf.RoundToInt(total * q), 1, total);
+            int acc = 0;
+            for (int i = 0; i < bins; i++)
+            {
+                acc += hist[i];
+                if (acc >= want) return i / (float)(bins - 1);
+            }
+            return 1f;
+        }
+
+        /// <summary>
+        /// v8 매니페스트와 **같은 표 모양**으로 낸다. 모양이 다르면 라운드 간 대조가
+        /// 사람 손을 타고, 그 순간부터 「비교했다」가 근거가 아니게 된다.
+        /// 평균 열은 v7·v8 이 쓴 A/C/D 세 뷰다 — 그래야 그 숫자들과 직접 비교된다.
+        /// </summary>
+        private static void AppendBandTable(StringBuilder man, List<(string name, Band b)> bands)
+        {
+            man.AppendLine("━━ VISUAL_SPEC §12 수치 대역 (post ON · 저장소 규약 = measure_reference_band.py 와 동일 식) ━━");
+            man.AppendLine("  뷰                   mean     p50      p99      <0.02%   >0.50%   g/r      b/r");
+            foreach (var (name, b) in bands)
+                man.AppendLine($"  {name,-20}{b.mean,-9:F4}{b.p50,-9:F4}{b.p99,-9:F4}" +
+                               $"{b.darkPct,-9:F2}{b.brightPct,-9:F2}{b.gr,-9:F4}{b.br,-9:F4}");
+
+            var avg = new Band();
+            int n = 0;
+            foreach (var (name, b) in bands)
+            {
+                if (name[0] != 'A' && name[0] != 'C' && name[0] != 'D') continue;
+                avg.mean += b.mean; avg.p50 += b.p50; avg.p99 += b.p99;
+                avg.darkPct += b.darkPct; avg.brightPct += b.brightPct;
+                avg.gr += b.gr; avg.br += b.br; n++;
+            }
+            if (n == 0) return;
+            avg.mean /= n; avg.p50 /= n; avg.p99 /= n;
+            avg.darkPct /= n; avg.brightPct /= n; avg.gr /= n; avg.br /= n;
+
+            man.AppendLine();
+            man.AppendLine($"  A/C/D 평균 ({n} 뷰) — v7·v8 매니페스트와 같은 집계축");
+            man.AppendLine("  지표      값        허용 대역          판정");
+            man.AppendLine(Row("mean", avg.mean, 0.055f, 0.075f, "F4"));
+            man.AppendLine(Row("p50", avg.p50, 0.040f, 0.062f, "F4"));
+            man.AppendLine(Row("p99", avg.p99, 0.25f, 0.36f, "F4"));
+            man.AppendLine(Row("<0.02%", avg.darkPct, 0f, 32.0f, "F2"));
+            man.AppendLine(Row(">0.50%", avg.brightPct, 0f, 0.5f, "F2"));
+            man.AppendLine(Row("g/r", avg.gr, 0.78f, 0.90f, "F4"));
+            man.AppendLine(Row("b/r", avg.br, 0.45f, 0.62f, "F4"));
+            man.AppendLine("  (v8: mean .0535 · p50 .0416 · p99 .1839 · <0.02 18.06 · >0.50 0.15 · g/r .8763 · b/r .6032)");
+        }
+
+        private static string Row(string label, float v, float lo, float hi, string fmt)
+        {
+            bool ok = v >= lo - 1e-6f && v <= hi + 1e-6f;
+            string band = lo <= 0f ? $"≤ {hi.ToString(fmt)}" : $"{lo.ToString(fmt)} ~ {hi.ToString(fmt)}";
+            return $"  {label,-10}{v.ToString(fmt),-10}{band,-19}{(ok ? "안" : "밖")}";
+        }
+
+        /// <summary>
+        /// **C 포즈가 무엇을 보고 있는지 매니페스트에 못박는다.**
+        ///
+        /// 3차 평가가 잡은 회귀(가위문 너머가 닫힌 셔터)는 A·D 화소 통계로는 안 잡혔다.
+        /// 구현자의 복구 검증표에 C 가 없었기 때문이다. 그래서 「승강로가 열려 있는가」를
+        /// **문장이 아니라 상태값으로** 매니페스트에 남긴다 — 다음 라운드가 표만 보고도
+        /// 회귀를 알 수 있어야 한다.
+        /// </summary>
+        private static void AppendShaftNote(StringBuilder man)
+        {
+            man.AppendLine("━━ 승강로 개구부 (C_toward_gate 가 보는 것) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            GameObject shaft = null;
+            foreach (GameObject g in UnityEditor.SceneManagement.EditorSceneManager
+                                                .GetActiveScene().GetRootGameObjects())
+                if (g.name == "CabinShaft") shaft = g;
+
+            Transform backdrop = null;
+            foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (t.name == "ShaftBackdrop") backdrop = t;
+
+            man.AppendLine($"  CabinShaft            {(shaft == null ? "없음" : "있음 · 활성 " + shaft.activeInHierarchy)}");
+            man.AppendLine($"  ShaftBackdrop(막이판)  {(backdrop == null ? "없음" : (backdrop.gameObject.activeInHierarchy ? "🔴 활성 — 승강로가 막혀 있다" : "비활성 — 통로가 열려 있다"))}");
+            if (shaft != null)
+                foreach (Light l in shaft.GetComponentsInChildren<Light>(true))
+                    man.AppendLine($"  통로 광원 {l.name,-16} 활성 {l.gameObject.activeInHierarchy} · " +
+                                   $"세기 {l.intensity:F2} · 사거리 {l.range:F2} · 위치 ({l.transform.position.x:F2}, {l.transform.position.y:F2}, {l.transform.position.z:F2})");
         }
 
         private struct CellStat { public int lit, blobs, w, h, largest, peak; public float fill; }

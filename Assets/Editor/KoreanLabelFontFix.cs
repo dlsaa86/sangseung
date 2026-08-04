@@ -140,6 +140,30 @@ namespace Ascend.PrototypeEditor
         /// 「씬 오브젝트」가 아니라 TMP 의 런타임 산출물이다. 그래서 **지우지 않고
         /// 메시만 비운다** — 다음 재생성 때 TMP 가 필요하면 알아서 다시 채운다.
         /// </summary>
+        /// <summary>
+        /// 씬 전체를 대상으로 한 번 돌린다. **문구를 바꾼 쪽이 부르는 진입점이다.**
+        ///
+        /// 2026-08-04 3차 평가의 「전력 0 / — 분모 부재」가 이 함수를 안 부른 결과였다.
+        /// 폰트를 바꿀 때만 유령이 생기는 게 아니라 **문구를 바꿔 글리프가 쓰던 아틀라스가
+        /// 빠질 때도** 생긴다. 실제로 `전력 N / 요구 M` → `전력 N` 에서 `/` 하나가
+        /// 서브메시에 남아 세 라운드 동안 화면에 그려졌다.
+        ///
+        /// 한글 여부를 가리지 않는다 — 유령은 어느 라벨에서도 생길 수 있다.
+        /// </summary>
+        public static int ClearGhostSubMeshes(Scene scene, StringBuilder report)
+        {
+            var all = new List<TMP_Text>();
+            foreach (TMP_Text t in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (t == null) continue;
+                if (t.gameObject.scene != scene) continue;
+                if (EditorUtility.IsPersistent(t.gameObject)) continue;
+                t.ForceMeshUpdate();
+                all.Add(t);
+            }
+            return ClearStaleSubMeshes(all, report);
+        }
+
         private static int ClearStaleSubMeshes(List<TMP_Text> targets, StringBuilder report)
         {
             int cleared = 0;

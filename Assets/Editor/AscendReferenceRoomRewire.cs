@@ -50,9 +50,167 @@ namespace Ascend.Prototype.EditorTools
             WireImpact(root);
             RepointRiskLighting(root);
             ParkLegacyVisuals();
+            EnforceShaftOpening(root);
+            RelocateExecutionLabel();
+            ClearGhostGlyphs();
 
             Scene();
             Debug.Log(_report.ToString());
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  승강로 개구부 — 「바깥」이 보이는 유일한 지점
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 가위문 너머가 실제 승강로인지 닫힌 판인지를 **불변식으로** 정한다.
+        ///
+        /// 🔴 3차 독립 평가가 잡은 회귀 (2026-08-04) — `ShaftBackdrop` 이 켜진 채로
+        /// 세 라운드를 통과했다. 경위는 이렇다.
+        ///   ① `Cabin/3 문 밖 통로 채택` 이 실제 통로(`CabinShaft`)를 세우고 이 판을 껐다.
+        ///   ② 재질·조명 원복 사고를 복구하느라 `Room/Build` 를 다시 돌렸다.
+        ///   ③ `ResetRoot` 가 `ReferenceRoom` 자식을 전부 지우고 이 판을 **활성으로**
+        ///      다시 만들었다. 복구 순서에 Cabin/3 이 없었으므로 아무도 다시 끄지 않았다.
+        ///   ④ 그 결과 `C_toward_gate` 가 전면 흑색 프레임이 됐다. 레퍼런스가 명시한
+        ///      「그 너머 어두운 승강로에 먼 불빛 하나」가 사라졌고 대가는 0 이었다.
+        ///
+        /// 구현자는 A·D 의 화소 통계를 v8 과 맞춰 복구를 확인했지만 **검증표에 C 가 없었다.**
+        /// 「재는 것」과 「무엇을 재는지 고르는 것」이 다르다는 증거다.
+        ///
+        /// 그래서 두 군데에 같은 불변식을 건다 — 조립기(`AscendReferenceRoom.BuildScissorGate`)
+        /// 와 여기. 배선기는 문서화된 복구 순서의 **마지막 단계**라, 조립기를 건너뛰는
+        /// 어떤 경로로 들어와도 여기서 다시 걸린다. 절대값이라 몇 번을 돌려도 같다.
+        /// </summary>
+        private static void EnforceShaftOpening(GameObject root)
+        {
+            GameObject shaft = null;
+            foreach (GameObject g in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+                if (g.name == "CabinShaft") { shaft = g; break; }
+
+            Transform backdrop = FindDeep(root.transform, "ShaftBackdrop");
+            if (backdrop == null)
+            { _report.AppendLine("  ⚠ ShaftBackdrop 을 찾지 못했다 — 승강로 개구부 미확인"); return; }
+
+            bool wantActive = shaft == null;
+            bool changed = backdrop.gameObject.activeSelf != wantActive;
+            if (changed)
+            {
+                Undo.RecordObject(backdrop.gameObject, "enforce shaft opening");
+                backdrop.gameObject.SetActive(wantActive);
+                EditorUtility.SetDirty(backdrop.gameObject);
+            }
+
+            // 통로가 있으면 그 안의 등도 켜져 있어야 「먼 불빛 하나」가 성립한다.
+            int lamps = 0;
+            if (shaft != null)
+                foreach (Light l in shaft.GetComponentsInChildren<Light>(true))
+                    if (l.enabled && l.gameObject.activeInHierarchy) lamps++;
+
+            _report.AppendLine($"  승강로 개구부 — CabinShaft {(shaft == null ? "없음" : "있음")} · " +
+                               $"ShaftBackdrop {(wantActive ? "활성" : "비활성")}{(changed ? " (이번에 교정)" : " (이미 정상)")} · " +
+                               $"통로 광원 {lamps}개");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  실행 표찰 — VISUAL_SPEC §5 상호작용 우선순위 1위
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// `ExecutionLabel` 의 **면 방향**(m). 이 방 규약에서 월드 TMP 는 `forward` 쪽에서
+        /// 읽힌다 (`RelocateContractPlaques` 주석의 `_CullMode = 2` 설명 참조).
+        /// 뒤벽 앞면이 z = 2.258 이므로 13mm 앞에 붙여 「벽에 붙은 표찰」로 만든다 —
+        /// 종전 z = 2.125 는 벽에서 133mm 떠 있었다.
+        /// </summary>
+        private static readonly Vector3 ExecutionLabelPos = new Vector3(1.318f, 2.050f, 2.245f);
+
+        /// <summary>
+        /// 표찰의 **월드 배율**(부모 배율을 흡수한 뒤의 값).
+        ///
+        /// 종전 0.0350 은 `fontSize 6.20 × 0.1 × 0.0350 = 0.0217 m` 의 em 이고,
+        /// B 포즈에서 **글자당 가로 9.4 px** 이었다 (3차 평가 실측 9 px 과 일치).
+        /// 목표는 20 px 이므로 최소 2.13배가 필요하다. 2.6배를 쓴다 —
+        /// 배수가 아니라 화소로 검증하며, 캡처 후 실측을 매니페스트에 적는다.
+        /// 0.0350 × 2.6 = 0.0910.
+        /// </summary>
+        private const float ExecutionLabelLossy = 0.0910f;
+
+        /// <summary>
+        /// 「실행」 표찰을 **읽히게** 만든다. 세 라운드째 이월된 항목이다.
+        ///
+        /// 실측이 원인을 둘로 갈랐다 (2026-08-04, 포즈 카메라에 글리프 사각형 투영):
+        ///
+        ///   포즈   글자 가로   글자 세로   facingDot
+        ///   A       1.3 px      5.6 px     +0.244
+        ///   B       9.4 px     13.4 px     +0.665
+        ///   D       0.7 px      6.2 px     **−0.057**
+        ///
+        /// ① **크기** — B 에서 9.4 px. 한글 안정 판독 하한(16 px)의 60% 다.
+        /// ② **면 방향** — `rotY 90` 이라 면이 ±X 를 향한다. A 는 76° 비스듬하고
+        ///    **D 는 dot 이 음수, 즉 단면 재질의 뒷면이라 아예 안 그려진다.**
+        ///    같은 방의 `OverharvestLabel`·계기판 다섯 줄은 전부 `rotY 0`(fwd +Z)이다.
+        ///    이 표찰 하나만 90° 돌아 있었고, 그래서 가로만 유독 뭉개졌다 —
+        ///    「작다」로만 보면 세 배를 키워도 D 는 여전히 0 이다.
+        ///
+        /// 둘 다 절대값으로 대입한다. 위치는 뒤벽에 붙여 부유감(§10 S2)도 없앤다.
+        /// 하우징(`ExecutionPlate`)은 렌더러가 꺼져 있고 면이 ±X 라 켜면 모서리만
+        /// 보인다 — **키우지 않고 그대로 둔다.** 배경은 뒤벽이 맡는다.
+        /// </summary>
+        private static void RelocateExecutionLabel()
+        {
+            Transform label = FindAnywhere("ExecutionLabel");
+            if (label == null) { _report.AppendLine("  ⚠ ExecutionLabel 이 없다 — 실행 표찰 미교정"); return; }
+
+            Undo.RecordObject(label, "resize execution label");
+            if (!label.gameObject.activeSelf) label.gameObject.SetActive(true);
+            // 회전 0 = fwd (0,0,+1). 플레이어는 −Z 쪽에 있고 A·B·D 세 포즈 전부 그렇다.
+            label.SetPositionAndRotation(ExecutionLabelPos, Quaternion.identity);
+
+            // 부모 배율을 흡수해 **월드 배율을 목표값으로** 만든다. 부모가 바뀌어도
+            // 화면에서의 크기가 같아야 하므로 로컬 배율을 직접 적지 않는다.
+            float parent = label.parent != null ? label.parent.lossyScale.x : 1f;
+            if (Mathf.Abs(parent) < 1e-5f) parent = 1f;
+            label.localScale = Vector3.one * (ExecutionLabelLossy / parent);
+            EditorUtility.SetDirty(label);
+
+            var tmp = label.GetComponent<TMPro.TMP_Text>();
+            if (tmp != null)
+            {
+                Undo.RecordObject(tmp, "execution label text");
+                tmp.alignment = TMPro.TextAlignmentOptions.Center;
+                if (tmp.text != "실행") tmp.SetText("실행");
+                tmp.ForceMeshUpdate();
+                EditorUtility.SetDirty(tmp);
+            }
+
+            float em = (tmp != null ? tmp.fontSize : 0f) * 0.1f * label.lossyScale.x;
+            _report.AppendLine($"  실행 표찰 → ({ExecutionLabelPos.x:F3}, {ExecutionLabelPos.y:F3}, {ExecutionLabelPos.z:F3}) " +
+                               $"· rotY 0 (fwd {label.forward.z:F0}Z) · 월드배율 {label.lossyScale.x:F4} · em {em:F4} m");
+        }
+
+        /// <summary>
+        /// **유령 글리프를 지운다.** 3차 평가의 「전력 0 / — 분모가 없다」가 여기서 나왔다.
+        ///
+        /// 실측: `PowerLabel` 의 문구는 `전력 0` 이고 가시 글리프도 `전`·`력`·`0` 셋뿐인데,
+        /// 화면에는 `전력 0 /` 로 슬래시가 하나 더 있었다. `RequiredLabel` 도 마찬가지로
+        /// `요구 0   0 %` 가 `요구 0 / 0 %` 로 보였다.
+        ///
+        /// 원인은 서식도 값도 아니다 — `/` 는 `NanumGothic Atlas 2` 에 있어 별도
+        /// 서브메시로 그려지는데, 문구가 `전력 N / 요구 M` 에서 `전력 N` 으로 바뀌었을 때
+        /// TMP 가 **더 이상 쓰지 않는 서브메시의 지오메트리를 지우지 않았다.**
+        /// 두 라벨의 서브메시가 로컬 x[3.048, 3.435] 에 쿼드 하나씩을 그대로 들고 있었고,
+        /// 그 자리가 각각 「0 다음」과 「두 0 사이의 빈칸」이었다.
+        ///
+        /// v8 매니페스트가 이미 이 함정을 적어 뒀고 `KoreanLabelFontFix` 가 청소기를
+        /// 갖고 있다. 빠져 있던 것은 **문구를 바꾼 뒤 그 청소기를 다시 부르는 일**이다.
+        /// 문구를 바꾸는 곳이 여기이므로 여기서 부른다.
+        /// </summary>
+        private static void ClearGhostGlyphs()
+        {
+            var sub = new StringBuilder();
+            int cleared = PrototypeEditor.KoreanLabelFontFix.ClearGhostSubMeshes(
+                EditorSceneManager.GetActiveScene(), sub);
+            _report.AppendLine($"  유령 서브메시 정리 {cleared}개 (0 이면 이미 깨끗 — 멱등)");
+            if (cleared > 0) _report.Append(sub);
         }
 
         private static void Scene()
