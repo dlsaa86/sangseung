@@ -376,7 +376,16 @@ namespace Ascend.Prototype.EditorTools
             // 실제 경계를 재서 화면 안에 들어갈 배율을 계산한다. 원본 크기를
             // 모르는 채 상수를 적으면 원본이 바뀔 때마다 같은 사고가 난다.
             panel.localScale = Vector3.one;
-            Bounds b = Encapsulate(panel);
+            // ⚠ **순서가 결과를 정한다.** 아래 셋은 전부 경계를 바꾸므로 재기 **전에**
+            // 끝나야 한다. 예전엔 `ShowPanelExceptBackplate` 가 배율 계산 뒤에 있었고,
+            // 그러면 그때그때의 렌더러 상태에 따라 배율이 달라져 멱등이 깨진다.
+            CompactInstrumentPanel(panel);
+            ShowPanelExceptBackplate("GrayboxWorld/Car/InstrumentPanel", "PanelBack");
+            LiftOverloadLamp(panel);
+
+            // ⚠ **그려지는 것만 잰다.** `PanelBack` 은 렌더러가 꺼져 있는데도 폭 1.70 으로
+            // 경계를 지배해 배율을 눌러 왔다 — 화면에 없는 물체가 글자 크기를 정하고 있었다.
+            Bounds b = EncapsulateVisible(panel);
             float screenW = ReferenceRoomSpec.PowerMeterWidth - 0.11f;
             // ⚠ 판독면 **아래 띠는 눈금과 바늘이 쓴다.** 화면 전체 높이로 맞추면
             // 글자가 눈금 위로 내려와 겹친다 — `UP-FIX-51` 과 같은 종류의 결함이다.
@@ -400,13 +409,21 @@ namespace Ascend.Prototype.EditorTools
             // 재는 값이 하나 빠져 있으면 그 축은 조용히 어긋난다 — 배율은 화면에
             // 맞췄는데 그 화면 위에 있지 않았다. 실제 경계를 다시 재서 **차이만큼**
             // 루트를 민다. 상수를 적지 않으므로 원본이 바뀌어도 따라간다.
-            Bounds fitted = Encapsulate(panel);
+            Bounds fitted = EncapsulateVisible(panel);
             // ⚠ 실내 쪽은 **−forward** 다. 회전이 identity 가 되면서 `forward` 가 벽 안쪽
             // (+Z)을 가리키게 됐다 — 부호를 같이 뒤집지 않으면 계기판이 벽 속으로 들어간다.
-            Vector3 want = anchor.position - panel.forward * (fitted.size.z * 0.5f + 0.006f);
+            //
+            // ⚠ 세로 기준은 `Anchor_Value`(판독면 중심 +16%)가 아니라 **판독면 중심 + 아래
+            // 예약 띠의 절반**이다. 앵커의 +16% 는 계기판이 작던 시절에 정해진 값이고,
+            // 내용이 판독 상자를 꽉 채우는 지금은 그만큼 위로 밀려 첫 줄이 판 밖으로 나간다
+            // (실측 — 「0 / 10 층」이 판독면 위 0.025m 에 떠 있었다).
+            // `screenH` 가 쓰는 것과 **같은 0.10** 에서 유도하므로 둘이 어긋날 수 없다.
+            Transform face = anchor.parent != null ? anchor.parent : anchor;
+            Vector3 target = new Vector3(anchor.position.x, face.position.y + 0.10f * 0.5f, anchor.position.z);
+            Vector3 want = target - panel.forward * (fitted.size.z * 0.5f + 0.006f);
             panel.position += want - fitted.center;
             EditorUtility.SetDirty(panel);
-            Bounds after = Encapsulate(panel);
+            Bounds after = EncapsulateVisible(panel);
             _report.AppendLine($"     계기판 정렬 — 덩어리 중심 ({fitted.center.x:F3}, {fitted.center.y:F3}, {fitted.center.z:F3}) → " +
                                $"({after.center.x:F3}, {after.center.y:F3}, {after.center.z:F3}) " +
                                $"· 판독면 ({anchor.position.x:F3}, {anchor.position.y:F3}, {anchor.position.z:F3})");
@@ -438,8 +455,9 @@ namespace Ascend.Prototype.EditorTools
             //
             // 이름으로 **정확히 하나만** 끈다. 나머지는 명시적으로 **켠다** —
             // 이미 꺼진 채 저장된 씬을 고쳐야 하므로 「끄기」만으로는 멱등이 아니다.
-            ShowPanelExceptBackplate("GrayboxWorld/Car/InstrumentPanel", "PanelBack");
-            LiftOverloadLamp(panel);
+            //
+            // ⚠ 이 둘은 **배율 계산 앞으로 옮겼다** (위 참조). 여기 남겨 두면
+            // 「그려지는 것만 잰다」가 자기가 바꾸기 전의 상태를 재게 된다.
 
             _report.AppendLine($"  전력 표시기 — 계기판을 Anchor_Value ({anchor.position.x:F2}, {anchor.position.y:F2}, {anchor.position.z:F2}) 로 " +
                                $"· 읽기 거리 요구 {ReferenceRoomSpec.PowerMeterReadDistance}m");
@@ -587,6 +605,243 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
+        /// 계기판 내용을 **한 단(column)으로 압축한다.** (`UP-FIX-86` — 글자 크기)
+        ///
+        /// ## 왜 필요한가
+        ///
+        /// 3차 독립 평가 실측 — 한글 글리프가 `A_entry_to_machine`(거리 4.16m)에서
+        /// **6~7px** 였다. 한글은 안정 판독에 약 16px 를 요구하므로 그건 글자가 아니라
+        /// 텍스처 노이즈다. 두 라운드 연속 미룬 항목이라 이번에 배치를 확정한다.
+        ///
+        /// 배율은 `min(판독면 / 내용 크기)` 이므로 글자를 키우는 길은 둘뿐이다 —
+        /// 판독면을 키우거나 내용을 줄이거나. **둘 다 한다.**
+        /// 판독면은 `ReferenceRoomSpec.PowerMeterHeight` 0.50 → 0.92 (그 주석이 이유를 든다).
+        ///
+        /// ## 내용에서 무엇이 폭을 잡아먹고 있었나 (실측, 로컬 단위)
+        ///
+        ///   PanelBack      x −1.650 … +0.050  폭 1.70  ← **렌더러가 꺼져 있는데도** 경계를 지배
+        ///   PowerBarBg     x −1.580 … +0.140  폭 1.72  ← 게이지 막대
+        ///   글자 다섯 줄   x −1.580 … −1.081  폭 0.50  ← 정작 읽어야 할 것
+        ///   과적등         x −0.180 … −0.020           ← 글자 단에서 1.4 떨어져 떠 있다
+        ///
+        /// **글자는 전체 폭의 28% 만 쓰고 있었다.** 막대와 과적등을 글자 단 안으로
+        /// 들이고 배면판을 그 상자에 맞추면 내용 폭이 1.79 → 0.69 로 떨어진다.
+        ///
+        /// ## 줄을 지우지 않았다
+        ///
+        /// 여섯 줄을 줄이는 선택지도 있었지만, 그 줄들은 `UP-FIX-44`·`UP-FIX-52` 가
+        /// 여러 라운드에 걸쳐 **화면에 올려 놓은 것**이다. 지우면 다른 축이 후퇴한다.
+        /// 폭이 남아 있었으므로 줄을 지울 이유가 없었다.
+        ///
+        /// 멱등이다 — 전부 절대값으로 쓴다. 배율을 곱하지 않는다.
+        /// </summary>
+        private static void CompactInstrumentPanel(Transform panel)
+        {
+            // 글자 단 왼쪽 끝. 다섯 라벨이 전부 여기에 있다(실측 lp.x = −1.580).
+            const float colX = -1.580f;
+            // 막대 길이. 글자 단 폭 0.50 보다 살짝 넓어야 「게이지」로 읽힌다.
+            const float barLen = 0.62f;
+            const float maxRatio = 3.0f;   // 눈금 300% 가 막대 끝
+
+            Transform bg = panel.Find("PowerBarBg");
+            Transform pivot = panel.Find("PowerBarPivot");
+            Transform ticks = panel.Find("PowerBarTicks");
+            Transform housing = panel.Find("OverloadHousing");
+            Transform lamp = panel.Find("OverloadLight");
+            Transform back = panel.Find("PanelBack");
+
+            if (bg != null)
+            {
+                Undo.RecordObject(bg, "compact bar");
+                Vector3 s = bg.localScale; s.x = barLen; bg.localScale = s;
+                Vector3 p = bg.localPosition; p.x = colX + barLen * 0.5f; bg.localPosition = p;
+                EditorUtility.SetDirty(bg);
+            }
+            if (pivot != null)
+            {
+                Undo.RecordObject(pivot, "compact bar pivot");
+                Vector3 p = pivot.localPosition; p.x = colX; pivot.localPosition = p;
+                EditorUtility.SetDirty(pivot);
+            }
+            if (ticks != null)
+            {
+                // 눈금은 이름이 곧 임계값이다 — 상수 표를 따로 두면 둘이 어긋난다.
+                foreach (Transform t in ticks)
+                {
+                    int cut = t.name.LastIndexOf('_');
+                    if (cut < 0 || !int.TryParse(t.name.Substring(cut + 1), out int pct)) continue;
+                    Undo.RecordObject(t, "compact tick");
+                    Vector3 p = t.localPosition;
+                    p.x = colX + barLen * Mathf.Clamp01(pct / 100f / maxRatio);
+                    t.localPosition = p;
+                    EditorUtility.SetDirty(t);
+                }
+            }
+            // 과적등을 글자 단 오른쪽 위로. 단 밖에 떠 있으면 그것 하나가 폭을 1.4 늘린다.
+            if (housing != null && lamp != null)
+            {
+                Undo.RecordObject(housing, "compact overload housing");
+                Vector3 p = housing.localPosition;
+                p.x = colX + 0.62f;   // 막대 오른쪽 끝과 같은 x
+                housing.localPosition = p;
+                EditorUtility.SetDirty(housing);
+                Undo.RecordObject(lamp, "compact overload lamp");
+                Vector3 lp = lamp.localPosition; lp.x = p.x; lamp.localPosition = lp;
+                EditorUtility.SetDirty(lamp);
+            }
+            // 배면판은 꺼져 있지만 **크기를 맞춰 둔다** — 남겨 두면 다음 사람이
+            // 켰을 때 1.70 짜리 판이 다시 나온다. 꺼진 값이 틀린 채 남는 것이
+            // 이 저장소가 발광과 형상에서 두 번 당한 함정이다.
+            if (back != null)
+            {
+                Undo.RecordObject(back, "compact backplate");
+                back.localScale = new Vector3(barLen + 0.10f, 0.85f, back.localScale.z);
+                Vector3 p = back.localPosition;
+                p.x = colX + (barLen + 0.10f) * 0.5f - 0.05f;
+                p.y = 1.62f;
+                back.localPosition = p;
+                EditorUtility.SetDirty(back);
+            }
+
+            // 막대 길이를 뷰에도 알린다. 여기만 고치면 채움이 옛 길이로 자란다.
+            var view = panel.GetComponent<View.InstrumentPanelView>();
+            if (view != null)
+            {
+                var so = new SerializedObject(view);
+                SerializedProperty w = so.FindProperty("_barWidth");
+                SerializedProperty m = so.FindProperty("_maxRatio");
+                if (w != null) w.floatValue = barLen;
+                if (m != null) m.floatValue = maxRatio;
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(view);
+            }
+
+            // 🔴 **왼쪽 정렬을 「설정」하지 않고 「재서 교정」한다.**
+            //
+            // 다섯 라벨은 정렬(TopLeft) · 렉트(26×6) · 피벗(0, 0.5) · 좌표(x −1.580)가
+            // 전부 같은데 `CascadeLabel` 의 글리프만 x −0.958 에서 시작했다.
+            // 즉 **인스펙터에서 같아 보이는데 화면이 다른** 종류다(마진·선행 공백 등).
+            // 원인을 쫓는 대신 결과를 직접 맞춘다 — 글리프 왼쪽 끝을 재서 그만큼 민다.
+            // 그 한 줄이 내용 폭을 0.50 → 0.93 으로 **1.9배** 부풀리고 있었고,
+            // 배율이 폭에 묶여 있으므로 그것이 곧 글자 크기였다.
+            //
+            // 멱등이다 — 교정 뒤에는 왼쪽 끝이 colX 라 다음 실행의 이동량이 0 이다.
+            // 저장된 씬의 기본 문구. `PowerLabel` 과 `RequiredLabel` 이 둘 다
+            // 「전력 0 / 0」 이라 에디트 모드 캡처에서 **같은 줄이 두 번** 보였다.
+            // 런타임 `ApplyPower` 가 쓰는 형식(`전력 N` / `요구 N  P%`)을 그대로 넣는다 —
+            // 값을 지어내지 않고 **0 인 상태의 실제 출력**을 적는 것이다.
+            SetDefault(panel, "PowerLabel", "전력 0");
+            SetDefault(panel, "RequiredLabel", "요구 0   0 %");
+
+            int aligned = 0;
+            foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            {
+                t.ForceMeshUpdate();
+                float left = GlyphLeftLocal(panel, t);
+                if (float.IsNaN(left)) continue;
+                float delta = colX - left;
+                if (Mathf.Abs(delta) < 1e-4f) continue;
+                Undo.RecordObject(t.transform, "align text column");
+                Vector3 p = t.transform.localPosition;
+                p.x += delta;
+                t.transform.localPosition = p;
+                EditorUtility.SetDirty(t.transform);
+                aligned++;
+            }
+
+            _report.AppendLine($"     계기 내용 압축 — 막대 {barLen:F2} · 눈금 {colX:F2}…{colX + barLen:F2} " +
+                               $"· 과적등을 단 안으로 · 배면판 재단 · 글자 단 정렬 교정 {aligned}줄");
+        }
+
+        /// <summary>저장 씬의 기본 문구를 정한다. 런타임이 첫 갱신에서 덮어쓴다.</summary>
+        private static void SetDefault(Transform panel, string name, string text)
+        {
+            var t = panel.Find(name)?.GetComponent<TMPro.TMP_Text>();
+            if (t == null || t.text == text) return;
+            Undo.RecordObject(t, "seed panel text");
+            t.SetText(text);
+            t.ForceMeshUpdate();
+            EditorUtility.SetDirty(t);
+        }
+
+        /// <summary>
+        /// 보이는 글리프의 **로컬 x 최소값.** 글자가 없으면 `NaN`.
+        ///
+        /// ⚠ `Renderer.bounds` 를 쓰면 안 된다. TMP 는 정점 버퍼를 올림 할당하고
+        /// 미사용 정점을 로컬 원점에 남겨 경계를 부풀린다 — 이 저장소가 v8 매니페스트에
+        /// 이미 적어 둔 함정이다. `characterInfo[i].isVisible` 인 글자만 센다.
+        /// </summary>
+        private static float GlyphLeftLocal(Transform space, TMPro.TMP_Text text)
+        {
+            var info = text.textInfo;
+            float min = float.NaN;
+            for (int i = 0; i < info.characterCount; i++)
+            {
+                TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                if (!ch.isVisible) continue;
+                Vector3 a = space.InverseTransformPoint(text.transform.TransformPoint(ch.bottomLeft));
+                Vector3 b = space.InverseTransformPoint(text.transform.TransformPoint(ch.topRight));
+                float lo = Mathf.Min(a.x, b.x);
+                if (float.IsNaN(min) || lo < min) min = lo;
+            }
+            return min;
+        }
+
+        /// <summary>
+        /// **그려지는 것**의 월드 경계. 꺼진 렌더러는 화면에 없다.
+        ///
+        /// 🔴 **TMP 는 `Renderer.bounds` 를 쓰면 안 된다.** 정점 버퍼를 올림 할당하고
+        /// 미사용 정점을 로컬 원점에 남겨 경계를 부풀린다. 실측 — `CascadeLabel` 의
+        /// 글리프는 x −1.580…−1.267 인데 `Renderer.bounds` 는 −2.202…−1.267 이었다.
+        /// 그 **0.62 의 허깨비**가 계기판 폭을 0.70 → 1.32 로 만들고, 배율이 폭에
+        /// 묶여 있으므로 그대로 글자 크기를 절반으로 눌렀다.
+        ///
+        /// v8 매니페스트가 이 함정을 이미 적어 두었는데 그때는 라벨 계측에만 썼다.
+        /// 배율 계산에도 같은 함정이 있다는 것을 이번 실측으로 알았다.
+        /// </summary>
+        private static Bounds EncapsulateVisible(Transform t)
+        {
+            Bounds b = new Bounds(t.position, Vector3.zero);
+            bool first = true;
+            foreach (Renderer r in t.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
+
+                var text = r.GetComponent<TMPro.TMP_Text>();
+                Bounds piece;
+                if (text != null)
+                {
+                    if (!TryGlyphBounds(text, out piece)) continue;
+                }
+                else if (r.GetComponentInParent<TMPro.TMP_Text>() != null) continue;  // TMP SubMesh — 부모가 이미 냈다
+                else piece = r.bounds;
+
+                if (first) { b = piece; first = false; } else b.Encapsulate(piece);
+            }
+            return first ? Encapsulate(t) : b;
+        }
+
+        /// <summary>보이는 글리프 네 모서리만의 월드 AABB. 글자가 없으면 false.</summary>
+        private static bool TryGlyphBounds(TMPro.TMP_Text text, out Bounds bounds)
+        {
+            bounds = default;
+            text.ForceMeshUpdate();
+            var info = text.textInfo;
+            bool any = false;
+            for (int i = 0; i < info.characterCount; i++)
+            {
+                TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                if (!ch.isVisible) continue;
+                Vector3 a = text.transform.TransformPoint(ch.bottomLeft);
+                Vector3 c = text.transform.TransformPoint(ch.topRight);
+                if (!any) { bounds = new Bounds(a, Vector3.zero); any = true; }
+                else bounds.Encapsulate(a);
+                bounds.Encapsulate(c);
+            }
+            return any;
+        }
+
+        /// <summary>
         /// 과적등을 **하우징 앞으로** 꺼낸다. (`UP-FIX-87`)
         ///
         /// 렌더러를 되살리고 나서 차분 렌더로 재 보니 `OverloadLight` 만 여전히
@@ -657,10 +912,15 @@ namespace Ascend.Prototype.EditorTools
         /// </summary>
         /// <summary>
         /// 명판 한 장의 크기(로컬). 메시가 **단위 정육면체**라 이 값이 곧 미터다.
-        /// 폭 0.34 × 높이 0.17 × 두께 0.024 — 세 장이 y 로 0.23 씩 떨어져 있으므로
-        /// 높이 0.17 이면 사이에 0.06 의 틈이 남아 셋으로 읽힌다.
+        ///
+        /// 0.34 × 0.17 → **0.42 × 0.26** (2026-08-04, 3차 평가 회신).
+        /// 세 줄(이름 / 출현·보상 / 잔류 대가)을 담아야 계약이 서로 **구분**된다 —
+        /// 직전까지 세 장이 전부 「계약」 한 낱말이라 선택지가 화면에서 같은 것이었다.
         /// </summary>
-        private static readonly Vector3 PlaqueScale = new Vector3(0.34f, 0.17f, 0.024f);
+        private static readonly Vector3 PlaqueScale = new Vector3(0.42f, 0.26f, 0.024f);
+
+        /// <summary>명판 세 장의 세로 간격(m). 높이 0.26 이면 사이에 0.04 의 틈이 남는다.</summary>
+        private const float PlaquePitchY = 0.30f;
 
         private static void RelocateContractPlaques()
         {
@@ -689,9 +949,25 @@ namespace Ascend.Prototype.EditorTools
             var rot = Quaternion.Euler(0f, 90f, 0f);
             int revived = 0, moved = 0;
 
+            // 🔴 **문구를 데이터에서 읽는다. 지어내지도 하드코딩하지도 않는다.**
+            //
+            // 3차 독립 평가 지적 — `E_contract_wall` 에서 세 표찰이 **글자까지 동일**하고
+            // (전부 「계약」) 출현률↑·정화 보상↑·잔류 대가↑ 중 화면에 있는 것이 0개다.
+            // 선택지가 서로 구분되지 않으면 선택이 성립하지 않는다 (`B-4 #11`).
+            //
+            // 런타임 `InstrumentPanelView.ApplyPlaqueLabel` 은 이미 계약 객체에서
+            // 문구를 만들고 있었다. 빠져 있던 것은 **저장된 씬의 기본값**이고,
+            // 그래서 에디트 모드 캡처에서는 영원히 「계약」이었다 — 결과판에 기본 판을
+            // 심은 것과 같은 종류의 결함이다.
+            //
+            // 7층은 세 선택지(계약 없음 / 흡수체 / 증식체)가 나란히 놓이는 유일한 층이라
+            // 명판 세 장과 개수가 정확히 맞는다. 배수 값은 오늘도 바뀌었으므로
+            // **계약 객체에서 읽는다.**
+            Spin.ResistanceContract[] choices = Spin.PrototypeCurriculum.For(7).ContractChoices;
+
             for (int i = 0; i < 3; i++)
             {
-                float y = 1.68f - i * 0.23f;
+                float y = 1.68f - i * PlaquePitchY;
 
                 Transform plaque = FindAnywhere($"ContractPlaque_{i}");
                 if (plaque != null)
@@ -736,10 +1012,12 @@ namespace Ascend.Prototype.EditorTools
                     {
                         Undo.RecordObject(tmp, "align contract label");
                         tmp.alignment = TMPro.TextAlignmentOptions.Center;
-                        // 유효 글자 크기 = fontSize × lossyScale. 7.0 × 0.070 = 0.49 로
-                        // 씬에서 이미 읽히는 `OverharvestLabel`(10 × 0.050 = 0.50)과 맞춘다.
-                        // 값을 지어내지 않고 **같은 씬의 읽히는 표찰**에서 가져왔다.
-                        tmp.fontSize = 7.0f;
+                        // 세 줄이 0.42 × 0.26 판에 들어가야 한다. 유효 글자 크기
+                        // 4.8 × 0.070 = 0.336 → 글리프 약 0.032m, 1.85m 거리에서 16px.
+                        // 한글 안정 판독 하한이 16px 이라는 3차 평가의 기준을 그대로 쓴다.
+                        tmp.fontSize = 4.8f;
+                        if (choices != null && i < choices.Length)
+                            tmp.SetText(PlaqueText(choices[i]));
                         tmp.ForceMeshUpdate();
                         EditorUtility.SetDirty(tmp);
                     }
@@ -748,6 +1026,26 @@ namespace Ascend.Prototype.EditorTools
             }
             _report.AppendLine($"  계약 명판 — 판 되살림 {revived}/3 · 글자 이동 {moved}/3 " +
                                $"@ 우벽 x={x:F2} z={z:F2} (판이 글자 뒤에 선다)");
+            if (choices != null)
+                for (int i = 0; i < choices.Length && i < 3; i++)
+                    _report.AppendLine($"     명판 {i}: {PlaqueText(choices[i]).Replace("\n", " | ")}");
+        }
+
+        /// <summary>
+        /// 명판 세 줄. **숫자는 전부 계약 객체에서 온다.**
+        ///
+        /// `ResistanceContract.Preview()` 는 한 줄짜리라 0.42m 판에 안 들어간다
+        /// (약 35자 → 1.1m). 같은 낱말(출현·정화 보상·잔류 대가)을 쓰되 세 줄로 접는다 —
+        /// 문구를 새로 짓는 것이 아니라 **줄바꿈만 다르다.**
+        ///
+        /// 셋을 **같은 순서·같은 크기**로 낸다. `visual-criteria` B-4 #11 이
+        /// 「보상만 크게 보이고 대가가 작게 적혀 있으면 함정이다」라고 못 박은 지점이다.
+        /// </summary>
+        private static string PlaqueText(in Spin.ResistanceContract c)
+        {
+            if (c.IsNone) return "계약 없음\n출현·보상·대가\n변화 없음";
+            return $"{c.Label}\n출현 ×{c.AppearanceMultiplier:0.##}  보상 ×{c.PurifyRewardMultiplier:0.##}\n" +
+                   $"잔류 대가 ×{c.ResidualPenaltyMultiplier:0.##}";
         }
 
         /// <summary>이름으로 찾는다. 비활성도 찾아야 파킹된 것을 되살릴 수 있다.</summary>

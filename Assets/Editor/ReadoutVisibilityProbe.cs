@@ -280,7 +280,8 @@ namespace Ascend.Prototype.EditorTools
                 SavePng(px, $"{dir}/{pose.name}.png");
                 SaveGrayPng(ToGray(px), $"{dir}/gray/{pose.name}.png");
                 man.AppendLine($"{pose.name}  eye=({pose.eye.x:F2}, {pose.eye.y:F2}, {pose.eye.z:F2}) " +
-                               $"lookAt=({pose.look.x:F2}, {pose.look.y:F2}, {pose.look.z:F2})");
+                               $"lookAt=({pose.look.x:F2}, {pose.look.y:F2}, {pose.look.z:F2})" +
+                               GlyphNote(cam));
             }
 
             // 결과판 정면 — 심볼 3종 판정의 본 그림.
@@ -311,6 +312,40 @@ namespace Ascend.Prototype.EditorTools
             Object.DestroyImmediate(rt);
             Object.DestroyImmediate(cam.gameObject);
             Debug.Log(log.ToString());
+        }
+
+        /// <summary>
+        /// 이 포즈에서 계기 글리프가 **몇 화소**인가. 「키웠다」가 아니라 수치로 적는다.
+        ///
+        /// 글리프 사각형 네 모서리를 화면에 투영해 세로 길이를 잰다. 잉크 자체는
+        /// 이 상자보다 조금 작지만, 상자는 카메라·거리·FOV 만으로 정해지므로
+        /// **노출이나 임계값에 흔들리지 않는다** — 라운드 간 비교에 그게 필요하다.
+        /// </summary>
+        private static string GlyphNote(Camera cam)
+        {
+            GameObject panel = GameObject.Find("GrayboxWorld/Car/InstrumentPanel");
+            if (panel == null) return string.Empty;
+            float min = float.MaxValue, max = 0f;
+            int lines = 0;
+            foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            {
+                t.ForceMeshUpdate();
+                var info = t.textInfo;
+                for (int i = 0; i < info.characterCount; i++)
+                {
+                    TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                    if (!ch.isVisible) continue;
+                    Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
+                    Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
+                    if (a.z <= 0f || b.z <= 0f) continue;
+                    float h = Mathf.Abs(b.y - a.y);
+                    if (h <= 0.01f) continue;
+                    min = Mathf.Min(min, h); max = Mathf.Max(max, h);
+                    lines++;
+                }
+            }
+            if (lines == 0) return "   계기 글리프: 화각 밖";
+            return $"   계기 글리프 높이 {min:F0}~{max:F0} px ({lines} 글자)";
         }
 
         private struct CellStat { public int lit, blobs, w, h, largest, peak; public float fill; }
