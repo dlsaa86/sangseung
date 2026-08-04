@@ -33,6 +33,16 @@ namespace Ascend.Prototype.Run
         /// <summary>층마다 그대로 넘어가는 스핀 밸런스 10종 (`UP-TECH-09` ①③).</summary>
         private readonly SpinBalanceSnapshot _balance;
 
+        /// <summary>
+        /// 층마다 그대로 넘어가는 남은 스핀 정산 수치 (`T-05`). 런이 소유하는 이유는
+        /// 과적·과수확과 같다 — 런 도중에 정산율이 바뀌면 앞 층의 기록과 뒤 층의 판정이
+        /// 다른 규칙을 쓰게 되고, 사고 기록기가 적은 숫자를 재현할 수 없게 된다.
+        /// </summary>
+        private readonly RemainingSpinSettlementSnapshot _settlement;
+
+        /// <summary>정산 수치의 출처. 하네스가 「에셋이 읽혔는가」를 이걸로 묻는다.</summary>
+        public string SettlementSource => _settlement.Source;
+
         public RunSession(int seed = 1337, float startingWeight = 0f, float startingMoney = 0f)
             : this(seed, startingWeight, startingMoney,
                 FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation)
@@ -94,7 +104,24 @@ namespace Ascend.Prototype.Run
         public RunSession(int seed, float startingWeight, float startingMoney,
             OverharvestSnapshot overharvest, WeightSnapshot weight,
             SpinBalanceSnapshot balance, IFloorPlanSource floors)
+            : this(seed, startingWeight, startingMoney, overharvest, weight, balance,
+                RemainingSpinSettlementProfile.DefaultSnapshot, floors)
         {
+        }
+
+        /// <summary>
+        /// 남은 스핀 정산 수치까지 받는 경로. `RunSessionBehaviour` 가
+        /// `RemainingSpinSettlementProfile.asset` 에서 스냅샷을 떠 넘긴다.
+        ///
+        /// 이 층이 없어서 그 프로파일은 만들어도 아무 효과가 없었다 —
+        /// <see cref="FloorSession"/> 의 같은 이름 생성자 주석에 경위가 있다.
+        /// </summary>
+        public RunSession(int seed, float startingWeight, float startingMoney,
+            OverharvestSnapshot overharvest, WeightSnapshot weight,
+            SpinBalanceSnapshot balance, RemainingSpinSettlementSnapshot settlement,
+            IFloorPlanSource floors)
+        {
+            _settlement = settlement;
             _floors = floors ?? new TenFloorSource();
             _engine = new SpinEngine(seed);
             _thresholds = PowerThresholds.Default;
@@ -326,7 +353,7 @@ namespace Ascend.Prototype.Run
             // 기본 무게만 넘긴다. 적재 무게는 층이 `_loadout`에서 직접 읽는다 —
             // 적재 단계에서 무게가 바뀌면 요구 전력이 그 자리에서 갱신되어야 하기 때문이다.
             _current = new FloorSession(plan, _engine, _thresholds,
-                _baseWeight, _residual, _overharvest, _weight, _balance, _loadout)
+                _baseWeight, _residual, _overharvest, _weight, _balance, _settlement, _loadout)
             {
                 Events = Events,
             };

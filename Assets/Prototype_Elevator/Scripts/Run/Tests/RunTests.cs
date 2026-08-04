@@ -37,6 +37,17 @@ namespace Ascend.Prototype.Run.Tests
             Run("해금 임계가 CanBank와 독립으로 작동", TestProfileUnlockThreshold, ref passed, ref failed, report);
             Run("판돈 비율이 프로파일에서 온다", TestProfileAnteRatio, ref passed, ref failed, report);
 
+            // ── T-05: 남은 스핀 정산이 **주입되고 소멸하는가** ──
+            // `SettlementTests` 는 스냅샷의 산수만 검사한다 — 그 산수가 옳아도
+            // 층이 그 스냅샷을 **받지 못하면** 게임에서는 아무 일도 일어나지 않는다.
+            // 실제로 그랬다: `_settlement` 에 대입하는 코드가 어디에도 없었고,
+            // 프로파일을 만들어 배선해도 한 자리도 바뀌지 않았다. 열 개의 통과한
+            // 검사가 그 사실을 하나도 잡지 못했다.
+            Run("정산 수치가 층에 실제로 주입된다", TestSettlementInjected, ref passed, ref failed, report);
+            Run("과수확을 고르면 정산 권리가 소멸한다", TestSettlementForfeited, ref passed, ref failed, report);
+            Run("정산 소멸은 스핀 결과가 아니라 선택 시점에 일어난다",
+                TestSettlementForfeitedAtChoice, ref passed, ref failed, report);
+
             // ── Hero Slice (CURRENT_PHASE.md) ──
             Run("Hero Slice 1층에 계약 3종·저항 2종", TestHeroSliceShape, ref passed, ref failed, report);
             Run("Hero Slice 계약 미선택 시 스핀 거부", TestHeroSliceContractGate, ref passed, ref failed, report);
@@ -428,6 +439,107 @@ namespace Ascend.Prototype.Run.Tests
             };
             return new FloorSession(plan, new SpinEngine(seed),
                 PowerThresholds.Default, 0f);
+        }
+
+        // ── T-05 남은 스핀 정산 ────────────────────────────────────────────────
+
+        /// <summary>
+        /// 정산 스냅샷을 넘길 수 있는 층. 인자가 하나 더 있는 것 말고는
+        /// <see cref="NewSession"/> 과 같다.
+        /// </summary>
+        private static FloorSession NewSettlementSession(int seed, float required, int spins,
+            Data.Profiles.RemainingSpinSettlementSnapshot settlement)
+        {
+            var plan = new FloorPlan
+            {
+                Floor = 1,
+                RequiredPower = required,
+                Spins = spins,
+                SymbolPool = new[] { SymbolKind.NormalSoul, SymbolKind.Absorber },
+                ContractChoices = Array.Empty<ResistanceContract>(),
+            };
+            return new FloorSession(plan, new SpinEngine(seed), PowerThresholds.Default,
+                0f, ResidualState.Empty, OverharvestProfile.DefaultSnapshot,
+                Data.Profiles.WeightProfile.DefaultSnapshot,
+                Data.Profiles.SpinBalanceProfile.DefaultSnapshot, settlement, null);
+        }
+
+        /// <summary>
+        /// **회귀 방지선.** 정산율을 두 배로 준 층이 두 배를 정산하는가.
+        ///
+        /// 이 검사가 없던 동안 `_settlement` 는 필드 초기화값에 고정돼 있었고,
+        /// 프로파일이 무슨 값을 들고 있든 결과가 같았다. 「배선했다」와
+        /// 「그 값이 쓰였다」의 차이를 잡는 것이 이 한 줄의 전부다.
+        /// </summary>
+        private static string TestSettlementInjected()
+        {
+            // Arrange — 회당 비율만 두 배로 다른 두 층. 상한은 넉넉히 열어 둔다.
+            var baseline = new Data.Profiles.RemainingSpinSettlementSnapshot(0.05f, 1f, 1f, "검사-기준");
+            var doubled  = new Data.Profiles.RemainingSpinSettlementSnapshot(0.10f, 1f, 1f, "검사-2배");
+
+            const float required = 1f;   // 1 이면 첫 스핀에 반드시 달성한다
+            FloorSession low  = NewSettlementSession(9001, required, 5, baseline);
+            FloorSession high = NewSettlementSession(9001, required, 5, doubled);
+
+            // Act
+            low.Spin();
+            high.Spin();
+
+            // Assert
+            if (!low.CanBank || !high.CanBank) return "요구 전력 1 인데 첫 스핀에 달성하지 못했다";
+            if (low.SpinsRemaining != high.SpinsRemaining)
+                return "같은 시드인데 남은 스핀이 다르다 — 비교가 성립하지 않는다";
+            if (low.PendingSettlementMoney <= 0f)
+                return "기준 층의 정산이 0 이다 — 남은 스핀이 있는데 정산이 없다";
+
+            float ratio = high.PendingSettlementMoney / low.PendingSettlementMoney;
+            if (Math.Abs(ratio - 2f) > 0.01f)
+                return $"정산율을 2배로 줬는데 정산은 {ratio:F3}배다 — 스냅샷이 층에 주입되지 않는다";
+            return null;
+        }
+
+        /// <summary>과수확을 고르면 그 층의 정산 권리가 사라진다 (`T-05`).</summary>
+        private static string TestSettlementForfeited()
+        {
+            // Arrange
+            FloorSession session = NewSettlementSession(9002, 1f, 5,
+                Data.Profiles.RemainingSpinSettlementProfile.DefaultSnapshot);
+            session.Spin();
+            if (!session.CanTakeExtraSpin) return "추가 스핀을 고를 수 없는 상태 — 전제가 성립하지 않는다";
+            if (session.PendingSettlementMoney <= 0f) return "과수확 전인데 정산이 이미 0 이다";
+
+            // Act
+            if (!session.PushYourLuck()) return "과수확 선택이 거부됐다";
+
+            // Assert
+            if (session.CanSettleRemainingSpins) return "과수확 후에도 정산 권리가 남아 있다";
+            if (session.PendingSettlementMoney != 0f)
+                return $"과수확 후 정산이 {session.PendingSettlementMoney:F2} 다 — 0 이어야 한다";
+            return null;
+        }
+
+        /// <summary>
+        /// 소멸은 **선택 시점**에 일어난다. 스핀이 실행되기 전에 이미 권리가 없어야 한다 —
+        /// 결과를 보고 무를 수 있으면 그것은 도박이 아니다.
+        /// </summary>
+        private static string TestSettlementForfeitedAtChoice()
+        {
+            // Arrange
+            FloorSession session = NewSettlementSession(9003, 1f, 5,
+                Data.Profiles.RemainingSpinSettlementProfile.DefaultSnapshot);
+            session.Spin();
+            if (!session.CanTakeExtraSpin) return "전제 불성립 — 추가 스핀 불가";
+            int spinsBefore = session.SpinsUsed;
+
+            // Act — 앤티만 내고 스핀은 아직 돌리지 않는다.
+            if (!session.PushYourLuck()) return "과수확 선택이 거부됐다";
+
+            // Assert
+            if (session.SpinsUsed != spinsBefore)
+                return "PushYourLuck 이 스핀까지 실행했다 — 선택과 실행이 붙어 있으면 시점을 검사할 수 없다";
+            if (session.CanSettleRemainingSpins)
+                return "스핀을 돌리기 전인데 정산 권리가 살아 있다 — 결과를 보고 무를 수 있다";
+            return null;
         }
 
         // ── UP-POWER-07 ────────────────────────────────────────────────────────

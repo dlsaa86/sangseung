@@ -23,10 +23,35 @@ namespace Ascend.Prototype.Data.Profiles
     /// 위 대비가 사라지고, 결정론 재현에도 새 난수 소비처가 생긴다.
     /// 이 클래스는 **곱셈 하나**만 한다.
     ///
-    /// ## 값은 임시다
+    /// ## 값은 2026-08-04 에 5%/20% → **15%/60%** 로 올랐다 (실측)
     ///
-    /// `T-05` 가 「임시 기본값」이라고 명시했다. 그래서 `ScriptableObject` 로
-    /// 빼서 플레이테스트가 교체할 수 있게 둔다 — `ASSUMPTION_LOG` 대상이다.
+    /// `T-05` 의 5%/20% 는 스스로 「임시 기본값」이라고 적은 값이었고, 그 값이
+    /// 실제로 무엇을 만드는지 아무도 재지 않았다. 재 보니 **기대값 최적 플레이가
+    /// 과수확을 91.7% 고른다** — 즉 「지금 멈춘다」가 여전히 선택이 아니었다.
+    /// 이 클래스의 첫 문단이 막으려던 바로 그 상태다.
+    ///
+    /// 후보 7개를 시드 300개로 훑어 골랐다 (`docs/runtime/BALANCE_SOLVE.md`).
+    ///
+    /// | 회당 | 상한 | 과수확 선택률 |
+    /// |---|---|---|
+    /// | 0.05 | 0.20 | 91.7%  ← 옛 기본값. 선택이 아니다 |
+    /// | 0.09 | 0.36 | 79.6% |
+    /// | 0.13 | 0.52 | 55.6% |
+    /// | **0.15** | **0.60** | **47.4%**  ← 채택 |
+    /// | 0.18 | 0.72 | 39.0% |
+    ///
+    /// 판정 기준은 **과수확 선택률 25~75%** 다. Notion §7.3 의 「추가 스핀 기대값의
+    /// 30~40%」는 「추가 스핀 기대값」이 한 번인지 남은 전부인지 문서가 말하지 않아
+    /// 두 해석이 3~4배 차이 난다 — 그 값 하나로는 고를 수 없다.
+    ///
+    /// ## ⚠ 상한 60% 가 위 문단의 경고를 넘는다
+    ///
+    /// `SettlementPower` 의 주석이 「50% 는 그 자체로 한 층을 더 오르는 양」이라고
+    /// 경고한다. 60% 는 그 위다. **다만 정산의 지급처는 전력이 아니라 돈이다**
+    /// (`RunSession.FloorAscent.SettlementMoney`) — 상승에 쓰이지 않으므로
+    /// 그 경고가 말한 사고(안 돌린 것이 돌린 것보다 낫다)는 일어나지 않는다.
+    /// 대신 **소지금 경제가 부풀 수 있다.** 상점이 붙으면 다시 재야 한다.
+    /// → `ASSUMPTION_LOG` A-20260804-10
     /// </summary>
     [CreateAssetMenu(menuName = "Ascend/Profiles/Remaining Spin Settlement",
                      fileName = "RemainingSpinSettlementProfile")]
@@ -34,10 +59,10 @@ namespace Ascend.Prototype.Data.Profiles
     {
         [Header("정산 (T-05 임시 기본값)")]
         [Tooltip("남은 스핀 1회당 요구 전력의 몇 배를 정산하는가. T-05 기본값 0.05 (=5%).")]
-        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.05f;
+        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.15f;
 
         [Tooltip("층당 정산 상한. 요구 전력의 몇 배인가. T-05 기본값 0.20 (=20%).")]
-        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 0.20f;
+        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 0.60f;
 
         [Tooltip("정산 전력을 돈으로 바꾸는 비율. 1 이면 전력 1 = 돈 1.")]
         [SerializeField, Min(0f)] private float _moneyPerPower = 1f;
@@ -48,7 +73,7 @@ namespace Ascend.Prototype.Data.Profiles
 
         /// <summary>코드 프리셋. 에셋이 배선되지 않아도 규칙이 사라지지 않는다.</summary>
         public static RemainingSpinSettlementSnapshot DefaultSnapshot =>
-            new RemainingSpinSettlementSnapshot(0.05f, 0.20f, 1f, "코드 프리셋");
+            new RemainingSpinSettlementSnapshot(0.15f, 0.60f, 1f, "코드 프리셋");
 
         public RemainingSpinSettlementSnapshot Snapshot =>
             new RemainingSpinSettlementSnapshot(_perSpinRatio, _floorCapRatio, _moneyPerPower, name);

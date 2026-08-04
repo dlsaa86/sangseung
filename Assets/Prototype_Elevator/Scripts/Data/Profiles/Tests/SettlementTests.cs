@@ -33,9 +33,9 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             int passed = 0, failed = 0;
             var report = new StringBuilder();
 
-            Run("T-05 기본값이 규격과 같다 (5% · 20%)", TestDefaults, ref passed, ref failed, report);
+            Run("기본값이 실측 채택값과 같다 (15% · 60%)", TestDefaults, ref passed, ref failed, report);
             Run("남은 스핀에 비례해 정산이 는다", TestProportional, ref passed, ref failed, report);
-            Run("층당 상한 20% 를 넘지 않는다", TestFloorCap, ref passed, ref failed, report);
+            Run("층당 상한 60% 를 넘지 않는다", TestFloorCap, ref passed, ref failed, report);
             Run("스핀 0 회면 정산이 0 이다", TestZeroSpins, ref passed, ref failed, report);
             Run("요구 전력이 0 이면 정산이 0 이다 (0 나눗셈 방어)", TestZeroRequired, ref passed, ref failed, report);
             Run("상한 도달 스핀 수를 정확히 센다", TestSpinsToCap, ref passed, ref failed, report);
@@ -52,10 +52,14 @@ namespace Ascend.Prototype.Data.Profiles.Tests
 
         private static void TestDefaults()
         {
-            // `T-05` — 「남은 스핀 1회당 요구 전력의 5%」·「층당 상한 20%」.
-            // 숫자를 여기 고정한다. 누가 바꾸면 규격과 어긋난 사실이 여기서 드러난다.
-            Approx(Default.PerSpinRatio, 0.05f, "회당 비율");
-            Approx(Default.FloorCapRatio, 0.20f, "층당 상한 비율");
+            // 2026-08-04 실측으로 5%/20% → 15%/60% 로 올렸다. 옛 값에서는 기대값
+            // 최적 플레이가 과수확을 91.7% 고른다 — 「지금 멈춘다」가 선택이 아니었다.
+            // 근거표는 `RemainingSpinSettlementProfile` 주석과 `BALANCE_SOLVE.md`.
+            //
+            // 숫자를 여기 고정한다. 누가 바꾸면 **밸런스 스윕을 다시 돌려야 한다는
+            // 사실**이 이 검사로 드러난다 — 값만 조용히 바뀌는 것을 막는 것이 목적이다.
+            Approx(Default.PerSpinRatio, 0.15f, "회당 비율");
+            Approx(Default.FloorCapRatio, 0.60f, "층당 상한 비율");
         }
 
         private static void TestProportional()
@@ -65,10 +69,10 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             float two = Default.SettlementPower(2, required);
             float three = Default.SettlementPower(3, required);
 
-            Approx(one, 20f, "1회 정산");     // 400 × 0.05
-            Approx(two, 40f, "2회 정산");
-            Approx(three, 60f, "3회 정산");
-            // 상한(80)에 닿기 전까지는 선형이어야 한다 — 그래야 「한 번 더 남기면
+            Approx(one, 60f, "1회 정산");     // 400 × 0.15
+            Approx(two, 120f, "2회 정산");
+            Approx(three, 180f, "3회 정산");
+            // 상한(240)에 닿기 전까지는 선형이어야 한다 — 그래야 「한 번 더 남기면
             // 얼마」가 플레이어에게 계산 가능하다.
             Approx(two - one, one, "증분이 일정하다");
         }
@@ -76,18 +80,23 @@ namespace Ascend.Prototype.Data.Profiles.Tests
         private static void TestFloorCap()
         {
             const float required = 400f;
-            float cap = required * 0.20f;   // 80
+            float cap = required * 0.60f;   // 240
 
-            // 4회면 정확히 상한, 5회 이상은 더 오르지 않는다.
+            // 4회면 정확히 상한, 5회 이상은 더 오르지 않는다 (0.60 / 0.15 = 4).
             Approx(Default.SettlementPower(4, required), cap, "4회 = 상한");
             Approx(Default.SettlementPower(5, required), cap, "5회도 상한");
             Approx(Default.SettlementPower(99, required), cap, "99회도 상한");
 
-            // **이 검사가 이 파일의 핵심이다.** 상한이 없으면 5% × 10회 = 50% 라
-            // 정산만으로 한 층을 더 오르는 양이 되고, 그러면 「안 돌린 스핀」이
+            // **이 검사가 이 파일의 핵심이다.** 상한이 없으면 15% × 10회 = 150% 라
+            // 정산만으로 요구 전력을 넘기는 양이 되고, 그러면 「안 돌린 스핀」이
             // 「돌린 스핀」보다 나아진다.
-            if (Default.SettlementPower(10, required) >= required * 0.5f)
-                throw new Exception("10회 정산이 요구 전력의 50% 에 닿는다 — 상한이 작동하지 않는다");
+            //
+            // 상한 자체가 60% 인 것은 「한 층을 더 오르는 양」을 넘는다 — 알고 올렸다.
+            // 정산의 지급처가 전력이 아니라 **돈**이라 상승에 쓰이지 않기 때문이다
+            // (`RunSession.FloorAscent.SettlementMoney`). 그 성질이 깨지면 이 값은
+            // 즉시 위험해지므로, 지급처가 바뀌면 여기부터 다시 본다.
+            if (Default.SettlementPower(10, required) > cap + 0.0001f)
+                throw new Exception("10회 정산이 상한을 넘는다 — 상한이 작동하지 않는다");
         }
 
         private static void TestZeroSpins()
@@ -105,7 +114,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
 
         private static void TestSpinsToCap()
         {
-            // 0.20 / 0.05 = 4
+            // 0.60 / 0.15 = 4
             if (Default.SpinsToCap != 4)
                 throw new Exception($"상한 도달 스핀 수 {Default.SpinsToCap} ≠ 4");
 
@@ -149,7 +158,7 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             // 프로파일 8종이 여덟 세션 동안 죽어 있는 것을 못 본 적이 있다.
             RemainingSpinSettlementSnapshot s =
                 RemainingSpinSettlementProfile.SnapshotOrDefault(null, "SettlementTests");
-            Approx(s.PerSpinRatio, 0.05f, "폴백 회당 비율");
+            Approx(s.PerSpinRatio, 0.15f, "폴백 회당 비율");
             if (string.IsNullOrEmpty(s.Source))
                 throw new Exception("폴백이 출처를 남기지 않았다 — 「배선했다」와 구분할 수 없다");
         }

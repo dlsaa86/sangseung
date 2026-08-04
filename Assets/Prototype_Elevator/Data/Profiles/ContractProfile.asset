@@ -15,8 +15,8 @@ MonoBehaviour:
   _absorberAppearance: 1.6
   _absorberPurifyReward: 1.8
   _absorberPatternBonus: 0.5
-  _absorberResidualPenalty: 1.8
-  _proliferatorAppearance: 1.5
-  _proliferatorPurifyReward: 1.5
-  _proliferatorPatternBonus: 1
+  _absorberResidualPenalty: 2
+  _proliferatorAppearance: 1.25
+  _proliferatorPurifyReward: 1.2
+  _proliferatorPatternBonus: 0.7
   _proliferatorResidualPenalty: 2

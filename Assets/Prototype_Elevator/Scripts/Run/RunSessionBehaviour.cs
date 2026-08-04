@@ -40,6 +40,12 @@ namespace Ascend.Prototype.Run
                  "연쇄 하드 캡(20)은 여기 없다 — 그건 다이얼이 아니라 PRD §6 이 못박은 명세다.")]
         [SerializeField] private Data.Profiles.SpinBalanceProfile _spinBalanceProfile;
 
+        [Header("남은 스핀 정산 (T-05)")]
+        [Tooltip("남은 스핀 1회당 정산율·층당 상한·전력→돈 비율. 비어 있으면 코드 프리셋으로 " +
+                 "진행하고 그 사실이 SettlementSource 에 남는다. " +
+                 "이 슬롯이 없던 동안 프로파일을 만들어 배선해도 값이 쓰이지 않았다.")]
+        [SerializeField] private Data.Profiles.RemainingSpinSettlementProfile _settlementProfile;
+
         [Header("층별 곡선 (UP-TECH-09 ④)")]
         [Tooltip("10층의 요구 전력·스핀 수·저항 배율. 비어 있으면 코드 곡선을 그대로 쓴다. " +
                  "덮어쓰기지 대체가 아니라서, 채우지 않은 칸은 그 층만 프리셋으로 남는다.")]
@@ -70,6 +76,9 @@ namespace Ascend.Prototype.Run
 
         /// <summary>스핀 밸런스 수치가 **어디서 왔는가** (`UP-TECH-09` ①③).</summary>
         public string SpinBalanceSource { get; private set; } = "미초기화";
+
+        /// <summary>남은 스핀 정산 수치의 출처. 「배선했다」와 「그 값이 쓰였다」를 가른다.</summary>
+        public string SettlementSource { get; private set; } = "미초기화";
 
         /// <summary>층별 곡선이 **어디서 왔는가** (`UP-TECH-09` ④).</summary>
         public string FloorCurriculumSource { get; private set; } = "미초기화";
@@ -153,8 +162,13 @@ namespace Ascend.Prototype.Run
                 _spinBalanceProfile, nameof(RunSessionBehaviour));
             SpinBalanceSource = balance.SourceName;
 
+            Data.Profiles.RemainingSpinSettlementSnapshot settlement =
+                Data.Profiles.RemainingSpinSettlementProfile.SnapshotOrDefault(
+                    _settlementProfile, nameof(RunSessionBehaviour));
+            SettlementSource = settlement.Source;
+
             Session = new RunSession(_seed, _startingWeight, _startingMoney,
-                overharvest, weight, balance, floors);
+                overharvest, weight, balance, settlement, floors);
 
             // 캡 도달은 조용히 넘어가면 안 된다(MASTER_PRD §6). 엔진은 순수 C#이라
             // 로그 채널을 모르므로 Unity 어댑터인 여기서 붙인다.

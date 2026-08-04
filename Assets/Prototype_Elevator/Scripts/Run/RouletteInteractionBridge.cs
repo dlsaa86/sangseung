@@ -18,9 +18,22 @@ namespace Ascend.Prototype.Run
     ///   전력 탱크   — 확정. 층을 끝낸다.
     ///   과수확 레버 — 판돈을 걸고 한 번 더. 요구 전력 100% 전에는 덮개가 닫혀 있다.
     ///
-    /// 실행 레버가 추가 스핀을 겸하지 않는 것이 핵심이다(`MASTER_PRD.md` §7).
-    /// 겸하면 "확정 vs 과수확"이 같은 물체의 다른 타이밍이 되어, 플레이어가 무엇을
-    /// 고르는지 모른 채 당기게 된다. 그건 도박이 아니라 사고다.
+    /// ⚠ **위 분담은 현재 구현이지 PRD 규격이 아니다.**
+    ///
+    /// 직전 판본의 이 주석은 「실행 레버가 추가 스핀을 겸하지 않는 것이 핵심이다
+    /// (`MASTER_PRD.md` §7)」라고 적고 있었다. **§7 은 2026-08-02 에 정확히 그 반대로
+    /// 확정됐다** — 「물리 레버는 하나다. 일반 스핀과 과수확이 같은 레버의 서로 다른
+    /// 걸림점이다」(`MASTER_PRD.md` §7, `DECISION_LOG` 2026-08-02). 즉 그 주석은
+    /// 미구현을 **뒤집힌 근거로 정당화**하고 있었다. 근거 없는 구현보다 나쁜 것은
+    /// 없는 근거를 인용하는 구현이다.
+    ///
+    /// 아직 없는 것 (`docs/runtime/PENDING_DECISIONS.md` 로 올린다):
+    ///   · 1단/2단 걸림점을 가진 하나의 레버
+    ///   · 과수확 실행의 0.7~1.0초 유지 입력
+    ///   · 목표 달성 후 1단만 당겼을 때 「스핀하지 않고 선택 정보 재표시」
+    ///
+    /// 지금의 두 레버는 그 규격의 **플레이스홀더**다. 기능(확정 vs 과수확이 서로 다른
+    /// 입력이라는 것)은 성립하고, 물리적 형태만 §7 과 다르다.
     /// </summary>
     public sealed class RouletteInteractionBridge : MonoBehaviour
     {
@@ -192,10 +205,15 @@ namespace Ascend.Prototype.Run
         {
             if (_overharvestLever == null) return;
 
-            // 잠금 해제 조건은 오직 "요구 전력 100% 달성"이다(MASTER_PRD §7).
-            // 남은 스핀이 없으면 걸 것이 없으므로 잠긴 채로 둔다.
-            bool unlocked = alive && f.Phase == FloorPhase.Decision &&
-                            f.CanBank && f.SpinsRemaining > 0;
+            // `CanTakeExtraSpin` 을 그대로 쓴다. 직전 판본은 `f.CanBank && SpinsRemaining > 0`
+            // 을 손으로 다시 썼는데, 그 식에는 **`OverharvestProfile` 이 없다** —
+            // `UnlockThreshold` 를 1.20 으로 올려도 덮개는 100% 에서 열렸고,
+            // `MaxExtraSpins` 를 0 으로 내려도 열렸다. 그리고 열린 레버를 당기면
+            // `PushYourLuck` 이 조용히 거부해 **아무 일도 일어나지 않았다.**
+            //
+            // 판정식을 두 벌로 두면 한쪽만 고쳐도 컴파일이 통과한다.
+            // 이 저장소가 `AnteRatioForNextSpin` 에서 이미 배운 것이다(FloorSession 참조).
+            bool unlocked = alive && f.Phase == FloorPhase.Decision && f.CanTakeExtraSpin;
             _overharvestLever.SetUnlocked(unlocked);
         }
 
@@ -229,7 +247,7 @@ namespace Ascend.Prototype.Run
             RunSession run = _run != null ? _run.Session : null;
             FloorSession f = run != null ? run.Current : null;
             if (run == null || f == null || IsLocked) return;
-            if (f.Phase != FloorPhase.Decision || !f.CanBank || f.SpinsRemaining <= 0) return;
+            if (f.Phase != FloorPhase.Decision || !f.CanTakeExtraSpin) return;
 
             // 판돈은 스핀 전에 빠진다. 결과를 보고 무를 수 없다는 것이 이 선택의 전부다.
             if (!run.PushYourLuck()) return;

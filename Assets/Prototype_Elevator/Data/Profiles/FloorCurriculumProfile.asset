@@ -13,25 +13,25 @@ MonoBehaviour:
   m_Name: FloorCurriculumProfile
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.FloorCurriculumProfile
   _requiredPower:
-  - 350
-  - 355
-  - 365
-  - 365
-  - 365
-  - 390
-  - 475
-  - 480
-  - 490
-  - 875
+  - 215
+  - 430
+  - 585
+  - 630
+  - 290
+  - 570
+  - 570
+  - 575
+  - 640
+  - 835
   _spins: 05000000050000000500000005000000050000000500000005000000050000000500000005000000
   _resistanceWeightScale:
-  - 0
+  - 1
   - 1.6
-  - 1.9
-  - 0
-  - 0
-  - 0
-  - 0
-  - 0
-  - 0
-  - 0
+  - 1.8
+  - 1.1
+  - 1.1
+  - 1.4
+  - 1.5
+  - 1.6
+  - 1.7
+  - 1.8

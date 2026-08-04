@@ -63,10 +63,10 @@ namespace Ascend.Prototype.Data.Profiles
         public const float DefaultAbsorberAppearance = 1.6f;
         public const float DefaultAbsorberPurifyReward = 1.8f;
         public const float DefaultAbsorberPatternBonus = 0.5f;
-        public const float DefaultAbsorberResidualPenalty = 1.8f;
-        public const float DefaultProliferatorAppearance = 1.5f;
-        public const float DefaultProliferatorPurifyReward = 1.5f;
-        public const float DefaultProliferatorPatternBonus = 1.0f;
+        public const float DefaultAbsorberResidualPenalty = 2.0f;
+        public const float DefaultProliferatorAppearance = 1.25f;
+        public const float DefaultProliferatorPurifyReward = 1.2f;
+        public const float DefaultProliferatorPatternBonus = 0.7f;
         public const float DefaultProliferatorResidualPenalty = 2.0f;
 
         public ContractSnapshot Snapshot()

@@ -76,9 +76,11 @@ namespace Ascend.Prototype.Run
 
         /// <summary>
         /// 남은 스핀 정산 수치 (`T-05` 2026-08-02). 에셋이 없으면 코드 프리셋을 쓴다.
+        ///
+        /// `readonly` 로 둔다 — 생성자 밖에서 대입할 곳이 없다는 것이 곧
+        /// 「층이 도는 중에 정산율이 바뀌지 않는다」이고, 그 성질이 없으면 결정론이 깨진다.
         /// </summary>
-        private Data.Profiles.RemainingSpinSettlementSnapshot _settlement =
-            Data.Profiles.RemainingSpinSettlementProfile.DefaultSnapshot;
+        private readonly Data.Profiles.RemainingSpinSettlementSnapshot _settlement;
 
         /// <summary>
         /// **과수확을 한 번이라도 선택하면 참이 되고 다시 거짓이 되지 않는다.**
@@ -178,7 +180,32 @@ namespace Ascend.Prototype.Run
             PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
             OverharvestSnapshot overharvest, WeightSnapshot weight,
             SpinBalanceSnapshot balance, BuildLoadout loadout)
+            : this(plan, engine, thresholds, carriedWeight, carriedResidual, overharvest,
+                weight, balance,
+                Data.Profiles.RemainingSpinSettlementProfile.DefaultSnapshot, loadout)
         {
+        }
+
+        /// <summary>
+        /// <paramref name="settlement"/>는 `RemainingSpinSettlementProfile.asset` 에서 온
+        /// 값 사본이거나 에셋이 없으면 코드 프리셋이다.
+        ///
+        /// **이 인자가 없던 것이 결함이었다.** `_settlement` 는 필드 초기화로 코드 프리셋을
+        /// 들고 있었고 대입하는 코드가 어디에도 없었다 — 즉 `T-05` 가 「값은 임시이므로
+        /// 플레이테스트가 교체할 수 있게 `ScriptableObject` 로 뺀다」고 적어 둔 바로 그
+        /// 교체 경로가 **연결된 적이 없다.** 프로파일을 만들고 배선해도 한 자리도 안 바뀐다.
+        ///
+        /// 이 저장소는 같은 부류를 이미 겪었다 — `RemainingSpinSettlementProfile` 자신의
+        /// 주석이 「'배선했다'와 '그 값이 쓰였다'는 다르고, 프로파일 8종이 여덟 세션 동안
+        /// 죽어 있는 것을 못 봤다」고 적고 있다. 그 목록에 자기 자신이 들어 있었다.
+        /// </summary>
+        public FloorSession(FloorPlan plan, SpinEngine engine,
+            PowerThresholds thresholds, float carriedWeight, ResidualState carriedResidual,
+            OverharvestSnapshot overharvest, WeightSnapshot weight,
+            SpinBalanceSnapshot balance,
+            Data.Profiles.RemainingSpinSettlementSnapshot settlement, BuildLoadout loadout)
+        {
+            _settlement = settlement;
             if (engine == null) throw new ArgumentNullException(nameof(engine));
             if (plan.Spins <= 0) throw new ArgumentOutOfRangeException(nameof(plan), "A floor needs at least one spin.");
 
