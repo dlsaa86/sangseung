@@ -50,6 +50,55 @@ namespace Ascend.Prototype.EditorTools
             ("E_contract_wall",    new Vector3(0.55f, 1.62f, -0.55f), new Vector3(1.95f, 1.45f, -1.80f)),
         };
 
+        /// <summary>
+        /// **추가 포즈.** 기존 A~F 는 한 값도 건드리지 않는다 — 고정 세트의 비교 가능성이
+        /// 거기 걸려 있다. 덧붙이기만 한다.
+        ///
+        /// `G_gauge_face` 가 `UP-FIX-88` 의 증거다. 4차 평가가 「B·F 에서 계기판이 우측
+        /// 프레임 밖으로 절단」이라고 잡았고, 좌표로 재 보니 원인이 **판이 아니라 화각**이었다 —
+        ///
+        ///   판독면 `Screen`      월드 X 0.983 … 1.773
+        ///   포즈 B 프레임 우단   월드 X 1.447   ← 판독면의 **59%** 만 담는다
+        ///   포즈 F 프레임 우단   월드 X 1.661
+        ///
+        /// 즉 B 는 계기판을 다 담을 수 없는 화각이고, 그건 글자 크기로 풀 수 있는 문제가
+        /// 아니다(줄이면 `UP-FIX-86` 이 되돌아간다). 계기판을 **온전히 담는 포즈를
+        /// 하나 추가**해 「이 판은 잘리지 않는다」를 판정 가능하게 만든다.
+        /// 플레이어가 실제로 취하는 자세다 — 계기를 읽으려면 그 앞에 선다.
+        /// </summary>
+        private static readonly (string name, Vector3 eye, Vector3 look)[] ExtraPoses =
+        {
+            // 판독 내용의 실제 중심(글리프 X 0.995…1.540 · Y 1.05…1.79 → 약 (1.27, 1.44))을
+            // 정면으로 본다. 판독면 중심(1.378)을 보면 내용이 화면 왼쪽으로 치우친다 —
+            // 내용이 면의 왼쪽에 붙어 있기 때문이다(`UP-FIX-88` 의 왼쪽 정렬).
+            ("G_gauge_face", new Vector3(1.27f, 1.62f, 0.95f), new Vector3(1.27f, 1.44f, 2.05f)),
+        };
+
+        /// <summary>
+        /// **전력 사다리** (`P-20260804-05` 권장안 B의 증거).
+        ///
+        /// 4차 평가의 유일한 2점 항목은 「기계 벽을 등지면 전력을 알 수 없다」였다.
+        /// 채택안은 「천장등 색·밝기가 달성률을 따라간다」인데, **정지 이미지 한 장으로는
+        /// 그것을 판정할 수 없다** — 한 장은 「이 방은 이런 색이다」밖에 말하지 않는다.
+        /// 그래서 등을 돌린 두 포즈(C·E)를 달성률만 바꿔 여러 장 찍는다.
+        /// 대조군이 있어야 「환경이 전력을 나른다」가 반증 가능한 주장이 된다.
+        ///
+        /// `p100` 이 **중립점**이다 — 프로파일이 r = 1 에서 항등이라 이 장은 기존
+        /// `C_toward_gate`·`E_contract_wall` 과 같은 조명이어야 한다. 다르면 배선이 틀린 것이다.
+        ///
+        /// 마지막 칸은 **우선순위 증거**다. 같은 240% 인데 위험이 Collapse 이면
+        /// 전력 채널의 권한이 0 이 되어 등이 위험 조명으로 돌아간다 —
+        /// 「위험 조명이 우선」이라는 요구가 화면에서 확인된다.
+        /// </summary>
+        private static readonly (string suffix, float ratio, Risk.RiskLevel level)[] PowerLadder =
+        {
+            ("p000",          0.00f, Risk.RiskLevel.Stable),
+            ("p060",          0.60f, Risk.RiskLevel.Stable),
+            ("p100",          1.00f, Risk.RiskLevel.Stable),
+            ("p240",          2.40f, Risk.RiskLevel.Stable),
+            ("p240_collapse", 2.40f, Risk.RiskLevel.Collapse),
+        };
+
         /// <summary>`UP-FIX-87` 이 「네 포즈 전부 0픽셀」로 지목한 여덟.</summary>
         private static readonly string[] Targets =
         {
@@ -257,7 +306,7 @@ namespace Ascend.Prototype.EditorTools
             if (EditorApplication.isPlaying)
             { Debug.LogError("[상승] Play 모드에서는 찍지 않는다."); return; }
 
-            const string dir = "Captures/symbols_v2_20260804";
+            const string dir = "Captures/symbols_v3_20260804";
             var log = new StringBuilder($"[상승] === 고정 캡처 세트 → {dir} ===\n");
 
             // 🔴 찍기 **전에** 유령 서브메시를 지운다. 3차 평가의 「전력 0 /」가
@@ -273,7 +322,7 @@ namespace Ascend.Prototype.EditorTools
             cam.targetTexture = rt;
 
             var man = new StringBuilder();
-            man.AppendLine("symbols_v2_20260804 capture manifest");
+            man.AppendLine("symbols_v3_20260804 capture manifest");
             man.AppendLine($"resolution {Width}x{Height}  fovVertical {FovVertical}  antialiasing None  " +
                            $"RT ARGB32 sRGB  MSAA off  post {(data != null && data.renderPostProcessing ? "ON" : "OFF")}");
             man.AppendLine($"machineFingerprint {SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
@@ -296,7 +345,21 @@ namespace Ascend.Prototype.EditorTools
                 man.AppendLine("   " + LeverLabelNote(cam));
             }
 
+            // 추가 포즈. A~E 뒤에 붙이므로 기존 다섯의 파일도 수치도 바뀌지 않는다.
+            foreach (var pose in ExtraPoses)
+            {
+                Aim(cam, pose.eye, pose.look);
+                Color32[] px = Shot(cam, rt);
+                SavePng(px, $"{dir}/{pose.name}.png");
+                SaveGrayPng(ToGray(px), $"{dir}/gray/{pose.name}.png");
+                bands.Add((pose.name, Measure(px)));
+                man.AppendLine($"{pose.name}  eye=({pose.eye.x:F2}, {pose.eye.y:F2}, {pose.eye.z:F2}) " +
+                               $"lookAt=({pose.look.x:F2}, {pose.look.y:F2}, {pose.look.z:F2})" +
+                               GlyphNote(cam) + PanelClipNote(cam));
+            }
+
             // 결과판 정면 — 심볼 3종 판정의 본 그림.
+            var derived = new List<(string name, Vector3 eye, Vector3 look)>();
             GameObject grid = GameObject.Find("SoulMachineFrame/WindowGrid");
             if (grid != null)
             {
@@ -306,6 +369,7 @@ namespace Ascend.Prototype.EditorTools
                 float need = Art.ReferenceRoomSpec.MachineHeight * 1.25f;
                 float dist = need * 0.5f / Mathf.Tan(FovVertical * 0.5f * Mathf.Deg2Rad);
                 Vector3 eye = c + new Vector3(0f, 0f, -dist);
+                derived.Add(("F_board_front", eye, c));
                 Aim(cam, eye, c);
                 Color32[] px = Shot(cam, rt);
                 SavePng(px, $"{dir}/F_board_front.png");
@@ -317,8 +381,15 @@ namespace Ascend.Prototype.EditorTools
                 man.AppendLine("  열0 [정상/흡수/정상]  열1 [증식/정상/흡수]  열2 [정상/증식/정상]  (행 0 = 위)");
             }
 
+            // 전력 사다리. **밴드 집계에 넣지 않는다** — 접두어가 A/C/D 가 아니므로
+            // `AppendBandTable` 의 평균이 오염되지 않는다(그 함수가 이름 첫 글자로 고른다).
+            man.AppendLine();
+            CapturePowerLadder(cam, rt, dir, man);
+
             man.AppendLine();
             AppendBandTable(man, bands);
+            man.AppendLine();
+            AppendPanelClipTable(cam, man, derived);
             man.AppendLine();
             AppendShaftNote(man);
 
@@ -395,6 +466,196 @@ namespace Ascend.Prototype.EditorTools
                 else parts.Add($"{leaf} {wMin:F0}x{hMin:F0}px/자 (facing {facing:+0.00;-0.00})");
             }
             return "레버 표찰 — " + string.Join(" · ", parts);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  전력 사다리 — 「등을 돌려도 전력을 아는가」의 증거 (P-20260804-05 B)
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 등을 돌린 두 포즈를 **달성률만 바꿔** 여러 장 찍는다.
+        ///
+        /// 세 가지를 반드시 지킨다.
+        ///   ① 찍기 전에 광원의 원래 값을 **그대로 붙잡고** 끝나면 되돌린다.
+        ///      되돌리지 않으면 사다리 마지막 칸(240% 의 붉은 등)이 씬에 저장되고
+        ///      다음 캡처 전체가 오염된 조명으로 찍힌다.
+        ///   ② 되돌린 값을 **다시 재서** 매니페스트에 적는다. 「되돌렸다」는 주장이
+        ///      아니라 수치여야 한다.
+        ///   ③ 미리보기는 `RenderSettings.ambientLight` 를 건드리지 않는다
+        ///      (`RiskStateView.PreviewPowerAmbience` 의 주석 참조). 그 값은 렌더 설정
+        ///      **전역**이라 에디트 모드에서 쓰면 그대로 저장된다.
+        /// </summary>
+        private static void CapturePowerLadder(Camera cam, RenderTexture rt, string dir, StringBuilder man)
+        {
+            var risk = Object.FindAnyObjectByType<Risk.RiskStateView>(FindObjectsInactive.Include);
+            if (risk == null)
+            {
+                man.AppendLine("━━ 전력 사다리 ━━ ⚠ RiskStateView 가 없다 — 찍지 않았다");
+                return;
+            }
+
+            Light lamp = null;
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (l.transform.parent != null && l.transform.parent.name == "CeilingLamp"
+                    && l.transform.parent.parent != null && l.transform.parent.parent.name == "ReferenceRoom")
+                { lamp = l; break; }
+
+            Color lampColor0 = lamp != null ? lamp.color : Color.white;
+            float lampIntensity0 = lamp != null ? lamp.intensity : 0f;
+            Color ambient0 = RenderSettings.ambientLight;
+
+            // 🔴 **자기 출력 폴더를 먼저 비운다.** 사다리 구성(프리셋·단계)이 바뀌면
+            // 옛 프레임이 남고, 증거 폴더에 남은 옛 프레임은 「지금의 화면」으로 읽힌다.
+            // 이 저장소가 유령 서브메시로 이미 한 번 당한 것과 같은 종류의 거짓 증거다.
+            string ladderDir = $"{dir}/power_ladder";
+            if (Directory.Exists(ladderDir)) Directory.Delete(ladderDir, true);
+
+            risk.EnsureProfilesLoaded();   // 에디트 모드에는 Awake 가 없다 — 출처가 「(미초기화)」로 실린다
+
+            man.AppendLine("━━ 전력 사다리 — 등을 돌린 화각에서 달성률이 읽히는가 (P-20260804-05 B) ━━━━━━━");
+            man.AppendLine($"  씬에 배선된 프로파일 {risk.PowerAmbienceSource}");
+            man.AppendLine("  프리셋 두 벌을 나란히 찍는다 — 전력 환경 강도는 승인 대기 항목이라");
+            man.AppendLine("  하나로 잠그지 않는다(`VISUAL_SPEC` §11). 글로 적으면 승인자가 고를 수 없다.");
+            man.AppendLine();
+            man.AppendLine("  ⚠ `p240_collapse` 는 **우선순위 증거**다 — 같은 240% 라도 위험이 Collapse 면");
+            man.AppendLine("     전력 채널 권한이 0 이 되어 등이 위험 조명으로 돌아간다(권한 열이 0.00).");
+            man.AppendLine("  ⚠ `p100` 은 **중립점**이다 — 프로파일이 r = 1 에서 항등이므로 이 장의 등 색·세기는");
+            man.AppendLine("     프리셋과 무관하게 같아야 한다(두 표의 p100 행이 일치하는지로 확인한다).");
+            man.AppendLine("     단 같은 포즈의 **고정 캡처**와는 미세하게 다르다 — 씬에 직렬화된 등 색");
+            man.AppendLine("     (1.000,0.790,0.550)과 런타임이 계산하는 등 색(0.948,0.812,0.621)이 원래부터");
+            man.AppendLine("     다르기 때문이다(이번 변경 이전부터 그랬다. 아래 「알려진 불일치」 참조).");
+            man.AppendLine();
+
+            var ladderPoses = new List<(string name, Vector3 eye, Vector3 look)>();
+            foreach (var p in Poses)
+                if (p.name == "C_toward_gate" || p.name == "E_contract_wall") ladderPoses.Add(p);
+
+            var presets = new[]
+            {
+                Data.Profiles.PowerAmbienceIntensity.Standard,
+                Data.Profiles.PowerAmbienceIntensity.Heavy,
+            };
+
+            foreach (var preset in presets)
+            {
+                risk.OverridePowerAmbienceForPreview(preset);
+                string folder = preset.ToString().ToLowerInvariant();
+                man.AppendLine($"  ── 프리셋 {preset} ({Data.Profiles.PowerAmbienceProfile.PresetDisplayName(preset)}) " +
+                               $"→ power_ladder/{folder}/");
+                man.AppendLine("  파일                              달성률  위험     등세기  등색(R,G,B)          권한  mean    g/r     b/r");
+
+                foreach (var pose in ladderPoses)
+                {
+                    foreach (var step in PowerLadder)
+                    {
+                        risk.PreviewPowerAmbience(step.ratio, step.level);
+                        Aim(cam, pose.eye, pose.look);
+                        Color32[] px = Shot(cam, rt);
+                        string leaf = $"{pose.name}_{step.suffix}";
+                        SavePng(px, $"{dir}/power_ladder/{folder}/{leaf}.png");
+                        SaveGrayPng(ToGray(px), $"{dir}/power_ladder/{folder}/gray/{leaf}.png");
+                        Band b = Measure(px);
+                        Color c = risk.EffectiveLampColor;
+                        man.AppendLine($"  {leaf,-34}{step.ratio,6:P0}  {step.level,-8}" +
+                                       $"{risk.EffectiveLampIntensity,7:F3}  " +
+                                       $"({c.r:F3},{c.g:F3},{c.b:F3})  {risk.PowerAuthority,5:F2}  " +
+                                       $"{b.mean,-8:F4}{b.gr,-8:F4}{b.br,-8:F4}");
+                    }
+                }
+                man.AppendLine();
+            }
+
+            // 되돌린다. 그리고 되돌아왔는지 **잰다.**
+            risk.RestorePowerAmbiencePreview();
+            if (lamp != null)
+            {
+                lamp.color = lampColor0;
+                lamp.intensity = lampIntensity0;
+            }
+            RenderSettings.ambientLight = ambient0;
+
+            man.AppendLine($"  복원 뒤 프로파일 출처 {risk.PowerAmbienceSource} (미리보기 프리셋이 남아 있으면 여기 드러난다)");
+            man.AppendLine();
+            man.AppendLine("  ── 알려진 불일치 (이번 변경이 만든 것이 아니다. 발견해서 적는다) ──────────");
+            man.AppendLine("  씬에 직렬화된 `CabinLight.color` 는 (1.000, 0.790, 0.550) 인데, 런타임");
+            man.AppendLine("  `RiskStateView.ApplyLighting` 이 Stable 에서 계산하는 색은");
+            man.AppendLine("  Lerp(필라멘트 (1.00,0.78,0.46), Stable (0.85,0.87,0.92), 0.35) = (0.948,0.812,0.621) 이다.");
+            man.AppendLine("  즉 **에디트 모드 고정 캡처의 등 색은 플레이 모드가 내는 색이 아니다.**");
+            man.AppendLine("  배선기는 세기(`_baseLightIntensity`)만 광원과 동기화하고 색은 하지 않는다.");
+            man.AppendLine("  이번 라운드 범위 밖이라 고치지 않았다 — 고치면 A~F 전부의 §12 수치가 움직인다.");
+            man.AppendLine();
+            man.AppendLine($"  복원 확인 — 등 세기 {lampIntensity0:F4} → {(lamp != null ? lamp.intensity : 0f):F4} · " +
+                           $"등색 ({lampColor0.r:F4},{lampColor0.g:F4},{lampColor0.b:F4}) → " +
+                           $"({(lamp != null ? lamp.color.r : 0f):F4},{(lamp != null ? lamp.color.g : 0f):F4},{(lamp != null ? lamp.color.b : 0f):F4}) · " +
+                           $"앰비언트 {ambient0.r:F4},{ambient0.g:F4},{ambient0.b:F4} → " +
+                           $"{RenderSettings.ambientLight.r:F4},{RenderSettings.ambientLight.g:F4},{RenderSettings.ambientLight.b:F4}");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  계기판 절단 — UP-FIX-88 을 수치로 남긴다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>이 포즈에서 계기 글자 줄이 프레임 밖으로 나가는가. 나가면 몇 px 인가.</summary>
+        private static string PanelClipNote(Camera cam)
+        {
+            float over = PanelOverflowPx(cam, out string worst);
+            if (over <= 0f) return "   잘림 없음";
+            return $"   ⚠ 우측 절단 {over:F0} px ({worst})";
+        }
+
+        /// <summary>
+        /// 계기 라벨 다섯 줄 중 프레임 우단을 가장 많이 넘는 양(px). 0 이면 온전하다.
+        /// **글리프 상자로 잰다** — `Renderer.bounds` 는 TMP 의 미사용 정점 때문에
+        /// 허깨비를 포함한다(이 파일이 이미 두 번 적어 둔 함정).
+        /// </summary>
+        private static float PanelOverflowPx(Camera cam, out string worst)
+        {
+            worst = "-";
+            GameObject panel = GameObject.Find("GrayboxWorld/Car/InstrumentPanel");
+            if (panel == null) return 0f;
+            float over = 0f;
+            foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            {
+                t.ForceMeshUpdate();
+                var info = t.textInfo;
+                float xmax = float.MinValue;
+                for (int i = 0; i < info.characterCount; i++)
+                {
+                    TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                    if (!ch.isVisible) continue;
+                    Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
+                    Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
+                    if (a.z <= 0f || b.z <= 0f) continue;
+                    xmax = Mathf.Max(xmax, Mathf.Max(a.x, b.x));
+                }
+                if (xmax <= float.MinValue + 1f) continue;
+                float d = xmax - Width;
+                if (d > over) { over = d; worst = t.name; }
+            }
+            return over;
+        }
+
+        /// <summary>
+        /// 포즈별 계기판 절단량 표. `UP-FIX-88` 이 「고쳤다」인지 「줄었다」인지를
+        /// 다음 라운드가 인상이 아니라 수치로 대조할 수 있게 남긴다.
+        /// </summary>
+        private static void AppendPanelClipTable(Camera cam, StringBuilder man,
+                                                 List<(string name, Vector3 eye, Vector3 look)> extra)
+        {
+            man.AppendLine("━━ 계기판 우측 절단 (UP-FIX-88) — 글리프 상자 기준, 프레임 폭 1920 ━━━━━━━━━━");
+            var all = new List<(string name, Vector3 eye, Vector3 look)>(Poses);
+            all.AddRange(ExtraPoses);
+            if (extra != null) all.AddRange(extra);
+            foreach (var p in all)
+            {
+                Aim(cam, p.eye, p.look);
+                float over = PanelOverflowPx(cam, out string worst);
+                man.AppendLine($"  {p.name,-22}{(over <= 0f ? "온전" : $"우측으로 {over:F0} px 넘침 ({worst})")}");
+            }
+            man.AppendLine("  ⚠ B 는 구조적으로 담을 수 없는 화각이다 — 판독면 `Screen` 이 월드 X 0.983…1.773 인데");
+            man.AppendLine("     이 포즈의 프레임 우단이 X 1.447 이다(눈 x −0.35, 수평 FOV 91.5°, 라벨 깊이 z 2.051).");
+            man.AppendLine("     판독면의 59% 만 담긴다. 글자를 줄이면 `UP-FIX-86` 이 되돌아가므로 줄이지 않았다.");
+            man.AppendLine("     계기판이 온전히 담기는 화각은 `G_gauge_face` 다.");
         }
 
         /// <summary>보이는 글리프의 화면 가로·세로 **최솟값**. 최악의 글자가 기준이다.</summary>

@@ -94,6 +94,38 @@ namespace Ascend.Prototype.Risk
         [Tooltip("등 발광 세기 배율. 블룸 임계(0.80)를 넘겨야 번진다.")]
         [SerializeField, Min(0f)] private float _lampEmissionScale = 3.4f;
 
+        // ── 등이 전력도 말한다 (`P-20260804-05` 권장안 B) ──────────────────────
+        //
+        // 4차 독립 평가의 **유일한 2점 항목**: 기계 벽을 등진 두 포즈
+        // (`C_toward_gate`·`E_contract_wall`)에서 전력·요구·층이 화면에 없다.
+        // `visual-criteria` B-5 #15 · B-3 #8 위반이고 X(v8)에도 있던 절대 실패다.
+        //
+        // 채택된 답은 **새 판을 하나 더 붙이는 것이 아니라 환경이 말하는 것**이다.
+        // 좁은 캐빈에 두 번째 판독면을 두면 `VISUAL_SPEC` §12.2(좁고 높고 박스형)와
+        // 노션 03(핵심 장치 접근을 막지 않는다)에 정면으로 부딪히고, HUD 를 늘리면
+        // `UP-FIX-89`(정보 위계 역전)가 악화된다. 조명은 **이미 이 컴포넌트가
+        // 소유하고 있는 채널**이라 새 오브젝트가 0개다.
+        //
+        // ⚠ **위험 조명이 이긴다.** 전력 채널의 권한은 `AuthorityFor(riskT)` 가
+        // 위험 단계에 따라 깎으며, Collapse 에서 정확히 0 이 된다 — 그 지점에서
+        // 등은 이 채널이 없던 때와 **비트 단위로 같다.**
+        //
+        // ⚠ **r = 1 에서 항등이다.** 프로파일의 색 보정이 0, 밝기 배율이 1 이라
+        // 「요구를 정확히 채운 상태」가 곧 지금까지의 화면이다. 런이 없는 저장된
+        // 씬은 `ReadInputs` 가 `ratio = 1f` 로 읽으므로 **고정 캡처 A~F 의 조명이
+        // 바뀌지 않는다** — §12 대역 수치와 좌벽 ΔL 회귀 감시선을 지키면서
+        // 채널을 하나 더 여는 유일한 방법이다.
+        [Header("전력 환경 (등이 달성률을 말한다 — P-20260804-05 B)")]
+        [Tooltip("끄면 등이 전력을 말하지 않는다 — 그 경우 기계 벽을 등진 화각에 전력 정보가 0 이 된다.")]
+        [SerializeField] private bool _drivePowerAmbience = true;
+
+        [Tooltip("달성률 → 조명 값. 비면 아래 강도 프리셋의 코드값으로 폴백한다.")]
+        [SerializeField] private Data.Profiles.PowerAmbienceProfile _powerAmbienceProfile;
+
+        [Tooltip("에셋이 없을 때 쓰는 강도 프리셋. 승인 대기 항목이라 하나로 잠그지 않는다.")]
+        [SerializeField] private Data.Profiles.PowerAmbienceIntensity _powerAmbienceIntensity =
+            Data.Profiles.PowerAmbienceIntensity.Standard;
+
         [Header("경고등")]
         [SerializeField] private Renderer _warningLight;
 
@@ -137,6 +169,16 @@ namespace Ascend.Prototype.Risk
         private float _humPitchScale = 1f;
         private float _humSilenceGain = 1f;
         private string _humSource = "(미초기화)";
+
+        // 전력 환경 채널. 비율도 **섞어서** 따라간다 — 스핀 결과가 확정되는 프레임에
+        // 전력이 계단으로 뛰면 등이 「툭」 바뀌어 연출이 아니라 결함으로 읽힌다.
+        private Data.Profiles.PowerAmbience _powerAmbience;
+        private string _powerAmbienceSource = "(미초기화)";
+        private float _powerRatio = 1f;
+        private float _breachFlash;
+        private bool _wasAboveRequired = true;
+        private Color _lampColor = Color.white;
+        private float _lampIntensity;
 
         /// <summary>
         /// 단계별 기계음 자막 문안. 미리 만들어 둔다 — 매 프레임 문자열을 짓지 않기 위해서다.
@@ -214,6 +256,12 @@ namespace Ascend.Prototype.Risk
             // 그건 연출 조정이 아니라 난이도 변경이다.
             _evaluator.Apply(Data.Profiles.RiskThresholdProfile.SnapshotOrDefault(
                 _thresholdProfile, nameof(RiskStateView)));
+
+            // 전력 환경(⑨)은 또 다른 축이다 — 「무엇이 위험인가」도 「위험해 보이는
+            // 방법」도 아니고 「전력이 얼마나 찼는가」다. 셋을 한 에셋에 두면 한 축을
+            // 고치는 것이 다른 축을 조용히 바꾼다.
+            _powerAmbience = Data.Profiles.PowerAmbienceProfile.ValuesOrDefault(
+                _powerAmbienceProfile, _powerAmbienceIntensity, out _powerAmbienceSource);
 
             BuildAmbientLadder();
         }
@@ -335,6 +383,50 @@ namespace Ascend.Prototype.Risk
         public RiskProfile ProfileFor(RiskLevel level) => _levels.For(level);
 
         /// <summary>
+        /// 전력 환경 값의 출처. `ProfileSource`·`ThresholdSource`·`AccessibilitySource`와
+        /// **따로** 있어야 한다 — 같은 문자열을 쓰면 「연출은 에셋, 전력은 코드」인
+        /// 절반 배선을 구분할 수 없다. `AccessibilityProfile` 이 정확히 그 상태로
+        /// 한 라운드를 지나갔던 것이 이 관례의 이유다.
+        /// </summary>
+        public string PowerAmbienceSource => _powerAmbienceSource;
+
+        /// <summary>
+        /// 지금 등에 실려 있는 달성률(전력 ÷ 요구). 런이 없으면 1(중립)이다.
+        /// **캡처 하네스와 감사자가 이 값을 읽어 「등이 정말 전력을 나르는가」를 반증한다** —
+        /// 이 값이 움직이는데 <see cref="EffectiveLampIntensity"/>가 안 움직이면 배선이 끊긴 것이다.
+        /// </summary>
+        public float PowerRatio => _powerRatio;
+
+        /// <summary>실제로 실내등에 나간 색. 위험 색과 전력 색이 **둘 다 통과한 뒤**의 값이다.</summary>
+        public Color EffectiveLampColor => _lampColor;
+
+        /// <summary>실제로 실내등에 나간 세기. 깜빡임과 전력 배율을 전부 통과한 값이다.</summary>
+        public float EffectiveLampIntensity => _lampIntensity;
+
+        /// <summary>
+        /// 지금 곱해지고 있는 전력 밝기 배율. **r = 1 에서 정확히 1.0** 이고,
+        /// 그것이 「고정 캡처 A~F 가 안 바뀐다」의 근거다.
+        /// </summary>
+        public float PowerIntensityScale => _drivePowerAmbience
+            ? Mathf.Lerp(1f, _powerAmbience.IntensityScale(_powerRatio), PowerAuthority)
+            : 1f;
+
+        /// <summary>
+        /// 전력 채널이 지금 가진 권한(0~1). Collapse 에서 0 — **위험 조명이 이긴다**.
+        /// 밖에서 읽는 이유는 「우선순위가 실제로 구현됐는가」를 수치로 물을 수 있어야 하기 때문이다.
+        /// </summary>
+        public float PowerAuthority
+        {
+            get
+            {
+                if (!_drivePowerAmbience) return 0f;
+                int top = (int)RiskLevel.Collapse;
+                float t = top > 0 ? Mathf.Clamp01((float)(int)_evaluator.Current / top) : 0f;
+                return _powerAmbience.AuthorityFor(t);
+            }
+        }
+
+        /// <summary>
         /// 지금 앰비언트에 실린 **명도(V)**. 깜빡임을 곱하기 전 값이다.
         ///
         /// 왜 노출하는가: `ProfileSource`·`EffectiveHumVolume` 과 같은 이유다 — 명도축이
@@ -422,10 +514,123 @@ namespace Ascend.Prototype.Risk
             _blended = Blend(_blended, target, Time.deltaTime * _blendSpeed);
             _phase += Time.deltaTime;
 
+            // 달성률도 **섞어서** 따라간다. 스핀이 확정되는 프레임에 전력이 계단으로
+            // 뛰는데 등이 그대로 따라가면 「조명이 바뀌었다」가 아니라 「화면이 튀었다」로
+            // 읽힌다 — `ApplyAudio` 의 배율·`ApplyAmbient` 의 명도와 같은 이유다.
+            _powerRatio = Mathf.Lerp(_powerRatio, inputs.PowerRatio,
+                                     Mathf.Clamp01(Time.deltaTime * _blendSpeed));
+
+            // 임계점 돌파. **목표 비율**로 판정한다 — 섞인 값으로 보면 점등이 늦고
+            // 흐려져서 「사건」이 아니라 「서서히 밝아짐」이 된다.
+            bool above = inputs.PowerRatio >= 1f;
+            if (above && !_wasAboveRequired) _breachFlash = _powerAmbience.BreachFlash;
+            _wasAboveRequired = above;
+            if (_breachFlash > 0f)
+                _breachFlash = Mathf.Max(0f, _breachFlash -
+                    Time.deltaTime / Mathf.Max(0.01f, _powerAmbience.BreachFlashDecay));
+
             ApplyLighting();
             ApplyWarningLight();
             ApplySway();
             ApplyAudio();
+        }
+
+        /// <summary>
+        /// **플레이 모드 없이** 등을 특정 달성률 상태로 세운다. 고정 캡처 하네스가 부른다.
+        ///
+        /// ## 왜 필요한가
+        ///
+        /// 이 저장소의 판정용 고정 캡처는 **에디트 모드**에서 찍힌다. `LateUpdate` 가
+        /// 돌지 않으므로 화면에 나오는 것은 **씬에 직렬화된 값**뿐이다. 그래서
+        /// 「등이 달성률을 따라간다」를 구현만 해 두면 캡처에는 **아무것도 나타나지 않고**,
+        /// 평가자는 4차와 똑같이 「등을 돌리면 전력을 알 수 없다」를 본다.
+        /// 채널을 만들고 그 사실을 증명하지 못하면 만들지 않은 것과 같다.
+        ///
+        /// 런타임과 **같은 계산 경로**(<see cref="ApplyPowerChannel"/>)를 쓴다.
+        /// 캡처 전용 계산을 따로 두면 캡처가 게임을 증명하지 못한다 — 이 저장소가
+        /// 「데이터가 화면을 바꾸는가」를 계속 출처 문자열로 되묻는 것과 같은 이유다.
+        /// </summary>
+        /// <param name="ratio">전력 ÷ 요구 전력. 1 이면 중립(지금까지의 화면과 같다).</param>
+        /// <param name="level">이 상태에서 가정할 위험 단계.</param>
+        public void PreviewPowerAmbience(float ratio, RiskLevel level)
+        {
+            if (_block == null) _block = new MaterialPropertyBlock();
+            if (_levels.PresetName == null) RebuildProfiles();
+
+            _evaluator.ForceLevel(level);
+            _blended = _levels.For(level);
+            _powerRatio = Mathf.Max(0f, ratio);
+            _breachFlash = 0f;
+            _wasAboveRequired = _powerRatio >= 1f;
+
+            // ⚠ **`ApplyLighting()` 을 통째로 부르지 않는다.** 그 안의 `ApplyAmbient` 은
+            // `RenderSettings.ambientLight`(씬이 아니라 **렌더 설정 전역**)를 덮어쓰고,
+            // 에디트 모드에서는 그 값이 그대로 **저장된다.** 미리보기가 씬을 영구히
+            // 오염시키는 것이다 — 이 저장소가 캡처 눈높이 2.60m 로 이미 한 번 겪은 종류다.
+            // 경고등도 뺀다: 미리보기가 바꿔야 하는 것은 「방의 밝기와 색」 하나다.
+            float lampLevelFloor = Mathf.Max(_lampIntensityFloor, _blended.LightIntensity);
+            Color lampColor = Color.Lerp(_lampFilamentColor, _blended.LightColor, _lampRiskTint);
+            float powerScale = ApplyPowerChannel(ref lampColor);
+
+            if (_cabinLight != null)
+            {
+                _cabinLight.intensity = _baseLightIntensity * _blended.LightIntensity
+                                        * Mathf.Clamp01(CabinLightMultiplier) * powerScale;
+                _cabinLight.color = lampColor;
+                _lampIntensity = _cabinLight.intensity;
+            }
+            _lampColor = lampColor;
+
+            if (_lampRenderer != null)
+            {
+                _lampRenderer.GetPropertyBlock(_block);
+                _block.SetColor(BaseColorId, lampColor);
+                _block.SetColor(EmissionColorId,
+                                lampColor * (_lampEmissionScale * lampLevelFloor * powerScale));
+                _lampRenderer.SetPropertyBlock(_block);
+            }
+        }
+
+        /// <summary>
+        /// 미리보기로 흔든 조명을 **원래대로 되돌린다.** 캡처 하네스가 마지막에 부른다.
+        ///
+        /// 안 부르면 사다리 마지막 칸(과수확 240%)의 붉은 등이 그대로 직렬화되고,
+        /// 다음 캡처 전체가 오염된 조명으로 찍힌다. 이 저장소는 그 종류의 오염을
+        /// 이미 한 번 겪었다 — 캡처 눈높이 2.60m 가 조용히 남아 있던 건이 그것이다.
+        /// </summary>
+        public void RestorePowerAmbiencePreview()
+        {
+            ClearPowerAmbienceOverride();
+            PreviewPowerAmbience(1f, RiskLevel.Stable);
+        }
+
+        /// <summary>
+        /// 캡처 하네스가 **프리셋을 비교**하기 위해 값만 갈아 끼운다. 에셋 참조는 건드리지 않는다.
+        ///
+        /// 왜 필요한가: 전력 환경 강도는 **승인 대기 항목**이다(`VISUAL_SPEC` §11).
+        /// 「2~3개의 교체 가능한 프리셋」을 글로만 적으면 승인자가 고를 수 없다 —
+        /// 같은 포즈·같은 달성률로 프리셋을 나란히 찍어야 비교가 성립한다.
+        /// 출처 문자열이 「미리보기 코드 프리셋 …」으로 바뀌므로 이 상태가 캡처에
+        /// 그대로 기록되고, 실수로 남으면 매니페스트가 그것을 드러낸다.
+        /// </summary>
+        public void OverridePowerAmbienceForPreview(Data.Profiles.PowerAmbienceIntensity intensity)
+        {
+            if (_levels.PresetName == null) RebuildProfiles();
+            _powerAmbience = Data.Profiles.PowerAmbience.Preset(intensity);
+            _powerAmbienceSource = "미리보기 코드 프리셋 " + intensity;
+        }
+
+        /// <summary>미리보기 프리셋을 걷고 배선된 에셋으로 돌아간다.</summary>
+        public void ClearPowerAmbienceOverride() => RebuildProfiles();
+
+        /// <summary>
+        /// 배선을 강제로 읽어 둔다. 에디트 모드에서는 <c>Awake</c> 가 돌지 않아
+        /// <see cref="PowerAmbienceSource"/> 가 「(미초기화)」로 남는다 —
+        /// 그 문자열이 매니페스트에 실리면 **배선 증거가 거짓으로 읽힌다.**
+        /// </summary>
+        public void EnsureProfilesLoaded()
+        {
+            if (_levels.PresetName == null) RebuildProfiles();
         }
 
         private RiskInputs ReadInputs()
@@ -471,15 +676,26 @@ namespace Ascend.Prototype.Risk
             // 등까지 위험 색으로 갈아 끼우면 두 채널이 한 색으로 뭉쳐 위험이 안 읽힌다.
             Color lampColor = Color.Lerp(_lampFilamentColor, _blended.LightColor, _lampRiskTint);
 
+            // 🔴 **전력 채널을 여기서 얹는다** (`P-20260804-05` B). 위험 색을 정한 **뒤**에
+            // 얹는 이유는 우선순위 때문이다 — 권한이 위험 단계에 따라 깎이므로
+            // Collapse 에서는 아래 두 줄이 아무 일도 하지 않는다.
+            float powerScale = ApplyPowerChannel(ref lampColor);
+
             if (_cabinLight != null)
             {
-                // **세기는 손대지 않는다.** 이것이 좌벽 ΔL(회귀 감시선 ≥ 15)을 나르는 축이고,
-                // 여기에 하한을 주면 위험 4단계가 벽에서 눌린다. 등이 「꺼지지 않는다」는
-                // 요구는 아래 **발광**(자체 발광이라 벽을 밝히지 않는다)이 담당한다.
+                // **위험 세기에는 여전히 손대지 않는다.** 이것이 좌벽 ΔL(회귀 감시선 ≥ 15)을
+                // 나르는 축이고, 여기에 하한을 주면 위험 4단계가 벽에서 눌린다. 등이
+                // 「꺼지지 않는다」는 요구는 아래 **발광**(자체 발광이라 벽을 밝히지 않는다)이 담당한다.
+                //
+                // 전력 배율(`powerScale`)은 **위험 사다리 전체에 같은 비율로** 곱해지므로
+                // 단계 사이의 비(ratio)를 보존한다. 그리고 r = 1 에서 정확히 1.0 이라
+                // 런이 없는 저장된 씬에서는 곱해도 값이 바뀌지 않는다.
                 _cabinLight.intensity = _baseLightIntensity * _blended.LightIntensity * flicker
-                                        * Mathf.Clamp01(CabinLightMultiplier);
+                                        * Mathf.Clamp01(CabinLightMultiplier) * powerScale;
                 _cabinLight.color = lampColor;
+                _lampIntensity = _cabinLight.intensity;
             }
+            _lampColor = lampColor;
 
             ApplyAmbient(flicker);
 
@@ -492,9 +708,42 @@ namespace Ascend.Prototype.Risk
 
                 _lampRenderer.GetPropertyBlock(_block);
                 _block.SetColor(BaseColorId, lampColor);
-                _block.SetColor(EmissionColorId, lampColor * (_lampEmissionScale * lampLevel * flicker));
+                _block.SetColor(EmissionColorId,
+                                lampColor * (_lampEmissionScale * lampLevel * flicker * powerScale));
                 _lampRenderer.SetPropertyBlock(_block);
             }
+        }
+
+        /// <summary>
+        /// 달성률을 등에 싣는다. 돌려주는 것은 **밝기 배율**이고 색은 `ref` 로 물들인다.
+        ///
+        /// 두 가지가 이 메서드의 계약이다.
+        ///
+        ///   ① **r = 1 에서 항등** — 색 보정 0, 배율 1. 런이 없는 상태(`ReadInputs` 가
+        ///      `ratio = 1f` 로 읽는다)에서 등이 지금까지와 **비트 단위로 같다.**
+        ///      고정 캡처 A~F 와 §12 대역 수치가 이 성질에 걸려 있다.
+        ///   ② **위험이 이긴다** — 권한이 `AuthorityFor` 로 깎이고 Collapse 에서 0 이다.
+        ///      전력이 아무리 넘쳐도 붕괴 직전의 등을 밝게 만들지 못한다.
+        /// </summary>
+        private float ApplyPowerChannel(ref Color lampColor)
+        {
+            if (!_drivePowerAmbience) return 1f;
+
+            int top = (int)RiskLevel.Collapse;
+            float riskT = top > 0 ? Mathf.Clamp01((float)(int)_evaluator.Current / top) : 0f;
+            float authority = _powerAmbience.AuthorityFor(riskT);
+            if (authority <= 0.0001f) return 1f;
+
+            _powerAmbience.Tint(_powerRatio, out Color target, out float weight);
+            lampColor = Color.Lerp(lampColor, target, Mathf.Clamp01(weight * authority));
+
+            float scale = Mathf.Lerp(1f, _powerAmbience.IntensityScale(_powerRatio), authority);
+
+            // 임계점 돌파 점등. 노션 03 이 「사운드·**점등**·보조 UI」로 적은 그 점등이다.
+            // 정지 캡처에는 잡히지 않지만 그 사실은 `PENDING_DECISIONS` 에 이미 적혀 있고,
+            // 여기서 빼면 「권장안 B 를 절반만 구현했다」가 된다.
+            if (_breachFlash > 0f) scale *= 1f + _breachFlash * authority;
+            return scale;
         }
 
         /// <summary>

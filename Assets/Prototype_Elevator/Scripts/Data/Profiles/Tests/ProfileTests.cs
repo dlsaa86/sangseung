@@ -36,6 +36,10 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             Run("정적 길이가 같은 시드에서 재현된다", TestSilenceIsDeterministic, ref passed, ref failed, report);
             Run("위험 프로파일이 코드 프리셋을 그대로 담는다", TestDangerPresetCopied, ref passed, ref failed, report);
             Run("단계 배열이 비면 코드 기본값으로 폴백한다", TestDangerFallback, ref passed, ref failed, report);
+            Run("전력 환경이 요구 달성(r=1)에서 항등이다", TestPowerAmbienceNeutralAtRequired, ref passed, ref failed, report);
+            Run("전력 환경 권한이 Collapse 에서 0 이다 — 위험이 이긴다", TestPowerAmbienceYieldsToRisk, ref passed, ref failed, report);
+            Run("전력 환경 밝기가 달성률에 단조다", TestPowerAmbienceIntensityIsMonotonic, ref passed, ref failed, report);
+            Run("전력 환경 폴백이 「코드 프리셋」으로 찍힌다", TestPowerAmbienceFallbackIsNamed, ref passed, ref failed, report);
             Run("품질 기본값이 High 다", TestVisualQualityDefaults, ref passed, ref failed, report);
             Run("품질 3단계가 모든 축에서 단조다", TestVisualQualityMonotonic, ref passed, ref failed, report);
             Run("채널 볼륨과 정적 감쇠가 분리돼 있다", TestAudioChannels, ref passed, ref failed, report);
@@ -355,6 +359,121 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             if (fallback.SourcePreset != RiskIntensity.Standard) return "기본 스냅샷이 Standard 가 아니다";
             if (!Near(fallback.For(RiskLevel.Stable).LightIntensity, expected[0].LightIntensity))
                 return "기본 스냅샷의 Stable 값이 코드 프리셋과 다르다";
+            return null;
+        }
+
+        /// <summary>
+        /// **r = 1 에서 항등**이라는 계약 (`P-20260804-05` B).
+        ///
+        /// 이 성질이 깨지면 「요구를 정확히 채운 상태」의 조명이 달라지고,
+        /// 런이 없는 저장된 씬(`RiskInputs` 가 `ratio = 1f` 로 읽는다)의 고정 캡처
+        /// A~F 가 통째로 바뀐다 — §12 대역 수치와 좌벽 ΔL 회귀 감시선이 여기에 걸려 있다.
+        /// 세 프리셋 전부에서 성립해야 한다: 프리셋을 갈아 끼워도 중립점은 하나여야
+        /// 「이 채널은 전력만 말한다」가 성립한다.
+        /// </summary>
+        private static string TestPowerAmbienceNeutralAtRequired()
+        {
+            // Arrange
+            var presets = new[]
+            {
+                PowerAmbienceIntensity.Restrained,
+                PowerAmbienceIntensity.Standard,
+                PowerAmbienceIntensity.Heavy,
+            };
+
+            foreach (PowerAmbienceIntensity intensity in presets)
+            {
+                PowerAmbience values = PowerAmbience.Preset(intensity);
+
+                // Act
+                float scale = values.IntensityScale(1f);
+                values.Tint(1f, out _, out float weight);
+
+                // Assert
+                if (!Near(scale, 1f))
+                    return $"{intensity}: r=1 밝기 배율이 {scale:F4} 다 (1.0000 이어야 한다)";
+                if (!Near(weight, 0f))
+                    return $"{intensity}: r=1 색 보정 가중치가 {weight:F4} 다 (0.0000 이어야 한다)";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// **위험 조명이 이긴다**는 계약 (`P-20260804-05` B).
+        ///
+        /// Collapse 에서 전력 채널의 권한이 정확히 0 이어야, 붕괴 직전의 등이
+        /// 「전력이 넘쳤으니 밝다」로 뒤집히지 않는다. 이 저장소는 게이지에서
+        /// 정확히 그 역전을 세 라운드 연속 지적받은 이력이 있다(`UP-FIX-10`).
+        /// </summary>
+        private static string TestPowerAmbienceYieldsToRisk()
+        {
+            // Arrange
+            PowerAmbience values = PowerAmbience.Preset(PowerAmbienceIntensity.Standard);
+
+            // Act
+            float atStable = values.AuthorityFor(0f);
+            float atCollapse = values.AuthorityFor(1f);
+
+            // Assert
+            if (!Near(atStable, 1f))
+                return $"Stable 에서 전력 채널 권한이 {atStable:F4} 다 (1.0000 이어야 한다)";
+            if (!Near(atCollapse, 0f))
+                return $"Collapse 에서 전력 채널 권한이 {atCollapse:F4} 다 (0.0000 이어야 한다 — 위험이 이긴다)";
+            return null;
+        }
+
+        /// <summary>
+        /// 달성률이 오르면 등이 **단조로** 밝아진다. 뒤집히면 「전력이 많을수록 어둡다」가 되고,
+        /// 그건 정보를 주는 것이 아니라 거짓말을 하는 것이다.
+        /// </summary>
+        private static string TestPowerAmbienceIntensityIsMonotonic()
+        {
+            // Arrange
+            var ratios = new[] { 0f, 0.25f, 0.60f, 1f, 1.60f, 2.20f, 3f };
+
+            foreach (PowerAmbienceIntensity intensity in
+                     new[] { PowerAmbienceIntensity.Restrained,
+                             PowerAmbienceIntensity.Standard,
+                             PowerAmbienceIntensity.Heavy })
+            {
+                PowerAmbience values = PowerAmbience.Preset(intensity);
+
+                // Act / Assert
+                float previous = -1f;
+                foreach (float r in ratios)
+                {
+                    float scale = values.IntensityScale(r);
+                    if (scale < previous - 1e-4f)
+                        return $"{intensity}: r={r:F2} 에서 밝기가 {previous:F4} → {scale:F4} 로 떨어진다";
+                    previous = scale;
+                }
+
+                if (!(values.IntensityScale(0f) < 1f))
+                    return $"{intensity}: 전력 0 이 중립보다 어둡지 않다 — 부족이 읽히지 않는다";
+                if (!(values.IntensityScale(values.HotRatio) > 1f))
+                    return $"{intensity}: 초과 상단이 중립보다 밝지 않다 — 넘침이 읽히지 않는다";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 에셋이 없어도 채널이 죽지 않고, **출처가 그 사실을 말한다.**
+        /// `AccessibilityProfile` 이 출처 단정 없이 한 라운드를 지나가 「주입했다」를
+        /// 반증할 수 없었던 이력이 이 검사의 이유다.
+        /// </summary>
+        private static string TestPowerAmbienceFallbackIsNamed()
+        {
+            // Arrange / Act
+            PowerAmbience fromNull = PowerAmbienceProfile.ValuesOrDefault(
+                null, PowerAmbienceIntensity.Heavy, out string source);
+
+            // Assert
+            if (source == null || source.IndexOf("코드 프리셋", StringComparison.Ordinal) < 0)
+                return $"에셋이 없을 때 출처가 「{source}」다 — 「코드 프리셋」이 들어가야 한다";
+            if (source.IndexOf("Heavy", StringComparison.Ordinal) < 0)
+                return $"출처가 어느 프리셋으로 폴백했는지 말하지 않는다: 「{source}」";
+            if (!Near(fromNull.HotRatio, PowerAmbience.Preset(PowerAmbienceIntensity.Heavy).HotRatio))
+                return "폴백 값이 요청한 코드 프리셋과 다르다";
             return null;
         }
 

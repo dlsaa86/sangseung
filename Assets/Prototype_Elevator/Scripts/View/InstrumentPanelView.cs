@@ -312,13 +312,28 @@ namespace Ascend.Prototype.View
                 {
                     // 두 줄로 나눈다 — 각 줄이 5.0 rect 단위 아래라 통관 그림자와
                     // 레버 덮개 사이에 온전히 들어간다 (`UP-FIX-23`).
+                    //
+                    // ⚠ **공백 셋과 `{0:P0}` 을 쓰지 않는다** (`UP-FIX-88`).
+                    //
+                    // 이 한 줄이 계기판에서 **가장 넓은 줄**이고, 4차 독립 평가가
+                    // 「B·F 포즈에서 `0 %` 가 우측 프레임 밖으로 절단」이라고 잡은 것이
+                    // 정확히 이 줄이다. 실측(로컬 글리프 상자, 저장 씬 기본값 기준) —
+                    //
+                    //   `요구 0   0 %`  글리프 폭 0.6445 m  ← 우측 절단
+                    //   `요구 0 0%`     글리프 폭 0.5455 m
+                    //
+                    // 지운 것은 **글자가 아니라 공백 셋**이다(공백 하나 = 0.0330 m).
+                    // `{0:P0}` 은 ko-KR 에서 값과 `%` 사이에 공백을 하나 더 넣는다 —
+                    // 즉 눈에 안 보이는 곳에서 폭을 0.033 m 쓰고 있었다.
+                    // 글자 크기는 손대지 않는다. `UP-FIX-86` 이 배율을 0.3393 → 1.0000 으로
+                    // 올린 것을 되돌리는 순간 「잘려서 못 읽는다」가 「작아서 못 읽는다」가 된다.
                     _text.Clear();
                     _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power);
                     Apply(_powerLabel, _text);
 
                     _text.Clear();
                     _text.Append("요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
-                         .Append("  ").AppendFormat("{0:P0}", ratio);
+                         .Append(' ').AppendFormat("{0:F0}", ratio * 100f).Append('%');
                     Apply(_requiredLabel, _text);
                 }
                 else

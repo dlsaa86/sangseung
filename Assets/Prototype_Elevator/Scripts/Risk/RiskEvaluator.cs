@@ -130,6 +130,20 @@ namespace Ascend.Prototype.Risk
             CurrentScore = 0f;
         }
 
+        /// <summary>
+        /// 단계를 **판정 없이** 세운다. 고정 캡처 하네스가 「이 단계에서 이 달성률이면
+        /// 방이 어떻게 보이는가」를 에디트 모드에서 찍기 위해서만 쓴다.
+        ///
+        /// ⚠ 게임 코드는 이것을 부르지 않는다. 부르면 히스테리시스의 유일한 상태가
+        /// 밖에서 덮여 위험 단계가 입력과 무관해진다 — 그건 연출 조정이 아니라
+        /// 판정 파괴다. 점수는 건드리지 않으므로 다음 <see cref="Evaluate"/> 한 번에
+        /// 정상 경로로 돌아온다.
+        /// </summary>
+        public void ForceLevel(RiskLevel level)
+        {
+            Current = level;
+        }
+
         /// <summary>원점수. 단계 없이 값만 필요한 곳(계기판 바늘 등)이 쓴다.</summary>
         public float Score(in RiskInputs inputs)
         {

@@ -492,6 +492,12 @@ namespace Ascend.Prototype.EditorTools
         //  전력 표시기
         // ══════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// 판독면(`Screen`) 왼쪽 끝과 계기 내용 사이의 여백(m). 0 이면 글자가 유리
+        /// 가장자리에 닿아 「판에 얹힌 것」이 아니라 「판에서 흘러나온 것」으로 보인다.
+        /// </summary>
+        private const float PanelFaceMargin = 0.012f;
+
         private static void MovePowerReadout(GameObject root)
         {
             Transform anchor = FindDeep(root.transform, "Anchor_Value");
@@ -576,8 +582,30 @@ namespace Ascend.Prototype.EditorTools
             // 내용이 판독 상자를 꽉 채우는 지금은 그만큼 위로 밀려 첫 줄이 판 밖으로 나간다
             // (실측 — 「0 / 10 층」이 판독면 위 0.025m 에 떠 있었다).
             // `screenH` 가 쓰는 것과 **같은 0.10** 에서 유도하므로 둘이 어긋날 수 없다.
+            //
+            // 🔴 **가로는 가운데가 아니라 왼쪽에 붙인다** (`UP-FIX-88`).
+            //
+            // 4차 독립 평가: 「B·F 포즈에서 계기판이 우측 프레임 밖으로 절단
+            // (`층`, `0 %`, `무게 0/0` 끝자리)」. 원인을 좌표로 쟀다 —
+            //
+            //   판독면 `Screen`      월드 X 0.983 … 1.773
+            //   포즈 B 프레임 우단   월드 X **1.447** (눈 x −0.35, 수평 FOV 91.5°, 라벨 깊이 z 2.051)
+            //   포즈 F 프레임 우단   월드 X **1.661**
+            //
+            // 즉 **계기판은 자기 판독면 안에 있고, 판독면이 포즈 안에 없다.**
+            // 평가자가 「글자 크기가 아니라 판독면 폭 또는 포즈 프레이밍」이라고 적은 것이 맞다.
+            //
+            // 여기서 할 수 있는 것은 하나다 — 판독면의 **왼쪽부터** 쓰는 것.
+            // 가운데 정렬은 오른쪽에 0.045 m 를 놀리면서 그만큼을 프레임 밖으로 내보내고
+            // 있었다. 왼쪽 정렬로 내용 전체가 0.026 m(≈22 px) 왼쪽으로 온다.
+            // 상수를 적지 않고 `Screen` 의 실제 경계를 재는 이유는 판이 바뀌면 상수가
+            // 조용히 어긋나기 때문이다 — 이 파일이 세 번 당한 그 함정이다.
             Transform face = anchor.parent != null ? anchor.parent : anchor;
-            Vector3 target = new Vector3(anchor.position.x, face.position.y + 0.10f * 0.5f, anchor.position.z);
+            float centerX = anchor.position.x;
+            Transform screen = face.Find("Screen");
+            if (screen != null && screen.TryGetComponent(out Renderer screenRenderer))
+                centerX = screenRenderer.bounds.min.x + PanelFaceMargin + fitted.size.x * 0.5f;
+            Vector3 target = new Vector3(centerX, face.position.y + 0.10f * 0.5f, anchor.position.z);
             Vector3 want = target - panel.forward * (fitted.size.z * 0.5f + 0.006f);
             panel.position += want - fitted.center;
             EditorUtility.SetDirty(panel);
@@ -888,8 +916,13 @@ namespace Ascend.Prototype.EditorTools
             // 「전력 0 / 0」 이라 에디트 모드 캡처에서 **같은 줄이 두 번** 보였다.
             // 런타임 `ApplyPower` 가 쓰는 형식(`전력 N` / `요구 N  P%`)을 그대로 넣는다 —
             // 값을 지어내지 않고 **0 인 상태의 실제 출력**을 적는 것이다.
+            // ⚠ 런타임 `InstrumentPanelView` 가 쓰는 형식과 **글자 하나까지 같아야 한다.**
+            // 고정 캡처는 에디트 모드에서 찍히므로 여기 적힌 것이 곧 평가받는 화면이다 —
+            // 형식이 어긋나면 캡처가 게임을 증명하지 못한다.
+            // 공백 셋 → 하나, `{0:P0}`(값과 % 사이에 공백을 하나 더 넣는다) → `%` 직결.
+            // `UP-FIX-88` 의 우측 절단이 이 줄에서 나왔다.
             SetDefault(panel, "PowerLabel", "전력 0");
-            SetDefault(panel, "RequiredLabel", "요구 0   0 %");
+            SetDefault(panel, "RequiredLabel", "요구 0 0%");
 
             int aligned = 0;
             foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
@@ -1552,12 +1585,54 @@ namespace Ascend.Prototype.EditorTools
             if (pLamp != null && bulbRenderer != null) pLamp.objectReferenceValue = bulbRenderer;
             // 흔들릴 물체도 새 등으로. 명세 §9 는 펜던트를 금지하므로 진폭은 작아야 한다.
             if (pSway != null && lamp != null) pSway.objectReferenceValue = lamp;
+
+            // 🔴 **전력 환경 프로파일을 배선한다** (`P-20260804-05` B).
+            //
+            // 에셋을 만들어 놓고 배선하지 않으면 값이 아무 데도 흐르지 않는다 —
+            // `DangerFeedbackProfile` 이 정확히 그 상태로 만들어져 `DEAD_IMPLEMENTATION_AUDIT`
+            // §1 에 「죽은 구현」으로 기록됐다. 같은 실수를 반복하지 않으려고
+            // **에셋 생성과 배선을 같은 자리에** 둔다. 배선이 끊기면 `PowerAmbienceSource`
+            // 가 「코드 프리셋 …」이라고 말하므로 반증 가능하다.
+            SerializedProperty pPower = so.FindProperty("_powerAmbienceProfile");
+            string powerAsset = "(배선 실패)";
+            if (pPower != null)
+            {
+                if (pPower.objectReferenceValue == null)
+                {
+                    var profile = EnsurePowerAmbienceProfile();
+                    pPower.objectReferenceValue = profile;
+                    powerAsset = profile != null ? profile.name + " (이번에 배선)" : "(에셋 생성 실패)";
+                }
+                else powerAsset = pPower.objectReferenceValue.name + " (이미 배선)";
+            }
+
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(risk);
 
             _report.AppendLine($"  위험 조명 — _cabinLight={(light != null ? light.name : "없음")} " +
                                $"_lampRenderer={(bulbRenderer != null ? bulbRenderer.name : "없음")} " +
                                $"_swayTarget={(lamp != null ? lamp.name : "없음")}");
+            _report.AppendLine($"     전력 환경 — _powerAmbienceProfile={powerAsset}");
+        }
+
+        /// <summary>
+        /// `PowerAmbienceProfile.asset` 이 없으면 만든다. 있으면 **그대로 둔다** —
+        /// 손으로 조정한 값을 빌더가 매번 되돌리면 「인스펙터가 원본」이 성립하지 않는다.
+        /// 멱등이다: 두 번째 실행은 찾기만 하고 아무것도 쓰지 않는다.
+        /// </summary>
+        private static Ascend.Prototype.Data.Profiles.PowerAmbienceProfile EnsurePowerAmbienceProfile()
+        {
+            const string path = "Assets/Prototype_Elevator/Data/Profiles/PowerAmbienceProfile.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<
+                Ascend.Prototype.Data.Profiles.PowerAmbienceProfile>(path);
+            if (existing != null) return existing;
+
+            var created = ScriptableObject.CreateInstance<
+                Ascend.Prototype.Data.Profiles.PowerAmbienceProfile>();
+            created.ApplyPreset(Ascend.Prototype.Data.Profiles.PowerAmbienceIntensity.Standard);
+            AssetDatabase.CreateAsset(created, path);
+            AssetDatabase.SaveAssets();
+            return created;
         }
 
         // ══════════════════════════════════════════════════════════════════════

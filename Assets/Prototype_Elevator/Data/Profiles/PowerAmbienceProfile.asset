@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b3d9aab5dbad2e42a2a21be46939349, type: 3}
+  m_Name: PowerAmbienceProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Data.Profiles.PowerAmbienceProfile
+  _sourcePreset: 1
+  _presetName: "\uD45C\uC900"
+  _values:
+    StarvedColor: {r: 0.56, g: 0.64, b: 0.84, a: 1}
+    StarvedIntensity: 0.55
+    OverdrivenColor: {r: 1, g: 0.4, b: 0.2, a: 1}
+    OverdrivenIntensity: 1.45
+    HotRatio: 2.2
+    ColorWeight: 0.7
+    RiskYield: 1
+    BreachFlash: 0.6
+    BreachFlashDecay: 0.5

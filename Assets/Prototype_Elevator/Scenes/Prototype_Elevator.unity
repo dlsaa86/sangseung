@@ -19039,7 +19039,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\uC694\uAD6C 0   0 %"
+  m_text: "\uC694\uAD6C 0 0%"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: e685bf495ab5cce4c85549082507fdcc, type: 2}
   m_sharedMaterial: {fileID: 2100000, guid: b540314e9488865428e14b9e77610580, type: 2}
@@ -29698,6 +29698,9 @@ MonoBehaviour:
   _lampFilamentColor: {r: 1, g: 0.78, b: 0.46, a: 1}
   _lampRiskTint: 0.35
   _lampEmissionScale: 3.4
+  _drivePowerAmbience: 1
+  _powerAmbienceProfile: {fileID: 11400000, guid: f79f016d35c37e4408529e728d8b71a7, type: 2}
+  _powerAmbienceIntensity: 1
   _warningLight: {fileID: 1230526762}
   _swayTarget: {fileID: 355143167}
   _cameraTarget: {fileID: 1337836311}
@@ -58746,7 +58749,7 @@ Transform:
   m_GameObject: {fileID: 2080261926}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 2.6080003, y: -0.21749985, z: 0.6709995}
+  m_LocalPosition: {x: 2.5750003, y: -0.21749985, z: 0.6709995}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
