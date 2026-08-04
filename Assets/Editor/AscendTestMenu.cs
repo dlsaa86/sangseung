@@ -71,6 +71,11 @@ namespace Ascend.Prototype.EditorTools
             // 정산이 사라진다」가 두 선택을 겨루게 만드는 축이라, 그 단정이
             // 없으면 규칙이 조용히 무력해져도 아무도 모른다.
             Data.Profiles.Tests.SettlementTests.RunAll(),
+            // Mercy / Hunger 두 성과 축 (`D-20260805-01` · Notion §6). 이 규칙의 목적은
+            // 「잘한 플레이에 보상」이 아니라 **절제와 탐욕을 겨루게 하는 것**이다.
+            // 「추가 스핀을 쓰면 Mercy 가 내려간다」가 그 저울의 받침점이고, 그 단정이
+            // 없으면 과수확이 공짜가 되어 브레이크를 걸 이유가 조용히 사라진다.
+            Run.Tests.MercyHungerTests.RunAll(),
         };
 
         [MenuItem("Ascend/Run All EditMode Tests %#t")]

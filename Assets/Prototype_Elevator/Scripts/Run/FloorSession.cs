@@ -374,6 +374,20 @@ namespace Ascend.Prototype.Run
         public float RequiredPower => _requiredPower;
         public int SpinsUsed { get; private set; }
         public int SpinsRemaining => Math.Max(0, Plan.Spins - SpinsUsed);
+
+        private int _spinsRemainingAtFirstReach = -1;
+
+        /// <summary>
+        /// 요구 전력을 **처음** 채운 순간의 남은 스핀. 아직 못 채웠으면 −1 이다.
+        ///
+        /// Mercy 등급의 유일한 입력이다(`MercyHunger.MercyFor`). −1 과 0 은 다르다 —
+        /// −1 은 「끝내 못 채웠다」, 0 은 「마지막 스핀에 겨우 채웠다」이고
+        /// 앞은 <see cref="MercyGrade.None"/>, 뒤는 절제로는 최하위지만 **달성**이다.
+        /// </summary>
+        public int SpinsRemainingAtFirstReach => _spinsRemainingAtFirstReach;
+
+        /// <summary>초과 전력 비율. 계기·기록기가 등급 대신 이 연속값을 쓴다.</summary>
+        public float ExcessRatio => MercyHunger.ExcessRatio(Power, RequiredPower);
         public ResidualState Residual => _residual;
         public PowerBand CurrentBand => _thresholds.BandFor(Power, RequiredPower);
         public bool CanBank => Power >= RequiredPower;
@@ -525,6 +539,14 @@ namespace Ascend.Prototype.Run
             SpinsUsed++;
 
             PublishSpinDetail(in resolution);
+
+            // 🔴 **첫 달성 시점을 여기서만 붙잡는다** (Notion §6.2 / `D-20260805-01`).
+            //
+            // Mercy 등급은 「첫 달성 시점의 남은 스핀」으로 고정된다. 나중에 결과에서
+            // 되계산할 수 없다 — 그때는 이미 더 돌렸는지 여부밖에 남지 않고, 몇 스핀
+            // 남기고 처음 채웠는지는 사라진다. 그래서 **그 순간에** 적는다.
+            if (_spinsRemainingAtFirstReach < 0 && CanBank)
+                _spinsRemainingAtFirstReach = SpinsRemaining;
 
             if (CanBank || SpinsRemaining == 0)
                 Phase = FloorPhase.Decision;
