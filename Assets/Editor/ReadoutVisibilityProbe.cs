@@ -312,7 +312,7 @@ namespace Ascend.Prototype.EditorTools
             if (EditorApplication.isPlaying)
             { Debug.LogError("[상승] Play 모드에서는 찍지 않는다."); return; }
 
-            const string dir = "Captures/symbols_v4_20260804";
+            const string dir = "Captures/symbols_v5_20260805";
             var log = new StringBuilder($"[상승] === 고정 캡처 세트 → {dir} ===\n");
 
             // 🔴 찍기 **전에** 유령 서브메시를 지운다. 3차 평가의 「전력 0 /」가
@@ -328,7 +328,7 @@ namespace Ascend.Prototype.EditorTools
             cam.targetTexture = rt;
 
             var man = new StringBuilder();
-            man.AppendLine("symbols_v4_20260804 capture manifest");
+            man.AppendLine("symbols_v5_20260805 capture manifest");
             man.AppendLine($"resolution {Width}x{Height}  fovVertical {FovVertical}  antialiasing None  " +
                            $"RT ARGB32 sRGB  MSAA off  post {(data != null && data.renderPostProcessing ? "ON" : "OFF")}");
             man.AppendLine($"machineFingerprint {SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
@@ -397,6 +397,8 @@ namespace Ascend.Prototype.EditorTools
             man.AppendLine();
             AppendColumnGlyphTable(cam, man);
             man.AppendLine();
+            AppendRepeaterTable(cam, man);
+            man.AppendLine();
             AppendWeightTable(cam, rt, man);
             man.AppendLine();
             AppendPanelClipTable(cam, man, derived);
@@ -436,6 +438,7 @@ namespace Ascend.Prototype.EditorTools
                     Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
                     Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
                     if (a.z <= 0f || b.z <= 0f) continue;
+                    if (!BoxTouchesFrame(a, b)) continue;   // 화각 밖 글자를 판독 범위에 넣지 않는다
                     float h = Mathf.Abs(b.y - a.y);
                     if (h <= 0.01f) continue;
                     min = Mathf.Min(min, h); max = Mathf.Max(max, h);
@@ -520,6 +523,32 @@ namespace Ascend.Prototype.EditorTools
             if (pivot == null || fill == null || view == null)
             { man.AppendLine("━━ 전력 스윕 ━━ ⚠ 계기탑 배선이 비어 있다 — 찍지 않았다"); return; }
 
+            // 🔴 **반복기도 함께 민다** (UP-FIX-92 / UP-FIX-95).
+            //
+            // 에디트 모드라 `LateUpdate` 가 돌지 않으므로 스윕이 직접 값을 쓴다.
+            // 탑만 밀면 캡처에 「탑 전력 516 240% · 벽 전력 0」이 그대로 찍힌다 —
+            // 6차 평가가 새로 잡은 결함이 정확히 그 모양이었고, 그때는 원인이
+            // **하네스가 탑만 구동한 것**인지 런타임 불일치인지 캡처로 구분조차 되지
+            // 않았다. 여기서 같이 밀면 그 물음이 사라진다.
+            var repPivots = new List<Transform>();
+            var repFills = new List<Renderer>();
+            var repBands = new List<Renderer>();
+            var repLines = new List<TMPro.TMP_Text>();
+            var repLine0 = new List<string>();
+            for (int i = 0; i < view.RepeaterCount; i++)
+            {
+                Transform rp = view.RepeaterFillPivot(i);
+                if (rp == null || rp.parent == null) continue;
+                Transform rroot = rp.parent;
+                repPivots.Add(rp);
+                repFills.Add(FindIn(rp, "TankFill")?.GetComponent<Renderer>());
+                repBands.Add(FindIn(rroot, "Tick_100")?.GetComponent<Renderer>());
+                Transform pl = rroot.Find("PowerLine");
+                TMPro.TMP_Text plt = pl != null ? pl.GetComponent<TMPro.TMP_Text>() : null;
+                repLines.Add(plt);
+                repLine0.Add(plt != null ? plt.text : null);
+            }
+
             // 원래 상태를 붙잡는다.
             Vector3 pivot0 = pivot.localScale;
             Vector3 pin0 = pin != null ? pin.localPosition : Vector3.zero;
@@ -550,14 +579,36 @@ namespace Ascend.Prototype.EditorTools
             man.AppendLine("  🔴 직전 라운드의 조명 사다리(`power_ladder/`)는 **버렸다** — 5차 평가가 실측으로");
             man.AppendLine("     기각했다(값 못 실음 · 회색조 소실 · 0%↔240% 동일 화면). 이번 채널은 **채움 높이**다.");
             man.AppendLine();
-            man.AppendLine("  파일                      달성률  전력    층수  탱크채움  회색조 채움높이(px)  대비");
-            man.AppendLine("                                                    (m)     A포즈   H포즈      (채움/관)");
 
-            var sweepPoses = new List<(string name, Vector3 eye, Vector3 look)>();
-            foreach (var p in Poses) if (p.name == "A_entry_to_machine") sweepPoses.Add(p);
-            foreach (var p in ExtraPoses) if (p.name == "H_lever_column") sweepPoses.Add(p);
+            // 🔴 **포즈마다 「그 포즈가 읽어야 할 계기」를 함께 들고 다닌다** (UP-FIX-92).
+            //
+            // 직전 판본은 네 포즈 전부를 **계기탑의** 채움 기둥으로 쟀다. 기계 벽을 등진
+            // `C`·`E` 에서는 탑이 화각 밖이라 그 측정은 의미가 없고, 게다가 `Clamp` 가
+            // 범위 밖 좌표를 화면 가장자리로 접어 **그럴듯한 숫자**를 냈다(6차 평가가
+            // 매니페스트의 `G_gauge_face` 행에서 잡아낸 그 결함). 이제 각 포즈는
+            // 자기 벽에 있는 계기를 잰다 — 탑이 없으면 반복기를 잰다.
+            var sweepPoses = new List<(string name, Vector3 eye, Vector3 look, Transform gauge)>();
+            foreach (var p in Poses)
+                if (p.name == "A_entry_to_machine") sweepPoses.Add((p.name, p.eye, p.look, pivot));
+            foreach (var p in ExtraPoses)
+                if (p.name == "H_lever_column") sweepPoses.Add((p.name, p.eye, p.look, pivot));
+            foreach (var p in Poses)
+            {
+                if (p.name == "C_toward_gate" && view.RepeaterCount > 0)
+                    sweepPoses.Add((p.name, p.eye, p.look, view.RepeaterFillPivot(0)));
+                if (p.name == "E_contract_wall" && view.RepeaterCount > 1)
+                    sweepPoses.Add((p.name, p.eye, p.look, view.RepeaterFillPivot(1)));
+            }
 
-            var emptyRef = new int[] { -1, -1 };   // 포즈별 「빈 관」 기준값 (p000 에서 잰다)
+            var emptyRef = new int[sweepPoses.Count];   // 포즈별 「빈 관」 기준값 (p000 에서 잰다)
+            for (int i = 0; i < emptyRef.Length; i++) emptyRef[i] = -1;
+
+            var head = new StringBuilder($"  {"파일",-22}{"달성률",6}{"전력",8}{"층수",6}{"채움m",8}");
+            foreach (var p in sweepPoses)
+                head.Append($"{Abbrev(p.name),7}{"대비",7}");
+            man.AppendLine(head.ToString());
+            man.AppendLine("  ※ 각 포즈는 **그 화각 안에 있는** 계기를 잰다 — A·H 는 계기탑,");
+            man.AppendLine("     C·E 는 전력 반복기(UP-FIX-92). 화각 밖이면 0 이 나온다(프러스텀 확인 있음).");
             foreach (var (suffix, ratio) in PowerSweep)
             {
                 float power = required * ratio;
@@ -569,11 +620,21 @@ namespace Ascend.Prototype.EditorTools
                 float fillM = AscentColumnSpec.TankHeight *
                               Mathf.Clamp(ratio, 0f, AscentColumnSpec.MaxRatio) / AscentColumnSpec.MaxRatio;
                 Vector3 s = pivot.localScale; s.y = fillM; pivot.localScale = s;
-                SetGauge(fill, ratio < 1f ? new Color(0.62f, 0.56f, 0.40f)
-                             : ratio >= 2.2f ? new Color(0.88f, 0.20f, 0.11f)
-                             : new Color(0.78f, 0.26f, 0.16f), 0.55f);
-                SetGauge(band, unlocked ? new Color(0.86f, 0.22f, 0.14f) : new Color(0.34f, 0.11f, 0.09f),
-                         unlocked ? 0.45f : 0f);
+                Color fillColor = ratio < 1f ? new Color(0.62f, 0.56f, 0.40f)
+                                : ratio >= 2.2f ? new Color(0.88f, 0.20f, 0.11f)
+                                : new Color(0.78f, 0.26f, 0.16f);
+                Color bandColor = unlocked ? new Color(0.86f, 0.22f, 0.14f) : new Color(0.34f, 0.11f, 0.09f);
+                SetGauge(fill, fillColor, 0.55f);
+                SetGauge(band, bandColor, unlocked ? 0.45f : 0f);
+
+                string powerText = $"전력 {power:F0}   {ratio * 100f:F0}%";
+                for (int i = 0; i < repPivots.Count; i++)
+                {
+                    Vector3 rs = repPivots[i].localScale; rs.y = fillM; repPivots[i].localScale = rs;
+                    SetGauge(repFills[i], fillColor, 0.55f);
+                    SetGauge(repBands[i], bandColor, unlocked ? 0.45f : 0f);
+                    if (repLines[i] != null) repLines[i].SetText(powerText);
+                }
                 if (pin != null) pin.localPosition = unlocked
                     ? new Vector3(pin0.x + 0.066f, pin0.y, pin0.z) : pin0;
                 for (int i = 0; i < pips.Count; i++)
@@ -587,12 +648,12 @@ namespace Ascend.Prototype.EditorTools
                 }
                 if (spinNum != null) spinNum.SetText(spinsLeft.ToString());
                 if (ascNum != null) ascNum.SetText(floors <= 0 ? "0" : "+" + floors);
-                if (powerLine != null) powerLine.SetText($"전력 {power:F0}   {ratio * 100f:F0}%");
+                if (powerLine != null) powerLine.SetText(powerText);
                 if (reserve != null) reserve.SetText($"배수 {ratio:F2}배   손실 {(unlocked ? Mathf.RoundToInt(power * 0.12f).ToString() : "—")}");
 
-                var fillPx = new int[2];
+                var fillPx = new int[sweepPoses.Count];
+                var borePxs = new int[sweepPoses.Count];
                 int idx = 0;
-                int borePx = 0;
                 foreach (var pose in sweepPoses)
                 {
                     Aim(cam, pose.eye, pose.look);
@@ -607,14 +668,20 @@ namespace Ascend.Prototype.EditorTools
                     // 중앙값이 곧 채움값이 되어 문턱이 채움 위로 올라가고 **0 px 이 나온다.**
                     // 즉 가장 꽉 찬 두 칸이 「비었다」로 기록됐다 — 도구가 결과를 뒤집은 것이다.
                     // `p000`(첫 칸)에서 잰 빈 관 값을 포즈별로 붙잡아 전 칸에 같은 문턱을 쓴다.
-                    int slot = Mathf.Min(idx, 1);
-                    if (emptyRef[slot] < 0) emptyRef[slot] = GrayColumnMedian(cam, gray, pivot);
-                    fillPx[slot] = GrayFillHeight(cam, gray, pivot, emptyRef[slot]);
-                    if (slot == 1) borePx = GrayBoreHeight(cam, pivot);
+                    Transform g = pose.gauge;
+                    if (g != null)
+                    {
+                        if (emptyRef[idx] < 0) emptyRef[idx] = GrayColumnMedian(cam, gray, g);
+                        fillPx[idx] = GrayFillHeight(cam, gray, g, emptyRef[idx]);
+                        borePxs[idx] = GrayBoreHeight(cam, g);
+                    }
                     idx++;
                 }
-                man.AppendLine($"  {suffix,-26}{ratio,6:P0}{power,8:F0}{floors,6}{fillM,9:F3}" +
-                               $"{fillPx[0],8}{fillPx[1],8}      {(borePx > 0 ? (fillPx[1] / (float)borePx).ToString("P0") : "-")}");
+
+                var row = new StringBuilder($"  {suffix,-22}{ratio,6:P0}{power,8:F0}{floors,6}{fillM,8:F3}");
+                for (int i = 0; i < sweepPoses.Count; i++)
+                    row.Append($"{fillPx[i],7}{(borePxs[i] > 0 ? (fillPx[i] / (float)borePxs[i]).ToString("P0") : "-"),7}");
+                man.AppendLine(row.ToString());
             }
 
             // 되돌린다. 그리고 되돌아왔는지 **잰다.**
@@ -628,10 +695,23 @@ namespace Ascend.Prototype.EditorTools
             if (powerLine != null && pow0 != null) powerLine.SetText(pow0);
             if (reserve != null && res0 != null) reserve.SetText(res0);
 
+            // 반복기도 되돌린다. 되돌리지 않으면 **다음 고정 캡처가 스윕의 마지막 칸을**
+            // 「저장된 씬의 기본 상태」로 찍는다.
+            var repAfter = new StringBuilder();
+            for (int i = 0; i < repPivots.Count; i++)
+            {
+                Vector3 rs = repPivots[i].localScale; rs.y = 0f; repPivots[i].localScale = rs;
+                SetGauge(repFills[i], new Color(0.62f, 0.56f, 0.40f), 0f);
+                SetGauge(repBands[i], new Color(0.34f, 0.11f, 0.09f), 0f);
+                if (repLines[i] != null && repLine0[i] != null) repLines[i].SetText(repLine0[i]);
+                repAfter.Append($"[{i}] y {repPivots[i].localScale.y:F4} 「{repLine0[i]}」  ");
+            }
+
             man.AppendLine();
             man.AppendLine($"  복원 확인 — 탱크 채움 y {pivot0.y:F4} → {pivot.localScale.y:F4} · " +
                            $"잠금핀 x {pin0.x:F4} → {(pin != null ? pin.localPosition.x : 0f):F4} · " +
                            $"스핀 「{spin0}」 · 층수 「{asc0}」 · 전력 「{pow0}」");
+            man.AppendLine($"  반복기 복원 — {(repAfter.Length == 0 ? "반복기 없음" : repAfter.ToString())}");
             man.AppendLine();
             AppendAscentRuleCheck(session, required, man);
         }
@@ -683,6 +763,7 @@ namespace Ascend.Prototype.EditorTools
             Vector3 a = cam.WorldToScreenPoint(pivot.position);
             Vector3 b = cam.WorldToScreenPoint(pivot.position + Vector3.up * AscentColumnSpec.TankHeight);
             if (a.z <= 0f || b.z <= 0f) return 0;
+            if (!BoxTouchesFrame(a, b)) return 0;   // 화각 밖 — 「450px」 같은 유령 수치를 막는다
             return Mathf.RoundToInt(Mathf.Abs(b.y - a.y));
         }
 
@@ -694,35 +775,89 @@ namespace Ascend.Prototype.EditorTools
         /// </summary>
         private static int GrayFillHeight(Camera cam, byte[] gray, Transform pivot, int emptyRef)
         {
-            if (!ColumnSpan(cam, pivot, out int x, out int y0, out int y1)) return 0;
+            if (!ColumnSpan(cam, pivot, out Vector2 lo, out Vector2 hi)) return 0;
             int thr = emptyRef + 10;   // 0~255. 채움은 발광이라 빈 관보다 확실히 위다
             int lit = 0;
-            for (int y = y0; y <= y1; y++) if (gray[y * Width + x] >= thr) lit++;
+            int y0 = Mathf.RoundToInt(lo.y), y1 = Mathf.RoundToInt(hi.y);
+            for (int y = y0; y <= y1; y++)
+                if (SampleAlong(gray, lo, hi, y, out byte v) && v >= thr) lit++;
             return lit;
         }
 
         /// <summary>빈 관의 기준 밝기. `p000` 프레임에서 한 번만 잰다.</summary>
         private static int GrayColumnMedian(Camera cam, byte[] gray, Transform pivot)
         {
-            if (!ColumnSpan(cam, pivot, out int x, out int y0, out int y1)) return 255;
+            if (!ColumnSpan(cam, pivot, out Vector2 lo, out Vector2 hi)) return 255;
             var vals = new List<byte>();
-            for (int y = y0; y <= y1; y++) vals.Add(gray[y * Width + x]);
+            int y0 = Mathf.RoundToInt(lo.y), y1 = Mathf.RoundToInt(hi.y);
+            for (int y = y0; y <= y1; y++)
+                if (SampleAlong(gray, lo, hi, y, out byte v)) vals.Add(v);
             if (vals.Count == 0) return 255;
             vals.Sort();
             return vals[vals.Count / 2];
         }
 
-        private static bool ColumnSpan(Camera cam, Transform pivot, out int x, out int y0, out int y1)
+        /// <summary>
+        /// 관의 **투영선을 따라** 한 화소를 읽는다.
+        ///
+        /// 🔴 직전 판본은 아래·위 끝의 x 평균 **하나**로 세로줄을 훑었다. 계기탑처럼
+        /// 정면으로 보는 벽에서는 오차가 작지만, `C_toward_gate`·`E_contract_wall`
+        /// 처럼 벽을 **비스듬히** 보는 화각에서는 관의 투영이 기울어 표본선이 위아래
+        /// 끝에서 관을 벗어나 뒷판·벽을 읽는다. 그 결과 **빈 관이 26 px·67 px 로**
+        /// 측정됐다 — 도구가 「비었는데 차 있다」고 말한 것이다.
+        /// y 마다 x 를 보간하면 기울어도 관 안에 머무른다.
+        /// </summary>
+        private static bool SampleAlong(byte[] gray, Vector2 lo, Vector2 hi, int y, out byte value)
         {
-            x = y0 = y1 = 0;
+            value = 0;
+            if (y < 0 || y >= Height) return false;
+            float span = hi.y - lo.y;
+            float t = Mathf.Abs(span) < 0.001f ? 0f : Mathf.Clamp01((y - lo.y) / span);
+            int x = Mathf.RoundToInt(Mathf.Lerp(lo.x, hi.x, t));
+            if (x < 0 || x >= Width) return false;
+            value = gray[y * Width + x];
+            return true;
+        }
+
+        /// <summary>관의 아래·위 끝을 **화면 좌표 그대로** 돌려준다(정수 x 하나로 접지 않는다).</summary>
+        private static bool ColumnSpan(Camera cam, Transform pivot, out Vector2 lo, out Vector2 hi)
+        {
+            lo = hi = Vector2.zero;
             Vector3 bottom = cam.WorldToScreenPoint(pivot.position);
             Vector3 top = cam.WorldToScreenPoint(pivot.position + Vector3.up * AscentColumnSpec.TankHeight);
             if (bottom.z <= 0f || top.z <= 0f) return false;
             if (Mathf.Abs(top.y - bottom.y) <= 2f) return false;
-            x = Mathf.Clamp(Mathf.RoundToInt((bottom.x + top.x) * 0.5f), 0, Width - 1);
-            y0 = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(bottom.y, top.y)), 0, Height - 1);
-            y1 = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(bottom.y, top.y)), 0, Height - 1);
+
+            // 🔴 프러스텀 확인. 이게 없으면 화각 **밖**의 관도 화면 가장자리 화소를 읽어
+            //   그럴듯한 숫자를 낸다 — 6차 독립 평가가 매니페스트의 `G_gauge_face` 행을
+            //   「이미지에 계기탑이 없는데 450px 라고 적혀 있다」로 잡아낸 그 결함이다.
+            //   `Clamp` 가 범위 밖을 조용히 가장자리로 접는 것이 원인이었다.
+            if (!BoxTouchesFrame(bottom, top)) return false;
+
+            Vector2 b = new Vector2(bottom.x, bottom.y);
+            Vector2 t = new Vector2(top.x, top.y);
+            lo = b.y <= t.y ? b : t;
+            hi = b.y <= t.y ? t : b;
             return true;
+        }
+
+        /// <summary>포즈 이름의 앞머리 한 글자(`A_entry_to_machine` → `A`). 표 폭을 위한 것이다.</summary>
+        private static string Abbrev(string poseName)
+        {
+            int i = poseName.IndexOf('_');
+            return i > 0 ? poseName.Substring(0, i) : poseName;
+        }
+
+        /// <summary>
+        /// 투영된 상자가 화면 사각형과 **닿는가.** `WorldToScreenPoint` 는 화각 밖도
+        /// 좌표를 돌려주므로(z &gt; 0 이면 성공한다), 이 확인이 없으면 화면에 없는 글자가
+        /// 판독 화소로 집계된다.
+        /// </summary>
+        private static bool BoxTouchesFrame(Vector3 a, Vector3 b)
+        {
+            float x0 = Mathf.Min(a.x, b.x), x1 = Mathf.Max(a.x, b.x);
+            float y0 = Mathf.Min(a.y, b.y), y1 = Mathf.Max(a.y, b.y);
+            return x1 >= 0f && x0 <= Width && y1 >= 0f && y0 <= Height;
         }
 
         private static Transform FindIn(Transform root, string name)
@@ -773,6 +908,62 @@ namespace Ascend.Prototype.EditorTools
             }
         }
 
+        /// <summary>
+        /// **전력 반복기가 각 포즈에서 실제로 몇 화소인가** (UP-FIX-92).
+        ///
+        /// 「C·E 에도 달았다」는 주장이 아니라 수치여야 한다. 여섯 라운드 동안 이 항목이
+        /// 2점이었던 이유가 「그 화각에 전력 정보가 0개」였으므로, 반증은 **그 화각에서
+        /// 잰 화소**뿐이다. 화각 밖이면 `화각밖` 이 찍힌다 — 프러스텀 확인이 붙어 있다.
+        /// </summary>
+        private static void AppendRepeaterTable(Camera cam, StringBuilder man)
+        {
+            man.AppendLine("━━ 전력 반복기 판독 (UP-FIX-92 · 한글 안정 판독 하한 16 px) ━━━━━━━━━━━━━━━");
+            var view = Object.FindAnyObjectByType<View.AscentColumnView>(FindObjectsInactive.Include);
+            if (view == null || view.RepeaterCount == 0)
+            { man.AppendLine("  ⚠ 반복기가 배선되지 않았다"); return; }
+
+            var all = new List<(string name, Vector3 eye, Vector3 look)>(Poses);
+            all.AddRange(ExtraPoses);
+            var hdr = new StringBuilder("  포즈                  ");
+            for (int i = 0; i < view.RepeaterCount; i++)
+                hdr.Append($"[{i}] 관세로   전력줄     ");
+            man.AppendLine(hdr.ToString());
+            foreach (var p in all)
+            {
+                Aim(cam, p.eye, p.look);
+                var row = new StringBuilder($"  {p.name,-22}");
+                for (int i = 0; i < view.RepeaterCount; i++)
+                {
+                    Transform rp = view.RepeaterFillPivot(i);
+                    if (rp == null || rp.parent == null) { row.Append("-        "); continue; }
+                    int bore = GrayBoreHeight(cam, rp);
+                    Transform pl = rp.parent.Find("PowerLine");
+                    var tmp = pl != null ? pl.GetComponent<TMPro.TMP_Text>() : null;
+                    string linepx = "-";
+                    if (tmp != null)
+                    {
+                        tmp.ForceMeshUpdate();
+                        float h = 0f; int n = 0;
+                        var info = tmp.textInfo;
+                        for (int c = 0; c < info.characterCount; c++)
+                        {
+                            TMPro.TMP_CharacterInfo ch = info.characterInfo[c];
+                            if (!ch.isVisible) continue;
+                            Vector3 a = cam.WorldToScreenPoint(tmp.transform.TransformPoint(ch.bottomLeft));
+                            Vector3 b = cam.WorldToScreenPoint(tmp.transform.TransformPoint(ch.topRight));
+                            if (a.z <= 0f || b.z <= 0f) continue;
+                            if (!BoxTouchesFrame(a, b)) continue;
+                            h = Mathf.Max(h, Mathf.Abs(b.y - a.y)); n++;
+                        }
+                        linepx = n == 0 ? "화각밖" : $"{h:F0}px";
+                    }
+                    row.Append($"{(bore <= 0 ? "화각밖" : bore + "px"),-10}{linepx,-12}");
+                }
+                man.AppendLine(row.ToString());
+            }
+            man.AppendLine("  ※ 관세로 = 탱크 안지름의 화면 세로. 채움 높이의 분모다.");
+        }
+
         private static string Px(Camera cam, GameObject col, string parent, string leaf)
         {
             TMPro.TMP_Text t = TmpIn(col.transform, parent, leaf);
@@ -787,6 +978,7 @@ namespace Ascend.Prototype.EditorTools
                 Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
                 Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
                 if (a.z <= 0f || b.z <= 0f) continue;
+                if (!BoxTouchesFrame(a, b)) continue;   // 화면에 없는 글자를 판독 화소로 세지 않는다
                 h = Mathf.Max(h, Mathf.Abs(b.y - a.y)); n++;
             }
             return n == 0 ? "화각밖" : $"{h:F0}px";
@@ -966,6 +1158,7 @@ namespace Ascend.Prototype.EditorTools
                 Vector3 c = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topLeft));
                 Vector3 d = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomRight));
                 if (a.z <= 0f || b.z <= 0f || c.z <= 0f || d.z <= 0f) continue;
+                if (!BoxTouchesFrame(a, b) && !BoxTouchesFrame(c, d)) continue;   // 화각 밖은 제외
                 float h = Mathf.Max(Mathf.Abs(b.y - a.y), Mathf.Abs(c.y - d.y));
                 float w = Mathf.Max(Mathf.Abs(b.x - a.x), Mathf.Abs(c.x - d.x));
                 if (h <= 0.01f) continue;

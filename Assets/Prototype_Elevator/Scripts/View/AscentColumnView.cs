@@ -78,6 +78,41 @@ namespace Ascend.Prototype.View
         [SerializeField] private Vector3 _lockLugLocked = Vector3.zero;
         [SerializeField] private Vector3 _lockLugOpen = new Vector3(0.055f, 0f, 0f);
 
+        // ── 전력 반복기 (UP-FIX-92) ──────────────────────────────────────────
+        //
+        // 🔴 **왜 배열인가 — 갈라질 수 없게 하려고.**
+        //
+        // 여섯 라운드 연속 2점을 받은 항목이 「기계 벽을 등진 화각(`C_toward_gate`·
+        // `E_contract_wall`)에 전력 정보가 0개」다. 여섯 번째 표시기를 같은 벽에 또
+        // 얹지 말고 **다른 벽으로 옮기라**는 것이 6차 독립 평가의 판정이었다.
+        //
+        // 그 벽에 세운 사본을 **별도 컴포넌트로 만들지 않는다.** 6차 평가가 같은
+        // 라운드에 잡아낸 새 결함이 「같은 프레임의 두 전력 표시가 다른 값」이었고
+        // (탑 `전력 516 240%` / 벽 `전력 0`), 그것은 표시기마다 갱신 경로가 따로
+        // 있었기 때문에 생긴다. 여기서는 <see cref="ApplyTank"/> 하나가 탑과 사본을
+        // **같은 프레임에 같은 값으로** 쓴다 — 구조적으로 어긋날 수 없다.
+        [Header("전력 반복기 — 기계 벽을 등진 화각용 사본 (UP-FIX-92)")]
+        [Tooltip("사본 채움 기둥. 탑과 같은 프레임에 같은 높이로 갱신된다.")]
+        [SerializeField] private Transform[] _repeaterFillPivots = new Transform[0];
+
+        [Tooltip("사본 채움 렌더러. 탑과 같은 색·발광을 받는다.")]
+        [SerializeField] private Renderer[] _repeaterFills = new Renderer[0];
+
+        [Tooltip("사본 요구선 띠. 100% 전후로 탑과 함께 갈린다.")]
+        [SerializeField] private Renderer[] _repeaterBands = new Renderer[0];
+
+        [Tooltip("사본 잠금쇠. 탑의 잠금 오프셋을 그대로 쓴다.")]
+        [SerializeField] private Transform[] _repeaterLockLugs = new Transform[0];
+
+        [Tooltip("사본 전력 수치 줄. 탑의 `PowerLine` 과 같은 문자열을 받는다.")]
+        [SerializeField] private TextMeshPro[] _repeaterPowerLines = new TextMeshPro[0];
+
+        /// <summary>측정용. 반복기가 실제로 배선돼 있는가를 매니페스트가 스스로 적는다.</summary>
+        public int RepeaterCount => _repeaterFillPivots != null ? _repeaterFillPivots.Length : 0;
+        public Transform RepeaterFillPivot(int i)
+            => _repeaterFillPivots != null && i >= 0 && i < _repeaterFillPivots.Length
+               ? _repeaterFillPivots[i] : null;
+
         // ── 1순위 숫자 ───────────────────────────────────────────────────────
 
         [Header("1순위 — 남은 스핀 / 상승 층수")]
@@ -205,12 +240,7 @@ namespace Ascend.Prototype.View
         private void ApplyTank(float ratio, FloorSession floor)
         {
             float clamped = Mathf.Clamp(ratio, 0f, _maxRatio);
-            if (_tankFillPivot != null)
-            {
-                Vector3 s = _tankFillPivot.localScale;
-                s.y = _tankHeight * (clamped / Mathf.Max(0.0001f, _maxRatio));
-                _tankFillPivot.localScale = s;
-            }
+            SetFillHeight(_tankFillPivot, clamped);
 
             Color color = ratio < 1f ? _belowRequired
                         : floor.ExtraSpinsTaken > 0 || ratio >= 2.2f ? _overharvested
@@ -220,12 +250,16 @@ namespace Ascend.Prototype.View
             // 요구선과 잠금쇠 — `MACHINE_SPEC` §4.4 「100% 달성 시 내부 잠금쇠가 풀린다」.
             bool unlocked = floor.IsOverharvestUnlocked;
             SetColor(_requiredBand, unlocked ? _bandUnlocked : _bandLocked, unlocked ? 0.45f : 0f);
-            if (_lockLug != null)
-            {
-                Vector3 want = unlocked ? _lockLugOpen : _lockLugLocked;
-                if ((_lockLug.localPosition - want).sqrMagnitude > 1e-8f)
-                    _lockLug.localPosition = want;
-            }
+            MoveLug(_lockLug, unlocked);
+
+            // 사본 — **같은 프레임, 같은 값.** 별도 계산이 없으므로 어긋날 수 없다.
+            for (int i = 0; i < RepeaterCount; i++) SetFillHeight(_repeaterFillPivots[i], clamped);
+            for (int i = 0; _repeaterFills != null && i < _repeaterFills.Length; i++)
+                SetColor(_repeaterFills[i], color, _emission);
+            for (int i = 0; _repeaterBands != null && i < _repeaterBands.Length; i++)
+                SetColor(_repeaterBands[i], unlocked ? _bandUnlocked : _bandLocked, unlocked ? 0.45f : 0f);
+            for (int i = 0; _repeaterLockLugs != null && i < _repeaterLockLugs.Length; i++)
+                MoveLug(_repeaterLockLugs[i], unlocked);
             if (_overharvestLabel != null)
             {
                 Color want = unlocked ? _overharvestUnlocked : _overharvestLocked;
@@ -303,17 +337,14 @@ namespace Ascend.Prototype.View
             {
                 _shownPower = power;
                 _shownPercent = percent;
-                if (_powerLine != null)
-                {
-                    // ⚠ **두 값 사이를 넓게 벌린다** (`UP-FIX-93`).
-                    // 계기판의 `요구 0 0%` 가 세 토큰 간격이 균등해져 「요구값과 달성률을
-                    // 가를 수 없다」는 회귀를 만들었다. 여기서는 토큰이 둘뿐이고
-                    // 사이를 세 칸 띄운다 — 좁은 판이 아니라 넓은 판이라 여유가 있다.
-                    _text.Clear();
-                    _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
-                         .Append("   ").Append(percent).Append('%');
-                    _powerLine.SetText(_text);
-                }
+                // ⚠ **두 값 사이를 넓게 벌린다** (`UP-FIX-93`).
+                // 계기판의 `요구 0 0%` 가 세 토큰 간격이 균등해져 「요구값과 달성률을
+                // 가를 수 없다」는 회귀를 만들었다. 여기서는 토큰이 둘뿐이고
+                // 사이를 세 칸 띄운다 — 좁은 판이 아니라 넓은 판이라 여유가 있다.
+                _text.Clear();
+                _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
+                     .Append("   ").Append(percent).Append('%');
+                SetPowerLine(_text.ToString());
             }
 
             // PRD §4.4 의 나머지 둘. **자리를 비워 두지 않는다** — 빈 자리는 다음 사람이
@@ -357,19 +388,20 @@ namespace Ascend.Prototype.View
 
             float ratio = last.RequiredPower > 0f ? last.FinalPower / last.RequiredPower : 0f;
             float clamped = Mathf.Clamp(ratio, 0f, _maxRatio);
-            if (_tankFillPivot != null)
-            {
-                Vector3 s = _tankFillPivot.localScale;
-                s.y = _tankHeight * (clamped / Mathf.Max(0.0001f, _maxRatio));
-                _tankFillPivot.localScale = s;
-            }
-            SetColor(_tankFill, ratio < 1f ? _belowRequired
-                             : last.ExtraSpinsTaken > 0 ? _overharvested : _atRequired, _emission);
+            SetFillHeight(_tankFillPivot, clamped);
+            Color endColor = ratio < 1f ? _belowRequired
+                           : last.ExtraSpinsTaken > 0 ? _overharvested : _atRequired;
+            SetColor(_tankFill, endColor, _emission);
+
+            // 종료 화면에서도 사본이 함께 멈춘다 — 한쪽만 옛 값으로 남으면 그것이 곧
+            // 「같은 프레임의 두 전력 표시가 다른 값」이다.
+            for (int i = 0; i < RepeaterCount; i++) SetFillHeight(_repeaterFillPivots[i], clamped);
+            for (int i = 0; _repeaterFills != null && i < _repeaterFills.Length; i++)
+                SetColor(_repeaterFills[i], endColor, _emission);
 
             if (_spinNumeral != null) _spinNumeral.SetText("0");
             if (_ascentNumeral != null) _ascentNumeral.SetText(run.IsFailed ? "0" : "—");
-            if (_powerLine != null)
-                _powerLine.SetText($"전력 {last.FinalPower:F0}   {ratio * 100f:F0}%");
+            SetPowerLine($"전력 {last.FinalPower:F0}   {ratio * 100f:F0}%");
             if (_reserveLine != null)
                 _reserveLine.SetText(run.IsFailed ? "배수 0.00배   손실 —" : "확정 완료");
         }
@@ -379,6 +411,40 @@ namespace Ascend.Prototype.View
         /// 읽힌다 — 이 저장소가 「색거리 2배」로 두 번 실패한 자리다
         /// (`InstrumentPanelView.ApplyBar` 의 같은 판단).
         /// </summary>
+        /// <summary>
+        /// 채움 기둥 하나의 높이를 쓴다. 탑과 사본이 **이 한 줄을 공유**하기 때문에
+        /// 「같은 프레임의 두 전력 표시가 다른 값」(6차 평가 신규 결함)이 재발할 수 없다.
+        /// </summary>
+        private void SetFillHeight(Transform pivot, float clamped)
+        {
+            if (pivot == null) return;
+            Vector3 s = pivot.localScale;
+            s.y = _tankHeight * (clamped / Mathf.Max(0.0001f, _maxRatio));
+            pivot.localScale = s;
+        }
+
+        /// <summary>
+        /// 전력 수치 줄을 **탑과 사본에 동시에** 쓴다.
+        ///
+        /// 6차 독립 평가가 새로 잡은 결함이 「같은 프레임의 두 전력 표시가 다른 값」
+        /// (탑 `전력 516 240%` / 벽 `전력 0`)이었다. 갱신 지점이 하나면 그 결함이
+        /// 재현될 수 없다 — 그래서 호출자는 이 함수 말고 다른 경로를 쓰지 않는다.
+        /// </summary>
+        private void SetPowerLine(string text)
+        {
+            if (_powerLine != null) _powerLine.SetText(text);
+            for (int i = 0; _repeaterPowerLines != null && i < _repeaterPowerLines.Length; i++)
+                if (_repeaterPowerLines[i] != null) _repeaterPowerLines[i].SetText(text);
+        }
+
+        /// <summary>잠금쇠 하나를 잠김/해제 자리로 옮긴다. 오프셋은 탑의 것을 공유한다.</summary>
+        private void MoveLug(Transform lug, bool unlocked)
+        {
+            if (lug == null) return;
+            Vector3 want = unlocked ? _lockLugOpen : _lockLugLocked;
+            if ((lug.localPosition - want).sqrMagnitude > 1e-8f) lug.localPosition = want;
+        }
+
         private void SetColor(Renderer target, Color color, float emission)
         {
             if (target == null) return;

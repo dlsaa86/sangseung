@@ -59,17 +59,102 @@ namespace Ascend.Prototype.EditorTools
         /// <summary>탱크 중심의 로컬 X. 케이스 왼쪽 끝에 붙인다.</summary>
         public const float TankCenterX = -0.330f;
 
-        /// <summary>큰 숫자의 글자 상자 높이(m). **1순위 판독 하한을 여기가 정한다.**</summary>
-        public const float NumeralBox = 0.178f;
+        /// <summary>
+        /// 큰 숫자의 글자 상자 높이(m). **1순위 판독 하한을 여기가 정한다.**
+        ///
+        /// **0.178 → 0.150 (UP-FIX-96).** 줄인 이유가 둘이고 둘 다 6차 평가에서 나왔다.
+        ///
+        /// ① **캡션에 자리를 내준다.** 드럼 판 높이가 0.220 인데 숫자 상자가 0.178 을
+        ///    먹어 캡션에 0.042 밖에 남지 않았고, 그래서 캡션이 `A` 에서 **8 px** 였다.
+        ///    평가문이 「기본 선 자세에서 보이는 것은 **캡션 없는 두 숫자**이고, 무엇의
+        ///    값인지 화면이 말하지 않는다」고 적었다. 숫자가 아무리 커도 이름표가 없으면
+        ///    읽히는 것이 아니다.
+        /// ② **면적 위계.** 같은 평가가 「탑의 기여 화소가 `실행` 표찰의 100배」라고
+        ///    실측했다. 0.150 이어도 `A` 에서 30 px 로 하한(16)의 1.8배다 — 판독을
+        ///    잃지 않고 면적만 15% 돌려준다.
+        /// </summary>
+        public const float NumeralBox = 0.150f;
 
-        /// <summary>캡션(2순위) 글자 상자 높이(m).</summary>
-        public const float CaptionBox = 0.032f;
+        /// <summary>
+        /// 캡션(2순위) 글자 상자 높이(m). **0.032 → 0.068 (UP-FIX-96).**
+        ///
+        /// `A_entry_to_machine` 에서 0.032 가 8 px 였으므로 하한 16 px 은 0.064 다.
+        /// 0.068 로 잡아 17 px 의 여유를 둔다. 드럼 판(0.013…0.233) 안에서
+        /// 숫자 상자(0.083…0.233) 아래 0.015…0.083 에 정확히 들어간다.
+        ///
+        /// 🔴 **위계는 크기가 아니라 잉크로 지킨다.** 캡션을 키우면 2순위가 1순위와
+        /// 같아 보인다는 반론이 가능하지만, 그건 축이 하나일 때의 이야기다. 캡션은
+        /// <c>InkCaption</c>(어두운 뼈색)이고 숫자는 <c>InkPrimary</c> 다 — 판독 하한은
+        /// 크기로 지키고 위계는 밝기로 지킨다. 이것이 6차 평가가 `UP-FIX-97` 로 요구한
+        /// 「균일 감광이 아니라 **선택적 강등**」과 같은 원리다.
+        /// </summary>
+        public const float CaptionBox = 0.068f;
 
         /// <summary>전력 수치 줄(1순위 보조) 글자 상자 높이(m).</summary>
         public const float PowerLineBox = 0.070f;
 
-        /// <summary>예비 슬롯(2순위) 글자 상자 높이(m).</summary>
-        public const float ReserveLineBox = 0.046f;
+        /// <summary>
+        /// 예비 슬롯(2순위) 글자 상자 높이(m). **0.046 → 0.067 (UP-FIX-96).**
+        ///
+        /// `A` 에서 11 px 였다. 16 px 은 0.067 이다. 데이터 판(−0.205…0.003) 안에서
+        /// 줄이 −0.2045…−0.1375 를 차지해 전력 줄(−0.122…−0.052) 과 겹치지 않는다.
+        /// 캡션과 같은 이유로 **밝기는 올리지 않는다**(<c>InkReserve</c> 유지).
+        /// </summary>
+        public const float ReserveLineBox = 0.067f;
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  전력 반복기 — 기계 벽을 등진 화각 (UP-FIX-92)
+        // ══════════════════════════════════════════════════════════════════════
+        //
+        // 🔴 **여섯 라운드 연속 2점인 유일한 항목이 여기서 끝나야 한다.**
+        //
+        // 2·3·4·5·6차가 모두 「`C_toward_gate`·`E_contract_wall` 에 전력 정보가 0개」를
+        // 지적했다. `QUALITY_GATES` §8.1 의 3회 상한을 두 번 넘겼고, 6차 판정문이
+        // 원인을 한 줄로 못 박았다 — **「그 물건은 옳다. 붙어 있는 벽이 틀렸다.
+        // 여섯 번째를 얹지 말고 옮겨라.」**
+        //
+        // 그래서 이것은 새 표시 방식이 아니다. v4 가 만든 **채움 관을 그대로** 다른 두
+        // 벽에 세운다. 같은 형상 · 같은 재질 · 같은 눈금 · 같은 갱신 경로다.
+        //
+        // ## 자리를 실측으로 골랐다
+        //
+        // 좌벽은 **가위문 격자(`Lattice`, x −1.96 · z −2.14…1.86)가 화각 전체**다.
+        // 벽에 붙이면 격자 뒤로 숨는다. 그러나 같은 프레임의 `AccidentPrinterBody`
+        // (x 최대 −1.84)는 **격자 앞으로 나와 있어 또렷이 보인다** — 문설주 면(−1.92)
+        // 에서 방 쪽으로 나오면 가려지지 않는다는 증거다. 그 자리를 쓴다.
+        // 게다가 이 화각은 매우 어두워서 **발광하는 채움 관이 가장 잘 읽히는 곳**이다.
+        //
+        // 우벽은 계약 표찰(z −2.01…−1.59) 왼쪽이 비어 있다. 다만 그레이박스 원통
+        // `GrayboxWorld/Car/PowerTank`(중심 x 1.71 · 반지름 0.5 · 상단 y 1.52)가
+        // z −1.55…−0.55 를 먹으므로 **그 위로 올린다**(판 하단 1.565).
+        //
+        // ⚠ 그 원통은 바닥(y −0.48)과 벽(x 2.21)을 뚫고 벤치와 겹친다. 이번 범위 밖이라
+        //   고치지 않고 적는다 — 반복기를 거기 얹지 않은 이유이기도 하다.
+
+        /// <summary>반복기 자리. **월드 좌표**다(`ReferenceRoom` 이 원점·무회전).</summary>
+        public static readonly (string name, Vector3 pos, float rotY, string why)[] Repeaters =
+        {
+            ("PowerRepeater_Gate", new Vector3(-1.920f, 1.450f, -1.350f), -90f,
+             "C_toward_gate — 좌벽 앞 문설주. 격자 앞으로 나와 어두운 배경에 발광이 뜬다"),
+            ("PowerRepeater_Contract", new Vector3(1.960f, 1.850f, -1.220f), 90f,
+             "E_contract_wall — 우벽, 계약 표찰 왼쪽. 그레이박스 원통 상단(1.52) 위"),
+        };
+
+        /// <summary>반복기 전면 로컬 z. 음수가 방 쪽이다(계기탑과 같은 규약).</summary>
+        public const float RepeaterFaceZ = -0.020f;
+
+        /// <summary>
+        /// 반복기 전력 수치 줄의 글자 상자 높이(m).
+        ///
+        /// **판독 하한에서 거꾸로 잡았다.** `C_toward_gate` 눈에서 이 자리까지 2.67 m 이고
+        /// 수직 FOV 60°·1080 세로에서 화면 배율이 345 px/m 이다. 0.058 m 면 **20 px** 로
+        /// 한글 안정 판독 하한 16 px 을 넘는다. `E` 는 1.47 m 라 37 px 이다.
+        /// 6차 평가가 「캡션 8/9/10px · 예비줄 11/13/15px」을 하한 미달로 잡았으므로
+        /// (`UP-FIX-96`) 여기서는 **처음부터 하한을 만족하는 값**으로 만든다.
+        /// </summary>
+        /// (0.058 에서 내렸다 — 실제 렌더에서 글자가 판 0.360 보다 좌우로 넘쳤다.
+        ///  0.050 이면 `C` 17 px 로 하한을 지키면서 판 안에 들어온다.)
+        public const float RepeaterPowerLineBox = 0.050f;
 
         /// <summary>임계점 눈금. `PowerThresholds.Default` 와 같은 값이어야 한다.</summary>
         public static readonly (float ratio, bool major, bool red)[] Ticks =
@@ -349,6 +434,24 @@ namespace Ascend.Prototype.EditorTools
             for (int i = 0; i < pips.Count; i++)
                 arr.GetArrayElementAtIndex(i).objectReferenceValue = pips[i];
 
+            // ── ⑦ 전력 반복기 — 기계 벽을 등진 두 화각 (UP-FIX-92) ──────────
+            var rPivots = new List<Transform>();
+            var rFills = new List<Renderer>();
+            var rBands = new List<Renderer>();
+            var rLines = new List<TextMeshPro>();
+            foreach (var spec in AscentColumnSpec.Repeaters)
+                BuildRepeater(parent, spec, rPivots, rFills, rBands, rLines);
+
+            FillArray(so, "_repeaterFillPivots", rPivots);
+            FillArray(so, "_repeaterFills", rFills);
+            FillArray(so, "_repeaterBands", rBands);
+            FillArray(so, "_repeaterPowerLines", rLines);
+            // 잠금쇠는 반복기에 두지 않는다 — `_lockLugLocked`/`_lockLugOpen` 이 **절대
+            // 로컬 좌표** 한 쌍이라 탑과 다른 배치의 사본이 공유할 수 없다. 억지로 맞추면
+            // 반복기 기하가 탑의 케이스 오프셋(tx −0.330)에 끌려간다. 요구선 띠는
+            // **색만** 바뀌므로 좌표에 묶이지 않고, 그것이 100% 경계를 나르는 부분이다.
+            so.FindProperty("_repeaterLockLugs").arraySize = 0;
+
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(view);
             EditorUtility.SetDirty(go);
@@ -361,6 +464,120 @@ namespace Ascend.Prototype.EditorTools
             _report.AppendLine($"    탱크 안지름 {tw * 1000f:F0} × {th * 1000f:F0} mm · 눈금 {AscentColumnSpec.Ticks.Length}개 · " +
                                $"큰 숫자 글자상자 {AscentColumnSpec.NumeralBox * 1000f:F0} mm · 슬러그 {pipCount}개");
             _report.AppendLine($"    레버 기둥 상단 {ReferenceRoomSpec.LeverColumnTopY:F3} → 스트랩 {strapH * 1000f:F0} mm 로 연결");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  전력 반복기 하나 — 채움 관 + 눈금 + 전력 수치
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// **탑의 탱크를 다른 벽에 그대로 세운다.** 새 표시 방식이 아니다 —
+        /// 같은 안지름(<see cref="AscentColumnSpec.TankHeight"/>) · 같은 눈금 표 ·
+        /// 같은 재질이고, 갱신은 <see cref="View.AscentColumnView.ApplyTank"/> 한 곳이 한다.
+        ///
+        /// 드럼(스핀·층수)과 슬러그는 **싣지 않는다.** 이 두 화각이 답해야 하는 물음은
+        /// 「지금 전력이 얼마이고 요구선을 넘었는가」 하나이고, 나머지를 얹으면 6차 평가가
+        /// 경고한 「같은 벽에 다섯 번째 표시기」를 다른 벽에서 반복하게 된다.
+        ///
+        /// 이 빌더도 **「없으면 만든다」가 아니라 「항상 이 상태로 만든다」**다.
+        /// </summary>
+        private static void BuildRepeater(Transform room,
+                                          (string name, Vector3 pos, float rotY, string why) spec,
+                                          List<Transform> pivots, List<Renderer> fills,
+                                          List<Renderer> bands, List<TextMeshPro> lines)
+        {
+            Transform existing = room.Find(spec.name);
+            GameObject go;
+            if (existing != null) go = existing.gameObject;
+            else { go = new GameObject(spec.name); go.transform.SetParent(room, false); }
+
+            for (int i = go.transform.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(go.transform.GetChild(i).gameObject);
+
+            go.transform.localPosition = spec.pos;
+            go.transform.localRotation = Quaternion.Euler(0f, spec.rotY, 0f);
+            go.transform.localScale = Vector3.one;
+
+            float th = AscentColumnSpec.TankHeight;
+            float tw = AscentColumnSpec.TankBoreWidth;
+            float faceZ = AscentColumnSpec.RepeaterFaceZ;
+            Transform t = go.transform;
+
+            // 뒷판. 벽면에 밀착해 「벽에 그려진 것」이 아니라 「벽에 붙은 기구」로 읽히게 한다.
+            // 판 폭 0.360 — **글자가 정한다.** 첫 판본은 0.250 이었고 실제 렌더에서
+            // `전력 0   0%` 가 판보다 넓어 양옆으로 삐져나왔다. 판이 글자의 배경이
+            // 되지 못하면 어두운 벽 위의 글자가 되고, 그건 `UP-FIX-90` 이 만든 문제다.
+            const float plateW = 0.360f;
+            float plateH = th + 0.190f;
+            Slab(t, "Back", new Vector3(0f, 0f, -0.010f), new Vector3(plateW, plateH, 0.020f), "Steel");
+            Slab(t, "Hood", new Vector3(0f, plateH * 0.5f - 0.011f, faceZ - 0.030f),
+                 new Vector3(plateW, 0.020f, 0.058f), "BareSteel");
+
+            Mesh bolt = BoltMesh();
+            for (int i = 0; i < 4; i++)
+                Bolt(t, $"Bolt_{i}", new Vector3((i & 1) == 0 ? -plateW * 0.5f + 0.026f : plateW * 0.5f - 0.026f,
+                                                 (i & 2) == 0 ? -plateH * 0.5f + 0.022f
+                                                              :  plateH * 0.5f - 0.022f, -0.022f), bolt);
+
+            // ── 탱크. 탑과 **같은 부품 구성**이다 ──────────────────────────
+            Slab(t, "Bore", new Vector3(0f, 0f, faceZ - 0.010f),
+                 new Vector3(tw + 0.010f, th + 0.010f, 0.012f), "ChamberDark");
+            Slab(t, "Wall_Left",  new Vector3(-tw * 0.5f - 0.011f, 0f, faceZ - 0.028f), new Vector3(0.016f, th + 0.036f, 0.052f), "BareSteel");
+            Slab(t, "Wall_Right", new Vector3( tw * 0.5f + 0.011f, 0f, faceZ - 0.028f), new Vector3(0.016f, th + 0.036f, 0.052f), "BareSteel");
+            Slab(t, "Cap_Top",    new Vector3(0f,  th * 0.5f + 0.014f, faceZ - 0.028f), new Vector3(tw + 0.048f, 0.018f, 0.052f), "BareSteel");
+            Slab(t, "Cap_Bottom", new Vector3(0f, -th * 0.5f - 0.014f, faceZ - 0.028f), new Vector3(tw + 0.048f, 0.018f, 0.052f), "BareSteel");
+
+            var fillPivot = new GameObject("TankFillPivot");
+            fillPivot.transform.SetParent(t, false);
+            fillPivot.transform.localPosition = new Vector3(0f, -th * 0.5f, faceZ - 0.022f);
+            // ⚠ 탑과 같은 이유로 y 를 0 으로 저장한다 — 1 이면 저장된 씬에서 1 m 짜리
+            //    기둥이 되어 천장을 뚫는다. 씬의 정직한 기본 상태는 「전력 0」이다.
+            fillPivot.transform.localScale = new Vector3(1f, 0f, 1f);
+            GameObject fill = Unit(fillPivot.transform, "TankFill",
+                                   new Vector3(tw - 0.010f, 1f, 0.026f), "GaugeFill");
+
+            Renderer band = null;
+            var ticks = new GameObject("Ticks");
+            ticks.transform.SetParent(t, false);
+            foreach (var (ratio, major, red) in AscentColumnSpec.Ticks)
+            {
+                float y = -th * 0.5f + th * Mathf.Clamp01(ratio / AscentColumnSpec.MaxRatio);
+                bool full = red || major;
+                float tickW = full ? tw + 0.062f : 0.048f;
+                float cx = full ? 0.010f : tw * 0.5f + 0.048f;
+                GameObject g = Slab(ticks.transform, $"Tick_{Mathf.RoundToInt(ratio * 100f)}",
+                                    new Vector3(cx, y, faceZ - 0.048f),
+                                    new Vector3(tickW, red ? 0.014f : (major ? 0.011f : 0.007f), 0.030f),
+                                    red ? "RedPaint" : "BareSteel");
+                if (Mathf.Approximately(ratio, 1f)) band = g.GetComponent<Renderer>();
+            }
+
+            // 전력 수치. 탑의 `PowerLine` 과 **같은 문자열**을 받는다.
+            TextMeshPro line = Label(t, "PowerLine",
+                                     new Vector3(0f, -plateH * 0.5f + 0.048f, faceZ - 0.020f),
+                                     AscentColumnSpec.RepeaterPowerLineBox, "전력 0   0%", InkSupport,
+                                     TextAlignmentOptions.Midline, 28f);
+
+            pivots.Add(fillPivot.transform);
+            fills.Add(fill.GetComponent<Renderer>());
+            if (band != null) bands.Add(band);
+            lines.Add(line);
+
+            EditorUtility.SetDirty(go);
+            _report.AppendLine($"  {spec.name} — ({spec.pos.x:F3}, {spec.pos.y:F3}, {spec.pos.z:F3}) " +
+                               $"rotY {spec.rotY:F0}° · 판 {plateW * 1000f:F0}×{plateH * 1000f:F0} mm · " +
+                               $"관 {tw * 1000f:F0}×{th * 1000f:F0} mm");
+            _report.AppendLine($"    {spec.why}");
+        }
+
+        /// <summary>직렬화 배열 하나를 **통째로** 다시 쓴다. 부분 갱신을 하지 않는다.</summary>
+        private static void FillArray<T>(SerializedObject so, string path, List<T> items)
+            where T : Object
+        {
+            SerializedProperty arr = so.FindProperty(path);
+            arr.arraySize = items.Count;
+            for (int i = 0; i < items.Count; i++)
+                arr.GetArrayElementAtIndex(i).objectReferenceValue = items[i];
         }
 
         /// <summary>
