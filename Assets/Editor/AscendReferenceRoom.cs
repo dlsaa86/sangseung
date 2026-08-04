@@ -111,6 +111,10 @@ namespace Ascend.Prototype.EditorTools
             BuildSoulMachine(root);
             BuildLeverColumn(root);
             BuildPowerMeter(root);
+            // ⚠ **여기서 부르지 않으면 계기탑이 조용히 사라진다.** 바로 위 `ResetRoot` 가
+            // 이 루트의 자식을 전부 지우기 때문이다 — `ShaftBackdrop` 이 정확히 그렇게
+            // 세 라운드를 통과했다(`EnforceShaftOpening` 주석의 사고 경위).
+            AscentColumnBuilder.Build(root);
             BuildStorage(root);
             AddColliders(root);
             PlaceCamera();

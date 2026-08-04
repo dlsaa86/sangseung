@@ -72,31 +72,37 @@ namespace Ascend.Prototype.EditorTools
             // 정면으로 본다. 판독면 중심(1.378)을 보면 내용이 화면 왼쪽으로 치우친다 —
             // 내용이 면의 왼쪽에 붙어 있기 때문이다(`UP-FIX-88` 의 왼쪽 정렬).
             ("G_gauge_face", new Vector3(1.27f, 1.62f, 0.95f), new Vector3(1.27f, 1.44f, 2.05f)),
+
+            // **신설 (2026-08-04)** — 실행 레버와 그 위의 운행 계기탑을 한 화각에 담는다.
+            // 사용자 지시가 「전력표시기는 레버 위 두는 게 적당할 것 같다. 그래야 한눈에
+            // 보고 결정하지」였으므로, 「한눈에」가 성립하는지 판정할 수 있는 포즈가 있어야 한다.
+            // 눈높이 1.62 에서 레버 기둥 바닥(0.42)부터 탑 상단(2.716)까지 전부 들어온다
+            // (거리 2.84 m · 수직 화각 60° → 프레임 세로 3.28 m).
+            // ⚠ 기존 A~G 는 한 값도 건드리지 않았다. 덧붙이기만 한다.
+            ("H_lever_column", new Vector3(0.758f, 1.62f, -0.60f), new Vector3(0.758f, 1.72f, 2.24f)),
         };
 
         /// <summary>
-        /// **전력 사다리** (`P-20260804-05` 권장안 B의 증거).
+        /// **전력 스윕** — 「점점 차오르는 것이 보이는가」의 증거 (사용자 지시 2026-08-04).
         ///
-        /// 4차 평가의 유일한 2점 항목은 「기계 벽을 등지면 전력을 알 수 없다」였다.
-        /// 채택안은 「천장등 색·밝기가 달성률을 따라간다」인데, **정지 이미지 한 장으로는
-        /// 그것을 판정할 수 없다** — 한 장은 「이 방은 이런 색이다」밖에 말하지 않는다.
-        /// 그래서 등을 돌린 두 포즈(C·E)를 달성률만 바꿔 여러 장 찍는다.
-        /// 대조군이 있어야 「환경이 전력을 나른다」가 반증 가능한 주장이 된다.
+        /// 🔴 직전 라운드의 `PowerLadder`(천장등 색·밝기가 달성률을 따라감)를 **버렸다.**
+        /// 5차 독립 평가가 실측으로 기각했다 — 값을 못 싣고(p060·p100 육안 구분 불가),
+        /// 회색조에서 사라지고, `p000`(0%·Stable) 과 `p240_collapse`(240%·Collapse) 가
+        /// **같은 화면**을 냈다. 그 채널을 더 세게 만들지 말라는 것이 이번 라운드의 지시다.
         ///
-        /// `p100` 이 **중립점**이다 — 프로파일이 r = 1 에서 항등이라 이 장은 기존
-        /// `C_toward_gate`·`E_contract_wall` 과 같은 조명이어야 한다. 다르면 배선이 틀린 것이다.
+        /// 대신 **물리 계기의 채움 높이**를 스윕한다. 높이는 회색조에서 살아남고,
+        /// 0% 와 240% 가 같은 그림이 될 수 없다 — 하나는 빈 관이고 하나는 꽉 찬 관이다.
         ///
-        /// 마지막 칸은 **우선순위 증거**다. 같은 240% 인데 위험이 Collapse 이면
-        /// 전력 채널의 권한이 0 이 되어 등이 위험 조명으로 돌아간다 —
-        /// 「위험 조명이 우선」이라는 요구가 화면에서 확인된다.
+        /// 값은 임계점 표의 경계에 맞춘다: 100%(요구·2단 잠금 해제) · 170%(다층 상승) ·
+        /// 240%(과수확 구간). 즉 **각 칸이 게임 규칙의 한 구간을 대표한다.**
         /// </summary>
-        private static readonly (string suffix, float ratio, Risk.RiskLevel level)[] PowerLadder =
+        private static readonly (string suffix, float ratio)[] PowerSweep =
         {
-            ("p000",          0.00f, Risk.RiskLevel.Stable),
-            ("p060",          0.60f, Risk.RiskLevel.Stable),
-            ("p100",          1.00f, Risk.RiskLevel.Stable),
-            ("p240",          2.40f, Risk.RiskLevel.Stable),
-            ("p240_collapse", 2.40f, Risk.RiskLevel.Collapse),
+            ("p000", 0.00f),
+            ("p050", 0.50f),
+            ("p100", 1.00f),
+            ("p170", 1.70f),
+            ("p240", 2.40f),
         };
 
         /// <summary>`UP-FIX-87` 이 「네 포즈 전부 0픽셀」로 지목한 여덟.</summary>
@@ -306,7 +312,7 @@ namespace Ascend.Prototype.EditorTools
             if (EditorApplication.isPlaying)
             { Debug.LogError("[상승] Play 모드에서는 찍지 않는다."); return; }
 
-            const string dir = "Captures/symbols_v3_20260804";
+            const string dir = "Captures/symbols_v4_20260804";
             var log = new StringBuilder($"[상승] === 고정 캡처 세트 → {dir} ===\n");
 
             // 🔴 찍기 **전에** 유령 서브메시를 지운다. 3차 평가의 「전력 0 /」가
@@ -322,7 +328,7 @@ namespace Ascend.Prototype.EditorTools
             cam.targetTexture = rt;
 
             var man = new StringBuilder();
-            man.AppendLine("symbols_v3_20260804 capture manifest");
+            man.AppendLine("symbols_v4_20260804 capture manifest");
             man.AppendLine($"resolution {Width}x{Height}  fovVertical {FovVertical}  antialiasing None  " +
                            $"RT ARGB32 sRGB  MSAA off  post {(data != null && data.renderPostProcessing ? "ON" : "OFF")}");
             man.AppendLine($"machineFingerprint {SystemInfo.operatingSystemFamily}|{SystemInfo.graphicsDeviceType}|" +
@@ -381,13 +387,17 @@ namespace Ascend.Prototype.EditorTools
                 man.AppendLine("  열0 [정상/흡수/정상]  열1 [증식/정상/흡수]  열2 [정상/증식/정상]  (행 0 = 위)");
             }
 
-            // 전력 사다리. **밴드 집계에 넣지 않는다** — 접두어가 A/C/D 가 아니므로
+            // 전력 스윕. **밴드 집계에 넣지 않는다** — 접두어가 A/C/D 가 아니므로
             // `AppendBandTable` 의 평균이 오염되지 않는다(그 함수가 이름 첫 글자로 고른다).
             man.AppendLine();
-            CapturePowerLadder(cam, rt, dir, man);
+            CapturePowerSweep(cam, rt, dir, man);
 
             man.AppendLine();
             AppendBandTable(man, bands);
+            man.AppendLine();
+            AppendColumnGlyphTable(cam, man);
+            man.AppendLine();
+            AppendWeightTable(cam, rt, man);
             man.AppendLine();
             AppendPanelClipTable(cam, man, derived);
             man.AppendLine();
@@ -469,126 +479,411 @@ namespace Ascend.Prototype.EditorTools
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        //  전력 사다리 — 「등을 돌려도 전력을 아는가」의 증거 (P-20260804-05 B)
+        //  전력 스윕 — 「점점 차오르는 것이 보이는가」의 증거 (사용자 지시 2026-08-04)
         // ══════════════════════════════════════════════════════════════════════
 
         /// <summary>
-        /// 등을 돌린 두 포즈를 **달성률만 바꿔** 여러 장 찍는다.
+        /// 운행 계기탑을 **달성률만 바꿔** 여러 장 찍는다. 정지 이미지 한 장으로는
+        /// 「차오른다」를 판정할 수 없으므로 같은 화각의 계열이 필요하다.
         ///
-        /// 세 가지를 반드시 지킨다.
-        ///   ① 찍기 전에 광원의 원래 값을 **그대로 붙잡고** 끝나면 되돌린다.
-        ///      되돌리지 않으면 사다리 마지막 칸(240% 의 붉은 등)이 씬에 저장되고
-        ///      다음 캡처 전체가 오염된 조명으로 찍힌다.
-        ///   ② 되돌린 값을 **다시 재서** 매니페스트에 적는다. 「되돌렸다」는 주장이
-        ///      아니라 수치여야 한다.
-        ///   ③ 미리보기는 `RenderSettings.ambientLight` 를 건드리지 않는다
-        ///      (`RiskStateView.PreviewPowerAmbience` 의 주석 참조). 그 값은 렌더 설정
-        ///      **전역**이라 에디트 모드에서 쓰면 그대로 저장된다.
+        /// 세 가지를 반드시 지킨다 — 직전 라운드의 조명 사다리가 지키던 것과 같다.
+        ///   ① 찍기 전에 원래 상태를 **그대로 붙잡고** 끝나면 되돌린다.
+        ///      되돌리지 않으면 스윕 마지막 칸(240%)이 씬에 저장되고 고정 캡처가 오염된다.
+        ///   ② 되돌린 값을 **다시 재서** 매니페스트에 적는다. 「되돌렸다」는 주장이 아니라 수치여야 한다.
+        ///   ③ 층수는 **게임이 쓰는 규칙으로만** 낸다 — `RunSession.PreviewFloorsGained(power, required)`.
+        ///      화면에 그린 숫자와 실제 상승이 갈라지면 그게 최악이다.
+        ///
+        /// 회색조를 짝으로 낸다. `visual-criteria` B-2 #5 가 「회색조로 바꿨을 때 구분이
+        /// 사라지면 실패」이고, 직전 라운드가 정확히 거기서 죽었다.
         /// </summary>
-        private static void CapturePowerLadder(Camera cam, RenderTexture rt, string dir, StringBuilder man)
+        private static void CapturePowerSweep(Camera cam, RenderTexture rt, string dir, StringBuilder man)
         {
-            var risk = Object.FindAnyObjectByType<Risk.RiskStateView>(FindObjectsInactive.Include);
-            if (risk == null)
+            GameObject col = GameObject.Find("ReferenceRoom/AscentColumn");
+            if (col == null)
+            { man.AppendLine("━━ 전력 스윕 ━━ ⚠ AscentColumn 이 없다 — 찍지 않았다"); return; }
+
+            Transform pivot = FindIn(col.transform, "TankFillPivot");
+            Renderer fill = FindIn(col.transform, "TankFill")?.GetComponent<Renderer>();
+            Renderer band = FindIn(col.transform, "Tick_100")?.GetComponent<Renderer>();
+            Transform pin = FindIn(col.transform, "LockPin");
+            TMPro.TMP_Text spinNum = TmpIn(col.transform, "SpinDrum", "Numeral");
+            TMPro.TMP_Text ascNum = TmpIn(col.transform, "AscentDrum", "Numeral");
+            TMPro.TMP_Text powerLine = TmpIn(col.transform, "DataPlate", "PowerLine");
+            TMPro.TMP_Text reserve = TmpIn(col.transform, "DataPlate", "ReserveLine");
+            var pips = new List<Renderer>();
+            for (int i = 0; i < 6; i++)
             {
-                man.AppendLine("━━ 전력 사다리 ━━ ⚠ RiskStateView 가 없다 — 찍지 않았다");
-                return;
+                Transform p = FindIn(col.transform, $"SpinPip_{i}");
+                if (p != null) pips.Add(p.GetComponent<Renderer>());
             }
+            var view = col.GetComponent<View.AscentColumnView>();
+            if (pivot == null || fill == null || view == null)
+            { man.AppendLine("━━ 전력 스윕 ━━ ⚠ 계기탑 배선이 비어 있다 — 찍지 않았다"); return; }
 
-            Light lamp = null;
-            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-                if (l.transform.parent != null && l.transform.parent.name == "CeilingLamp"
-                    && l.transform.parent.parent != null && l.transform.parent.parent.name == "ReferenceRoom")
-                { lamp = l; break; }
+            // 원래 상태를 붙잡는다.
+            Vector3 pivot0 = pivot.localScale;
+            Vector3 pin0 = pin != null ? pin.localPosition : Vector3.zero;
+            string spin0 = spinNum != null ? spinNum.text : null;
+            string asc0 = ascNum != null ? ascNum.text : null;
+            string pow0 = powerLine != null ? powerLine.text : null;
+            string res0 = reserve != null ? reserve.text : null;
 
-            Color lampColor0 = lamp != null ? lamp.color : Color.white;
-            float lampIntensity0 = lamp != null ? lamp.intensity : 0f;
-            Color ambient0 = RenderSettings.ambientLight;
+            // 자기 출력 폴더를 먼저 비운다. 구성이 바뀌면 옛 프레임이 「지금의 화면」으로 읽힌다.
+            string sweepDir = $"{dir}/power_sweep";
+            if (Directory.Exists(sweepDir)) Directory.Delete(sweepDir, true);
 
-            // 🔴 **자기 출력 폴더를 먼저 비운다.** 사다리 구성(프리셋·단계)이 바뀌면
-            // 옛 프레임이 남고, 증거 폴더에 남은 옛 프레임은 「지금의 화면」으로 읽힌다.
-            // 이 저장소가 유령 서브메시로 이미 한 번 당한 것과 같은 종류의 거짓 증거다.
-            string ladderDir = $"{dir}/power_ladder";
-            if (Directory.Exists(ladderDir)) Directory.Delete(ladderDir, true);
-
-            risk.EnsureProfilesLoaded();   // 에디트 모드에는 Awake 가 없다 — 출처가 「(미초기화)」로 실린다
-
-            man.AppendLine("━━ 전력 사다리 — 등을 돌린 화각에서 달성률이 읽히는가 (P-20260804-05 B) ━━━━━━━");
-            man.AppendLine($"  씬에 배선된 프로파일 {risk.PowerAmbienceSource}");
-            man.AppendLine("  프리셋 두 벌을 나란히 찍는다 — 전력 환경 강도는 승인 대기 항목이라");
-            man.AppendLine("  하나로 잠그지 않는다(`VISUAL_SPEC` §11). 글로 적으면 승인자가 고를 수 없다.");
-            man.AppendLine();
-            man.AppendLine("  ⚠ `p240_collapse` 는 **우선순위 증거**다 — 같은 240% 라도 위험이 Collapse 면");
-            man.AppendLine("     전력 채널 권한이 0 이 되어 등이 위험 조명으로 돌아간다(권한 열이 0.00).");
-            man.AppendLine("  ⚠ `p100` 은 **중립점**이다 — 프로파일이 r = 1 에서 항등이므로 이 장의 등 색·세기는");
-            man.AppendLine("     프리셋과 무관하게 같아야 한다(두 표의 p100 행이 일치하는지로 확인한다).");
-            man.AppendLine("     단 같은 포즈의 **고정 캡처**와는 미세하게 다르다 — 씬에 직렬화된 등 색");
-            man.AppendLine("     (1.000,0.790,0.550)과 런타임이 계산하는 등 색(0.948,0.812,0.621)이 원래부터");
-            man.AppendLine("     다르기 때문이다(이번 변경 이전부터 그랬다. 아래 「알려진 불일치」 참조).");
-            man.AppendLine();
-
-            var ladderPoses = new List<(string name, Vector3 eye, Vector3 look)>();
-            foreach (var p in Poses)
-                if (p.name == "C_toward_gate" || p.name == "E_contract_wall") ladderPoses.Add(p);
-
-            var presets = new[]
+            // 층수는 실제 규칙에서만 온다. 세션이 없으면 만든다(순수 C# 이라 에디트 모드에서 돈다).
+            var runBehaviour = Object.FindAnyObjectByType<Run.RunSessionBehaviour>(FindObjectsInactive.Include);
+            Run.RunSession session = runBehaviour != null ? runBehaviour.Session : null;
+            if (session == null && runBehaviour != null)
             {
-                Data.Profiles.PowerAmbienceIntensity.Standard,
-                Data.Profiles.PowerAmbienceIntensity.Heavy,
-            };
+                runBehaviour.ResetRun();
+                session = runBehaviour.Session;
+            }
+            float required = session != null && session.Current != null ? session.Current.RequiredPower : 0f;
+            int spinsPlanned = session != null && session.Current != null ? session.Current.Plan.Spins : 3;
+            if (required <= 0f) required = 350f;   // 세션을 못 만들면 1층 임시값으로라도 스윕한다
 
-            foreach (var preset in presets)
+            man.AppendLine("━━ 전력 스윕 — 「점점 차오르는 것이 보이는가」 (사용자 지시 2026-08-04) ━━━━━━");
+            man.AppendLine($"  기준 층 요구 전력 {required:F0} · 계획 스핀 {spinsPlanned}회 · " +
+                           $"세션 {(session == null ? "없음(임시값)" : "RunSessionBehaviour.Session")}");
+            man.AppendLine("  🔴 직전 라운드의 조명 사다리(`power_ladder/`)는 **버렸다** — 5차 평가가 실측으로");
+            man.AppendLine("     기각했다(값 못 실음 · 회색조 소실 · 0%↔240% 동일 화면). 이번 채널은 **채움 높이**다.");
+            man.AppendLine();
+            man.AppendLine("  파일                      달성률  전력    층수  탱크채움  회색조 채움높이(px)  대비");
+            man.AppendLine("                                                    (m)     A포즈   H포즈      (채움/관)");
+
+            var sweepPoses = new List<(string name, Vector3 eye, Vector3 look)>();
+            foreach (var p in Poses) if (p.name == "A_entry_to_machine") sweepPoses.Add(p);
+            foreach (var p in ExtraPoses) if (p.name == "H_lever_column") sweepPoses.Add(p);
+
+            var emptyRef = new int[] { -1, -1 };   // 포즈별 「빈 관」 기준값 (p000 에서 잰다)
+            foreach (var (suffix, ratio) in PowerSweep)
             {
-                risk.OverridePowerAmbienceForPreview(preset);
-                string folder = preset.ToString().ToLowerInvariant();
-                man.AppendLine($"  ── 프리셋 {preset} ({Data.Profiles.PowerAmbienceProfile.PresetDisplayName(preset)}) " +
-                               $"→ power_ladder/{folder}/");
-                man.AppendLine("  파일                              달성률  위험     등세기  등색(R,G,B)          권한  mean    g/r     b/r");
+                float power = required * ratio;
+                int floors = session != null ? session.PreviewFloorsGained(power, required) : -1;
+                int spinsLeft = Mathf.Clamp(spinsPlanned - Mathf.FloorToInt(ratio * 1.5f), 0, spinsPlanned);
+                bool unlocked = ratio >= 1f;
 
-                foreach (var pose in ladderPoses)
+                // 계기탑을 그 상태로 **직접** 민다. 플레이 모드가 아니므로 `LateUpdate` 가 돌지 않는다.
+                float fillM = AscentColumnSpec.TankHeight *
+                              Mathf.Clamp(ratio, 0f, AscentColumnSpec.MaxRatio) / AscentColumnSpec.MaxRatio;
+                Vector3 s = pivot.localScale; s.y = fillM; pivot.localScale = s;
+                SetGauge(fill, ratio < 1f ? new Color(0.62f, 0.56f, 0.40f)
+                             : ratio >= 2.2f ? new Color(0.88f, 0.20f, 0.11f)
+                             : new Color(0.78f, 0.26f, 0.16f), 0.55f);
+                SetGauge(band, unlocked ? new Color(0.86f, 0.22f, 0.14f) : new Color(0.34f, 0.11f, 0.09f),
+                         unlocked ? 0.45f : 0f);
+                if (pin != null) pin.localPosition = unlocked
+                    ? new Vector3(pin0.x + 0.066f, pin0.y, pin0.z) : pin0;
+                for (int i = 0; i < pips.Count; i++)
                 {
-                    foreach (var step in PowerLadder)
-                    {
-                        risk.PreviewPowerAmbience(step.ratio, step.level);
-                        Aim(cam, pose.eye, pose.look);
-                        Color32[] px = Shot(cam, rt);
-                        string leaf = $"{pose.name}_{step.suffix}";
-                        SavePng(px, $"{dir}/power_ladder/{folder}/{leaf}.png");
-                        SaveGrayPng(ToGray(px), $"{dir}/power_ladder/{folder}/gray/{leaf}.png");
-                        Band b = Measure(px);
-                        Color c = risk.EffectiveLampColor;
-                        man.AppendLine($"  {leaf,-34}{step.ratio,6:P0}  {step.level,-8}" +
-                                       $"{risk.EffectiveLampIntensity,7:F3}  " +
-                                       $"({c.r:F3},{c.g:F3},{c.b:F3})  {risk.PowerAuthority,5:F2}  " +
-                                       $"{b.mean,-8:F4}{b.gr,-8:F4}{b.br,-8:F4}");
-                    }
+                    bool exists = i < spinsPlanned;
+                    if (pips[i].gameObject.activeSelf != exists) pips[i].gameObject.SetActive(exists);
+                    if (!exists) continue;
+                    bool left = i < spinsLeft;
+                    SetGauge(pips[i], left ? new Color(0.74f, 0.26f, 0.17f) : new Color(0.10f, 0.095f, 0.088f),
+                             left ? 0.30f : 0f);
                 }
-                man.AppendLine();
+                if (spinNum != null) spinNum.SetText(spinsLeft.ToString());
+                if (ascNum != null) ascNum.SetText(floors <= 0 ? "0" : "+" + floors);
+                if (powerLine != null) powerLine.SetText($"전력 {power:F0}   {ratio * 100f:F0}%");
+                if (reserve != null) reserve.SetText($"배수 {ratio:F2}배   손실 {(unlocked ? Mathf.RoundToInt(power * 0.12f).ToString() : "—")}");
+
+                var fillPx = new int[2];
+                int idx = 0;
+                int borePx = 0;
+                foreach (var pose in sweepPoses)
+                {
+                    Aim(cam, pose.eye, pose.look);
+                    Color32[] px = Shot(cam, rt);
+                    string leaf = $"{pose.name}_{suffix}";
+                    SavePng(px, $"{sweepDir}/{leaf}.png");
+                    byte[] gray = ToGray(px);
+                    SaveGrayPng(gray, $"{sweepDir}/gray/{leaf}.png");
+
+                    // 🔴 **빈 관의 밝기를 기준으로 삼는다.** 첫 판본은 관 안 화소의
+                    // 중앙값을 기준으로 썼는데, 170%·240% 처럼 관이 거의 다 차면
+                    // 중앙값이 곧 채움값이 되어 문턱이 채움 위로 올라가고 **0 px 이 나온다.**
+                    // 즉 가장 꽉 찬 두 칸이 「비었다」로 기록됐다 — 도구가 결과를 뒤집은 것이다.
+                    // `p000`(첫 칸)에서 잰 빈 관 값을 포즈별로 붙잡아 전 칸에 같은 문턱을 쓴다.
+                    int slot = Mathf.Min(idx, 1);
+                    if (emptyRef[slot] < 0) emptyRef[slot] = GrayColumnMedian(cam, gray, pivot);
+                    fillPx[slot] = GrayFillHeight(cam, gray, pivot, emptyRef[slot]);
+                    if (slot == 1) borePx = GrayBoreHeight(cam, pivot);
+                    idx++;
+                }
+                man.AppendLine($"  {suffix,-26}{ratio,6:P0}{power,8:F0}{floors,6}{fillM,9:F3}" +
+                               $"{fillPx[0],8}{fillPx[1],8}      {(borePx > 0 ? (fillPx[1] / (float)borePx).ToString("P0") : "-")}");
             }
 
             // 되돌린다. 그리고 되돌아왔는지 **잰다.**
-            risk.RestorePowerAmbiencePreview();
-            if (lamp != null)
-            {
-                lamp.color = lampColor0;
-                lamp.intensity = lampIntensity0;
-            }
-            RenderSettings.ambientLight = ambient0;
+            pivot.localScale = pivot0;
+            if (pin != null) pin.localPosition = pin0;
+            SetGauge(fill, new Color(0.62f, 0.56f, 0.40f), 0f);
+            SetGauge(band, new Color(0.34f, 0.11f, 0.09f), 0f);
+            foreach (Renderer p in pips) { p.gameObject.SetActive(true); SetGauge(p, new Color(0.10f, 0.095f, 0.088f), 0f); }
+            if (spinNum != null && spin0 != null) spinNum.SetText(spin0);
+            if (ascNum != null && asc0 != null) ascNum.SetText(asc0);
+            if (powerLine != null && pow0 != null) powerLine.SetText(pow0);
+            if (reserve != null && res0 != null) reserve.SetText(res0);
 
-            man.AppendLine($"  복원 뒤 프로파일 출처 {risk.PowerAmbienceSource} (미리보기 프리셋이 남아 있으면 여기 드러난다)");
             man.AppendLine();
-            man.AppendLine("  ── 알려진 불일치 (이번 변경이 만든 것이 아니다. 발견해서 적는다) ──────────");
-            man.AppendLine("  씬에 직렬화된 `CabinLight.color` 는 (1.000, 0.790, 0.550) 인데, 런타임");
-            man.AppendLine("  `RiskStateView.ApplyLighting` 이 Stable 에서 계산하는 색은");
-            man.AppendLine("  Lerp(필라멘트 (1.00,0.78,0.46), Stable (0.85,0.87,0.92), 0.35) = (0.948,0.812,0.621) 이다.");
-            man.AppendLine("  즉 **에디트 모드 고정 캡처의 등 색은 플레이 모드가 내는 색이 아니다.**");
-            man.AppendLine("  배선기는 세기(`_baseLightIntensity`)만 광원과 동기화하고 색은 하지 않는다.");
-            man.AppendLine("  이번 라운드 범위 밖이라 고치지 않았다 — 고치면 A~F 전부의 §12 수치가 움직인다.");
+            man.AppendLine($"  복원 확인 — 탱크 채움 y {pivot0.y:F4} → {pivot.localScale.y:F4} · " +
+                           $"잠금핀 x {pin0.x:F4} → {(pin != null ? pin.localPosition.x : 0f):F4} · " +
+                           $"스핀 「{spin0}」 · 층수 「{asc0}」 · 전력 「{pow0}」");
             man.AppendLine();
-            man.AppendLine($"  복원 확인 — 등 세기 {lampIntensity0:F4} → {(lamp != null ? lamp.intensity : 0f):F4} · " +
-                           $"등색 ({lampColor0.r:F4},{lampColor0.g:F4},{lampColor0.b:F4}) → " +
-                           $"({(lamp != null ? lamp.color.r : 0f):F4},{(lamp != null ? lamp.color.g : 0f):F4},{(lamp != null ? lamp.color.b : 0f):F4}) · " +
-                           $"앰비언트 {ambient0.r:F4},{ambient0.g:F4},{ambient0.b:F4} → " +
-                           $"{RenderSettings.ambientLight.r:F4},{RenderSettings.ambientLight.g:F4},{RenderSettings.ambientLight.b:F4}");
+            AppendAscentRuleCheck(session, required, man);
+        }
+
+        /// <summary>
+        /// **화면이 그리는 층수가 실제 상승과 같은가.** 세 값 이상에서 대조한다.
+        ///
+        /// `AscentColumnView` 는 `RunSession.PreviewFloorsGained()` 만 부르고, 그 함수는
+        /// `FloorSession.PreviewAscent()`(= `Resolve()` 와 같은 한 줄)와 `ClampAscent()`
+        /// (= `CompleteFloor()` 가 부르는 그 함수)를 그대로 부른다. 즉 갈라질 수 없다 —
+        /// 그러나 「갈라질 수 없다」는 주장이므로 표로 남긴다.
+        /// </summary>
+        private static void AppendAscentRuleCheck(Run.RunSession session, float required, StringBuilder man)
+        {
+            man.AppendLine("━━ 「몇 층 오르는가」 ↔ 실제 판정 대조 (ClampAscent 경유) ━━━━━━━━━━━━━━━━━━");
+            if (session == null) { man.AppendLine("  ⚠ 세션을 만들지 못해 대조하지 못했다"); return; }
+            man.AppendLine($"  현재 층 {session.CurrentFloor} · 요구 전력 {required:F0} · 임계점 표 " +
+                           "Crash .70 / Jettison .90 / Damaged 1.00 / Rewarded 1.30 / MultiFloor 1.70 / " +
+                           "Overharvest 2.20 / Runaway 3.00");
+            man.AppendLine("  달성률   전력     밴드            원시 상승  ClampAscent  화면 표시");
+            float[] probes = { 0.00f, 0.60f, 0.85f, 1.00f, 1.40f, 1.70f, 2.40f, 3.20f };
+            var th = Spin.PowerThresholds.Default;
+            foreach (float r in probes)
+            {
+                float power = required * r;
+                var ascent = session.Current.PreviewAscent(power, required);
+                int shown = session.PreviewFloorsGained(power, required);
+                man.AppendLine($"  {r,6:P0}{power,9:F0}   {Spin.PowerBands.DisplayName(th.BandFor(power, required)),-14}" +
+                               $"{ascent.FloorsAscended,9}{shown,13}{(shown <= 0 ? "0" : "+" + shown),11}");
+            }
+            man.AppendLine("  ⚠ `원시 상승`과 `ClampAscent`가 다른 행은 커리큘럼 보호가 다층 점프를 자른 것이다");
+            man.AppendLine("     (`RunSession.ClampAscent` — 빌드 보상 층·필수 층·최종 층 앞에서 멈춘다).");
+            man.AppendLine("     화면은 **자른 뒤의 값**을 그린다. 자르기 전 값을 그리면 화면이 게임을 배신한다.");
+        }
+
+        private static void SetGauge(Renderer r, Color color, float emission)
+        {
+            if (r == null) return;
+            var block = new MaterialPropertyBlock();
+            r.GetPropertyBlock(block);
+            block.SetColor(Shader.PropertyToID("_BaseColor"), color);
+            block.SetColor(Shader.PropertyToID("_EmissionColor"), color * emission);
+            r.SetPropertyBlock(block);
+        }
+
+        /// <summary>탱크 관 전체의 화면 세로 길이(px). 채움 비율의 분모다.</summary>
+        private static int GrayBoreHeight(Camera cam, Transform pivot)
+        {
+            Vector3 a = cam.WorldToScreenPoint(pivot.position);
+            Vector3 b = cam.WorldToScreenPoint(pivot.position + Vector3.up * AscentColumnSpec.TankHeight);
+            if (a.z <= 0f || b.z <= 0f) return 0;
+            return Mathf.RoundToInt(Mathf.Abs(b.y - a.y));
+        }
+
+        /// <summary>
+        /// **회색조에서** 채움 기둥이 몇 화소인가. 색을 쓰지 않는다 —
+        /// 「회색조로 바꿨을 때 구분이 사라지면 실패」가 기준이기 때문이다.
+        ///
+        /// 관의 화면 중심선을 따라 위에서 아래로 훑어, 관 바닥 대비 밝은 구간의 길이를 센다.
+        /// </summary>
+        private static int GrayFillHeight(Camera cam, byte[] gray, Transform pivot, int emptyRef)
+        {
+            if (!ColumnSpan(cam, pivot, out int x, out int y0, out int y1)) return 0;
+            int thr = emptyRef + 10;   // 0~255. 채움은 발광이라 빈 관보다 확실히 위다
+            int lit = 0;
+            for (int y = y0; y <= y1; y++) if (gray[y * Width + x] >= thr) lit++;
+            return lit;
+        }
+
+        /// <summary>빈 관의 기준 밝기. `p000` 프레임에서 한 번만 잰다.</summary>
+        private static int GrayColumnMedian(Camera cam, byte[] gray, Transform pivot)
+        {
+            if (!ColumnSpan(cam, pivot, out int x, out int y0, out int y1)) return 255;
+            var vals = new List<byte>();
+            for (int y = y0; y <= y1; y++) vals.Add(gray[y * Width + x]);
+            if (vals.Count == 0) return 255;
+            vals.Sort();
+            return vals[vals.Count / 2];
+        }
+
+        private static bool ColumnSpan(Camera cam, Transform pivot, out int x, out int y0, out int y1)
+        {
+            x = y0 = y1 = 0;
+            Vector3 bottom = cam.WorldToScreenPoint(pivot.position);
+            Vector3 top = cam.WorldToScreenPoint(pivot.position + Vector3.up * AscentColumnSpec.TankHeight);
+            if (bottom.z <= 0f || top.z <= 0f) return false;
+            if (Mathf.Abs(top.y - bottom.y) <= 2f) return false;
+            x = Mathf.Clamp(Mathf.RoundToInt((bottom.x + top.x) * 0.5f), 0, Width - 1);
+            y0 = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(bottom.y, top.y)), 0, Height - 1);
+            y1 = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(bottom.y, top.y)), 0, Height - 1);
+            return true;
+        }
+
+        private static Transform FindIn(Transform root, string name)
+        {
+            if (root.name == name) return root;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                Transform f = FindIn(root.GetChild(i), name);
+                if (f != null) return f;
+            }
+            return null;
+        }
+
+        private static TMPro.TMP_Text TmpIn(Transform root, string parent, string leaf)
+        {
+            Transform p = FindIn(root, parent);
+            if (p == null) return null;
+            Transform l = p.Find(leaf);
+            return l != null ? l.GetComponent<TMPro.TMP_Text>() : null;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  계기탑 판독 — 글리프 화소와 시각 무게
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 계기탑의 1순위 숫자가 **각 포즈에서 몇 화소인가.** 「크게 만들었다」가 아니라
+        /// 수치여야 한다 — 5차 평가가 「현재 계기 글자 A 13~18px 은 부족하다」고 적었다.
+        /// </summary>
+        private static void AppendColumnGlyphTable(Camera cam, StringBuilder man)
+        {
+            man.AppendLine("━━ 운행 계기탑 글리프 (글리프 상자 기준 · 한글 안정 판독 하한 16 px) ━━━━━━━━━━");
+            GameObject col = GameObject.Find("ReferenceRoom/AscentColumn");
+            if (col == null) { man.AppendLine("  ⚠ AscentColumn 이 없다"); return; }
+
+            var all = new List<(string name, Vector3 eye, Vector3 look)>(Poses);
+            all.AddRange(ExtraPoses);
+            man.AppendLine("  포즈                  스핀숫자  층수숫자  캡션    전력줄  예비줄   탱크관 세로");
+            foreach (var p in all)
+            {
+                Aim(cam, p.eye, p.look);
+                man.AppendLine($"  {p.name,-22}{Px(cam, col, "SpinDrum", "Numeral"),-10}" +
+                               $"{Px(cam, col, "AscentDrum", "Numeral"),-10}" +
+                               $"{Px(cam, col, "SpinDrum", "Caption"),-8}" +
+                               $"{Px(cam, col, "DataPlate", "PowerLine"),-8}" +
+                               $"{Px(cam, col, "DataPlate", "ReserveLine"),-9}" +
+                               $"{BorePx(cam, col)}");
+            }
+        }
+
+        private static string Px(Camera cam, GameObject col, string parent, string leaf)
+        {
+            TMPro.TMP_Text t = TmpIn(col.transform, parent, leaf);
+            if (t == null) return "-";
+            t.ForceMeshUpdate();
+            float h = 0f; int n = 0;
+            var info = t.textInfo;
+            for (int i = 0; i < info.characterCount; i++)
+            {
+                TMPro.TMP_CharacterInfo ch = info.characterInfo[i];
+                if (!ch.isVisible) continue;
+                Vector3 a = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.bottomLeft));
+                Vector3 b = cam.WorldToScreenPoint(t.transform.TransformPoint(ch.topRight));
+                if (a.z <= 0f || b.z <= 0f) continue;
+                h = Mathf.Max(h, Mathf.Abs(b.y - a.y)); n++;
+            }
+            return n == 0 ? "화각밖" : $"{h:F0}px";
+        }
+
+        private static string BorePx(Camera cam, GameObject col)
+        {
+            Transform pivot = FindIn(col.transform, "TankFillPivot");
+            if (pivot == null) return "-";
+            int h = GrayBoreHeight(cam, pivot);
+            return h <= 0 ? "화각밖" : $"{h}px";
+        }
+
+        /// <summary>
+        /// **시각 무게 비교** — 계기탑이 실행 레버 표찰보다 무거워지면 안 된다.
+        ///
+        /// `VISUAL_SPEC` §5 는 1순위가 「현재 사용 가능한 핵심 레버」다. 표시기를 더 밝고
+        /// 크게 만들면 `UP-FIX-89`(위계 역전)·`UP-FIX-90`(방 안 최고 백색이 계기 텍스트)이
+        /// 함께 악화된다 — 그래서 **기여 화소와 그 화소의 평균 휘도**를 둘 다 잰다.
+        /// 차분 렌더라 가림·투명·포스트가 전부 포함된다.
+        /// </summary>
+        private static void AppendWeightTable(Camera cam, RenderTexture rt, StringBuilder man)
+        {
+            man.AppendLine("━━ 시각 무게 — 「표시기가 실행 레버보다 무거워지지 않았는가」 ━━━━━━━━━━━━━━━");
+            man.AppendLine("  차분 렌더: 대상 렌더러를 켜고/끄고 두 번 찍어 달라진 화소를 센다.");
+            man.AppendLine("  설정 잉크 = 씬에 저장된 TMP 색의 휘도 (렌더와 무관한 사실).");
+            man.AppendLine("  렌더 평균/최대 = 기여 화소의 휘도 (0~1, sRGB 가중. post ON 이라 블룸 포함).");
+            man.AppendLine("  ⚠ 렌더 평균만으로 비교하지 않는다 — 밝은 글자일수록 헤일로가 넓어져");
+            man.AppendLine("     저휘도 가장자리 화소가 늘고 평균이 **내려간다**(실행 표찰이 그 예다).");
+            man.AppendLine();
+
+            var targets = new (string label, string[] paths)[]
+            {
+                ("실행 표찰(1순위)",   new[] { "GrayboxWorld/Car/Console/ExecutionLabel" }),
+                ("탑 큰숫자 2개",      new[] { "ReferenceRoom/AscentColumn/SpinDrum/Numeral",
+                                               "ReferenceRoom/AscentColumn/AscentDrum/Numeral" }),
+                ("탑 케이스 전체",     new[] { "ReferenceRoom/AscentColumn" }),
+                ("계기판 글자 5줄",    new[] { "GrayboxWorld/Car/InstrumentPanel/FloorLabel",
+                                               "GrayboxWorld/Car/InstrumentPanel/PowerLabel",
+                                               "GrayboxWorld/Car/InstrumentPanel/RequiredLabel",
+                                               "GrayboxWorld/Car/InstrumentPanel/StatusLabel",
+                                               "GrayboxWorld/Car/InstrumentPanel/CascadeLabel" }),
+                ("과수확 표찰(3순위)", new[] { "GrayboxWorld/Car/OverharvestLever/OverharvestLabel" }),
+            };
+
+            foreach (var pose in new[] { "A_entry_to_machine", "D_wide_corner", "H_lever_column" })
+            {
+                (string name, Vector3 eye, Vector3 look) p = default;
+                bool found = false;
+                foreach (var q in Poses) if (q.name == pose) { p = q; found = true; }
+                foreach (var q in ExtraPoses) if (q.name == pose) { p = q; found = true; }
+                if (!found) continue;
+
+                Aim(cam, p.eye, p.look);
+                man.AppendLine($"  ── {pose} ──");
+                man.AppendLine("     대상                  기여 화소   설정 잉크   렌더 평균   렌더 최대");
+                foreach (var (label, paths) in targets)
+                {
+                    var rs = new List<Renderer>();
+                    foreach (string path in paths)
+                    {
+                        GameObject go = GameObject.Find(path);
+                        if (go != null) rs.AddRange(go.GetComponentsInChildren<Renderer>(true));
+                    }
+                    if (rs.Count == 0) { man.AppendLine($"     {label,-22}(없음)"); continue; }
+
+                    Color32[] on = Shot(cam, rt);
+                    var was = new bool[rs.Count];
+                    for (int i = 0; i < rs.Count; i++) { was[i] = rs[i].enabled; rs[i].enabled = false; }
+                    Color32[] off = Shot(cam, rt);
+                    for (int i = 0; i < rs.Count; i++) rs[i].enabled = was[i];
+
+                    int diff = 0; double sum = 0; float peak = 0f;
+                    for (int i = 0; i < on.Length; i++)
+                    {
+                        int d = Mathf.Abs(on[i].r - off[i].r) + Mathf.Abs(on[i].g - off[i].g) + Mathf.Abs(on[i].b - off[i].b);
+                        if (d <= 6) continue;
+                        diff++;
+                        float lum = (on[i].r * 0.2126f + on[i].g * 0.7152f + on[i].b * 0.0722f) / 255f;
+                        sum += lum;
+                        if (lum > peak) peak = lum;
+                    }
+                    // 「설정 잉크」는 **씬에 저장된 TMP 색의 휘도**다. 렌더 평균은 블룸이
+                    // 만든 저휘도 가장자리 화소에 끌려 내려가므로(밝게 할수록 헤일로가 넓어져
+                    // 평균이 **낮아진다**) 단독으로는 비교축이 못 된다. 세 축을 같이 낸다.
+                    float set = 0f; int setN = 0;
+                    foreach (string path in paths)
+                    {
+                        GameObject go = GameObject.Find(path);
+                        if (go == null) continue;
+                        foreach (var tm in go.GetComponentsInChildren<TMPro.TMP_Text>(true))
+                        { set += 0.2126f * tm.color.r + 0.7152f * tm.color.g + 0.0722f * tm.color.b; setN++; }
+                    }
+                    string setCol = setN == 0 ? "-" : (set / setN).ToString("F3");
+                    man.AppendLine($"     {label,-22}{diff,10:N0}{setCol,12}{(diff > 0 ? (sum / diff) : 0),12:F3}{peak,12:F3}");
+                }
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════

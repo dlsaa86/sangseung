@@ -486,6 +486,41 @@ namespace Ascend.Prototype.Run
         }
 
         /// <summary>
+        /// **지금 확정하면 몇 층 오르는가.** 계기탑(`AscentColumnView`)이 그리는 값이다.
+        ///
+        /// 사용자 지시(2026-08-04): 「전력량 쪽에 지금 전력이면 몇 층을 오를 수 있는지도
+        /// 나와야 함」. 퍼센트보다 이쪽이 플레이어가 실제로 판단하는 단위다.
+        ///
+        /// ⚠ **화면과 실제 상승이 어긋나면 그게 최악이다.** 그래서 새 식을 쓰지 않고
+        /// 실제 판정이 쓰는 둘을 **그대로** 부른다 —
+        ///   ① <see cref="FloorSession.PreviewAscent"/> = `Resolve()` 와 같은 한 줄
+        ///   ② <see cref="ClampAscent"/> = `CompleteFloor()` 가 부르는 그 함수
+        /// 즉 이 값이 틀리면 게임도 같이 틀린다. 갈라질 수 없는 구조다.
+        ///
+        /// 상승하지 못하는 구간(`Crash`)에서는 0 이다 — `BaseFloors` 가 0 이라
+        /// 자연히 그렇게 되고, 여기서 따로 분기하지 않는다.
+        /// </summary>
+        public int PreviewFloorsGained()
+        {
+            FloorSession floor = Current;
+            if (floor == null) return 0;
+            return Clamped(floor.PreviewAscent().FloorsAscended);
+        }
+
+        /// <summary>
+        /// 임의의 전력·요구로 같은 값을 낸다. **검증과 캡처 스윕 전용.**
+        /// 「표시한 층수가 실제 상승과 같은가」를 여러 전력값에서 대조할 수 있어야 한다.
+        /// </summary>
+        public int PreviewFloorsGained(float power, float required)
+        {
+            FloorSession floor = Current;
+            if (floor == null) return 0;
+            return Clamped(floor.PreviewAscent(power, required).FloorsAscended);
+        }
+
+        private int Clamped(int raw) => raw <= 0 ? 0 : ClampAscent(CurrentFloor, raw);
+
+        /// <summary>
         /// 다층 상승이 삼켜서는 안 되는 층 앞에서 멈춘다.
         ///
         /// 자동 다층 상승은 높은 임계점의 보상이지만, 그대로 두면 커리큘럼을 지운다.

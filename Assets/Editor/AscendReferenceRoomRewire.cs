@@ -52,6 +52,9 @@ namespace Ascend.Prototype.EditorTools
             ParkLegacyVisuals();
             EnforceShaftOpening(root);
             RelocateExecutionLabel();
+            AscentColumnBuilder.Build(root);
+            ApplyInkWeights();
+            WireProfiles();
             ClearGhostGlyphs();
 
             Scene();
@@ -217,6 +220,180 @@ namespace Ascend.Prototype.EditorTools
         {
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  잉크 무게 — 「한눈에 보이는 것」 넷과 나머지를 가른다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 계기탑 조립 + 잉크 무게 + 프로파일 배선만 따로 돌린다.
+        ///
+        /// 전체 <see cref="Rewire"/> 는 결과판 아홉 칸과 레버 참조까지 옮기므로,
+        /// 표시 계층만 손볼 때 그것까지 돌릴 이유가 없다. 셋 다 절대값이라 멱등이다.
+        /// </summary>
+        [MenuItem("Ascend/Room/Rebuild Readout Layer")]
+        public static void RebuildReadoutLayer()
+        {
+            if (EditorApplication.isPlaying)
+            { Debug.LogError("[상승] Play 모드에서는 씬을 고치지 않는다."); return; }
+
+            GameObject root = GameObject.Find(AscendReferenceRoom.RootName);
+            if (root == null)
+            { Debug.LogError($"[상승] `{AscendReferenceRoom.RootName}` 이 없다."); return; }
+
+            _report = new StringBuilder("[상승] 판독 계층 재조립\n");
+            AscentColumnBuilder.Build(root);
+            RelocateExecutionLabel();
+            SetDefaultTexts(FindAnywhere("InstrumentPanel"));
+            ApplyInkWeights();
+            WireProfiles();
+            ClearGhostGlyphs();
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log(_report.ToString());
+        }
+
+        /// <summary>
+        /// 씬의 **모든 월드 TMP 색을 절대값으로 다시 쓴다.** 두 가지를 동시에 고친다.
+        ///
+        /// ## ① 사용자가 정한 위계 (2026-08-04)
+        ///
+        /// 「한눈에 보이는 건 **전력량 / 남은 스핀 횟수 / 레버 / 수확 기계** 이거면 충분해.」
+        /// 나머지(계약·무게·위험도·연쇄·층)는 2순위다. **없애지 않는다** — 무게만 내린다.
+        ///
+        /// 5차 독립 평가가 정확히 그 반대를 지적했다: 「한 판에 층·전력·요구·무게·상태·연쇄
+        /// **여섯 필드가 전부 같은 크기·같은 백색**이다 — §5 「한 화면에 모든 숫자를 동시에
+        /// 강조하지 않는다」 정면 위반」. 사용자가 그 위계를 정해 줬으므로 여기서 적용한다.
+        ///
+        /// ## ② `UP-FIX-90` · `UP-FIX-94` — 방 안 최고 백색이 계기 텍스트였다
+        ///
+        /// 실측: 계기 라벨 다섯 줄이 전부 `(1,1,1)` 이었다. TMP 는 **비조명 셰이더**라
+        /// 그 값이 곧 화면 값이고, 이 어두운 방(§12 mean ≈ .044)에서 유일한 순백이다.
+        /// `G_gauge_face` 의 p99 **.9033**(대역 .25~.36) 이 그것이다.
+        ///
+        /// 그래서 **크기가 아니라 밝기**를 내린다. 크기를 줄이면 `UP-FIX-86`
+        /// (글자 배율 0.3393 → 1.0000)이 되돌아간다 — 그건 하면 안 되는 축이다.
+        ///
+        /// ## ③ 잉크는 전부 따뜻하다 (r &gt; g &gt; b)
+        ///
+        /// `VISUAL_SPEC` §12 는 g/r 0.78~0.90 · b/r 0.45~0.62 를 요구한다. 순백은
+        /// g/r = 1.00 이라 그 축을 **잡아당기고 있었다.** 아래 잉크는 전부 대역 안이다.
+        ///
+        /// 절대값이라 몇 번을 돌려도 같다.
+        /// </summary>
+        private static readonly (string path, Color ink, string rank)[] InkWeights =
+        {
+            // 1순위 — `VISUAL_SPEC` §5 「현재 사용 가능한 핵심 레버」. 방에서 가장 밝은 글자.
+            ("GrayboxWorld/Car/Console/ExecutionLabel",       new Color(0.95f, 0.83f, 0.57f), "1순위 레버"),
+
+            // 1순위 보조 — 전력량. 큰 값은 계기탑이 형상으로 나르고 여기는 정확한 수치다.
+            ("GrayboxWorld/Car/InstrumentPanel/PowerLabel",    new Color(0.66f, 0.56f, 0.38f), "1순위 보조"),
+            ("GrayboxWorld/Car/InstrumentPanel/RequiredLabel", new Color(0.66f, 0.56f, 0.38f), "1순위 보조"),
+
+            // 2순위 — 층 · 위험도 · 무게 · 연쇄. `MASTER_PRD` §8.1 이 위험 단계명을
+            // 「디버그와 최소 보조 표시용」이라 적으므로 이 강등은 PRD 와 어긋나지 않는다.
+            ("GrayboxWorld/Car/InstrumentPanel/FloorLabel",    new Color(0.46f, 0.39f, 0.27f), "2순위"),
+            ("GrayboxWorld/Car/InstrumentPanel/StatusLabel",   new Color(0.46f, 0.39f, 0.27f), "2순위"),
+            ("GrayboxWorld/Car/InstrumentPanel/CascadeLabel",  new Color(0.46f, 0.39f, 0.27f), "2순위"),
+
+            // 2순위 — 계약. 세 장이 서로 비교돼야 하므로 셋이 같은 값이다.
+            ("GrayboxWorld/Car/ContractPlaqueLabel_0",         new Color(0.62f, 0.54f, 0.38f), "2순위"),
+            ("GrayboxWorld/Car/ContractPlaqueLabel_1",         new Color(0.62f, 0.54f, 0.38f), "2순위"),
+            ("GrayboxWorld/Car/ContractPlaqueLabel_2",         new Color(0.62f, 0.54f, 0.38f), "2순위"),
+
+            // 3순위 — 과수확은 **잠겨 있다.** 잠긴 선택지가 사용 가능한 선택지보다
+            // 밝을 이유가 없다 (`UP-FIX-89` 정보 위계 역전: B 기준 과수확 35px > 실행 24px).
+            // 해제되면 `AscentColumnView` 가 같은 프레임에 붉게 살린다 — 여기 값은 잠금 상태다.
+            ("GrayboxWorld/Car/OverharvestLever/OverharvestLabel", new Color(0.46f, 0.38f, 0.26f), "3순위(잠김)"),
+        };
+
+        private static void ApplyInkWeights()
+        {
+            _report.AppendLine("  잉크 무게 (순백 제거 · 1순위/2순위 분리) —");
+            foreach (var (path, ink, rank) in InkWeights)
+            {
+                GameObject go = GameObject.Find(path);
+                if (go == null) { _report.AppendLine($"    ⚠ 없음 — {path}"); continue; }
+                var tmp = go.GetComponent<TMPro.TMP_Text>();
+                if (tmp == null) { _report.AppendLine($"    ⚠ TMP 없음 — {path}"); continue; }
+
+                float before = Luminance(tmp.color);
+                if (tmp.color != ink)
+                {
+                    Undo.RecordObject(tmp, "ink weight");
+                    tmp.color = ink;
+                    tmp.ForceMeshUpdate();
+                    EditorUtility.SetDirty(tmp);
+                }
+                _report.AppendLine($"    {Leaf(path),-22} {rank,-10} 휘도 {before:F3} → {Luminance(ink):F3} " +
+                                   $"· g/r {ink.g / Mathf.Max(ink.r, 1e-4f):F3} · b/r {ink.b / Mathf.Max(ink.r, 1e-4f):F3}");
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  프로파일 배선 — 「에셋을 고쳐도 게임이 안 바뀌는」 상태를 없앤다
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// `RunSessionBehaviour` 의 프로파일 슬롯이 비어 있으면 같은 이름의 에셋을 꽂는다.
+        ///
+        /// ## 왜 지금 값이 같은데도 고치는가
+        ///
+        /// `_settlementProfile` 이 `{fileID: 0}` 이었다. 지금은 에셋(`0.15 / 0.60 / 1`)과
+        /// 코드 프리셋이 **같은 값**이라 동작 차이가 없다 — 그래서 아무도 못 본다.
+        /// 그러나 그 상태의 뜻은 「**`.asset` 을 고쳐도 게임이 안 바뀐다**」이고,
+        /// 이 저장소가 「프로파일 8종이 여덟 세션 동안 죽어 있었다」고 기록한 사고의
+        /// 재발 조건이 정확히 그것이다.
+        ///
+        /// `SnapshotOrDefault` 가 남기는 `Source` 문자열이 「배선했다」와 「그 값이 쓰였다」를
+        /// 가르고, 자체 검증이 그것을 읽는다. 값이 같으므로 **캡처와 지표는 전부 불변**이다 —
+        /// 움직이면 배선 실수다.
+        /// </summary>
+        private static void WireProfiles()
+        {
+            var run = Object.FindAnyObjectByType<Run.RunSessionBehaviour>(FindObjectsInactive.Include);
+            if (run == null) { _report.AppendLine("  ⚠ RunSessionBehaviour 가 없다 — 프로파일 미배선"); return; }
+
+            var so = new SerializedObject(run);
+            (string field, string asset)[] wants =
+            {
+                ("_settlementProfile",   "RemainingSpinSettlementProfile"),
+                ("_overharvestProfile",  "OverharvestProfile"),
+                ("_weightProfile",       "WeightProfile"),
+                ("_spinBalanceProfile",  "SpinBalanceProfile"),
+                ("_floorCurriculum",     "FloorCurriculumProfile"),
+                ("_contractProfile",     "ContractProfile"),
+            };
+
+            int wired = 0;
+            foreach (var (field, asset) in wants)
+            {
+                SerializedProperty p = so.FindProperty(field);
+                if (p == null) { _report.AppendLine($"    ⚠ 필드 없음 — {field}"); continue; }
+                if (p.objectReferenceValue != null) continue;
+
+                string path = $"Assets/Prototype_Elevator/Data/Profiles/{asset}.asset";
+                var obj = AssetDatabase.LoadAssetAtPath<ScriptableObject>(path);
+                if (obj == null) { _report.AppendLine($"    ⚠ 에셋 없음 — {path}"); continue; }
+                p.objectReferenceValue = obj;
+                wired++;
+                _report.AppendLine($"    배선 {field} → {asset}.asset");
+            }
+            if (wired > 0)
+            {
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(run);
+            }
+            _report.AppendLine($"  프로파일 배선 {wired}건 (0 이면 이미 전부 배선 — 멱등)");
+        }
+
+        /// <summary>sRGB 가중 휘도. `VISUAL_SPEC` §12 와 같은 계수(선형화하지 않는다).</summary>
+        private static float Luminance(Color c) => 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+
+        private static string Leaf(string path)
+        {
+            int i = path.LastIndexOf('/');
+            return i < 0 ? path : path.Substring(i + 1);
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -921,8 +1098,12 @@ namespace Ascend.Prototype.EditorTools
             // 형식이 어긋나면 캡처가 게임을 증명하지 못한다.
             // 공백 셋 → 하나, `{0:P0}`(값과 % 사이에 공백을 하나 더 넣는다) → `%` 직결.
             // `UP-FIX-88` 의 우측 절단이 이 줄에서 나왔다.
-            SetDefault(panel, "PowerLabel", "전력 0");
-            SetDefault(panel, "RequiredLabel", "요구 0 0%");
+            // 🔴 `UP-FIX-93` (2026-08-04) — 달성률을 이 줄에서 **뺐다.**
+            //    `요구 0 0%` 는 세 토큰 간격이 균등해 「요구값과 달성률을 가를 수 없다」는
+            //    회귀를 만들었다. 공백을 되돌리면 `UP-FIX-88`(B 포즈 절단)이 커진다 —
+            //    두 요구가 같은 줄에서 서로를 배신하므로 **토큰을 하나로 줄인다.**
+            //    달성률은 `AscentColumnView` 의 탱크 채움 + 「전력 N   P%」로 옮겼다.
+            SetDefaultTexts(panel);
 
             int aligned = 0;
             foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
@@ -945,6 +1126,20 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>저장 씬의 기본 문구를 정한다. 런타임이 첫 갱신에서 덮어쓴다.</summary>
+        /// <summary>
+        /// 저장된 씬의 기본 문구. **런타임 `InstrumentPanelView` 가 쓰는 형식과 글자
+        /// 하나까지 같아야 한다** — 고정 캡처는 에디트 모드에서 찍히므로 여기 적힌 것이
+        /// 곧 평가받는 화면이다. 형식이 어긋나면 캡처가 게임을 증명하지 못한다.
+        ///
+        /// 값을 지어내지 않는다. **전력 0 인 상태의 실제 출력**을 적는다.
+        /// </summary>
+        private static void SetDefaultTexts(Transform panel)
+        {
+            if (panel == null) return;
+            SetDefault(panel, "PowerLabel", "전력 0");
+            SetDefault(panel, "RequiredLabel", "요구 0");
+        }
+
         private static void SetDefault(Transform panel, string name, string text)
         {
             var t = panel.Find(name)?.GetComponent<TMPro.TMP_Text>();

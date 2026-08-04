@@ -422,6 +422,28 @@ namespace Ascend.Prototype.Run
 
         /// <summary>정산 수치의 출처. 「배선했다」와 「그 값이 쓰였다」를 가른다.</summary>
         public string SettlementSource => _settlement.Source;
+
+        /// <summary>
+        /// **지금 확정하면 어떤 상승이 나오는가.** 계기가 「몇 층 오르는가」를 그리려면
+        /// 이 값이 필요하다 (`MASTER_PRD` §7 「다음 초과 전력 임계점과 보상」).
+        ///
+        /// ⚠ **새 계산식을 만들지 않는다.** <see cref="Resolve"/> 가 실제로 부르는 것과
+        /// **같은 한 줄**이다 — 인자도 같다. 화면과 실제 상승이 갈라지는 것이
+        /// 이 저장소가 가장 두려워하는 종류의 결함이고, 식을 복제하면 반드시 갈라진다.
+        /// 확정 뒤에는 이미 확정된 결과를 그대로 돌려준다(다시 계산하지 않는다).
+        /// </summary>
+        public AscendResult PreviewAscent()
+            => _result != null ? _result.Ascent
+                               : AscendResult.Calculate(Power, RequiredPower, _thresholds);
+
+        /// <summary>
+        /// 임의의 전력·요구로 같은 판정을 돌린다. **검증과 캡처 스윕 전용**이다 —
+        /// 「화면이 그리는 층수가 실제 상승과 같은가」를 여러 전력값에서 대조하려면
+        /// 세션의 현재 값이 아닌 값을 넣어 볼 수 있어야 한다.
+        /// 식은 위와 **완전히 같다** (같은 `_thresholds`, 같은 `Calculate`).
+        /// </summary>
+        public AscendResult PreviewAscent(float power, float required)
+            => AscendResult.Calculate(power, required, _thresholds);
         public float LastAnte => _lastAnte;
         public ResistanceContract SelectedContract => _contract;
         public SpinRuleSet Rules => _rules;

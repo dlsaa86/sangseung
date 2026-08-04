@@ -327,13 +327,24 @@ namespace Ascend.Prototype.View
                     // 즉 눈에 안 보이는 곳에서 폭을 0.033 m 쓰고 있었다.
                     // 글자 크기는 손대지 않는다. `UP-FIX-86` 이 배율을 0.3393 → 1.0000 으로
                     // 올린 것을 되돌리는 순간 「잘려서 못 읽는다」가 「작아서 못 읽는다」가 된다.
+                    //
+                    // 🔴 **달성률을 이 줄에서 뺀다** (`UP-FIX-93`, 2026-08-04).
+                    //
+                    // 5차 독립 평가: 「`요구`/`0`/`0%` 세 토큰의 간격이 균등해 **요구값과
+                    // 달성률을 가를 수 없다**」. 판독성 「전력↔요구 두 줄」이 4 → 3 으로
+                    // 내려간 원인이고, 그것은 바로 위 `UP-FIX-88`(폭 줄이기)의 부작용이었다.
+                    //
+                    // 공백을 다시 넣으면 폭이 돌아오고 B 포즈 절단이 커진다 — 두 요구가
+                    // 같은 줄에서 서로를 배신한다. **그래서 토큰을 하나로 줄인다.**
+                    // 달성률은 `AscentColumnView` 가 물리 탱크의 **채움 높이**와
+                    // 「전력 N   P%」 한 줄로 가져갔다. 회색조에서 살아남는 쪽으로 옮긴 것이고,
+                    // 이 줄은 「요구는 얼마인가」 하나만 말한다.
                     _text.Clear();
                     _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power);
                     Apply(_powerLabel, _text);
 
                     _text.Clear();
-                    _text.Append("요구 ").AppendFormat("{0:F0}", floor.RequiredPower)
-                         .Append(' ').AppendFormat("{0:F0}", ratio * 100f).Append('%');
+                    _text.Append("요구 ").AppendFormat("{0:F0}", floor.RequiredPower);
                     Apply(_requiredLabel, _text);
                 }
                 else
