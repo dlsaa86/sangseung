@@ -37,7 +37,7 @@ namespace Ascend.Prototype.EditorTools
     /// | 심볼 | 형태 | 조각 수 | 조각 지름 | 표면 |
     /// |---|---|---|---|---|
     /// | 정상 영혼 | 매끈한 구 | **1** | **0.168** | 12각 매끈 |
-    /// | 흡수체 | 뾰족한 다면체 | **1** | **0.124** | 8개 각뿔 스파이크 |
+    /// | 흡수체 | 안으로 꺼진 육각 아가리 | **1** | **0.128** | 얇은 테 + 목구멍 |
     /// | 증식체 | 뭉친 덩어리 | **3** | **0.058** | 울퉁불퉁 |
     ///
     /// 축이 넷이다 — **형태 종류 · 전체 크기 · 조각 개수 · 표면 각짐.**
@@ -60,6 +60,9 @@ namespace Ascend.Prototype.EditorTools
         public const string ProliferatorName = "Sym_Proliferator";
         public const string CoreName = "Core";
 
+        /// <summary>흡수체 목구멍에 삼켜진 빛. 아가리 고리와 함께 두 덩어리를 만든다.</summary>
+        public const string ThroatName = "Throat";
+
         private const string MeshDir = "Assets/Prototype_Elevator/Art/Meshes/Symbol";
         private const string MaterialDir = "Assets/Prototype_Elevator/Art/Materials/Room";
 
@@ -72,14 +75,26 @@ namespace Ascend.Prototype.EditorTools
         public const float NormalSoulSpan = 0.168f;
 
         /// <summary>
-        /// 흡수체 — 스파이크 끝에서 끝. 정상 영혼의 **76%.**
+        /// 흡수체 아가리의 바깥 지름. 정상 영혼의 **76%.**
         ///
-        /// ⚠ 이 값은 「가장 긴 스파이크」에 정규화된다(<see cref="BuildSpike"/>).
-        /// 처음엔 정규화 없이 상수만 적었는데, 길이 흔들림 최대 +14% 와 기울임이
-        /// 겹쳐 실측 AABB 가 0.154 로 나왔다 — 구(0.168)의 **92%** 라 크기 축이
-        /// 사실상 사라졌다. 상수와 화면이 다르면 그 상수는 문서가 아니라 거짓말이다.
+        /// ⚠ 상수와 화면이 다르면 그 상수는 문서가 아니라 거짓말이다.
+        /// 첫 판본(스파이크)은 길이 흔들림 +14% 와 기울임이 겹쳐 실측 AABB 가
+        /// 0.154 로 나왔고, 구(0.168)의 92% 라 크기 축이 사실상 사라져 있었다.
+        /// 지금은 테두리 반지름이 곧 실루엣이라 상수가 그대로 화면 크기다.
         /// </summary>
         public const float AbsorberSpan = 0.128f;
+
+        /// <summary>아가리 깊이 대 지름 비. 목구멍이 얼마나 뒤로 꺼지는가.</summary>
+        public const float AbsorberDepthRatio = 0.62f;
+
+        /// <summary>
+        /// 목구멍 중심(로컬). 핵이 여기 앉는다 — 축 위가 아니라 **한쪽으로 무너진** 자리다.
+        /// <see cref="BuildMaw"/> 의 `skew` 와 반드시 같은 값이어야 핵이 목구멍에 들어간다.
+        /// </summary>
+        public static Vector3 AbsorberThroatCenter => new Vector3(
+            AbsorberSpan * 0.5f * 0.15f,
+            AbsorberSpan * 0.5f * -0.10f,
+            AbsorberSpan * AbsorberDepthRatio * DepthFlatten * 0.5f);
 
         /// <summary>증식체 조각 하나의 지름. **셋 중 가장 작다.**</summary>
         public const float ProliferatorBlobSpan = 0.058f;
@@ -125,7 +140,7 @@ namespace Ascend.Prototype.EditorTools
         public static void Build(Transform cell)
         {
             if (cell == null) return;
-            EnsureMeshes(out Mesh sphere, out Mesh spike, out Mesh blob);
+            EnsureMeshes(out Mesh sphere, out Mesh spike, out Mesh blob, out Mesh ring);
             Material shell = ShellMaterial();
             Material core = CoreMaterial();
 
@@ -135,13 +150,31 @@ namespace Ascend.Prototype.EditorTools
             EnsureCore(soul, sphere, core);
             Prune(soul, CoreName);
 
-            // ── 흡수체 — 뾰족한 다면체 하나 ────────────────────────────────
+            // ── 흡수체 — 안으로 꺾인 각진 아가리 ──────────────────────────
             Transform abs = EnsureChild(cell, AbsorberName);
-            // 정면에서 스파이크가 축에 딱 맞으면 「별 아이콘」이 된다. 살짝 돌려
-            // 비대칭으로 보이게 한다 — 결정론적 상수다.
-            SetPiece(abs, spike, shell, Vector3.zero, Quaternion.Euler(11f, 0f, 13f));
-            EnsureCore(abs, spike, core);
-            Prune(abs, CoreName);
+            // 정면 정렬이면 무엇을 만들든 아이콘이 된다. 살짝 기울인다 — 결정론적 상수다.
+            SetPiece(abs, spike, shell, Vector3.zero, Quaternion.Euler(7f, 0f, 9f));
+            // 🔴 밝은 영역이 **고리 + 점** 두 덩어리여야 한다. 두 번 헛짚었다 —
+            //
+            //   ① 핵을 목구멍의 덩어리 하나로만 두었다 → 껍질(발광 0.085×)이 문턱을
+            //      못 넘어 밝은 것이 **점 하나**. 덩어리 1 · 채움률 0.660 으로
+            //      **구(1 · 0.751)와 거의 같아졌다.**
+            //   ② 아가리 메시를 통째로 핵 재질로 한 겹 더 넣었다 → 안쪽 원뿔 벽이
+            //      전부 밝아져 **속이 꽉 찬 16,772 화소 덩어리**(채움률 0.699)가 됐다.
+            //      구보다 더 크고 더 볼록해졌다.
+            //
+            // 회색조 분리는 「무엇이 있는가」가 아니라 **「무엇이 밝은가」**로 정해진다.
+            // 그래서 밝은 것을 **납작한 육각 고리 한 장**으로 한정한다 — 아가리 안쪽
+            // 1/4 깊이에 걸린 발광 테. 정면에서 고리로 읽히고 속은 어둡게 남는다.
+            Transform absRing = EnsureChild(abs, CoreName);
+            SetPiece(absRing, ring, core, Vector3.zero, Quaternion.identity);
+            EditorUtility.SetDirty(absRing.gameObject);
+
+            Transform absThroat = EnsureChild(abs, ThroatName);
+            SetPiece(absThroat, blob, core, AbsorberThroatCenter, Quaternion.Euler(0f, 0f, 21f));
+            absThroat.localScale = Vector3.one * 0.55f;
+            EditorUtility.SetDirty(absThroat.gameObject);
+            Prune(abs, CoreName, ThroatName);
 
             // ── 증식체 — 작은 덩어리 셋 ────────────────────────────────────
             Transform pro = EnsureChild(cell, ProliferatorName);
@@ -283,11 +316,57 @@ namespace Ascend.Prototype.EditorTools
         //  메시
         // ══════════════════════════════════════════════════════════════════════
 
-        private static void EnsureMeshes(out Mesh sphere, out Mesh spike, out Mesh blob)
+        private static void EnsureMeshes(out Mesh sphere, out Mesh spike, out Mesh blob, out Mesh ring)
         {
             sphere = SaveMesh(BuildSphere(), "SYM_NormalSoul");
-            spike = SaveMesh(BuildSpike(), "SYM_Absorber");
+            spike = SaveMesh(BuildMaw(), "SYM_Absorber");
             blob = SaveMesh(BuildBlob(), "SYM_ProliferatorBlob");
+            ring = SaveMesh(BuildAbsorberRing(), "SYM_AbsorberRing");
+        }
+
+        /// <summary>
+        /// 흡수체 아가리 안에 걸린 **발광 육각 고리.** 이것만 밝다.
+        ///
+        /// 반지름 비 0.82 는 재서 정한 값이다 — 고리 면적 / bbox 면적이
+        /// 대략 0.652 × (1 − 0.82²) = **0.21** 이라 구의 채움률 0.751 과 3.6배 벌어진다.
+        /// 비를 1 에 가깝게 하면 고리가 가늘어 안 읽히고, 0 에 가깝게 하면 원반이 되어
+        /// 구와 구분이 사라진다. 이 값이 그 사이다.
+        /// </summary>
+        private static Mesh BuildAbsorberRing()
+        {
+            var b = new ProcMeshBuilder(64);
+            const float uv = 8f;
+            const int sides = 6;
+            const float inner = 0.82f;
+
+            float jMax = 0f;
+            var jit = new float[sides];
+            for (int i = 0; i < sides; i++)
+            {
+                jit[i] = 0.90f + ProcMeshBuilder.Hash01(i * 211 + 7) * 0.20f;
+                if (jit[i] > jMax) jMax = jit[i];
+            }
+            float rRim = AbsorberSpan * 0.5f / jMax;
+            float rOut = rRim * 0.64f;
+            float depth = AbsorberSpan * AbsorberDepthRatio * DepthFlatten;
+            // 아가리 안쪽 1/4 깊이. 그 깊이의 벽 안반지름이 0.688·rRim 이라 0.64 가 들어간다.
+            float z = -depth * 0.5f + depth * 0.25f;
+            Vector3 skew = AbsorberThroatCenter * 0.25f;
+
+            Vector3 P(float r, int i)
+            {
+                float a = (i % sides * 360f / sides + 14f) * Mathf.Deg2Rad;
+                float k = jit[i % sides];
+                return new Vector3(Mathf.Cos(a) * r * k, Mathf.Sin(a) * r * k, z) + new Vector3(skew.x, skew.y, 0f);
+            }
+
+            for (int i = 0; i < sides; i++)
+            {
+                Vector3 o0 = P(rOut, i), o1 = P(rOut, i + 1);
+                Vector3 i0 = P(rOut * inner, i), i1 = P(rOut * inner, i + 1);
+                b.AddQuad(o0, o1, i1, i0, Vector3.back, uv);   // 앞면만 — 뒤는 안 보인다
+            }
+            return b.ToMesh("SYM_AbsorberRing");
         }
 
         /// <summary>
@@ -351,56 +430,94 @@ namespace Ascend.Prototype.EditorTools
         }
 
         /// <summary>
-        /// 흡수체 — 작은 핵에서 뻗은 **각뿔 스파이크 여덟.**
+        /// 흡수체 — **안으로 꺾여 들어가는 각진 아가리(maw).**
         ///
-        /// 「빨아들이는 것」이므로 각이 서 있어야 하고, 그 각짐이 회색조에서도
-        /// 매끈한 구와 갈리는 유일한 단서다. 스파이크 길이를 결정론적으로 흔들어
-        /// **대칭 아이콘으로 읽히지 않게** 한다 — 완전 대칭이면 별표가 된다.
+        /// ## 왜 별을 버렸나
+        ///
+        /// 첫 판본은 작은 핵에서 뻗은 각뿔 스파이크 여덟이었다. 판독성은 통과했지만
+        /// 독립 평가가 **스타일 회귀**로 잡았다 — 「6갈래 별. `VISUAL_SPEC` §1 이 이름을
+        /// 찍어 피하라고 한 것이 카지노 슬롯머신이고, 릴 심볼 어휘에서 별은 가장
+        /// 대표적인 기호다」. 항목 9 가 4 → 3 으로 내려갔다.
+        ///
+        /// 방사상으로 **뻗는** 것이 문제였다. 흡수체는 뻗는 것이 아니라 **빨아들이는**
+        /// 것이므로 방향을 뒤집는다 — 앞이 넓고 뒤로 좁아지는 각진 깔때기다.
+        /// 정면에서 보이는 것은 별이 아니라 **육각 테두리 + 안으로 꺼진 목구멍**이다.
+        ///
+        /// ## 회색조 지표를 잃지 않는 구조
+        ///
+        /// 밝은 영역이 「얇은 테두리 고리 + 목구멍의 작은 핵」이라 —
+        ///   · 덩어리 수 **2** (구 1 · 증식 3 사이에 그대로 남는다)
+        ///   · 채움률 낮음 (고리라 bbox 를 못 채운다 — 구의 볼록함과 반대)
+        ///   · 최대 덩어리 작음 (고리 폭이 반지름의 14% 다)
+        ///
+        /// ## 대칭 아이콘 방지
+        ///
+        /// 목구멍을 축에서 밀어 **한쪽으로 무너뜨리고**, 테두리 꼭짓점 반지름을
+        /// 결정론적으로 ±10% 흔든다. 완전 대칭이면 무엇을 만들든 아이콘이 된다.
         /// </summary>
-        private static Mesh BuildSpike()
+        private static Mesh BuildMaw()
         {
             var b = new ProcMeshBuilder(256);
             const float uv = 8f;
+            const int sides = 6;
 
-            // 길이 흔들림 계수를 **먼저** 다 뽑고 최대값으로 정규화한다.
-            // 그래야 「가장 긴 스파이크 = AbsorberSpan/2」가 정의대로 참이 된다.
-            var k = new float[8];
-            float kMax = 0f;
-            for (int i = 0; i < k.Length; i++)
+            // ⚠ 테두리 꼭짓점 흔들림을 **최대값으로 정규화한다.** 안 하면 상수 0.128 인데
+            // 실측 AABB 가 0.157 로 나오고(첫 시도가 그랬다) 구(0.168)의 93% 가 되어
+            // 크기 축이 사라진다. 스파이크 판본에서 이미 한 번 당한 자리다.
+            var jit = new float[sides];
+            float jMax = 0f;
+            for (int i = 0; i < sides; i++)
             {
-                k[i] = 0.86f + ProcMeshBuilder.Hash01(i * 173 + 29) * 0.28f;
-                if (k[i] > kMax) kMax = k[i];
+                jit[i] = 0.90f + ProcMeshBuilder.Hash01(i * 211 + 7) * 0.20f;
+                if (jit[i] > jMax) jMax = jit[i];
             }
-            float rTip = AbsorberSpan * 0.5f / kMax;   // 스파이크 끝까지
-            float rBase = rTip * 0.30f;                // 스파이크 밑동 반지름
-            float rCore = rTip * 0.34f;                // 가운데 덩어리
+            float rRim = AbsorberSpan * 0.5f / jMax;   // 아가리 바깥
+            float rRimIn = rRim * 0.86f;           // 아가리 안쪽 — 테두리 폭 14%
+            float rThroat = rRim * 0.30f;          // 목구멍 바깥
+            float rThroatIn = rRim * 0.17f;        // 목구멍 안쪽
+            float depth = AbsorberSpan * AbsorberDepthRatio * DepthFlatten;
+            float zRim = -depth * 0.5f;            // 앞(관찰자 쪽)
+            float zThroat = depth * 0.5f;
+            // 한쪽으로 무너진다 — 목구멍이 축 위에 있지 않다.
+            // ⚠ <see cref="AbsorberThroatCenter"/> 와 같은 값이어야 핵이 목구멍에 앉는다.
+            var skew = new Vector3(rRim * 0.15f, -rRim * 0.10f, 0f);
 
-            // 가운데 — 6면 각기둥. 스파이크만 있으면 가운데가 비어 보인다.
-            b.AddPrism(Vector3.zero, rCore, rCore, rCore * 2f * DepthFlatten,
-                       6, MeshAxis.Z, 0f, true, true, false, uv);
-
-            // 스파이크 여덟. 정면(xy)에 여섯, 앞뒤(±z)에 하나씩.
-            // 앞뒤 것은 실루엣에 안 들어오지만 깊이를 만들어 「평면 아이콘」을 막는다.
-            var dirs = new List<Vector3>(8);
-            for (int i = 0; i < 6; i++)
+            Vector3 Rim(float r, int i)
             {
-                float a = (i * 60f + 8f) * Mathf.Deg2Rad;
-                dirs.Add(new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f));
+                float a = (i % sides * 360f / sides + 14f) * Mathf.Deg2Rad;
+                float k = jit[i % sides];
+                return new Vector3(Mathf.Cos(a) * r * k, Mathf.Sin(a) * r * k, zRim);
             }
-            dirs.Add(new Vector3(0f, 0f, 1f));
-            dirs.Add(new Vector3(0f, 0f, -1f));
-
-            for (int i = 0; i < dirs.Count; i++)
+            Vector3 Throat(float r, int i)
             {
-                // 길이 ±14% 흔들림. 해시라 매번 같은 형상이 나온다.
-                float len = rTip * k[i];
-                if (i >= 6) len *= DepthFlatten;       // 앞뒤는 챔버 여유만큼만
-                int mark = b.Mark();
-                // 끝을 0 으로 두면 퇴화 삼각형이 생긴다. 0.8mm 는 화면에서 점이다.
-                b.AddPrism(new Vector3(0f, 0f, len * 0.5f), rBase, 0.0008f, len,
-                           4, MeshAxis.Z, 45f, true, true, false, uv);
-                b.TransformSince(mark, Vector3.zero,
-                                 Quaternion.FromToRotation(Vector3.forward, dirs[i]));
+                float a = (i % sides * 360f / sides + 14f) * Mathf.Deg2Rad;
+                return new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, zThroat) + skew;
+            }
+
+            for (int i = 0; i < sides; i++)
+            {
+                Vector3 ro0 = Rim(rRim, i), ro1 = Rim(rRim, i + 1);
+                Vector3 ri0 = Rim(rRimIn, i), ri1 = Rim(rRimIn, i + 1);
+                Vector3 to0 = Throat(rThroat, i), to1 = Throat(rThroat, i + 1);
+                Vector3 ti0 = Throat(rThroatIn, i), ti1 = Throat(rThroatIn, i + 1);
+
+                // ① 앞 테두리 고리 — 관찰자를 정면으로 마주하는 유일한 면.
+                //    회색조에서 「고리」로 읽히는 것이 이 면이다.
+                b.AddQuad(ro0, ro1, ri1, ri0, Vector3.back, uv);
+
+                // ② 바깥 벽 — 실루엣(육각형)을 만든다.
+                Vector3 outward = ((ro0 + ro1 + to0 + to1) * 0.25f);
+                outward.z = 0f;
+                b.AddQuad(ro0, ro1, to1, to0, outward.normalized, uv);
+
+                // ③ 안쪽 벽 — 아가리 안으로 들여다보이는 면. **법선이 축을 향해야**
+                //    앞에서 보이고, 그래야 「안으로 꺼져 있다」가 읽힌다.
+                Vector3 inward = -((ri0 + ri1 + ti0 + ti1) * 0.25f);
+                inward.z = 0f;
+                b.AddQuad(ri0, ri1, ti1, ti0, inward.normalized, uv);
+
+                // ④ 목구멍 뒤 테. 거의 안 보이지만 껍질을 닫아 준다.
+                b.AddQuad(to0, to1, ti1, ti0, Vector3.forward, uv);
             }
             return b.ToMesh("SYM_Absorber");
         }

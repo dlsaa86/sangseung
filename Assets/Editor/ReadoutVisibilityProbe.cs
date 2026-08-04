@@ -53,6 +53,13 @@ namespace Ascend.Prototype.EditorTools
         /// <summary>`UP-FIX-87` 이 「네 포즈 전부 0픽셀」로 지목한 여덟.</summary>
         private static readonly string[] Targets =
         {
+            // 계기 글자 다섯 줄 — 2차 독립 평가가 「숫자 0개」로 지목한 것이 이쪽이다.
+            // 판(배경 쿼드)은 렌더되는데 글자만 0 이었다.
+            "GrayboxWorld/Car/InstrumentPanel/FloorLabel",
+            "GrayboxWorld/Car/InstrumentPanel/PowerLabel",
+            "GrayboxWorld/Car/InstrumentPanel/RequiredLabel",
+            "GrayboxWorld/Car/InstrumentPanel/StatusLabel",
+            "GrayboxWorld/Car/InstrumentPanel/CascadeLabel",
             "GrayboxWorld/Car/InstrumentPanel/PanelBack",
             "GrayboxWorld/Car/InstrumentPanel/PowerBarBg",
             "GrayboxWorld/Car/InstrumentPanel/PowerBarPivot/PowerBarFill",

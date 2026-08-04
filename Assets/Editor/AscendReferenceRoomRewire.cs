@@ -343,9 +343,28 @@ namespace Ascend.Prototype.EditorTools
 
             Undo.RecordObject(panel, "rewire instrument panel");
             panel.position = anchor.position;
-            // 구 계기판은 −45° 로 비스듬했다. 명세 §6 은 벽에 붙은 정면 표시기를
-            // 요구하므로 실내(−Z)를 정면으로 세운다.
-            panel.rotation = Quaternion.Euler(0f, 180f, 0f);
+
+            // 🔴 **`Euler(0, 180, 0)` 이었다. 계약 표찰과 **같은** 오해다** (`UP-FIX-87` 2차).
+            //
+            // 주석은 「실내(−Z)를 정면으로 세운다」였고 `forward` 도 정말 (0,0,−1) 이었다.
+            // 그런데 이 씬의 월드 TMP 는 **`forward` 반대쪽에서 읽힌다**
+            // (재질 `NanumGothic SDF Material SingleSided` 가 `_CullMode = 2`).
+            // 계기판은 후면 벽에 있고 플레이어는 −Z 쪽이므로 `forward` 는 **+Z** 여야 한다.
+            //
+            // 차분 렌더로 확정했다 (A 포즈, post ON, 1920×1080) —
+            //
+            //   rotY 180 (직전)  Floor 0 · Power 0 · Status 0 · Required 0 · Cascade **0 px**
+            //   rotY 0   (지금)  Floor 174 · Power 194 · Status 327 · Required 252 · Cascade 269
+            //
+            // 독립 평가가 여섯 포즈 전부에서 「숫자·게이지·눈금 0개」라고 적은 것이 이것이다.
+            // 판(배경 쿼드)은 렌더되는데 그 위 글자만 안 그려지고 있었다 — 배치 문제가
+            // **아니었다.** 배치를 세 번째로 만졌으면 또 못 고쳤을 자리다.
+            //
+            // 자식 전체를 함께 뒤집는다(라벨만 뒤집으면 정렬 기준점이 반대로 가서
+            // 글자 블록이 판 밖으로 나간다 — 실측으로 확인했다). 로컬 배치는
+            // 이미 왼→오른쪽 오름차순(눈금 100% 가 −1.007, 300% 가 −0.613)이라
+            // 뒤집으면 게이지가 **관례대로** 왼→오른쪽으로 자란다.
+            panel.rotation = Quaternion.identity;
 
             // 🔴 **크기를 눈으로 정하지 않고 화면에 맞춘다.**
             //
@@ -382,7 +401,9 @@ namespace Ascend.Prototype.EditorTools
             // 맞췄는데 그 화면 위에 있지 않았다. 실제 경계를 다시 재서 **차이만큼**
             // 루트를 민다. 상수를 적지 않으므로 원본이 바뀌어도 따라간다.
             Bounds fitted = Encapsulate(panel);
-            Vector3 want = anchor.position + panel.forward * (fitted.size.z * 0.5f + 0.006f);
+            // ⚠ 실내 쪽은 **−forward** 다. 회전이 identity 가 되면서 `forward` 가 벽 안쪽
+            // (+Z)을 가리키게 됐다 — 부호를 같이 뒤집지 않으면 계기판이 벽 속으로 들어간다.
+            Vector3 want = anchor.position - panel.forward * (fitted.size.z * 0.5f + 0.006f);
             panel.position += want - fitted.center;
             EditorUtility.SetDirty(panel);
             Bounds after = Encapsulate(panel);
@@ -583,16 +604,21 @@ namespace Ascend.Prototype.EditorTools
             Transform lamp = panel.Find("OverloadLight");
             if (housing == null || lamp == null) { _report.AppendLine("     ⚠ 과적등/하우징을 찾지 못했다"); return; }
 
-            // 계기판 루트가 y 180° 라 **로컬 +z 가 실내 쪽**이다. 앞 = z 가 큰 쪽.
-            float front = housing.localPosition.z + housing.localScale.z * 0.5f;
+            // ⚠ **부호가 루트 회전에 묶여 있다.** 계기판 루트를 `identity` 로 세우므로
+            // (바로 위 `MovePowerReadout` 참조) 실내 쪽은 로컬 **−z** 다.
+            //
+            // 처음엔 루트가 y 180° 였고 여기 `+z` 라고 적었다. 루트를 뒤집은 라운드에
+            // 이 부호를 같이 안 뒤집어서 과적등이 **벽 안으로 들어갔고** 차분 렌더가
+            // 네 포즈 전부 0 화소로 다시 잡았다. 한쪽만 고치면 다른 쪽이 조용히 깨진다.
+            float front = housing.localPosition.z - housing.localScale.z * 0.5f;
             float radius = lamp.localScale.z * 0.5f;
             Undo.RecordObject(lamp, "lift overload lamp");
             Vector3 before = lamp.localPosition;
             lamp.localPosition = new Vector3(housing.localPosition.x, housing.localPosition.y,
-                                             front + radius * 0.35f);
+                                             front - radius * 0.35f);
             EditorUtility.SetDirty(lamp);
             _report.AppendLine($"     과적등 z {before.z:F3} → {lamp.localPosition.z:F3} " +
-                               $"(하우징 앞면 {front:F3} + 반지름 {radius:F3}×0.35)");
+                               $"(하우징 실내면 {front:F3} − 반지름 {radius:F3}×0.35)");
         }
 
         /// <summary>
