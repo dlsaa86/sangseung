@@ -195,10 +195,14 @@ namespace Ascend.Prototype.EditorTools
                 //
                 // 선택률은 해석이 필요 없다 — 25~75% 를 벗어나면 그건 선택이 아니라
                 // 정답이거나 함정이고, 그 문장이 `T-05` 가 존재하는 이유 전체다.
-                // 그래서 비율은 참고 지표로 남기고 무게를 0.2 로 낮춘다.
+                //
+                // **2026-08-04: 비율 항을 점수에서 완전히 뺐다.** 무게 0.2 로 낮추는 것으로는
+                // 부족했다. 두 지표는 독립이 아니라 **같은 양의 두 표현**이기 때문이다 —
+                // `선택률 50% ⟺ ratio = 1/r̄`. 즉 옛 항은 선택률 항과 **반대 방향으로**
+                // 당기고 있었고, 판정하지 않는 값을 최적화 목표에 남겨 두면 후보 선택이
+                // 조용히 왜곡된다. `ratio` 는 로그에만 남긴다.
                 double score = Math.Abs(take - 50.0) / 25.0 * 3.0
-                             + Math.Abs(offer - 55.0) / 15.0 * 0.5
-                             + Math.Abs(ratio - 0.35) / 0.05 * 0.2;
+                             + Math.Abs(offer - 55.0) / 15.0 * 0.5;
                 if (score < bestScore) { bestScore = score; bestRatio = perSpin; }
 
                 log.AppendLine($"| {perSpin:F2} | {cap:F2} | {ratio:F3} | {offer:F1}% | {take:F1}% |");
@@ -614,7 +618,9 @@ namespace Ascend.Prototype.EditorTools
             sb.AppendLine(">");
             sb.AppendLine("> 압박이 실제로 있는지는 §3 「선택이 발생하는 층 비율」이 대신 답한다 —");
             sb.AppendLine("> 그건 PRD §17.3 에 근거가 있는 지표다. **미룬 요구**: 스핀 상한을 층마다");
-            sb.AppendLine("> 다르게 두는 안(PRD §4.1 「한 층 최대 5회」 개정 필요)은 사용자 결정 사항이다.");
+            sb.AppendLine("> 다르게 두는 안은 사용자 결정 사항이다. ⚠ **정정(2026-08-04): 「PRD 개정 필요」는");
+            sb.AppendLine("> 상한을 6 이상으로 *올리는* 안에만 해당한다.** PRD §4.1 은 「한 층 **최대** 5회」이고");
+            sb.AppendLine("> `FloorPlan.Spins` 는 이미 층별 필드다 — 후반 층을 4 로 *낮추는* 것은 개정 없이 된다.");
             sb.AppendLine();
             sb.AppendLine("| 구간 | 참고 대역 | 실측 |");
             sb.AppendLine("|---|---|---|");
@@ -659,14 +665,29 @@ namespace Ascend.Prototype.EditorTools
             // 사람이 플레이해야 알 수 있으므로, 시뮬이 판정할 수 있는 범위로 되돌린다.
             sb.AppendLine($"| 선택이 **발생**하는 층 비율 | 40–85% | {offerRate:F1}% | " +
                           $"{(offerRate >= 40 && offerRate <= 85 ? "✅" : "❌")} |");
-            sb.AppendLine($"| 안전 확정 EV ÷ 추가 스핀 EV | 0.30–0.40 | **{ratio:F3}** | " +
-                          $"{(ratio >= 0.30 && ratio <= 0.40 ? "✅" : "❌")} |");
+            sb.AppendLine($"| 안전 확정 EV ÷ 추가 스핀 EV | (해석 미확정 — 판정 안 함) | **{ratio:F3}** | " +
+                          "— |");
             sb.AppendLine($"| 기대값 정책의 과수확 선택률 | 25–75% | {takeRate:F1}% | " +
                           $"{(takeRate >= 25 && takeRate <= 75 ? "✅" : "❌")} |");
             sb.AppendLine();
-            sb.AppendLine("> 비율의 분모는 **앤티를 뺀** 기대 순이득이고, 앤티 상승분을 근사했으므로");
-            sb.AppendLine("> 실제 비율은 이 값보다 **높다**. 즉 표시값이 0.30 미만이어도 실제로는");
-            sb.AppendLine("> 대역에 가까울 수 있다 — 이 편향의 방향을 알고 읽는다.");
+            sb.AppendLine("> **EV 비율은 판정하지 않는다 (2026-08-04).** 옛 목표 `0.30–0.40` 을 폐기했다.");
+            sb.AppendLine("> 이 값과 바로 아래 과수확 선택률은 **같은 양의 두 표현**이라 함께 만족될 수 없다.");
+            sb.AppendLine(">");
+            sb.AppendLine("> 기대값 정책의 판단 규칙은 `meanNet − ante > settlement`(1회분 이득 vs 정산 전액)이고");
+            sb.AppendLine("> 측정 규칙은 `settlement / ((meanNet − ante) × remaining)` 이다. 둘을 합치면");
+            sb.AppendLine("> **선택률 50% ⟺ ratio = 1 / r̄** (r̄ = 결정 시점 평균 잔여 스핀). 즉 한쪽을 정하면");
+            sb.AppendLine("> 다른 쪽이 따라 나온다. `0.30–0.40` 은 「남은 스핀 전부를 쓰는 쪽이 정산보다");
+            sb.AppendLine("> 2.5~3.3배 유리하다」는 뜻이고, 그 상태에서 합리적 플레이어는 **항상 당긴다** —");
+            sb.AppendLine("> **정의상 지배 전략을 요구하는 대역**이다. 선택률 25–75% 를 ratio 로 환산하면");
+            sb.AppendLine("> 약 `0.45–1.05` 이고 옛 목표와 **서로소**다.");
+            sb.AppendLine(">");
+            sb.AppendLine("> 애초의 출처가 이미 경고하고 있었다 — `GAMEPLAY_SPEC.md` §4.5:");
+            sb.AppendLine("> 「**추가 스핀 기대값**」이 1회분인지 남은 전부인지 Notion 이 말하지 않아");
+            sb.AppendLine("> 두 해석이 3~4배 차이 난다. 해석 확정은 사용자 결정 항목이다(`PENDING_DECISIONS`).");
+            sb.AppendLine(">");
+            sb.AppendLine("> 참고로 남긴 값의 편향: 분모가 **앤티를 뺀** 기대 순이득인데 앤티는 당길수록");
+            sb.AppendLine("> ×1.35 로 오르고(첫 앤티로 근사), `Power` 기준이라 스핀마다 커지며, 잉여 전력이");
+            sb.AppendLine("> 전부 돈이 되지도 않는다. 편향 방향이 전부 같다 — **표시값은 하한이다.**");
             sb.AppendLine();
             sb.AppendLine("### 층별 선택 발생률 (기대값 정책)");
             sb.AppendLine();
