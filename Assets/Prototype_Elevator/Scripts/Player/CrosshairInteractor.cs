@@ -168,12 +168,67 @@ namespace Ascend.Prototype.Player
             SetCurrentTarget(target);
 
             Mouse mouse = Mouse.current;
-            if (mouse != null && mouse.leftButton.wasPressedThisFrame &&
-                _currentInteractable != null && _currentInteractable.CanInteract)
+            if (mouse == null) { CancelHold(); return; }
+
+            bool aimingUsable = _currentInteractable != null && _currentInteractable.CanInteract;
+            var hold = _currentInteractable as IHoldInteractable;
+
+            // ── 유지 입력 (`MASTER_PRD` §7) ──────────────────────────────────
+            //
+            // 유지가 필요한 것은 **되돌릴 수 없는 선택 하나뿐**이다. 나머지는 즉시
+            // 반응해야 하고, 거기에 유지를 붙이면 조작이 굼떠진다. 그래서 분기가
+            // `IHoldInteractable` 구현 여부 하나에 걸린다.
+            if (aimingUsable && hold != null && hold.HoldSeconds > 0f)
             {
-                _currentInteractable.Interact(gameObject);
+                if (mouse.leftButton.isPressed)
+                {
+                    // 조준이 도중에 벗어나면 처음부터다. 「눌러 놓고 다른 데를 보다가
+                    // 돌아오면 완성」은 §7 이 막으려는 실수 그 자체다.
+                    if (!ReferenceEquals(hold, _holdTarget)) { _holdTarget = hold; _holdElapsed = 0f; }
+
+                    _holdElapsed += Time.deltaTime;
+                    float t = Mathf.Clamp01(_holdElapsed / hold.HoldSeconds);
+                    hold.OnHoldProgress(t);
+
+                    if (t >= 1f)
+                    {
+                        _holdTarget = null;
+                        _holdElapsed = 0f;
+                        _currentInteractable.Interact(gameObject);
+                    }
+                }
+                else CancelHold();
+                return;
             }
+
+            CancelHold();
+
+            if (mouse.leftButton.wasPressedThisFrame && aimingUsable)
+                _currentInteractable.Interact(gameObject);
         }
+
+        /// <summary>
+        /// 진행 중이던 유지를 되돌린다. **취소가 반드시 대상에게 전달되어야** 한다 —
+        /// 안 그러면 레버가 반쯤 내려간 채 얼어붙어 「이미 걸었다」로 읽힌다.
+        /// </summary>
+        private void CancelHold()
+        {
+            if (_holdTarget == null) return;
+            _holdTarget.OnHoldCancelled();
+            _holdTarget = null;
+            _holdElapsed = 0f;
+        }
+
+        private IHoldInteractable _holdTarget;
+        private float _holdElapsed;
+
+        /// <summary>유지 진행도 0~1. 대상이 없으면 0. HUD·검사가 읽는다.</summary>
+        public float HoldProgress =>
+            _holdTarget == null || _holdTarget.HoldSeconds <= 0f
+                ? 0f : Mathf.Clamp01(_holdElapsed / _holdTarget.HoldSeconds);
+
+        /// <summary>지금 유지 중인 대상. 없으면 null.</summary>
+        public IHoldInteractable HoldTarget => _holdTarget;
 
         private IInteractable FindTarget()
         {
@@ -326,6 +381,9 @@ namespace Ascend.Prototype.Player
 
         private void OnDisable()
         {
+            // 유지 중에 조작자가 꺼지면 대상은 진행도를 들고 얼어붙는다.
+            // 씬 전환·일시정지·플레이어 사망이 전부 이 경로로 온다.
+            CancelHold();
             ClearHighlight();
             _currentInteractable = null;
             _currentCanInteract = false;

@@ -41,6 +41,7 @@ namespace Ascend.Prototype.EditorTools
             UI.Tests.RunSummaryBuilderTests.RunAll(),
             Effects.Tests.PresentationBindingTests.RunAll(),
             View.Tests.OverharvestStageTests.RunAll(),
+            Player.Tests.HoldInputTests.RunAll(),
             View.Tests.LeverStateMachineTests.RunAll(),
             // 레버 → 9개 챔버 동력 전달. 첫 구현이 화면에서 **아무것도 움직이지
             // 않았는데** 임시 검사가 공허하게 통과했다(움직인 적 없음끼리 순서 비교).
