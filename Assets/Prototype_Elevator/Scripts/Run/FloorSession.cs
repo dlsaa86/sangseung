@@ -29,6 +29,12 @@ namespace Ascend.Prototype.Run
         /// <summary>짐꾼 계열의 보너스를 더하기 전 기본 허용 중량.</summary>
         public const float AllowedWeight = 100f;
         public const float OverloadRequiredPowerMultiplier = 1.5f;
+
+        /// <summary>적재 대가 곡선의 곡률 폴백. <see cref="WeightProfile.DefaultExcessCurvature"/> 와 같은 수여야 한다.</summary>
+        public const float ExcessCurvature = 1f;
+
+        /// <summary>과적 완충 폭 폴백. <see cref="WeightProfile.DefaultOverloadRampWidth"/> 와 같은 수여야 한다.</summary>
+        public const float OverloadRampWidth = 0.30f;
         public const float DefaultAnteRatio = 0.12f;
         public const float DefaultAnteEscalation = 0.35f;
 
@@ -363,7 +369,60 @@ namespace Ascend.Prototype.Run
         {
             _baseWeight = Math.Max(0f, baseWeight);
             RecomputeLoad();
+            ReopenSpinningIfRequirementOutgrewPower();
         }
+
+        /// <summary>
+        /// 🔴 **`CE-1` — 확정 단계의 영구 교착.** 요구 전력이 오르면 단계도 다시 판정한다.
+        ///
+        /// ## 무엇이 있었나
+        ///
+        /// <see cref="FloorPhase.Decision"/> 은 <see cref="Spin"/> 이 `CanBank` 를 보고
+        /// **한 번 걸어 두는 값**이었다. 그 뒤에 적재가 늘어 요구 전력이 오르면
+        /// (실측: 215 → 700.5, 시드 1337·1338·1339 재현) `CanBank` 가 거짓이 되는데
+        /// 단계는 `Decision` 에 남는다. 그 순간 **네 출구가 동시에 닫힌다.**
+        ///
+        /// | 출구 | 조건 | 왜 닫히는가 |
+        /// |---|---|---|
+        /// | <see cref="Bank"/>          | `Decision && CanBank`             | `CanBank` 가 거짓이 됐다 |
+        /// | <see cref="ForceResolve"/>  | `Decision && SpinsRemaining == 0` | 스핀이 남아 있다 |
+        /// | <see cref="PushYourLuck"/>  | `CanTakeExtraSpin` → 해금 임계     | 달성률이 1.0 아래로 떨어져 잠겼다 |
+        /// | <see cref="Spin"/>          | `Phase == Spinning`               | 단계가 `Decision` 이다 |
+        ///
+        /// 층이 끝나지도, 진행되지도 않는다. 프로젝트 **자신의** 캡처 리그가
+        /// (`TenFloorCaptureRig.cs:532`) 이 경로를 쓴다.
+        ///
+        /// ## 왜 이렇게 고치나
+        ///
+        /// 「스핀이 남았는데 요구 전력에 못 미친다」는 상태의 이름은 이미 있다 —
+        /// <see cref="FloorPhase.Spinning"/> 이다. 요구 전력을 얼려서 고치는 방법도
+        /// 있지만 그건 **밸런스 결정**이다(적재의 대가가 그 층에서 사라진다).
+        /// 여기서 필요한 것은 값을 바꾸는 것이 아니라 **단계를 상태의 함수로 되돌리는 것**이고,
+        /// 그러면 경제는 한 자리도 안 바뀐 채 출구만 다시 열린다.
+        ///
+        /// `_spinsRemainingAtFirstReach` 는 되돌리지 않는다 — Mercy 등급의 정의가
+        /// 「**처음** 채운 순간」이고, 요구 전력이 나중에 오른 것이 그 사실을 지우지 않는다.
+        /// </summary>
+        private void ReopenSpinningIfRequirementOutgrewPower()
+        {
+            if (Phase != FloorPhase.Decision || _result != null) return;
+            if (CanBank || SpinsRemaining <= 0 || _rules == null) return;
+
+            // **사건을 발행하지 않는다.** 이 전이에 맞는 사건이 없고, 뜻이 다른 것을
+            // 빌려 쓰면 소리·승객 반응·텔레메트리가 일어나지 않은 일에 반응한다.
+            // 대신 카운터로 남긴다 — 「일어나지 않았어야 할 일이 몇 번 일어났는가」는
+            // 조용히 정상 동작하는 것보다 세는 편이 낫다.
+            Phase = FloorPhase.Spinning;
+            RequirementReopenCount++;
+        }
+
+        /// <summary>
+        /// 요구 전력 상승으로 확정 단계가 다시 열린 횟수. 정상 플레이에서는 0이다 —
+        /// 적재는 <see cref="FloorPhase.Boarding"/> 에서만 바뀌기 때문이다.
+        /// 0이 아니면 층 도중에 무게를 바꾸는 경로(캡처 리그·프로브)가 돌았다는 뜻이고,
+        /// 그 사실이 보고서에 남아야 「왜 이 층만 스핀을 더 썼는가」를 되짚을 수 있다.
+        /// </summary>
+        public int RequirementReopenCount { get; private set; }
 
         private void RecomputeLoad()
         {

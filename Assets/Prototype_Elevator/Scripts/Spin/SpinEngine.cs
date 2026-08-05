@@ -376,10 +376,16 @@ namespace Ascend.Prototype.Spin
         {
             int absorberCount = board.CountOf(SymbolKind.Absorber);
             int proliferatorCount = board.CountOf(SymbolKind.Proliferator);
-            float storedPowerLoss = absorberCount * rules.AbsorberResidualPowerLoss *
+            // 개수를 그대로 곱하지 않고 **대가 단위**로 바꿔서 곱한다
+            // (`SpinRuleSet.ResidualLoadOf`). 볼록도가 0이면 개수 그대로라 옛 식과 같다.
+            // 왜 볼록해야 하는지는 `SpinRuleSet.ResidualEscalation` 주석에 있다 —
+            // 요약하면 이득은 캐스케이드를 타고 복리인데 대가만 선형이었다.
+            float storedPowerLoss = SpinRuleSet.ResidualLoadOf(absorberCount, rules.ResidualEscalation) *
+                                    rules.AbsorberResidualPowerLoss *
                                     rules.ResidualPenaltyFor(SymbolKind.Absorber);
+            float proliferatorPenalty = rules.ResidualPenaltyFor(SymbolKind.Proliferator);
             float nextWeightAdd = proliferatorCount * rules.ProliferatorResidualWeightAdd *
-                                  rules.ResidualPenaltyFor(SymbolKind.Proliferator);
+                                  proliferatorPenalty;
 
             return new ResidualState
             {

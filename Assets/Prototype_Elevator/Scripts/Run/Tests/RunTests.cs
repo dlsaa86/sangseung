@@ -22,7 +22,9 @@ namespace Ascend.Prototype.Run.Tests
             Run("스핀 소진 후 추가 Spin 거부", TestSpinExhaustion, ref passed, ref failed, report);
             Run("요구 전력 달성 전에는 CanBank 거짓", TestCanBankGate, ref passed, ref failed, report);
             Run("확정 후 추가 Spin 거부", TestBankClosesFloor, ref passed, ref failed, report);
-            Run("흡수체 잔류가 다음 스핀 전력을 차감", TestResidualCarry, ref passed, ref failed, report);
+            Run("흡수체 잔류가 같은 스핀 순전력에서 차감", TestResidualDeductedFromNet, ref passed, ref failed, report);
+            Run("증식체 잔류가 다음 스핀으로 넘어간다", TestResidualFeedsNextSpin, ref passed, ref failed, report);
+            Run("요구 전력이 올라도 층이 교착되지 않는다", TestRequirementRiseDoesNotDeadlock, ref passed, ref failed, report);
             Run("추가 스핀 선택 시 앤티 즉시 차감", TestAnteImmediateCharge, ref passed, ref failed, report);
             Run("연속 추가 스핀 앤티 비율 상승", TestAnteEscalation, ref passed, ref failed, report);
             Run("앤티로 요구 전력 아래 하락 가능", TestAnteCanLose, ref passed, ref failed, report);
@@ -129,21 +131,173 @@ namespace Ascend.Prototype.Run.Tests
             return null;
         }
 
-        private static string TestResidualCarry()
+        /// <summary>
+        /// 🔴 **이 검사는 자기 이름의 부정을 통과 조건으로 갖고 있었다.**
+        ///
+        /// 옛 이름은 「흡수체 잔류가 **다음 스핀** 전력을 차감」이었고 통과 조건은
+        /// `second.NetPower >= second.GrossPower` — 즉 **차감이 일어나지 않았을 때만 참**이었다.
+        /// 게다가 그 조건은 첫 후보 시드에서 곧바로 `return null`(통과)로 빠졌다.
+        ///
+        /// 이름도 틀렸다. 흡수체 잔류는 다음 스핀으로 넘어가지 않는다 —
+        /// <c>SpinEngine</c> 의 <c>NetPower = grossPower - residual.StoredPowerLoss</c> 는
+        /// **그 스핀이 자기 최종 보드에 남긴** 흡수체를 같은 스핀의 순전력에서 뺀다
+        /// (노션 §5.2 판정 순서 9 「미정화 저항의 잔류 효과 적용」이 그 스핀의 마지막 단계다).
+        /// 다음 스핀으로 실제로 넘어가는 것은 증식체 쪽뿐이고, 그건
+        /// <see cref="TestResidualFeedsNextSpin"/> 이 따로 본다.
+        ///
+        /// 그래서 이름과 조건을 둘 다 이름이 말하는 **불변식**으로 고쳤다 —
+        /// 순전력은 총전력에서 잔류 손실을 정확히 뺀 값이다. 이 형태라야
+        /// 판정식이 바뀌면 실패한다.
+        /// </summary>
+        private static string TestResidualDeductedFromNet()
         {
+            int checkedSpins = 0;
+
             for (int seed = 0; seed < 5000; seed++)
             {
                 FloorSession session = NewSession(seed, 100000000f, false, 5);
-                SpinResolution first = session.Spin();
-                if (first.Residual.StoredPowerLoss <= 0f || session.Phase != FloorPhase.Spinning)
-                    continue;
+                while (session.Phase == FloorPhase.Spinning && session.SpinsRemaining > 0)
+                {
+                    SpinResolution spin = session.Spin();
+                    if (spin.Steps == null) break;
+                    if (spin.Residual.StoredPowerLoss <= 0f) continue;
 
-                SpinResolution second = session.Spin();
-                if (second.NetPower >= second.GrossPower ||
-                    second.Residual.StoredPowerLoss < 0f)
-                    return null;
+                    checkedSpins++;
+                    float expected = spin.GrossPower - spin.Residual.StoredPowerLoss;
+                    if (Math.Abs(spin.NetPower - expected) > 0.0001f)
+                        return $"시드 {seed} 스핀 {spin.SpinIndex}: 순전력 {spin.NetPower:0.####} ≠ "
+                             + $"총전력 {spin.GrossPower:0.####} − 잔류 손실 {spin.Residual.StoredPowerLoss:0.####}"
+                             + $" (= {expected:0.####})";
+                    if (spin.NetPower >= spin.GrossPower)
+                        return $"시드 {seed} 스핀 {spin.SpinIndex}: 잔류 흡수체 "
+                             + $"{spin.Residual.AbsorberCount}개가 남았는데 순전력이 총전력 이상이다";
+                }
+
+                // 표본이 충분히 모이면 5000 시드를 끝까지 돌지 않는다.
+                if (checkedSpins >= 200) return null;
             }
-            return "잔류 흡수체를 남기는 시드를 찾지 못함";
+
+            // **못 찾은 것을 통과로 기록하지 않는다.** 옛 판본이 그렇게 새어 나갔다.
+            return checkedSpins > 0 ? null : "잔류 흡수체를 남기는 스핀을 하나도 찾지 못함";
+        }
+
+        /// <summary>
+        /// 🔴 **`FloorSession` 의 `_residual = resolution.Residual;` 한 줄을 지워도
+        /// 587개 검사 중 0개가 실패했다.** 이 검사가 그 한 줄을 지키라고 있다.
+        ///
+        /// 스핀 사이에 실제로 넘어가는 상태는 하나뿐이다 — 남은 증식체가 다음 스핀의
+        /// 증식체 출현 가중치에 더해진다(<c>SpinEngine.PrepareRules</c>). 노션 §6.3 의
+        /// 「잔류 저항을 다음 실행의 재료로 사용하는 빌드」가 성립하려면 이 경로가 살아 있어야 한다.
+        ///
+        /// 판정을 여기서 다시 구현하지 않는다. 같은 엔진을 같은 시드로 두 번 부르되
+        /// **잔류만 다르게** 넣고, 층이 낸 결과가 「잔류를 넘긴 쪽」과 같은지 본다.
+        /// 두 결과가 애초에 같은 시드는 증거가 되지 못하므로 건너뛴다.
+        /// </summary>
+        private static string TestResidualFeedsNextSpin()
+        {
+            for (int seed = 0; seed < 5000; seed++)
+            {
+                FloorSession session = NewProliferatorSession(seed, 100000000f, 3);
+                SpinResolution first = session.Spin();
+                if (first.Residual.NextProliferatorWeightAdd <= 0f ||
+                    session.Phase != FloorPhase.Spinning) continue;
+
+                SpinRuleSet rules = session.Rules;
+                int nextSeed = SpinSeed.Derive(seed, session.Plan.Floor, session.SpinsUsed);
+                var none = ResistanceContract.None;
+                var empty = ResidualState.Empty;
+                ResidualState carried = first.Residual;
+
+                SpinResolution withCarry = new SpinEngine(seed).SpinWithSeed(
+                    nextSeed, rules, in none, in carried, session.Plan.Floor, session.SpinsUsed);
+                SpinResolution withoutCarry = new SpinEngine(seed).SpinWithSeed(
+                    nextSeed, rules, in none, in empty, session.Plan.Floor, session.SpinsUsed);
+
+                // 가중치가 달라도 같은 판이 나올 수 있다. 그런 시드는 아무것도 증명하지 못한다.
+                if (BoardsEqual(withCarry.FinalBoard, withoutCarry.FinalBoard) &&
+                    Math.Abs(withCarry.GrossPower - withoutCarry.GrossPower) < 0.0001f) continue;
+
+                SpinResolution actual = session.Spin();
+
+                if (BoardsEqual(actual.FinalBoard, withoutCarry.FinalBoard) &&
+                    !BoardsEqual(actual.FinalBoard, withCarry.FinalBoard))
+                    return $"시드 {seed}: 앞 스핀이 증식체 잔류 "
+                         + $"+{carried.NextProliferatorWeightAdd:0.###} 를 남겼는데 다음 스핀이 "
+                         + "잔류 없는 결과와 같다 — 잔류가 층에서 다음 스핀으로 넘어가지 않았다";
+
+                if (!BoardsEqual(actual.FinalBoard, withCarry.FinalBoard))
+                    return $"시드 {seed}: 다음 스핀 결과가 잔류를 넘긴 엔진 결과와도 다르다 "
+                         + "— 층과 엔진이 서로 다른 입력을 쓰고 있다";
+
+                return null;
+            }
+            return "증식체 잔류가 결과를 바꾸는 시드를 찾지 못함";
+        }
+
+        private static bool BoardsEqual(SpinBoard a, SpinBoard b)
+        {
+            for (int column = 0; column < SpinBoard.Columns; column++)
+                for (int row = 0; row < SpinBoard.Rows; row++)
+                    if (a[column, row] != b[column, row]) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// 🔴 **`CE-1` 재현.** 확정 단계에서 적재가 늘어 요구 전력이 오르면
+        /// 네 출구가 동시에 닫히던 자리다. 시드 1337·1338·1339 가 실측 재현 시드다.
+        ///
+        /// 검사가 묻는 것은 「요구 전력이 얼마인가」가 아니라 **「층이 끝날 수 있는가」**다.
+        /// 값을 고정하면 밸런스를 잠그게 되므로, 여기서는 진행 가능성만 본다.
+        /// </summary>
+        private static string TestRequirementRiseDoesNotDeadlock()
+        {
+            for (int seed = 1337; seed <= 1339; seed++)
+            {
+                FloorSession session = NewSession(seed, 40f, false, 5);
+                session.Spin();
+                if (session.Phase != FloorPhase.Decision || !session.CanBank) continue;
+
+                // 층 도중에 무게가 붙는다 — 캡처 리그(`TenFloorCaptureRig`)가 쓰는 경로다.
+                session.RefreshLoad(session.CarriedWeight + 200f);
+                if (session.CanBank) continue;   // 이 시드로는 교착 조건이 안 만들어진다
+
+                if (session.Phase != FloorPhase.Spinning)
+                    return $"시드 {seed}: 요구 전력이 {session.RequiredPower:0.#} 로 올라 "
+                         + $"달성이 무너졌는데 단계가 {session.Phase} 다 — 네 출구가 모두 닫혔다";
+
+                // 실제로 끝까지 갈 수 있어야 한다. 출구가 열린 것과 층이 끝나는 것은 다르다.
+                int guard = 0;
+                while (session.Result == null && guard++ < 32)
+                {
+                    if (session.Phase == FloorPhase.Spinning && session.SpinsRemaining > 0)
+                    {
+                        session.Spin();
+                        continue;
+                    }
+                    if (session.Bank() != null || session.ForceResolve() != null) break;
+                    return $"시드 {seed}: 단계 {session.Phase} · 남은 스핀 "
+                         + $"{session.SpinsRemaining} 에서 진행할 수 있는 동작이 없다";
+                }
+
+                if (session.Result == null)
+                    return $"시드 {seed}: 32회 안에 층이 끝나지 않았다 (단계 {session.Phase})";
+                return null;
+            }
+            return null;   // 세 시드 모두 조건이 성립하지 않으면 이 검사는 아무 말도 하지 않는다
+        }
+
+        private static FloorSession NewProliferatorSession(int seed, float required, int spins)
+        {
+            var plan = new FloorPlan
+            {
+                Floor = 1,
+                RequiredPower = required,
+                Spins = spins,
+                SymbolPool = new[] { SymbolKind.NormalSoul, SymbolKind.Proliferator },
+                ContractChoices = Array.Empty<ResistanceContract>(),
+            };
+            return new FloorSession(plan, new SpinEngine(seed),
+                PowerThresholds.Default, 0f);
         }
 
         private static string TestAnteImmediateCharge()

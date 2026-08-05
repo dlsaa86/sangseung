@@ -1,0 +1,77 @@
+<!--
+  유니티 없이 판정 계층을 돌리는 헤드리스 하네스.
+
+  왜 있는가: 밸런스 판정 코드(`Assets/Editor/BalanceSweep.cs` 등)는 `UnityEditor` 를
+  `[MenuItem]` 어트리뷰트로만 쓰고, 그것이 부르는 계층은 전부 순수 C# 이다.
+  `Shim/` 의 최소 대역만 있으면 **같은 소스가** .NET 8 에서 그대로 돈다.
+  실측: 시드 300 × 정책 3종 스윕이 에디터 왕복 수십 초 → 헤드리스 1.0초.
+  그 차이가 만드는 것은 속도가 아니라 표본 수이고, 표본 수가 판정을 뒤집는다
+  (`docs/runtime/HEADLESS_BALANCE_AUDIT.md`).
+
+  ⚠ 이 폴더는 `Assets/` 밖에 있다. 유니티는 여기를 컴파일하지 않으므로 대역이
+  게임 빌드에 섞이지 않는다. 위치를 옮기지 않는다.
+
+  ⚠ 게임 소스는 **참조만 한다.** 여기서 복사본을 두면 두 갈래가 되고, 재는 도구가
+  다른 게임을 재게 된다. 아래 Include 는 전부 원본 경로를 가리킨다.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>AscendHeadless</AssemblyName>
+    <RootNamespace>Ascend.Headless</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>CS0169;CS0414;CS0649;CS0067;CS1591;CS0108;CS0618</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GameRoot>$(MSBuildThisFileDirectory)../../Assets</GameRoot>
+    <Scripts>$(GameRoot)/Prototype_Elevator/Scripts</Scripts>
+  </PropertyGroup>
+
+  <ItemGroup Label="대역과 러너 — 이 폴더의 것">
+    <Compile Include="Shim/**/*.cs" />
+    <Compile Include="Runner/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="판정 계층 — 원본을 참조한다">
+    <Compile Include="$(Scripts)/Spin/*.cs" />
+    <Compile Include="$(Scripts)/Events/*.cs" />
+    <Compile Include="$(Scripts)/Sim/*.cs" />
+    <Compile Include="$(Scripts)/Run/*.cs" />
+    <Compile Include="$(Scripts)/Build/BuildItem.cs" />
+    <Compile Include="$(Scripts)/Build/BuildLoadout.cs" />
+    <Compile Include="$(Scripts)/Build/BuildLoadPolicy.cs" />
+    <Compile Include="$(Scripts)/Risk/RiskEvaluator.cs" />
+    <Compile Include="$(Scripts)/Risk/RiskLevel.cs" />
+    <Compile Include="$(Scripts)/Risk/RiskProfile.cs" />
+    <Compile Include="$(Scripts)/Data/Profiles/*.cs" />
+    <Compile Include="$(Scripts)/Telemetry/*.cs" />
+    <Compile Include="$(Scripts)/Diagnostics/RequiredReferenceAttribute.cs" />
+    <Compile Include="$(Scripts)/Run/Tests/RunTests.cs" />
+    <Compile Include="$(Scripts)/Run/Tests/MercyHungerTests.cs" />
+    <Compile Include="$(Scripts)/Spin/Tests/*.cs" />
+    <Compile Include="$(Scripts)/Sim/Tests/*.cs" />
+    <Compile Include="$(GameRoot)/Editor/BalanceSweep.cs" />
+    <Compile Include="$(GameRoot)/Editor/CurriculumCoverageProbe.cs" />
+  </ItemGroup>
+
+  <!--
+    제외 — 씬 오브젝트를 실제로 잡는 MonoBehaviour 다리들.
+    대역으로 흉내 낼 수 있지만 흉내 낸 것을 재면 안 된다. 이들이 필요해지는 측정은
+    이 하네스가 아니라 PlayMode 에서 해야 한다.
+  -->
+  <ItemGroup Label="제외 — 연출·씬 의존">
+    <Compile Remove="$(Scripts)/Run/AccidentRecorder.cs" />
+    <Compile Remove="$(Scripts)/Run/OverharvestApproachBridge.cs" />
+    <Compile Remove="$(Scripts)/Run/RouletteInteractionBridge.cs" />
+    <Compile Remove="$(Scripts)/Run/RunSessionBehaviour.cs" />
+    <Compile Remove="$(Scripts)/Telemetry/TelemetryRecorderBehaviour.cs" />
+  </ItemGroup>
+
+</Project>

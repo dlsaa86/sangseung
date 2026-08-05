@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Ascend.Prototype.Data.Profiles
@@ -39,8 +40,11 @@ namespace Ascend.Prototype.Data.Profiles
                      menuName = "Ascend/Profiles/Weight", order = 102)]
     public sealed class WeightProfile : ScriptableObject
     {
-        /// <summary>`UP-TECH-09` ⑤ 가 요구하는 항목 수. 대조표가 셀 수 있어야 한다.</summary>
-        public const int RequiredFieldCount = 3;
+        /// <summary>
+        /// `UP-TECH-09` ⑤ 가 요구하는 항목 수. 대조표가 셀 수 있어야 한다.
+        /// 2026-08-05 에 3 → 5 (곡률·과적 완충 폭이 들어왔다).
+        /// </summary>
+        public const int RequiredFieldCount = 5;
 
         [Header("과적 (PRD §14.1 ⑤)")]
         [Tooltip("1. 짐꾼 계열 보너스를 더하기 전 기본 허용 중량. 이 값을 넘으면 과적이다. " +
@@ -55,6 +59,16 @@ namespace Ascend.Prototype.Data.Profiles
                  "과적 경고·사고 연출이 전부 의미를 잃는다.")]
         [Min(0f)] [SerializeField] private float _overloadRequiredPowerMultiplier = DefaultOverloadRequiredPowerMultiplier;
 
+        [Tooltip("4. 적재 대가 곡선의 곡률. 0이면 옛 선형식과 완전히 같다. 값이 클수록 " +
+                 "허용 중량 근처에서 한 개 더 싣는 비용이 가파르게 오른다. " +
+                 "0이면 '실을수록 싸진다'가 돌아온다 — 실측으로 확인된 결함이다.")]
+        [Min(0f)] [SerializeField] private float _excessCurvature = DefaultExcessCurvature;
+
+        [Tooltip("5. 과적 배수가 전부 걸리기까지의 폭(허용 대비 비율). 0이면 허용을 넘는 " +
+                 "순간 배수가 전부 걸린다 — 실측 완주율 5.70%→0.07%의 절벽이다. " +
+                 "0.30이면 1.00~1.30 구간에서 선형으로 오른다.")]
+        [Min(0f)] [SerializeField] private float _overloadRampWidth = DefaultOverloadRampWidth;
+
         // ── 코드 기본값 ────────────────────────────────────────────────────────
         // `Run.FloorSession` 의 동명 상수와 **같은 수**여야 한다. 다르면 에셋이 없는
         // 경로와 있는 경로가 서로 다른 게임이 된다. 테스트가 이 일치를 대조한다.
@@ -62,14 +76,25 @@ namespace Ascend.Prototype.Data.Profiles
         public const float DefaultWeightPowerFactor = 2f;
         public const float DefaultOverloadRequiredPowerMultiplier = 1.5f;
 
+        /// <summary>
+        /// 2026-08-05 실측으로 정한 곡률. **0이 옛 동작이고, 이 값은 밸런스 변경이다.**
+        /// 근거와 되돌리는 법은 `docs/ASSUMPTION_LOG.md` 의 같은 날짜 항목에 있다.
+        /// </summary>
+        public const float DefaultExcessCurvature = 1f;
+
+        /// <summary>2026-08-05. 0이 옛 절벽이다. 1.00~1.30 구간을 대가로 만든다.</summary>
+        public const float DefaultOverloadRampWidth = 0.30f;
+
         public float AllowedWeight => _allowedWeight;
         public float WeightPowerFactor => _weightPowerFactor;
         public float OverloadRequiredPowerMultiplier => _overloadRequiredPowerMultiplier;
+        public float ExcessCurvature => _excessCurvature;
+        public float OverloadRampWidth => _overloadRampWidth;
 
         public WeightSnapshot Snapshot()
         {
             return new WeightSnapshot(_allowedWeight, _weightPowerFactor,
-                _overloadRequiredPowerMultiplier, name);
+                _overloadRequiredPowerMultiplier, _excessCurvature, _overloadRampWidth, name);
         }
 
         public static WeightSnapshot DefaultSnapshot
@@ -77,7 +102,8 @@ namespace Ascend.Prototype.Data.Profiles
             get
             {
                 return new WeightSnapshot(DefaultAllowedWeight, DefaultWeightPowerFactor,
-                    DefaultOverloadRequiredPowerMultiplier, WeightSnapshot.CodePresetName);
+                    DefaultOverloadRequiredPowerMultiplier, DefaultExcessCurvature,
+                    DefaultOverloadRampWidth, WeightSnapshot.CodePresetName);
             }
         }
 
@@ -130,15 +156,53 @@ namespace Ascend.Prototype.Data.Profiles
         public readonly float WeightPowerFactor;
         public readonly float OverloadRequiredPowerMultiplier;
 
+        /// <summary>
+        /// 🔴 **적재 대가 곡선의 곡률** (2026-08-05). 0이면 옛 선형식과 **비트 단위로 같다.**
+        ///
+        /// 왜 생겼나: 실측(`docs/runtime/COST_AXIS_AUDIT.md`)에서 대가 곡선이
+        /// **오목**했다 — 80→100 구간의 한계 비용이 0→10 구간의 **3분의 1**이었다.
+        /// 그래서 「한 번 싣기 시작한 순간 더 싣는 것이 항상 유리하다」가 성립했다.
+        /// 값이 커서가 아니라 **모양이 반대**여서다. 푸시 유어 럭이 요구하는 모양은
+        /// 「처음은 싸고 한계 근처가 비싸다」인데 정확히 뒤집혀 있었다.
+        /// </summary>
+        public readonly float ExcessCurvature;
+
+        /// <summary>
+        /// 🔴 **과적이 전부 걸리기까지의 폭** (허용 대비 비율, 2026-08-05).
+        /// 0이면 비율 1을 넘는 순간 배수가 전부 걸린다 — **옛 절벽과 같다.**
+        ///
+        /// 왜 생겼나: 같은 실측에서 허용 100을 넘는 순간 완주율이
+        /// **5.70% → 0.07%(81배)** 로 떨어졌다. 즉 과적은 대가가 아니라 즉사였고,
+        /// 즉사는 「멈출지 더 갈지」의 저울이 되지 못한다 — 저울에 올릴 수 없는 것은
+        /// 선택지가 아니다(노션 §3.4). 없던 것은 벌칙이 아니라 **중간 구간**이었다.
+        /// </summary>
+        public readonly float OverloadRampWidth;
+
         /// <summary>값이 어디서 왔는가. 에셋 이름이거나 <see cref="CodePresetName"/>.</summary>
         public readonly string SourceName;
 
+        /// <summary>
+        /// 3값 판본. 곡률·완충 폭은 코드 기본값으로 채운다 — 옛 호출자(테스트·프로브)를
+        /// 고치지 않고 남기기 위한 것이고, 그쪽 동작은 바뀐다는 사실을 알고 둔다
+        /// (기본값이 0이 아니기 때문이다).
+        /// </summary>
         public WeightSnapshot(float allowedWeight, float weightPowerFactor,
             float overloadRequiredPowerMultiplier, string sourceName)
+            : this(allowedWeight, weightPowerFactor, overloadRequiredPowerMultiplier,
+                   WeightProfile.DefaultExcessCurvature, WeightProfile.DefaultOverloadRampWidth,
+                   sourceName)
+        {
+        }
+
+        public WeightSnapshot(float allowedWeight, float weightPowerFactor,
+            float overloadRequiredPowerMultiplier, float excessCurvature,
+            float overloadRampWidth, string sourceName)
         {
             AllowedWeight = allowedWeight;
             WeightPowerFactor = weightPowerFactor;
             OverloadRequiredPowerMultiplier = overloadRequiredPowerMultiplier;
+            ExcessCurvature = Math.Max(0f, excessCurvature);
+            OverloadRampWidth = Math.Max(0f, overloadRampWidth);
             SourceName = string.IsNullOrEmpty(sourceName) ? CodePresetName : sourceName;
         }
 
@@ -158,9 +222,31 @@ namespace Ascend.Prototype.Data.Profiles
         /// </summary>
         public float RequiredPowerFor(float basePower, float weight, float capacity)
         {
-            float required = basePower + weight * WeightPowerFactor;
-            if (weight > capacity)
-                required *= OverloadRequiredPowerMultiplier;
+            // 허용 중량이 0 이하이면 비율을 만들 수 없다. 옛 선형식으로 떨어진다 —
+            // 그 상태는 `Validate()` 가 이미 자기모순으로 신고한다.
+            if (capacity <= 0f)
+                return basePower + weight * WeightPowerFactor;
+
+            float ratio = weight / capacity;
+
+            // ── ① 볼록한 적재 대가 ──────────────────────────────────────────
+            // `ExcessCurvature == 0` 이면 `capacity * factor * ratio == weight * factor`,
+            // 즉 **옛 선형식과 비트 단위로 같다.** 곡률은 순수한 덧붙임이다.
+            float loadCost = capacity * WeightPowerFactor
+                           * (ratio + ExcessCurvature * ratio * ratio);
+            float required = basePower + loadCost;
+
+            // ── ② 계단식 과적 ───────────────────────────────────────────────
+            // `OverloadRampWidth == 0` 이면 비율이 1을 넘는 순간 배수가 전부 걸린다 —
+            // **옛 절벽과 같다.** 폭이 있으면 1.0 → 1.0+폭 구간에서 선형으로 오른다.
+            if (ratio > 1f)
+            {
+                float t = OverloadRampWidth <= 0f
+                    ? 1f
+                    : Math.Min(1f, (ratio - 1f) / OverloadRampWidth);
+                required *= 1f + (OverloadRequiredPowerMultiplier - 1f) * t;
+            }
+
             return required;
         }
 
@@ -185,7 +271,9 @@ namespace Ascend.Prototype.Data.Profiles
         public string Describe()
         {
             return $"허용 중량 {AllowedWeight:0.##} · 무게당 요구 전력 {WeightPowerFactor:0.##}"
-                 + $" · 과적 배수 {OverloadRequiredPowerMultiplier:0.##} (출처 {SourceName})";
+                 + $" · 과적 배수 {OverloadRequiredPowerMultiplier:0.##}"
+                 + $" · 대가 곡률 {ExcessCurvature:0.##} · 과적 완충 폭 {OverloadRampWidth:0.##}"
+                 + $" (출처 {SourceName})";
         }
     }
 }

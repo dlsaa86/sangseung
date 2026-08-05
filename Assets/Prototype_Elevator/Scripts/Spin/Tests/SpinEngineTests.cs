@@ -351,11 +351,29 @@ namespace Ascend.Prototype.Spin.Tests
                 SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.NormalSoul,
                 SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
                 SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul), rules);
-            float expectedLoss = 2f * rules.AbsorberResidualPowerLoss;
-            if (result.Residual.StoredPowerLoss != expectedLoss)
+            // 판정식을 여기서 다시 쓰지 않는다. 개수 → 대가 단위 변환은
+            // `SpinRuleSet.ResidualLoadOf` 한 곳에만 있고, 이 검사는 그것을 부른다.
+            // 직전 판본은 `2f * AbsorberResidualPowerLoss` 라고 **선형식을 복제**해서
+            // 적었고, 그래서 잔류 대가의 모양이 바뀌자 게임이 아니라 검사가 깨졌다.
+            // 값이 아니라 식이 두 벌이었던 것이 원인이다.
+            float expectedLoss = SpinRuleSet.ResidualLoadOf(2, rules.ResidualEscalation)
+                               * rules.AbsorberResidualPowerLoss;
+            if (Math.Abs(result.Residual.StoredPowerLoss - expectedLoss) > 0.0001f)
                 return $"차감 {result.Residual.StoredPowerLoss}, 기대 {expectedLoss}";
-            if (result.NetPower != result.GrossPower - expectedLoss)
+            if (Math.Abs(result.NetPower - (result.GrossPower - expectedLoss)) > 0.0001f)
                 return $"NetPower {result.NetPower}, Gross {result.GrossPower}";
+
+            // **모양 자체를 붙잡는다.** 값 하나만 보면 볼록도가 0으로 되돌아가도
+            // (즉 「실을수록 싸진다」가 부활해도) 이 검사는 통과한다.
+            // 남긴 개수가 늘 때 **개당 대가**가 함께 올라가야 한다.
+            if (rules.ResidualEscalation > 0f)
+            {
+                float perUnitAt2 = SpinRuleSet.ResidualLoadOf(2, rules.ResidualEscalation) / 2f;
+                float perUnitAt6 = SpinRuleSet.ResidualLoadOf(6, rules.ResidualEscalation) / 6f;
+                if (perUnitAt6 <= perUnitAt2)
+                    return $"잔류 대가가 볼록하지 않다 — 2개일 때 개당 {perUnitAt2:0.###}, "
+                         + $"6개일 때 개당 {perUnitAt6:0.###}. 많이 남길수록 싸다";
+            }
             return null;
         }
 

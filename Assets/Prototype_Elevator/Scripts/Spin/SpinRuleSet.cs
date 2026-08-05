@@ -150,6 +150,59 @@ namespace Ascend.Prototype.Spin
         public float ResidualPenaltyFor(SymbolKind kind)
             => (ResidualPenaltyMultiplier.TryGetValue(kind, out float m) ? m : 1f) * ResidualMitigation;
 
+        /// <summary>
+        /// 🔴 **잔류 대가의 볼록도** (2026-08-05). 0이면 옛 선형식과 **비트 단위로 같다.**
+        ///
+        /// ## 왜 생겼나 — 세 축이 같은 결함을 공유했다
+        ///
+        /// 2026-08-05 실측에서 계약·적재·빌드 **세 축 전부**가 「밀어붙이면 항상 이긴다」로
+        /// 끝났다. 계약은 선택지가 있는 **6개 층 전부**에서 클리어율이 인덱스 순서대로
+        /// 단조 증가했다 — 즉 「계약 없음」이 항상 최악이고 고를 수 있으면 항상 더 센 계약이
+        /// 나았다. 우연일 확률 `(1/2)³ × (1/6)³ ≈ 0.06%`
+        /// (`docs/runtime/CONTRACT_DOMINANCE_AUDIT.md`).
+        ///
+        /// 공통 원인은 **모양**이었다. 계약의 이득(출현·보상·패턴 배수)은 캐스케이드를 타고
+        /// **곱셈으로 복리**가 되는데, 대가(잔류 대가 ×2)는 남은 개수에 **선형**이었다.
+        /// 그래서 판이 나빠질수록 대가가 커져야 할 자리에서 대가가 같은 기울기로만 늘었고,
+        /// 저울이 한쪽으로만 기울었다.
+        ///
+        /// ## 무엇을 바꾸나
+        ///
+        /// 남긴 저항 하나하나가 아니라 **얼마나 많이 남겼는가**가 대가를 정한다.
+        /// 두 개 남기는 것과 여섯 개 남기는 것은 세 배가 아니라 그 이상이어야 한다 —
+        /// 노션 §7 이 위험을 「Stable → Strain → Critical → Collapse 처럼 단계적으로
+        /// 증가」한다고 적어 둔 것이 이 모양이다. 그래야 노션 §4 의
+        /// 「잔류 저항을 지금 제거할 것인가, 다음 실행의 재료로 남길 것인가」가
+        /// 실제 질문이 된다 — 선형이면 답은 항상 「남긴다」다.
+        ///
+        /// ⚠ **이 값은 밸런스 변경이고 되돌릴 수 있다.** 0으로 두면 옛 게임이다.
+        /// 근거와 되돌리는 법은 `docs/ASSUMPTION_LOG.md` 의 2026-08-05 항목에 있다.
+        /// </summary>
+        public float ResidualEscalation = DefaultResidualEscalation;
+
+        /// <summary>2026-08-05 실측으로 정한 값. 0이 옛 동작이다.</summary>
+        public const float DefaultResidualEscalation = 1f;
+
+
+        /// <summary>
+        /// 남은 저항 개수를 **대가 단위**로 바꾼다. 이 함수가 잔류 대가의 모양을 정한다.
+        ///
+        /// <paramref name="escalation"/> 이 0이면 개수를 그대로 돌려준다 — 옛 선형식이다.
+        /// 0보다 크면 볼록 항이 붙고, 판 전체(9칸)를 남겼을 때 그 항이 정확히
+        /// `escalation × 9` 가 되도록 정규화한다. 즉 `escalation == 1` 이면
+        /// **최악의 판에서 대가가 두 배**가 되고, 그 사이는 부드럽게 오른다.
+        ///
+        /// 판정을 두 벌로 두지 않으려고 `static` 으로 뺐다 — 흡수체 손실과 (나중에 붙을 수
+        /// 있는) 다른 잔류 대가가 같은 모양을 써야 한다.
+        /// </summary>
+        public static float ResidualLoadOf(int count, float escalation)
+        {
+            if (count <= 0) return 0f;
+            if (escalation <= 0f) return count;
+            float c = count;
+            return c + escalation * c * c / SpinBoard.Cells;
+        }
+
         public float PatternMultiplierFor(PatternKind pattern, SymbolKind kind)
         {
             float baseMultiplier;
@@ -236,6 +289,9 @@ namespace Ascend.Prototype.Spin
                 AbsorberResidualPowerLoss     = AbsorberResidualPowerLoss,
                 ProliferatorResidualWeightAdd = ProliferatorResidualWeightAdd,
                 ResidualMitigation            = ResidualMitigation,
+                // ⚠ 이 줄이 빠지면 잔류 대가가 스핀마다 기본값으로 되돌아간다.
+                //   `SpinEngine.PrepareRules` 가 매 스핀 `Clone()` 을 부르기 때문이다.
+                ResidualEscalation            = ResidualEscalation,
             };
             foreach (var kv in Weights)                   copy.Weights[kv.Key] = kv.Value;
             foreach (var kv in MinimumCountToPurify)      copy.MinimumCountToPurify[kv.Key] = kv.Value;
