@@ -676,18 +676,41 @@ if ($GatePass -ge 3) {
 #   새것이어야 한다. 구현자가 캡처를 다시 뽑고 옛 판정을 재사용하는 것을 막는다.
 # ══════════════════════════════════════════════════════════════════════════════
 $verdictValue = ''
-if (Test-Path $P.Verdict) {
-    $vd = Read-Utf8Lines $P.Verdict
-    # 마크다운 헤딩(`## VERDICT: REJECT`)과 평문(`VERDICT: ACCEPT`)을 둘 다 읽는다.
-    # 실제 판정 파일의 4·5·6차가 헤딩 형태였고, 평문만 찾는 정규식은 그것들을 통째로
-    # 건너뛰고 있었다. 지금은 우연히 결과가 같았지만 ACCEPT 가 헤딩으로 적히면
-    # **통과해야 할 것이 통과하지 못한다** — 게이트가 조용히 틀리는 쪽이다.
-    # 꼬리의 부연(`REJECT · 셰이더 교체는 순손실`)도 허용한다. 판정 낱말만 본다.
-    $verdictLines = @($vd | Where-Object { $_ -match '^\s*#{0,6}\s*VERDICT:\s*(ACCEPT|REJECT|PENDING)\b' })
-    if ($verdictLines.Count -gt 0) {
-        $last = $verdictLines | Select-Object -Last 1
-        $null = $last -match '^\s*#{0,6}\s*VERDICT:\s*([A-Z]+)'
+# 마크다운 헤딩(`## VERDICT: REJECT`)·평문(`VERDICT: ACCEPT`)·**굵게**(`VERDICT: **REJECT**`)를
+# 모두 읽는다. 직전 판본은 굵게 표시를 못 읽어 4·5·6차 판정을 통째로 건너뛰었고,
+# 게이트가 읽는 「마지막 판정」이 **3차(2026-08-04)** 에 멈춰 있었다. 같은 부류의 결함을
+# 헤딩 형태로 한 번 고쳤는데 굵게 표시로 재발한 것이다 — 그래서 이번엔 장식을 통째로 허용한다.
+$verdictRe = '^\s*#{0,6}\s*VERDICT:\s*\**\s*(ACCEPT|REJECT|PENDING)\b'
+# 그리고 판정 파일은 하나가 아니다. 라운드별 파일(`VISUAL_VERDICT_R7.md`)이 실제로 쓰였는데
+# 본 파일만 열던 판본은 그 라운드를 **존재하지 않는 것으로** 취급했다.
+# 판정을 담은 파일 중 가장 최근에 수정된 것이 현재 판정이다.
+$verdictFile = $null
+foreach ($vf in @(Get-ChildItem -LiteralPath (Join-Path $Root 'docs\runtime') -Filter 'VISUAL_VERDICT*.md' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc)) {
+    $lines = @(Read-Utf8Lines $vf.FullName | Where-Object { $_ -match $verdictRe })
+    if ($lines.Count -gt 0) {
+        $null = (@($lines) | Select-Object -Last 1) -match $verdictRe
         $verdictValue = $Matches[1]
+        $verdictFile  = $vf
+    }
+}
+if ($null -ne $verdictFile) { $P.Verdict = $verdictFile.FullName }
+
+# 신선도는 **그 판정이 실제로 본 세트**와 비교해야 한다.
+# 직전 판본은 `Captures\TenFloor` 에 박혀 있었는데, 4차 이후 독립 평가는
+# `Captures\symbols_v*` 를 봤다 — 즉 **아무도 평가하지 않는 세트**로 신선도를 재고 있었고
+# 「옛 판정으로 새 캡처를 통과시키지 못한다」가 조용히 무효였다.
+# 판정 블록 형식이 `- 대상: Captures/<set>/manifest.txt` 를 요구하므로 그 줄에서 읽는다.
+# 못 읽으면 고정 세트로 되돌아간다 — 모르는 채 통과시키지 않는다.
+# (`$P.Manifest` 는 건드리지 않는다. C9 는 PRD §15.1 고정 세트를 검사하는 별개의 일이다.)
+$P.VerdictManifest = $P.Manifest
+if ($null -ne $verdictFile) {
+    $targets = @(Read-Utf8Lines $verdictFile.FullName |
+                 Where-Object { $_ -match '대상\s*:.*?(Captures\S+manifest\.txt)' })
+    if ($targets.Count -gt 0) {
+        $null = (@($targets) | Select-Object -Last 1) -match '대상\s*:.*?(Captures\S+manifest\.txt)'
+        $cand = Join-Path $Root ($Matches[1] -replace '/', '\')
+        if (Test-Path -LiteralPath $cand) { $P.VerdictManifest = $cand }
+        else { Add-Note "판정문이 가리키는 캡처 매니페스트가 없다: $($Matches[1]) — 고정 세트로 신선도를 잰다" }
     }
 }
 
@@ -711,9 +734,9 @@ if ($GatePass -ge 3) {
     } elseif ($GatePass -ge 4 -and $verdictValue -ne 'ACCEPT') {
         Add-Failure 'C10 시각 평가' "독립 시각 평가 판정이 $verdictValue 다. Pass 4 완료에는 ACCEPT 가 필요하다." `
             @("  REJECT 는 작업 종료 사유가 아니다 — 백로그 §5 수정 백로그로 전환하고 계속할 것.")
-    } elseif (Test-Path $P.Manifest) {
+    } elseif (Test-Path $P.VerdictManifest) {
         $vFile = Get-Item -LiteralPath $P.Verdict
-        $mFile = Get-Item -LiteralPath $P.Manifest
+        $mFile = Get-Item -LiteralPath $P.VerdictManifest
         if ($vFile.LastWriteTimeUtc -lt $mFile.LastWriteTimeUtc) {
             # 이 검사는 Pass 3 에서도 살아 있다. 옛 판정으로 새 캡처를 통과시키는 것이
             # 이 게이트가 막아야 할 첫째다 — ACCEPT 든 REJECT 든 **현재 그림**에 대한 판정이어야 한다.
