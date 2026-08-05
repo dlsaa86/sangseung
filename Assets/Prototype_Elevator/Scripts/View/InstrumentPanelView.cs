@@ -269,8 +269,19 @@ namespace Ascend.Prototype.View
             {
                 _floorKey = floorKey;
                 _text.Clear();
+                // 🔴 **한 줄 → 두 줄** (`UP-FIX-88` / `UP-FIX-105` · 2026-08-05).
+                //
+                // 「1층 / 10   위험도 안정」은 런타임에서 폭 **1.095 m** 다. 판독면은
+                // 0.72 m 라 원리적으로 안 들어가고, 실측하니 우벽(x 2.00)까지 뚫고
+                // 나가 있었다. 세 라운드 동안 「18px 넘침」으로 보였던 것은 고정 캡처가
+                // 에디트 모드라 **문구가 짧았기 때문**이다.
+                //
+                // 글자를 줄이는 길은 막혀 있다 — `UP-FIX-86` 이 배율 0.339 → 1.018 로
+                // 올린 것을 되돌리는 셈이 된다. 그래서 **줄을 접는다.**
+                // 접은 뒤 최장 줄은 「위험도 안정」 0.55 m 로 판 안이다.
+                // 아래 네 줄은 `AscendReferenceRoomRewire.PanelRows` 가 90mm 씩 내린다.
                 _text.Append(floor.Plan.Floor).Append("층 / ").Append(run.Floors.LastFloor)
-                     .Append("   위험도 ")
+                     .Append('\n').Append("위험도 ")
                      .Append(_risk != null ? _risk.Level.DisplayName() : "—");
                 Apply(_floorLabel, _text);
             }

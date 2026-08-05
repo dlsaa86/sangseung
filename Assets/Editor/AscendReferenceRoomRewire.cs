@@ -1136,25 +1136,81 @@ namespace Ascend.Prototype.EditorTools
             //    달성률은 `AscentColumnView` 의 탱크 채움 + 「전력 N   P%」로 옮겼다.
             SetDefaultTexts(panel);
 
-            int aligned = 0;
-            foreach (TMPro.TMP_Text t in panel.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            // 🔴 **재서 교정하던 것을 절대값 표로 바꾼다** (`UP-FIX-105` · 2026-08-05).
+            //
+            // 직전 판본은 글리프 왼쪽 끝을 재서 `colX` 로 밀었다. 멱등이었고 에디트
+            // 모드에서는 옳았다. 그런데 **플레이 모드에서 무너진다** — 교정량이
+            // 그때 그 자리에 있던 **문구에 딸린 값**이라, 런타임이 문구를 바꾸면
+            // 보정이 남고 라벨이 어긋난다.
+            //
+            // 실측(플레이 모드, 런타임 문구) —
+            //
+            // | 라벨 | 로컬 x | 글리프 월드 x | 판(0.945…1.665) |
+            // |---|---|---|---|
+            // | `CascadeLabel` | −2.202 | 0.995…1.308 | 안 |
+            // | 나머지 넷 | −1.586 | 1.610…**2.714** | **밖 — 우벽(2.00)도 뚫는다** |
+            //
+            // 7차 독립 평가가 잡은 `UP-FIX-88`(우측 절단)의 뿌리가 이것이다. 고정 캡처가
+            // 에디트 모드라 **문구가 짧아 과소평가**됐고, 그래서 세 라운드 동안
+            // 「18px 넘침」 정도로 보였다. 실제로는 줄 하나가 1.095 m 로 판(0.72 m)의
+            // 1.5배다.
+            //
+            // 그러므로 고칠 것은 보정량이 아니라 **보정한다는 발상**이다.
+            // 다섯 줄 전부 `pivot (0, 0.5)` · `TopLeft` 라 **렉트 왼쪽 = 글자 왼쪽**이고,
+            // 렉트 x 를 같게 두면 문구가 무엇이든 같은 단에서 시작한다.
+            // 🔴 **마진을 0 으로 못 박는다.** 렉트 x 를 다섯 줄 모두 −2.202 로 맞춘 뒤에도
+            // `CascadeLabel` 의 글리프만 +0.371 들여써져 있었다. 렉트도 정렬도 피벗도
+            // 같으므로 남은 원인은 TMP 의 `margin` 뿐이다 — 그것이 「인스펙터에서 같아
+            // 보이는데 화면이 다르다」의 정체였고, 직전 판본이 **글리프를 재서 미는
+            // 보정**으로 우회하던 것이다. 원인을 지우면 보정이 필요 없다.
+            foreach (var (name, _, _) in PanelRows)
             {
-                t.ForceMeshUpdate();
-                float left = GlyphLeftLocal(panel, t);
-                if (float.IsNaN(left)) continue;
-                float delta = colX - left;
-                if (Mathf.Abs(delta) < 1e-4f) continue;
-                Undo.RecordObject(t.transform, "align text column");
-                Vector3 p = t.transform.localPosition;
-                p.x += delta;
-                t.transform.localPosition = p;
-                EditorUtility.SetDirty(t.transform);
+                var tm = panel.Find(name)?.GetComponent<TMPro.TMP_Text>();
+                if (tm == null || tm.margin == Vector4.zero) continue;
+                Undo.RecordObject(tm, "clear panel margin");
+                tm.margin = Vector4.zero;
+                tm.ForceMeshUpdate();
+                EditorUtility.SetDirty(tm);
+            }
+
+            int aligned = 0;
+            foreach (var (name, lx, ly) in PanelRows)
+            {
+                Transform t = panel.Find(name);
+                if (t == null) continue;
+                var want = new Vector3(lx, ly, t.localPosition.z);
+                if ((t.localPosition - want).sqrMagnitude < 1e-8f) continue;
+                Undo.RecordObject(t, "panel row layout");
+                t.localPosition = want;
+                EditorUtility.SetDirty(t);
                 aligned++;
             }
 
             _report.AppendLine($"     계기 내용 압축 — 막대 {barLen:F2} · 눈금 {colX:F2}…{colX + barLen:F2} " +
                                $"· 과적등을 단 안으로 · 배면판 재단 · 글자 단 정렬 교정 {aligned}줄");
         }
+
+        /// <summary>
+        /// 계기판 다섯 줄의 **로컬 좌표 절대값**.
+        ///
+        /// x 는 전부 같다 — `CascadeLabel` 이 유일하게 판 안에 들어와 있던 값(−2.202)에
+        /// 맞춘다. 글리프 왼쪽이 월드 0.995 로 판 왼쪽 끝(0.945)에서 50mm 안이다.
+        ///
+        /// y 는 **`FloorLabel` 이 두 줄이 되면서 아래 넷을 90mm 씩 내렸다.**
+        /// 「1층 / 10   위험도 안정」이 한 줄로는 1.095 m 라 판(0.72 m)에 원리적으로
+        /// 안 들어간다 — 글자를 줄이면 `UP-FIX-86` 이 되돌아가므로 **줄을 접는다.**
+        /// 접은 뒤 최장 줄은 「위험도 안정」 0.55 m 로 판 안이다.
+        ///
+        /// 아래로 갈 자리는 있다 — 판 y 는 0.88…1.82 이고 종전 마지막 줄이 1.264 였다.
+        /// </summary>
+        private static readonly (string name, float x, float y)[] PanelRows =
+        {
+            ("FloorLabel",    -2.202f, 1.800f),   // 2줄 — 층/최대 · 위험도
+            ("PowerLabel",    -2.202f, 1.610f),
+            ("RequiredLabel", -2.202f, 1.510f),
+            ("StatusLabel",   -2.202f, 1.350f),   // 2줄 — 스핀·판돈 · 잔류
+            ("CascadeLabel",  -2.202f, 1.174f),
+        };
 
         /// <summary>저장 씬의 기본 문구를 정한다. 런타임이 첫 갱신에서 덮어쓴다.</summary>
         /// <summary>
@@ -1169,6 +1225,17 @@ namespace Ascend.Prototype.EditorTools
             if (panel == null) return;
             SetDefault(panel, "PowerLabel", "전력 0");
             SetDefault(panel, "RequiredLabel", "요구 0");
+            // 🔴 씬 기본 문구가 런타임 형식과 달랐다 — 씬 「0 / 10 층」 vs 런타임
+            // 「1층 / 10 ⏎ 위험도 안정」. 고정 캡처는 에디트 모드에서 찍히므로
+            // **평가받는 화면이 게임의 화면이 아니었다.** 세 라운드 동안 넘침이
+            // 과소평가된 이유가 이것이다(`UP-FIX-105`).
+            SetDefault(panel, "FloorLabel", "1층 / 10\n위험도 안정");
+            // 나머지 둘도 런타임 형식으로 맞춘다. 씬 「무게 0/0 ⏎ 정상」 vs 런타임
+            // 「스핀 5/5 ⏎ 잔류 없음」이었다 — **다른 필드가 보이고 있었다.**
+            // `CascadeLabel` 은 문구를 새로 쓰면 에디트 모드 전용 들여쓰기(글리프가
+            // 렉트에서 +0.37 밀려 있던 것)도 함께 사라진다.
+            SetDefault(panel, "StatusLabel", "스핀 5/5\n잔류 없음");
+            SetDefault(panel, "CascadeLabel", "연쇄 0");
         }
 
         private static void SetDefault(Transform panel, string name, string text)
