@@ -105,6 +105,9 @@ public static class PrototypeSelfTest
         FoldInSuite("레퍼런스 룸 치수 명세", Ascend.Prototype.Art.Tests.ReferenceRoomSpecTests.RunAll());
         FoldInSuite("남은 스핀 정산", Ascend.Prototype.Data.Profiles.Tests.SettlementTests.RunAll());
         FoldInSuite("Mercy / Hunger 성과", Ascend.Prototype.Run.Tests.MercyHungerTests.RunAll());
+        // 위험 판정의 호출 지점 (`D-1`). 커밋 게이트가 이걸 못 보면 「결정론을 고쳤다」가
+        // 다시 검증되지 않은 주장이 된다 — 위 주석이 말한 「한쪽에만 넣으면」의 사례다.
+        FoldInSuite("위험 판정 결정론", Ascend.Prototype.Run.Tests.RiskDeterminismTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");

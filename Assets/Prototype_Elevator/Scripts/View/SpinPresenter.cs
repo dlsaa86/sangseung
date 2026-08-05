@@ -151,6 +151,46 @@ namespace Ascend.Prototype.View
         private void OnValidate() => ApplyTempoPreset();
 
         /// <summary>
+        /// **코루틴이 끊긴 자리를 대신 치운다.**
+        ///
+        /// `_playing` 은 코루틴 핸들이고 <see cref="Play"/> 의 마지막 줄에서만 null 이 된다.
+        /// 그런데 컴포넌트가 비활성화되면 Unity 는 코루틴을 **그 자리에서** 끊는다 —
+        /// 마지막 줄이 실행되지 않으므로 핸들이 영원히 남고, 그 순간부터:
+        ///
+        ///   · <see cref="IsPresenting"/> 이 영구 참 → `RouletteInteractionBridge.IsLocked`
+        ///     도 영구 참 → **모든 상호작용이 조용히 무시된다.** 레버를 당겨도 아무 일이 없다.
+        ///   · <see cref="ResultRevealed"/> 가 영구 거짓 → `InstrumentPanelView` ·
+        ///     `AscentColumnView` 가 전력·요구·상태를 **영구 동결**한다.
+        ///
+        /// 그리고 이 상태는 화면에 오류로 나타나지 않는다. 조용히 게임이 멈춘 것처럼 보인다.
+        /// `HeroSlicePerfProbe` 는 성능 측정 중에 실제로 이 컴포넌트를 껐다 켠다.
+        ///
+        /// <see cref="Clear"/> 를 그대로 부르지 않는 이유: 그쪽은 `_board.ClearAll()` 까지
+        /// 해서 **판을 지운다.** 비활성화는 「연출을 그만둔다」이지 「판을 비운다」가 아니다 —
+        /// 마지막으로 보이던 판은 그대로 남아야 한다.
+        /// </summary>
+        private void OnDisable()
+        {
+            if (_playing == null) return;
+
+            // StopCoroutine 은 필요 없다 — 비활성화가 이미 끊었다. 남은 것은 상태뿐이다.
+            _playing = null;
+            CurrentDepth = 0;
+            CurrentCause = string.Empty;
+            RevealedColumns = RevealComplete;
+
+            // 표식은 `SetRevealed` 가 `RevealedColumns` 와 **함께** 세우는 값이다.
+            // 하나만 되돌리면 판은 "다 열렸다"고 하고 셔터는 닫힌 채로 남아 둘이 서로를
+            // 부정한다. `!= null` 로 검사하는 이유는 파괴된 오브젝트에서 `?.` 가
+            // Unity 의 가짜 null 을 통과시키기 때문이다(씬 언로드 순서는 보장되지 않는다).
+            if (_markers != null) _markers.Clear();
+
+            // 보드 소유권을 돌려준다. 안 돌려주면 `SpinBoardView.Update` 가 영원히
+            // 자기 갱신을 건너뛴다 — 판이 마지막 프레임에 멈춘 채 굳는다.
+            if (_board != null) _board.DrivenExternally = false;
+        }
+
+        /// <summary>
         /// 템포 여덟 값을 정한다 (`UP-TECH-09` ⑪). **에셋이 배선돼 있으면 그쪽이 이긴다** —
         /// `RiskStateView` 가 `DangerFeedbackProfile` 을 다루는 규약과 같다.
         ///

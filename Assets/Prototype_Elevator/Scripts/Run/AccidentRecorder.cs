@@ -17,15 +17,28 @@ namespace Ascend.Prototype.Run
     public sealed class AccidentRecorder : MonoBehaviour
     {
         [SerializeField] private RunSessionBehaviour _run;
+
+        /// <summary>
+        /// **위험 값을 여기서 읽지 않는다** (`D-1` 2026-08-05). 판정의 소유자는
+        /// <see cref="RunSession"/> 이고 이 기록기는 그쪽을 본다 — 그래야 연출 컴포넌트를
+        /// 꺼도 사고 기록이 살아남는다(`HeroSlicePerfProbe` 가 실제로 끈다).
+        ///
+        /// 슬롯을 남겨 둔 이유는 씬과 `Pass1WaveBWiring` 이 이미 이 참조를 채우고 있어서다.
+        /// 지우면 그 배선이 조용히 빈 프로퍼티를 찾게 되고, 그건 이 저장소가 싫어하는
+        /// 「조용한 실패」다. 슬롯 제거는 씬 소유자의 일이다.
+        /// </summary>
         [SerializeField] private RiskStateView _risk;
 
         [Tooltip("층이 끝날 때 전문을 콘솔에 남긴다. 재현 시드가 포함된다.")]
         [SerializeField] private bool _logFullReport = true;
 
         private readonly List<FloorRecord> _records = new List<FloorRecord>();
+
+        /// <summary>위험 값의 출처. 뷰가 아니라 런이다.</summary>
+        private RunSession _session;
         private FloorSession _tracked;
         private RiskLevel _peakRisk = RiskLevel.Stable;
-        private string _peakReason = "위험 요인 없음";
+        private string _peakReason = RunSession.NoRiskReason;
 
         /// <summary>
         /// 이 층에서 위험 단계가 바뀐 순간들. **최고치와 별개로 필요하다** —
@@ -62,6 +75,7 @@ namespace Ascend.Prototype.Run
 
         private void OnRunStarted(RunSession session)
         {
+            _session = session;
             _records.Clear();
             _tracked = null;
             ResetPeak();
@@ -71,6 +85,7 @@ namespace Ascend.Prototype.Run
         {
             RunSession session = _run != null ? _run.Session : null;
             if (session == null) return;
+            _session = session;   // RunStarted 를 놓친 늦은 결선.
 
             // 붙들고 있는 층이 확정됐으면 기록한다. Current 가 이미 다른 층으로
             // 넘어간 뒤여도 참조를 들고 있으므로 늦지 않는다.
@@ -83,19 +98,20 @@ namespace Ascend.Prototype.Run
                 // 그래서 사고 기록기에 「위험 최고 **안정**(위험 요인 없음)」 바로 아래
                 // 「원인: 추락」이 찍혔다 — 독립 시각 평가가 자기모순으로 두 번 지적한 것이다.
                 //
-                // 여기서 `TrackPeakRisk()` 를 한 번 더 부르는 것으로는 부족하다.
-                // `RiskStateView.LateUpdate` 가 이 컴포넌트보다 **뒤에** 돌면 같은 프레임에서
-                // 아직 Collapse 가 아니고, 스크립트 실행 순서는 씬 설정에 달렸다.
-                // 그래서 순서에 기대지 않고 **결과에서 직접 유도한다** — 층이 실패했다면
-                // 그 자체가 Collapse 다(`RiskEvaluator` 도 「층 실패는 점수와 무관하게
-                // Collapse」로 같은 규칙을 쓴다).
+                // `D-1`(2026-08-05) 이후로는 `RunSession.Bank`/`ForceResolve` 가 층을
+                // 교체하기 **전에** 판정하므로 실행 순서 문제는 사라졌다. 그래도 유도는
+                // 남긴다 — 판정 경로가 아니라 **결과**가 근거이므로, 어느 쪽이 먼저 돌든
+                // 층이 실패했으면 그 자체가 Collapse 다(`RiskEvaluator` 도 「층 실패는
+                // 점수와 무관하게 Collapse」로 같은 규칙을 쓴다). 두 경로가 같은 답을
+                // 내는 것이 정상이고, 갈라지면 이 유도가 더 보수적인 쪽을 택한다.
                 TrackPeakRisk();
                 RiskLevel recordedRisk = _peakRisk;
                 string recordedReason = _peakReason;
                 if (!_tracked.Result.Succeeded && recordedRisk < RiskLevel.Collapse)
                 {
                     recordedRisk = RiskLevel.Collapse;
-                    if (string.IsNullOrEmpty(recordedReason) || recordedReason == "위험 요인 없음")
+                    if (string.IsNullOrEmpty(recordedReason) ||
+                        recordedReason == RunSession.NoRiskReason)
                         recordedReason = "층 실패";
                 }
 
@@ -125,30 +141,42 @@ namespace Ascend.Prototype.Run
             TrackPeakRisk();
         }
 
+        /// <summary>
+        /// 위험 단계를 **런에서** 읽는다.
+        ///
+        /// 예전에는 `RiskStateView.Level` 을 읽었고, 그 값은 그 컴포넌트의 `LateUpdate` 가
+        /// 프레임마다 새로 판정해 만들었다. 그래서 두 가지가 동시에 깨져 있었다 —
+        /// ① 연출 컴포넌트를 끄면 사고 기록의 위험도가 통째로 죽고,
+        /// ② 한 프레임 안에서 오르내린 봉우리가 사라져 **같은 시드가 다른 기록을 남겼다**
+        /// (과수확 레버는 앤티 지불과 스핀을 같은 프레임에 끝낸다).
+        /// 지금은 런이 상태 전이마다 판정하고 여기서는 읽기만 하므로 둘 다 사라진다.
+        /// </summary>
         private void TrackPeakRisk()
         {
-            if (_risk == null || _tracked == null) return;
+            if (_session == null || _tracked == null) return;
+
+            RiskLevel level = _session.RiskLevel;
 
             // 전이는 **오르내림 둘 다** 잡는다. 내려가는 것도 정보다 —
             // 「Critical 까지 갔다가 정화로 Strain 으로 내려왔다」는 그 층의 이야기다.
-            if (_risk.Level != _lastRisk)
+            if (level != _lastRisk)
             {
                 _riskTransitions.Add(new FloorRecord.RiskTransition(
-                    _tracked.SpinsUsed, _risk.Level, _risk.Reason));
-                _lastRisk = _risk.Level;
+                    _tracked.SpinsUsed, level, _session.RiskReason));
+                _lastRisk = level;
             }
 
-            if (_risk.Level > _peakRisk)
+            if (level > _peakRisk)
             {
-                _peakRisk = _risk.Level;
-                _peakReason = _risk.Reason;
+                _peakRisk = level;
+                _peakReason = _session.RiskReason;
             }
         }
 
         private void ResetPeak()
         {
             _peakRisk = RiskLevel.Stable;
-            _peakReason = "위험 요인 없음";
+            _peakReason = RunSession.NoRiskReason;
             _riskTransitions.Clear();
             // 층이 바뀌면 기준점도 돌아간다. 안 그러면 새 층의 첫 전이가
             // 「이미 그 단계였다」로 읽혀 기록에서 사라진다.

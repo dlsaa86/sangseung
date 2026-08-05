@@ -21,6 +21,32 @@ namespace Ascend.Prototype.Run
         private FloorSession _current;
         private float _baseWeight;
 
+        // ── 위험 판정은 런이 소유한다 (`D-1` 2026-08-05) ──────────────────────
+        //
+        // <see cref="Risk.RiskEvaluator"/> 는 히스테리시스 때문에 **입력의 함수가 아니라
+        // 입력 궤적의 함수**다. 그래서 「언제 부르는가」가 곧 판정이다.
+        //
+        // 직전 판본은 `RiskStateView.LateUpdate` **한 곳**에서만 불렀다. 그 컴포넌트는
+        // 연출이고 프레임당 한 번 도므로, 한 프레임 안에서 전이가 여러 번 일어나면
+        // 중간값이 통째로 사라졌다. 실측 경로 —
+        // `RouletteInteractionBridge.OnOverharvestPulled` 은 `PushYourLuck()`(앤티 지불,
+        // 과수확 카운터 +1 → 점수 급등)과 `DoSpin()`(잔류 정리 → 점수 하락)을 **같은
+        // 프레임에** 끝낸다. 점수 궤적이 2 → 8 → 6 이면
+        //   · 단계별 샘플: 8 에서 Critical 진입, 6 은 이탈 5.5 위라 **Critical 유지**
+        //   · 프레임 샘플: 6 하나만 보므로 진입 7 미만 → **Strain**
+        // 이고, `AccidentRecorder.TrackPeakRisk` 가 그 값으로 최고 위험을 적으므로
+        // **같은 시드가 다른 사고 기록을 남겼다.** 프레임 타이밍이 판정을 바꾼 것이다.
+        //
+        // 그래서 판정기는 상태를 바꾸는 쪽이 소유하고, 전이가 일어나는 자리마다
+        // <see cref="EvaluateRisk"/> 를 부른다. 뷰는 <see cref="RiskLevel"/> 을 **읽기만** 한다.
+        private readonly Risk.RiskEvaluator _riskEvaluator = new Risk.RiskEvaluator();
+
+        /// <summary>왜 이 단계인가. 판정과 **같은 순간에** 지어야 기록과 어긋나지 않는다.</summary>
+        private string _riskReason = NoRiskReason;
+
+        /// <summary>위험 요인이 하나도 없을 때의 문구. 기록기가 같은 문자열을 비교한다.</summary>
+        public const string NoRiskReason = "위험 요인 없음";
+
         /// <summary>층마다 그대로 넘어가는 과수확 수치 9종 (`UP-POWER-07`).</summary>
         private readonly OverharvestSnapshot _overharvest;
 
@@ -138,6 +164,11 @@ namespace Ascend.Prototype.Run
 
             CurrentFloor = _floors.FirstFloor;
             CreateCurrentFloor();
+
+            // 시작 상태도 판정된 상태여야 한다. 안 하면 첫 전이가 일어나기 전까지
+            // `RiskLevel` 이 「아직 아무것도 안 본 Stable」이고, 시작부터 과적인 런에서
+            // 첫 스핀 전까지 방이 안전해 보인다.
+            EvaluateRisk();
         }
 
         /// <summary>
@@ -160,6 +191,7 @@ namespace Ascend.Prototype.Run
 
             if (_current == null || _current.Result != null) return;
             _current.RefreshLoad(_baseWeight);
+            EvaluateRisk();   // 적재가 바뀌면 과적 여부와 요구 전력 달성률이 함께 움직인다.
         }
 
         /// <summary>
@@ -287,16 +319,128 @@ namespace Ascend.Prototype.Run
             IsComplete && !IsFailed, IsComplete, IsFailed, HighestFloorReached,
             Money, CarriedWeight, FailureReason, _results);
 
-        public bool SelectContract(int choiceIndex) => _current != null && _current.SelectContract(choiceIndex);
-        public bool PushYourLuck() => _current != null && _current.PushYourLuck();
+        // ── 위험 판정 (`D-1`) ────────────────────────────────────────────────
+
+        /// <summary>
+        /// 지금 판정된 위험 단계. **위험 단계의 단일 원본이다** — 뷰·기록기·사운드·
+        /// 텔레메트리가 전부 이 값을 읽고, 아무도 스스로 다시 판정하지 않는다.
+        /// </summary>
+        public Risk.RiskLevel RiskLevel => _riskEvaluator.Current;
+
+        /// <summary>마지막 판정의 원점수. 계기판과 디버그 패널이 「왜」를 설명할 때 쓴다.</summary>
+        public float RiskScore => _riskEvaluator.CurrentScore;
+
+        /// <summary>왜 이 단계인지 한 줄. 판정과 같은 순간에 지어진 문장이다.</summary>
+        public string RiskReason => _riskReason;
+
+        /// <summary>
+        /// 위험 임계값 9종이 어디서 왔는가 (`UP-TECH-09` ⑦). 아무도 주입하지 않았으면
+        /// 「필드 초기값」이다 — 「코드 프리셋」과 구분된다.
+        /// </summary>
+        public string RiskThresholdSource => _riskEvaluator.ThresholdSource;
+
+        /// <summary>
+        /// 위험 임계값을 밖에서 갈아 끼운다. `RiskThresholdProfile.asset` 은 씬 컴포넌트가
+        /// 들고 있으므로(그 슬롯을 옮기면 씬 배선을 다시 해야 한다) Unity 어댑터 쪽에서
+        /// 스냅샷만 넘겨받는다. **값이 아니라 스냅샷 구조체를 받는다** — 이 파일이 지키는
+        /// 「UnityEngine 비의존」이 유지되고, 주입 여부는 <see cref="RiskThresholdSource"/>
+        /// 로 반증할 수 있다.
+        ///
+        /// 주입하지 않아도 게임은 돈다 — <see cref="Risk.RiskEvaluator"/> 의 필드 초기값이
+        /// `RiskThresholdProfile` 의 코드 프리셋과 **같은 수**이기 때문이다(그 일치는
+        /// `ProfileTests` 가 대조한다).
+        /// </summary>
+        public void ApplyRiskThresholds(in RiskThresholdSnapshot thresholds)
+        {
+            _riskEvaluator.Apply(thresholds);
+            EvaluateRisk();
+        }
+
+        /// <summary>
+        /// 지금 상태를 위험 판정의 입력으로 옮긴다. **검증·기록용으로 밖에서도 읽는다** —
+        /// 「무엇을 보고 그 단계가 나왔는가」를 물을 수 없으면 판정이 반증되지 않는다.
+        /// </summary>
+        public Risk.RiskInputs CurrentRiskInputs => ReadRiskInputs();
+
+        /// <summary>
+        /// 위험 단계를 다시 판정한다. **상태가 바뀐 자리에서만 부른다** — 매 프레임
+        /// 부르면 히스테리시스가 프레임 수에 의존하게 되고, 안 부르면 궤적의 중간값이
+        /// 사라진다. 둘 다 「같은 시드가 다른 기록을 남긴다」로 끝난다.
+        /// </summary>
+        public Risk.RiskLevel EvaluateRisk()
+        {
+            Risk.RiskInputs inputs = ReadRiskInputs();
+            Risk.RiskLevel level = _riskEvaluator.Evaluate(in inputs);
+            _riskReason = _riskEvaluator.Explain(in inputs);
+            return level;
+        }
+
+        private Risk.RiskInputs ReadRiskInputs()
+        {
+            FloorSession f = _current;
+            if (f == null)
+            {
+                // 층이 없으면 런이 끝난 것이다. 실패로 끝났으면 그 상태를 유지한다.
+                return new Risk.RiskInputs(0, 0, 0, false, 1, 1f, IsFailed);
+            }
+
+            ResidualState residual = f.Residual;
+            float ratio = f.RequiredPower > 0f ? f.Power / f.RequiredPower : 1f;
+            bool floorFailed = f.Result != null && !f.Result.Succeeded;
+
+            return new Risk.RiskInputs(
+                residual.AbsorberCount, residual.ProliferatorCount,
+                f.ExtraSpinsTaken, f.IsOverloaded, f.SpinsRemaining, ratio, floorFailed);
+        }
+
+        // ── 상태 전이 ────────────────────────────────────────────────────────
+        //
+        // 아래 다섯은 전부 「층의 상태를 바꾸고 곧바로 다시 판정한다」는 같은 모양이다.
+        // 판정을 호출부(뷰·브리지)에 맡기면 한 곳만 빠뜨려도 그 경로의 궤적이 조용히
+        // 사라지고, 그 사실은 사고 기록에서만 드러난다.
+
+        public bool SelectContract(int choiceIndex)
+        {
+            if (_current == null || !_current.SelectContract(choiceIndex)) return false;
+            EvaluateRisk();
+            return true;
+        }
+
+        /// <summary>
+        /// 앤티를 내고 한 번 더 당긴다. **여기서 반드시 판정한다** — 과수확 카운터가
+        /// 오르는 이 순간이 점수가 가장 높은 지점이고, `RouletteInteractionBridge` 는
+        /// 곧바로 같은 프레임에 <see cref="Spin"/> 을 부른다. 여기를 건너뛰면 그 봉우리를
+        /// 관측하는 프레임이 **존재하지 않는다.**
+        /// </summary>
+        public bool PushYourLuck()
+        {
+            if (_current == null || !_current.PushYourLuck()) return false;
+            EvaluateRisk();
+            return true;
+        }
+
         public bool ContinueSpinning() => PushYourLuck();
-        public SpinResolution Spin() => _current == null ? default(SpinResolution) : _current.Spin();
+
+        public SpinResolution Spin()
+        {
+            if (_current == null) return default(SpinResolution);
+            SpinResolution resolution = _current.Spin();
+            // Steps 가 null 이면 상태 게이트에 막힌 호출이라 아무것도 바뀌지 않았다.
+            if (resolution.Steps != null) EvaluateRisk();
+            return resolution;
+        }
 
         public FloorResult Bank()
         {
             if (_current == null) return null;
             FloorResult result = _current.Bank();
-            if (result != null) CompleteFloor(result);
+            if (result == null) return null;
+
+            // 확정 **직후**·층 교체 **전**. 실패한 층의 Collapse 가 여기서 잡힌다 —
+            // `CompleteFloor` 가 `_current` 를 비우고 나면 그 층은 더 이상 물어볼 수 없다.
+            EvaluateRisk();
+            CompleteFloor(result);
+            EvaluateRisk();
             return result;
         }
 
@@ -304,15 +448,29 @@ namespace Ascend.Prototype.Run
         {
             if (_current == null) return null;
             FloorResult result = _current.ForceResolve();
-            if (result != null) CompleteFloor(result);
+            if (result == null) return null;
+
+            EvaluateRisk();
+            CompleteFloor(result);
+            EvaluateRisk();
             return result;
         }
 
         /// <summary>적재 단계에서 후보 하나를 싣는다.</summary>
-        public bool TakeBuildOffer(int index) => _current != null && _current.TakeOffer(index);
+        public bool TakeBuildOffer(int index)
+        {
+            if (_current == null || !_current.TakeOffer(index)) return false;
+            EvaluateRisk();   // 무게가 바뀌면 과적 판정이 바뀐다.
+            return true;
+        }
 
         /// <summary>문을 닫고 다음 단계로 넘어간다. 아무것도 싣지 않아도 진행된다.</summary>
-        public bool FinishBoarding() => _current != null && _current.FinishBoarding();
+        public bool FinishBoarding()
+        {
+            if (_current == null || !_current.FinishBoarding()) return false;
+            EvaluateRisk();
+            return true;
+        }
 
         /// <summary>Updates the load before the next floor is created.</summary>
         public bool AddWeight(float amount)
@@ -322,6 +480,7 @@ namespace Ascend.Prototype.Run
             // 이미 만들어진 층에도 알린다. 안 그러면 층이 옛 무게로 요구 전력을 들고 있고
             // `IsOverloaded`가 거짓으로 남아 위험 단계가 올라가지 않는다.
             _current?.RefreshLoad(_baseWeight);
+            EvaluateRisk();
             return true;
         }
 
@@ -330,6 +489,7 @@ namespace Ascend.Prototype.Run
             if (weight < 0f || IsComplete || IsFailed) return false;
             _baseWeight = weight;
             _current?.RefreshLoad(_baseWeight);
+            EvaluateRisk();
             return true;
         }
 

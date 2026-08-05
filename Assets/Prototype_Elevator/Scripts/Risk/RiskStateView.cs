@@ -12,7 +12,12 @@ namespace Ascend.Prototype.Risk
     /// 그래서 여기서 네 채널을 한 번에 민다 — 조명, 경고등, 물리 진동, 소리.
     /// 무음 영상에서도, 화면을 안 보고 소리만 들어도 단계가 구분되어야 하기 때문이다.
     ///
-    /// 판정에는 전혀 관여하지 않는다. 이 컴포넌트를 꺼도 게임과 테스트는 그대로 돈다.
+    /// **판정에는 전혀 관여하지 않는다.** 위험 단계를 정하는 것은 <see cref="RunSession"/>
+    /// 이고(`D-1` 2026-08-05), 이 컴포넌트는 그 값을 읽어 네 채널에 나눠 실을 뿐이다.
+    /// 그래서 이것을 꺼도 판정·사건·사고 기록·텔레메트리는 그대로 돈다 — 꺼지는 것은
+    /// 조명·소리·흔들림뿐이다. 예전에는 이 문장이 거짓이었다: 판정기가 이 클래스의
+    /// `LateUpdate` 안에 살아서, 끄는 순간 단계가 얼어붙고 그 값을 읽는 모든 것이
+    /// 함께 멈췄다.
     /// </summary>
     public sealed class RiskStateView : MonoBehaviour
     {
@@ -112,7 +117,7 @@ namespace Ascend.Prototype.Risk
         //
         // ⚠ **r = 1 에서 항등이다.** 프로파일의 색 보정이 0, 밝기 배율이 1 이라
         // 「요구를 정확히 채운 상태」가 곧 지금까지의 화면이다. 런이 없는 저장된
-        // 씬은 `ReadInputs` 가 `ratio = 1f` 로 읽으므로 **고정 캡처 A~F 의 조명이
+        // 씬은 `ReadPowerRatio` 가 `ratio = 1f` 로 읽으므로 **고정 캡처 A~F 의 조명이
         // 바뀌지 않는다** — §12 대역 수치와 좌벽 ΔL 회귀 감시선을 지키면서
         // 채널을 하나 더 여는 유일한 방법이다.
         [Header("전력 환경 (등이 달성률을 말한다 — P-20260804-05 B)")]
@@ -150,7 +155,37 @@ namespace Ascend.Prototype.Risk
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
-        private readonly RiskEvaluator _evaluator = new RiskEvaluator();
+        // ── 판정은 여기 없다 (`D-1` 2026-08-05) ────────────────────────────────
+        //
+        // 이 컴포넌트는 `RiskEvaluator` 를 **소유하지 않는다.** 소유자는
+        // <see cref="RunSession"/> 이고 그쪽이 상태 전이마다 판정한다.
+        //
+        // 왜 옮겼나: 판정기는 히스테리시스 때문에 입력 궤적의 함수인데, 부르는 곳이
+        // 이 클래스의 `LateUpdate` 하나뿐이라 **프레임 샘플링이 판정을 바꿨다.**
+        // 과수확 레버 한 번에 「앤티 지불 → 스핀」이 같은 프레임에 끝나면 그 사이의
+        // 봉우리를 관측하는 프레임이 존재하지 않고, 사고 기록이 시드가 아니라
+        // 프레임 타이밍에 달리게 된다. 경위는 `RunSession` 의 같은 이름 필드 주석에 있다.
+        //
+        // 여기 남은 것은 **연출 상태**뿐이다 — 지금 어떤 단계를 그리고 있는가.
+        private RiskLevel _level = RiskLevel.Stable;
+
+        /// <summary>
+        /// 임계값 스냅샷. 에셋 슬롯은 씬 배선상 이 컴포넌트에 있으므로 여기서 읽어
+        /// **런에 밀어 넣는다**(<see cref="SyncRiskThresholds"/>). 값의 소비자는 런이다.
+        /// </summary>
+        private Data.Profiles.RiskThresholdSnapshot _thresholds;
+
+        /// <summary>임계값을 이미 밀어 넣은 런. 런이 새로 태어나면 다시 밀어야 한다.</summary>
+        private RunSession _thresholdsAppliedTo;
+
+        /// <summary>
+        /// 에디트 모드 미리보기가 단계를 직접 세운 상태인가.
+        /// `LateUpdate` 가 한 번 돌면 꺼진다 — 옛 `RiskEvaluator.ForceLevel` 이
+        /// 「다음 Evaluate 한 번에 정상 경로로 돌아온다」고 약속한 그 성질이다.
+        /// </summary>
+        private bool _previewActive;
+        private RiskLevel _previewLevel = RiskLevel.Stable;
+
         private Data.Profiles.DangerFeedbackSnapshot _levels;
         private Data.Profiles.AccessibilitySnapshot _accessibilitySnapshot;
         private string _profileSource = "(미초기화)";
@@ -160,7 +195,6 @@ namespace Ascend.Prototype.Risk
         private Vector3 _swayHome;
         private Vector3 _cameraHome;
         private float _phase;
-        private int _reasonKey = int.MinValue;
         private float _effectiveHumVolume;
 
         // 험 배율은 **섞어서** 따라간다. `_blended` 는 프로파일 형태를 부드럽게 잇는데
@@ -192,14 +226,45 @@ namespace Ascend.Prototype.Risk
             "[기계 험 — 끊기며 무너진다]",
         };
 
-        /// <summary>현재 위험 단계. HUD·계기판·검증 하네스가 읽는다.</summary>
-        public RiskLevel Level => _evaluator.Current;
+        /// <summary>지금 붙어 있는 런. 없으면 null(에디트 모드·캡처 미리보기).</summary>
+        private RunSession Session => _run != null ? _run.Session : null;
 
-        /// <summary>현재 위험 점수. 디버그 표시용.</summary>
-        public float Score => _evaluator.CurrentScore;
+        /// <summary>
+        /// 현재 위험 단계. HUD·계기판·검증 하네스가 읽는다.
+        ///
+        /// **여기서 판정하지 않는다.** 런이 이미 정한 값을 그대로 돌려준다 — 그래서
+        /// 이 컴포넌트를 꺼도, 이 프로퍼티를 프레임 어디에서 읽어도 같은 값이 나온다.
+        /// 미리보기 중일 때만 그 값을 덮는다(에디트 모드 캡처 전용).
+        /// </summary>
+        public RiskLevel Level
+        {
+            get
+            {
+                if (_previewActive) return _previewLevel;
+                RunSession session = Session;
+                return session != null ? session.RiskLevel : RiskLevel.Stable;
+            }
+        }
 
-        /// <summary>왜 이 단계인지 한 줄.</summary>
-        public string Reason { get; private set; } = "위험 요인 없음";
+        /// <summary>현재 위험 점수. 디버그 표시용. 판정과 같은 순간의 값이다.</summary>
+        public float Score
+        {
+            get
+            {
+                RunSession session = Session;
+                return session != null ? session.RiskScore : 0f;
+            }
+        }
+
+        /// <summary>왜 이 단계인지 한 줄. 판정한 쪽이 지은 문장을 그대로 전한다.</summary>
+        public string Reason
+        {
+            get
+            {
+                RunSession session = Session;
+                return session != null ? session.RiskReason : RunSession.NoRiskReason;
+            }
+        }
 
         /// <summary>
         /// 실내등 밝기에 곱해지는 외부 배수. 과수확 해제 같은 **일시적 사건**이 실내등을
@@ -254,8 +319,13 @@ namespace Ascend.Prototype.Risk
             // 보이는 방법」이라면 이쪽은 「무엇이 위험인가」다. 둘을 한 에셋에 두면
             // 「연출이 약해 보인다」는 이유로 임계값을 내리는 일이 생긴다 —
             // 그건 연출 조정이 아니라 난이도 변경이다.
-            _evaluator.Apply(Data.Profiles.RiskThresholdProfile.SnapshotOrDefault(
-                _thresholdProfile, nameof(RiskStateView)));
+            //
+            // ⚠ 여기서 **쓰지 않고 넘긴다.** 판정기의 소유자는 런이므로(`D-1`) 이
+            // 컴포넌트는 에셋을 읽어 스냅샷을 뜨는 데까지만 관여한다. 슬롯이 여기
+            // 있는 이유는 씬이 이미 그렇게 배선돼 있어서지 판정이 여기 있어서가 아니다.
+            _thresholds = Data.Profiles.RiskThresholdProfile.SnapshotOrDefault(
+                _thresholdProfile, nameof(RiskStateView));
+            _thresholdsAppliedTo = null;   // 새 스냅샷은 다시 밀어야 한다.
 
             // 전력 환경(⑨)은 또 다른 축이다 — 「무엇이 위험인가」도 「위험해 보이는
             // 방법」도 아니고 「전력이 얼마나 찼는가」다. 셋을 한 에셋에 두면 한 축을
@@ -304,7 +374,19 @@ namespace Ascend.Prototype.Risk
         /// <see cref="ProfileSource"/> 와 다른 축이다 — 둘이 같은 문자열을 쓰면
         /// 「연출은 에셋, 판정은 코드」인 절반 배선을 구분할 수 없다.
         /// </summary>
-        public string ThresholdSource => _evaluator.ThresholdSource;
+        public string ThresholdSource
+        {
+            get
+            {
+                // 런이 붙어 있으면 **런이 실제로 쓰고 있는 값**의 출처가 답이다.
+                // 이 컴포넌트가 읽은 에셋 이름을 그대로 돌려주면 「밀어 넣었다」와
+                // 「그 값으로 판정한다」를 구분할 수 없다 — 이 저장소가 프로파일 8종에서
+                // 이미 겪은 종류의 거짓 증거다.
+                RunSession session = Session;
+                if (session != null) return session.RiskThresholdSource;
+                return _thresholds.SourceName ?? "(미초기화)";
+            }
+        }
 
         /// <summary>
         /// 접근성 값의 출처. **`ProfileSource` 와 따로 있어야 한다.**
@@ -373,7 +455,7 @@ namespace Ascend.Prototype.Risk
             get
             {
                 if (_hum == null) return string.Empty;
-                int index = (int)_evaluator.Current;
+                int index = (int)Level;
                 if (index < 0 || index >= HumCaptions.Length) index = 0;
                 return _accessibilitySnapshot.Caption(HumCaptions[index]);
             }
@@ -421,7 +503,7 @@ namespace Ascend.Prototype.Risk
             {
                 if (!_drivePowerAmbience) return 0f;
                 int top = (int)RiskLevel.Collapse;
-                float t = top > 0 ? Mathf.Clamp01((float)(int)_evaluator.Current / top) : 0f;
+                float t = top > 0 ? Mathf.Clamp01((float)(int)Level / top) : 0f;
                 return _powerAmbience.AuthorityFor(t);
             }
         }
@@ -489,26 +571,46 @@ namespace Ascend.Prototype.Risk
             if (_cameraTarget != null) _cameraHome = _cameraTarget.localPosition;
             if (_hum != null && _hum.clip == null) _hum.clip = BuildHumClip();
             if (_hum != null) { _hum.loop = true; _hum.volume = 0f; _hum.Play(); }
-            if (_run != null) _run.RunStarted += _ => _evaluator.Reset();
+
+            // 런이 이미 만들어져 있으면(어댑터의 Awake 가 먼저 돈 경우) 지금 밀어 넣는다.
+            // 늦었더라도 `LateUpdate` 가 같은 검사를 다시 하므로 한 프레임 안에 붙는다.
+            SyncRiskThresholds(Session);
+        }
+
+        /// <summary>
+        /// 임계값 9종을 런에 밀어 넣는다. **런이 새로 태어날 때마다 한 번씩만** 한다 —
+        /// 매 프레임 밀면 `ApplyRiskThresholds` 가 매번 재판정을 부르고, 그러면 판정
+        /// 시점이 다시 프레임에 묶여 `D-1` 이 되돌아온다.
+        ///
+        /// `RunStarted` 이벤트를 구독하지 않는 이유: 구독은 해지가 필요하고(이 클래스는
+        /// 예전에 해지 없는 람다를 달아 두고 있었다), 참조 비교 한 번이 같은 일을 한다.
+        /// </summary>
+        private void SyncRiskThresholds(RunSession session)
+        {
+            if (session == null || ReferenceEquals(session, _thresholdsAppliedTo)) return;
+
+            // 에디트 모드에서는 `Awake` 가 돌지 않아 스냅샷이 비어 있을 수 있다.
+            // 그대로 밀면 임계값이 전부 0 이 되어 모든 상태가 Critical 이 된다.
+            EnsureProfilesLoaded();
+            session.ApplyRiskThresholds(_thresholds);
+            _thresholdsAppliedTo = session;
         }
 
         private void LateUpdate()
         {
-            RiskInputs inputs = ReadInputs();
-            RiskLevel level = _evaluator.Evaluate(in inputs);
+            // 살아 있는 런은 미리보기를 덮는다. 옛 `RiskEvaluator.ForceLevel` 이
+            // 「점수는 건드리지 않으므로 다음 Evaluate 한 번에 정상 경로로 돌아온다」고
+            // 약속한 성질을 그대로 유지한다.
+            _previewActive = false;
 
-            // Explain 은 리스트와 string.Join 을 쓴다. 매 프레임 부르면 같은 문장을
-            // 60번 새로 만든다. 위험 요인 구성이 바뀔 때만 짓는다.
-            int reasonKey = inputs.AbsorberResidual
-                          | (inputs.ProliferatorResidual << 5)
-                          | (inputs.ExtraSpinsTaken << 10)
-                          | ((inputs.Overloaded ? 1 : 0) << 15)
-                          | ((inputs.SpinsRemaining == 0 && inputs.PowerRatio < 1f ? 1 : 0) << 16);
-            if (reasonKey != _reasonKey)
-            {
-                _reasonKey = reasonKey;
-                Reason = _evaluator.Explain(in inputs);
-            }
+            RunSession session = Session;
+            SyncRiskThresholds(session);
+
+            // **판정하지 않는다.** 런이 상태 전이마다 이미 정해 둔 값을 읽는다.
+            RiskLevel level = session != null ? session.RiskLevel : RiskLevel.Stable;
+            _level = level;
+
+            float powerRatio = ReadPowerRatio(session);
 
             RiskProfile target = _levels.For(level);
             _blended = Blend(_blended, target, Time.deltaTime * _blendSpeed);
@@ -517,12 +619,12 @@ namespace Ascend.Prototype.Risk
             // 달성률도 **섞어서** 따라간다. 스핀이 확정되는 프레임에 전력이 계단으로
             // 뛰는데 등이 그대로 따라가면 「조명이 바뀌었다」가 아니라 「화면이 튀었다」로
             // 읽힌다 — `ApplyAudio` 의 배율·`ApplyAmbient` 의 명도와 같은 이유다.
-            _powerRatio = Mathf.Lerp(_powerRatio, inputs.PowerRatio,
+            _powerRatio = Mathf.Lerp(_powerRatio, powerRatio,
                                      Mathf.Clamp01(Time.deltaTime * _blendSpeed));
 
             // 임계점 돌파. **목표 비율**로 판정한다 — 섞인 값으로 보면 점등이 늦고
             // 흐려져서 「사건」이 아니라 「서서히 밝아짐」이 된다.
-            bool above = inputs.PowerRatio >= 1f;
+            bool above = powerRatio >= 1f;
             if (above && !_wasAboveRequired) _breachFlash = _powerAmbience.BreachFlash;
             _wasAboveRequired = above;
             if (_breachFlash > 0f)
@@ -557,7 +659,12 @@ namespace Ascend.Prototype.Risk
             if (_block == null) _block = new MaterialPropertyBlock();
             if (_levels.PresetName == null) RebuildProfiles();
 
-            _evaluator.ForceLevel(level);
+            // 단계를 **판정 없이** 세운다. 예전에는 `RiskEvaluator.ForceLevel` 이 하던
+            // 일이고, 판정기가 런으로 옮겨간 지금은 **연출 상태만** 덮는다 —
+            // 미리보기가 실제 판정을 건드릴 수 있으면 그건 연출 조정이 아니라 판정 파괴다.
+            _previewActive = true;
+            _previewLevel = level;
+            _level = level;
             _blended = _levels.For(level);
             _powerRatio = Mathf.Max(0f, ratio);
             _breachFlash = 0f;
@@ -633,23 +740,16 @@ namespace Ascend.Prototype.Risk
             if (_levels.PresetName == null) RebuildProfiles();
         }
 
-        private RiskInputs ReadInputs()
+        /// <summary>
+        /// 달성률만 읽는다. **판정 입력(<see cref="RiskInputs"/>)을 여기서 다시 짓지 않는다** —
+        /// 그 일은 런이 한다(`RunSession.CurrentRiskInputs`). 이 값은 판정이 아니라
+        /// **등에 실리는 연출 축**이고, 그래서 프레임마다 읽어도 아무것도 왜곡하지 않는다.
+        /// </summary>
+        private static float ReadPowerRatio(RunSession session)
         {
-            FloorSession f = _run != null && _run.Session != null ? _run.Session.Current : null;
-            if (f == null)
-            {
-                // 층이 없으면 런이 끝난 것이다. 실패로 끝났으면 그 상태를 유지한다.
-                bool runFailed = _run != null && _run.Session != null && _run.Session.IsFailed;
-                return new RiskInputs(0, 0, 0, false, 1, 1f, runFailed);
-            }
-
-            ResidualState residual = f.Residual;
-            float ratio = f.RequiredPower > 0f ? f.Power / f.RequiredPower : 1f;
-            bool floorFailed = f.Result != null && !f.Result.Succeeded;
-
-            return new RiskInputs(
-                residual.AbsorberCount, residual.ProliferatorCount,
-                f.ExtraSpinsTaken, f.IsOverloaded, f.SpinsRemaining, ratio, floorFailed);
+            FloorSession f = session != null ? session.Current : null;
+            if (f == null) return 1f;   // 런이 없으면 중립 — 저장된 씬의 조명이 바뀌지 않는다.
+            return f.RequiredPower > 0f ? f.Power / f.RequiredPower : 1f;
         }
 
         private void ApplyLighting()
@@ -719,7 +819,7 @@ namespace Ascend.Prototype.Risk
         ///
         /// 두 가지가 이 메서드의 계약이다.
         ///
-        ///   ① **r = 1 에서 항등** — 색 보정 0, 배율 1. 런이 없는 상태(`ReadInputs` 가
+        ///   ① **r = 1 에서 항등** — 색 보정 0, 배율 1. 런이 없는 상태(`ReadPowerRatio` 가
         ///      `ratio = 1f` 로 읽는다)에서 등이 지금까지와 **비트 단위로 같다.**
         ///      고정 캡처 A~F 와 §12 대역 수치가 이 성질에 걸려 있다.
         ///   ② **위험이 이긴다** — 권한이 `AuthorityFor` 로 깎이고 Collapse 에서 0 이다.
@@ -730,7 +830,7 @@ namespace Ascend.Prototype.Risk
             if (!_drivePowerAmbience) return 1f;
 
             int top = (int)RiskLevel.Collapse;
-            float riskT = top > 0 ? Mathf.Clamp01((float)(int)_evaluator.Current / top) : 0f;
+            float riskT = top > 0 ? Mathf.Clamp01((float)(int)_level / top) : 0f;
             float authority = _powerAmbience.AuthorityFor(riskT);
             if (authority <= 0.0001f) return 1f;
 
@@ -790,7 +890,7 @@ namespace Ascend.Prototype.Risk
             // 실어 두 축이 같은 방향으로 움직이게 한다.
             if (_driveAmbientValue && _ladderBuilt)
             {
-                int index = (int)_evaluator.Current;
+                int index = (int)_level;
                 if (index < 0) index = 0;
                 if (index >= _ambientLadder.Length) index = _ambientLadder.Length - 1;
 
@@ -877,7 +977,7 @@ namespace Ascend.Prototype.Risk
         {
             if (_hum == null) return;
 
-            RiskLevel level = _evaluator.Current;
+            RiskLevel level = _level;
 
             // 배율의 소유자는 `AudioDirector` 다. 여기서 `AudioMixProfile` 을 직접 읽지
             // 않는 이유는 값의 출처가 두 벌이 되기 때문이다 — 한쪽만 에셋을 꽂으면
