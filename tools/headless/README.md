@@ -29,6 +29,19 @@
 게임 코드가 **실제로 부르는 것만**, Unity 와 **같은 값을 내도록** 넣는다.
 여기서 값이 갈라지면 산출 전체가 조용히 틀린다.
 
+## ⚠ 이 기기에는 .NET SDK 가 설치돼 있지 않다 (2026-08-07 확인)
+
+`C:\Program Files\dotnet` 에는 **런타임 8.0.22 뿐**이고 `dotnet build` 가
+「No .NET SDKs were found」로 죽는다. 설치할 필요 없다 — **Unity 가 SDK 를 번들로 들고 있다.**
+
+```bash
+DOTNET="B:/Unity/6000.5.5f1/Editor/Data/DotNetSdk/dotnet.exe"   # SDK 8.0.318
+"$DOTNET" build -c Release
+```
+
+`PATH` 앞에 붙이거나 `DOTNET_ROOT` 를 세우는 것으로는 **안 된다** — 머서가
+`C:\Program Files\dotnet` 를 먼저 잡는다. **절대 경로로 부른다.**
+
 ## 쓰는 법
 
 ```bash
@@ -109,3 +122,21 @@ winget install Microsoft.DotNet.SDK.8
 이 폴더는 `Assets/` **밖**에 있다. 유니티는 여기를 컴파일하지 않으므로 대역이
 게임 빌드에 섞이지 않는다. `Assets/` 아래로 옮기면 `UnityEngine.Mathf` 가 두 번
 정의되어 프로젝트 전체가 컴파일되지 않는다.
+
+### 2026-08-07 추가된 모드
+
+```bash
+dotnet run -c Release -- sweepnoload 20000            # 적재 없는 옛 기준선
+dotnet run -c Release -- sweepw  8000 out/w.md 85     # 허용 중량 후보
+dotnet run -c Release -- sweeps  8000 out/s.md 0.25   # 정산율 후보 (출하 추정치로)
+dotnet run -c Release -- solve    2000 out/c.md       # 요구 전력 곡선 역산 (평균)
+dotnet run -c Release -- solvemed 2000 out/c.md 1.6   # 중앙값 + 목표 스핀 배율
+```
+
+`sweepnoload` 가 있는 이유는 `docs/runtime/HEADLESS_TEST_GAP.md` 에 있다 —
+2026-08-07 이전의 스윕은 **적재를 하지 않았고** `FUN_CRITERIA` 의 모든 대역이
+그 상태에서 정해졌다. 옛 값을 다시 뽑을 수 없으면 「대역이 왜 움직였나」를 판정할 수 없다.
+
+`solvemed` 가 평균이 아니라 중앙값을 쓰는 이유도 같은 문서에 있다 —
+적재를 실으면 산출 분포가 두꺼워져(8층 평균이 표본에 따라 2251→2990→3424)
+평균으로 역산한 곡선은 **완주율 8.0%** 를 낸다.
