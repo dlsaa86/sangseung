@@ -32,37 +32,43 @@ namespace Ascend.Headless
     /// </summary>
     internal static class ContractProbe
     {
-        private static bool DriveOne(int seed, int targetFloor, int choice,
-                                     Func<Ascend.Prototype.Build.BuildItem, bool> wants)
+        /// <summary>
+        /// 지정한 품목을 층 제시와 무관하게 태운다.
+        ///
+        /// ⚠ **측정할 층에서 태운다. 1층에서 태우면 사라진다.**
+        /// `RunSession` 은 허용 중량을 넘으면 무거운 것부터 **투하한다**(jettison).
+        /// 1층에서 부품을 강제로 실으면 그 자리에서 버려져, 7층에 도달했을 때
+        /// 적재가 비어 있다 — 실제로 그렇게 재고 있었고 「전부 하차했다」로 찍혔다.
+        /// </summary>
+        private static bool Board(RunSession run, string[] ids)
+        {
+            if (ids == null || ids.Length == 0) return true;
+            for (int i = 0; i < ids.Length; i++)
+            {
+                Ascend.Prototype.Build.BuildItem item = Ascend.Prototype.Build.BuildCatalog.ById(ids[i]);
+                if (item == null || !run.Loadout.Add(item)) return false;
+            }
+            return true;
+        }
+
+        private static bool DriveOne(int seed, int targetFloor, int choice, string[] ids)
         {
             var run = new RunSession(seed, 0f, 0f, FloorSession.DefaultAnteRatio,
                                      FloorSession.DefaultAnteEscalation, new TenFloorSource());
             int guard = 0;
+            bool boarded = ids == null || ids.Length == 0;
 
             while (!run.IsComplete && !run.IsFailed && guard++ < 200)
             {
                 FloorSession f = run.Current;
                 if (f == null) break;
 
-                if (f.Phase == FloorPhase.Boarding)
+                if (!boarded && f.Plan.Floor == targetFloor)
                 {
-                    if (wants != null)
-                    {
-                        bool took = true;
-                        while (took)
-                        {
-                            took = false;
-                            for (int i = 0; i < f.BuildOffers.Count; i++)
-                            {
-                                if (!wants(f.BuildOffers[i])) continue;
-                                if (!run.TakeBuildOffer(i)) continue;
-                                took = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!run.FinishBoarding()) break;
+                    if (!Board(run, ids)) return false;
+                    boarded = true;
                 }
+                if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
 
                 if (f.Phase == FloorPhase.ContractSelection)
                 {
@@ -83,12 +89,52 @@ namespace Ascend.Headless
             return run.IsComplete;
         }
 
-        private static double Measure(int seeds, int floor, int choice,
-                                      Func<Ascend.Prototype.Build.BuildItem, bool> wants = null)
+        /// <summary>
+        /// 🔴 **그 층에 실제로 무엇이 타고 있었는가.**
+        ///
+        /// 이 열이 없어서 하루를 태웠다. 「흡수체 빌드」라고 이름 붙인 줄이 7층에서
+        /// **44%는 빈 적재**였다 — 흡수체 축의 핵심 품목 계측 기사는 `DestinationFloor = 5`
+        /// 라 측정 층 전에 내리고, 남는 잔류 감쇠기는 제시에 안 뜨는 시드가 많았다.
+        /// 빈 적재끼리 비교하면 「빌드에 따라 답이 바뀌는가」의 답은 언제나 「안 바뀐다」다.
+        /// 빌드가 없었으니까.
+        ///
+        /// 지금은 <see cref="Board"/> 로 강제 탑승시키므로 이 열은 **하차로 사라진 것**을
+        /// 잡는 감시자다. 측정이 무엇을 쟀는지 스스로 말하지 않으면, 0 이라는 결과가
+        /// 「효과가 없다」인지 「입력이 없었다」인지 구분되지 않는다.
+        /// </summary>
+        private static string AboardAt(int floor, string[] ids)
+        {
+            if (ids == null || ids.Length == 0) return "—";
+            var run = new RunSession(20000, 0f, 0f, FloorSession.DefaultAnteRatio,
+                                     FloorSession.DefaultAnteEscalation, new TenFloorSource());
+            int guard = 0;
+            while (!run.IsComplete && !run.IsFailed && guard++ < 200)
+            {
+                FloorSession f = run.Current;
+                if (f == null) break;
+                if (f.Plan.Floor == floor && !Board(run, ids)) return "**탑승 실패**";
+                if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
+                if (f.Plan.Floor == floor)
+                    return f.Loadout == null || f.Loadout.Count == 0
+                        ? "**없음 — 전부 하차했다**" : f.Loadout.DescribeShort();
+                if (f.Phase == FloorPhase.ContractSelection && !run.SelectContract(0)) break;
+                int spinGuard = 0;
+                while (f.Phase != FloorPhase.Resolved && spinGuard++ < 30)
+                {
+                    if (f.CanBank) { run.Bank(); break; }
+                    if (f.SpinsRemaining <= 0) { run.ForceResolve(); break; }
+                    run.Spin();
+                }
+                if (f.Phase != FloorPhase.Resolved) break;
+            }
+            return "**그 층에 닿지 못했다**";
+        }
+
+        private static double Measure(int seeds, int floor, int choice, string[] ids = null)
         {
             int done = 0;
             for (int s = 0; s < seeds; s++)
-                if (DriveOne(20000 + s, floor, choice, wants)) done++;
+                if (DriveOne(20000 + s, floor, choice, ids)) done++;
             return 100.0 * done / seeds;
         }
 
@@ -108,11 +154,40 @@ namespace Ascend.Headless
         private static void AppendBuildConditioned(StringBuilder sb, int seeds,
             IFloorPlanSource source, int[] floors)
         {
-            var builds = new (string Name, Func<Ascend.Prototype.Build.BuildItem, bool> Wants)[]
+            // 🔴 **제시에 맡기지 않는다** (2026-08-06).
+            //
+            // 예전 판본은 「그 품목이 제시에 뜨면 집는」 플레이어였다. 그래서 7층에서
+            // 흡수체 빌드의 **44%가 빈 적재**였고(위 열이 그걸 찍는다), 빈 적재끼리
+            // 비교하니 계약 계수를 0 → 0.6 으로 올려도 완주율이 20.17% 에 **못 박혀**
+            // 있었다. 효과가 없었던 게 아니라 **입력이 없었다.**
+            //
+            // 지금은 층 시작에 직접 태운다. 「빌드를 태우면」이라는 열 이름이
+            // 실제로 태운다는 뜻이 되어야 한다.
+            //
+            // ⚠ **지속되는 품목만 고른다.** 계측 기사(`DestinationFloor = 5`)처럼
+            //    측정 층 전에 내리는 승객은 태워도 그 층에는 없다.
+            var builds = new (string Name, string[] Ids)[]
             {
-                ("적재 없음", null),
-                ("흡수체 빌드", b => b.Id == "PSG_SURVEYOR" || b.Id == "PRT_RESIDUAL_DAMPENER"),
-                ("증식체 빌드", b => b.Id == "PSG_ZEALOT" || b.Id == "PRT_OVERHARVEST_TRANSFORMER"),
+                ("적재 없음", Array.Empty<string>()),
+                // 각 축에서 **한 품목씩**. 둘 이상 태우면 무게가 커져 과적 대가가 섞이고,
+                // 그러면 「계약이 뒤집혔는가」가 아니라 「어느 빌드가 더 무거운가」를 재게 된다.
+                // 과수확 변압기는 두 저항을 **모두** 겨냥해 양쪽 계약에 같이 붙으므로 뺐다 —
+                // 대조군이 되려면 겨냥이 갈려 있어야 한다.
+                //
+                // 🔴 **대조군을 겨냥 개수로 맞춘다** (2026-08-07, PD-31).
+                //
+                // 직전 판본의 흡수체 빌드는 잔류 감쇠기였고 **흡수체 겨냥 효과가 1개**뿐이었다.
+                // 계약 시너지는 겨냥 효과의 **개수**를 세므로(`SynergyMatchCap = 3`),
+                // 겨냥 1개 vs 겨냥 3개(광신자)를 견주는 것은 계약을 잰 것이 아니라
+                // **비대칭한 카탈로그를 잰 것**이다. PD-29 의 여백이 잡음 안이었던 이유다.
+                //
+                // 응결기는 광신자와 같은 모양이다 — 겨냥 3개, 무게 20 vs 16, 둘 다 지속.
+                // 이제야 「같은 저울에 올린」 비교가 된다.
+                ("흡수체 빌드", new[] { "PRT_ABSORBER_CONDENSER" }),  // 무게 20 · 흡수체 겨냥 3
+                ("증식체 빌드", new[] { "PSG_ZEALOT" }),              // 무게 16 · 증식체 겨냥 3
+                // 옛 대조군을 남긴다. 「바꿔서 좋아진 것」과 「원래 그랬던 것」이
+                // 같은 표에 있어야 다음 세션이 되돌릴지 판단할 수 있다.
+                ("흡수체 빌드(감쇠기)", new[] { "PRT_RESIDUAL_DAMPENER" }), // 무게 18 · 흡수체 겨냥 1
             };
 
             sb.AppendLine();
@@ -121,10 +196,15 @@ namespace Ascend.Headless
             sb.AppendLine("계약이 **선택**이려면 빌드에 따라 1등이 달라져야 한다.");
             sb.AppendLine("어느 빌드로도 같은 것이 1등이면 격차가 아무리 작아도 그건 정답이다.");
             sb.AppendLine();
-            sb.AppendLine("| 층 | 빌드 | 인덱스별 완주율 | 1등 |");
-            sb.AppendLine("|---:|---|---|---|");
+            sb.AppendLine("측정이 무엇을 쟀는지 스스로 말하게 한다 — **그 층에 실제로 타고 있던 것**을");
+            sb.AppendLine("함께 찍는다. 이름만 「흡수체 빌드」이고 판은 비어 있으면 답은 언제나 안 바뀐다.");
+            sb.AppendLine();
+            sb.AppendLine("| 층 | 빌드 | 그 층에 타고 있던 것 | 인덱스별 완주율 | 1등 | 2등과의 격차 |");
+            sb.AppendLine("|---:|---|---|---|---|---:|");
 
             int flipped = 0;
+            double widestFlipMargin = 0d;
+            int widestFlipFloor = 0;
             foreach (int floor in floors)
             {
                 FloorPlan plan = source.For(floor);
@@ -133,16 +213,26 @@ namespace Ascend.Headless
 
                 string firstWinner = null;
                 bool differs = false;
+                // 이 층에서 **뒤집은 쪽**이 얼마나 앞섰는가. 뒤집혔다는 사실보다
+                // 이 수가 중요하다 — 단일 셀 잡음(σ≈0.76%p)보다 작으면 「뒤집혔다」는
+                // 다음 시드 블록에서 사라진다 (PD-29 종결 노트가 정확히 그 상태였다).
+                double floorFlipMargin = 0d;
 
-                foreach ((string name, var wants) in builds)
+                foreach ((string name, string[] ids) in builds)
                 {
                     var rates = new double[choices.Length];
                     int best = 0;
                     for (int i = 0; i < choices.Length; i++)
                     {
-                        rates[i] = Measure(seeds, floor, i, wants);
+                        rates[i] = Measure(seeds, floor, i, ids);
                         if (rates[i] > rates[best]) best = i;
                     }
+
+                    // 1등이 2등을 얼마나 앞섰는가.
+                    double runnerUp = double.NegativeInfinity;
+                    for (int i = 0; i < choices.Length; i++)
+                        if (i != best && rates[i] > runnerUp) runnerUp = rates[i];
+                    double margin = rates[best] - runnerUp;
 
                     var cells = new List<string>(choices.Length);
                     for (int i = 0; i < choices.Length; i++)
@@ -150,16 +240,40 @@ namespace Ascend.Headless
 
                     string winner = ShortLabel(choices[best]);
                     if (firstWinner == null) firstWinner = winner;
-                    else if (winner != firstWinner) differs = true;
+                    else if (winner != firstWinner)
+                    {
+                        differs = true;
+                        if (margin > floorFlipMargin) floorFlipMargin = margin;
+                    }
 
-                    sb.AppendLine($"| {floor} | {name} | {string.Join(" · ", cells)} | **{winner}** |");
+                    sb.AppendLine($"| {floor} | {name} | {AboardAt(floor, ids)} " +
+                                  $"| {string.Join(" · ", cells)} | **{winner}** | {margin:+0.00;-0.00}%p |");
                 }
 
-                if (differs) flipped++;
+                if (differs)
+                {
+                    flipped++;
+                    if (floorFlipMargin > widestFlipMargin)
+                    {
+                        widestFlipMargin = floorFlipMargin;
+                        widestFlipFloor = floor;
+                    }
+                }
             }
 
             sb.AppendLine();
             sb.AppendLine($"- 빌드에 따라 **1등이 뒤집힌 층: {flipped}개 / {floors.Length}개**");
+            if (flipped > 0)
+            {
+                sb.AppendLine($"- 가장 넓게 뒤집힌 격차: **{widestFlipMargin:F2}%p** ({widestFlipFloor}층)");
+                sb.AppendLine();
+                sb.AppendLine(widestFlipMargin >= 1.5d
+                    ? "✅ **잡음 밖에서 뒤집힌다.** 단일 셀 σ≈0.76%p 의 2배를 넘는다 — "
+                      + "다음 시드 블록에서도 남을 격차다."
+                    : "⚠ **뒤집혔지만 여백이 얇다.** 단일 셀 σ≈0.76%p 안이라 "
+                      + "다음 시드 블록에서 사라질 수 있다. 「뒤집혔다」는 사실이고 "
+                      + "「튼튼하게 뒤집혔다」는 아직 아니다.");
+            }
             sb.AppendLine();
             sb.AppendLine(flipped > 0
                 ? "그 층들에서는 계약이 저울이다 — 무엇을 태웠는가가 답을 바꾼다."

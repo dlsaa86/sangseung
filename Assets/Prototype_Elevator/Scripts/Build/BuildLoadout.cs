@@ -276,8 +276,8 @@ namespace Ascend.Prototype.Build
 
             // ── Notion 「적재·탑승·빌드 시스템」에서 동결한 2종 ──
             // 저장소 문서에 없던 설계라 `NotionSyncReport.md` 절차대로 옮겼다.
-            // 나머지 2종(연쇄 코일 = 캐스케이드 칸 1개 추가 재추첨, 검침원 = 잔류 1개 무효화)은
-            // `SpinEngine` 자체를 고쳐야 해서 이번 범위에 넣지 않았다 — 같은 보고서에 기록.
+            // 나머지 2종(연쇄 코일 · 검침원)은 `SpinEngine` 수정이 필요해 미뤄져 있었고,
+            // **2026-08-06 PD-30 결정으로 구현했다** — 아래 「판정 규칙 층위」 절에 있다.
             new BuildItem
             {
                 Id = "PSG_SURVEYOR_LINE", Label = "측량사", Kind = BuildItemKind.Passenger,
@@ -394,6 +394,98 @@ namespace Ascend.Prototype.Build
                 Effects = new[]
                 {
                     BuildEffect.Of(BuildEffectKind.MultiplePatterns, 1f),
+                },
+            },
+
+            // ── 판정 규칙 층위 (PD-30, 2026-08-06) ────────────────────────────
+            //
+            // 개편 전 실측: 사선 결속기가 전체 이득의 **74%**. 대가를 −0.6/−1.2/−1.8 로
+            // 세 번 재 봐도 1등 기여만 선형으로 내려가고 **2등은 3.20%p 에서 한 자리도
+            // 안 움직였다** — 깎아서 풀리는 문제가 아니다.
+            //
+            // 진짜 원인은 `DiagonalCountsAsConnected` 가 밸런스 값이 아니라 **판정 규칙**
+            // 이라는 것이다. 다른 품목은 전부 배수·확률을 미는데 이것만 「판이 무엇을
+            // 연결로 세는가」를 바꾼다. 노션 §3.2 가 요구하는 층위이므로 강한 것이
+            // 잘못은 아니고 — **그 층위의 품목이 하나뿐인 것**이 문제였다.
+            //
+            // 그래서 1등을 다시 깎지 않고 같은 층위를 둘 늘린다. 노션이 동결해 둔 2종이다.
+            new BuildItem
+            {
+                // 연쇄 코일의 조건이 `DiagonalConnects` 가 **아닌** 것이 핵심이다.
+                // 그 조건으로 묶으면 시너지가 또 사선 결속기를 경유해 1등 지분이 커진다.
+                // `CascadeAmplified` 는 연쇄 조속기가 켜므로, 이 짝은 **사선 결속기를
+                // 지나지 않는 첫 연쇄 시너지**다.
+                Id = "PRT_CASCADE_COIL", Label = "연쇄 코일", Kind = BuildItemKind.Part,
+                Axis = BuildAxis.Cascade,
+                Description = "연쇄가 이어질 때 칸 하나를 더 뒤집는다. 판이 한 번 더 무너질 기회를 산다. " +
+                              "연쇄 배수가 이미 가팔라져 있으면 그 한 칸이 길이로 바뀐다.",
+                Weight = 20f,
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.ExtraCascadeReroll, 1f),
+                    BuildEffect.Of(BuildEffectKind.ExtraCascadeReroll, 1f)
+                               .When(BuildEffectCondition.CascadeAmplified),
+                },
+            },
+            new BuildItem
+            {
+                // 잔류를 **판에서** 지우지 않고 장부에서만 지운다 — 판에서 지우면 저항
+                // 밀도가 내려가고 이 게임은 저항 밀도를 보상하므로 완화가 약화가 된다
+                // (PD-29 §원인 ② 의 실측: 영혼 가중치를 깎았더니 완주율이 **올라갔다**).
+                Id = "PSG_METER_READER", Label = "검침원", Kind = BuildItemKind.Passenger,
+                Axis = BuildAxis.Residual,
+                Description = "남긴 저항 하나를 장부에서 지운다. 판은 그대로다. " +
+                              "대가가 이미 커져 있는 판에서는 지울 것이 하나 더 생긴다.",
+                Weight = 11f, DestinationFloor = 8, DisembarkReward = 50f,
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.ResidualForgive, 1f),
+                    BuildEffect.Of(BuildEffectKind.ResidualForgive, 1f)
+                               .When(BuildEffectCondition.ResidualAmplified),
+                },
+            },
+
+            // ── PD-31 (2026-08-07) — 계약 여백이 얇은 진짜 이유는 **카탈로그 비대칭**이었다 ──
+            //
+            // `ResistanceContract.SynergyMatchCap` 은 3이고, 계약은 「이 저항을 겨냥한
+            // 적재 효과」의 **개수**만큼 추가 이득을 받는다(`CountMatches`).
+            //
+            //   증식체 겨냥 : 광신자 혼자 3개(PatternBonus·Appearance·PurifyReward) → **상한을 채운다**
+            //   흡수체 겨냥 : 잔류 감쇠기 1개(PurifyReward) → **상한의 1/3**
+            //
+            // 그래서 「흡수체 빌드」로 흡수체 계약을 골라도 시너지가 1매치밖에 안 붙었고,
+            // PD-29 가 잡은 뒤집힌 격차 +0.23/+0.40/+0.57%p(σ≈0.76%p, **잡음 안**)가
+            // 정확히 그 차이다. 계수를 올려 메울 문제가 아니다 — 세는 대상이 없었다.
+            //
+            // 그래서 **광신자와 같은 모양**을 흡수체 축에 둔다. 셋을 맞춘 것이 핵심이다.
+            //   ① 겨냥 효과 3개 → 흡수체 계약도 상한에 닿을 수 있다
+            //   ② **부품**이라 하차하지 않는다 → PD-31 이 요구한 「7층 이후까지 남는」
+            //      (계측 기사는 5층, 검침원은 8층에 내린다. 지금까지 남는 것은 감쇠기뿐이었다)
+            //   ③ 조건을 `ResidualMitigated` 로 둬 **잔류 감쇠기와 짝**이 된다 —
+            //      광신자↔과수확 변압기(`ResidualAmplified`)의 흡수체 쪽 대칭이다
+            //
+            // **대가는 지어내지 않았다.** 흡수체는 이 게임에서 유일하게 잔류에 실제
+            // 차감이 걸린 저항이고(`SpinRuleSet.AbsorberResidualPowerLoss = 8`),
+            // 등장을 올리면 그 차감의 노출이 함께 오른다. PD-29 §원인 ② 가 「저항 밀도를
+            // 올리는 것은 거의 항상 이득」이라고 실측한 바로 그 규칙의 **유일한 예외**가
+            // 흡수체다 — 증식체에 같은 것을 붙였을 때 완주율이 **올라갔던** 이유이기도 하다.
+            // 그러니 이 품목은 「밀도를 사고 위험을 판다」가 값으로 성립하는 유일한 자리다.
+            //
+            // 되돌리는 법: 이 원소 하나를 지운다. 다른 곳은 한 자리도 안 바뀌었다.
+            new BuildItem
+            {
+                Id = "PRT_ABSORBER_CONDENSER", Label = "응결기", Kind = BuildItemKind.Part,
+                Axis = BuildAxis.Residual,
+                Description = "흡수체를 더 자주 불러들이고 그 정화 보상을 끌어올린다. " +
+                              "정화하지 못한 흡수체는 승강로에 그대로 남는다. " +
+                              "남긴 대가가 이미 눌려 있다면 그 밀도가 패턴으로 바뀐다.",
+                Weight = 20f,
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.Appearance,   SymbolKind.Absorber, 1.25f),
+                    BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Absorber, 1.35f),
+                    BuildEffect.Of(BuildEffectKind.PatternBonus, SymbolKind.Absorber, 0.5f)
+                               .When(BuildEffectCondition.ResidualMitigated),
                 },
             },
         };
