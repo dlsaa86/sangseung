@@ -59,10 +59,10 @@ namespace Ascend.Prototype.Data.Profiles
     {
         [Header("정산 (T-05 임시 기본값)")]
         [Tooltip("남은 스핀 1회당 요구 전력의 몇 배를 정산하는가. T-05 기본값 0.05 (=5%).")]
-        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.15f;
+        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.25f;
 
         [Tooltip("층당 정산 상한. 요구 전력의 몇 배인가. T-05 기본값 0.20 (=20%).")]
-        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 0.60f;
+        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 1.00f;
 
         [Tooltip("정산 전력을 돈으로 바꾸는 비율. 1 이면 전력 1 = 돈 1.")]
         [SerializeField, Min(0f)] private float _moneyPerPower = 1f;
@@ -73,7 +73,7 @@ namespace Ascend.Prototype.Data.Profiles
 
         /// <summary>코드 프리셋. 에셋이 배선되지 않아도 규칙이 사라지지 않는다.</summary>
         public static RemainingSpinSettlementSnapshot DefaultSnapshot =>
-            new RemainingSpinSettlementSnapshot(0.15f, 0.60f, 1f, "코드 프리셋");
+            new RemainingSpinSettlementSnapshot(0.25f, 1.00f, 1f, "코드 프리셋");
 
         public RemainingSpinSettlementSnapshot Snapshot =>
             new RemainingSpinSettlementSnapshot(_perSpinRatio, _floorCapRatio, _moneyPerPower, name);

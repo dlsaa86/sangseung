@@ -147,6 +147,29 @@ namespace Ascend.Prototype.EditorTools
         private static float[] _requiredOverride;
         private static RemainingSpinSettlementSnapshot? _settlementOverride;
 
+        /// <summary>
+        /// 허용 중량 후보를 갈아 끼우는 자리 (2026-08-07).
+        ///
+        /// 2026-08-07 실측: 「매 층 최대 적재」정책에서도 무게/허용 비율이 평균
+        /// **0.518**, 과적은 층의 **8.35%** 에서만 발생한다. 즉 무게는 이 게임에서
+        /// **구속하지 않는 축**이고, 짐꾼(허용 +30)의 기여가 **−0.60%p** 인 것이
+        /// 같은 사실의 다른 얼굴이다 — 늘릴 이유가 없는 것을 늘리는 품목이다.
+        ///
+        /// 그래서 값을 손으로 고르지 않고 **후보를 실제로 돌려서** 고른다.
+        /// <c>null</c> 이면 프로파일 기본값이라 옛 판정과 비트 단위로 같다.
+        /// </summary>
+        public static WeightSnapshot? WeightOverride;
+
+        /// <summary>
+        /// 정산율 후보를 갈아 끼우는 자리 (2026-08-07).
+        ///
+        /// `Solve` 안의 정산율 표는 **그 해찾기가 쓰는 추정치**(중앙값)로 잰다.
+        /// 출하 설정은 평균이라 같은 값에서 과수확 선택률이 4.1% 대 78.9% 로 갈린다.
+        /// 그래서 출하 설정 그대로 훑을 수 있는 입구를 따로 둔다.
+        /// </summary>
+        public static void SetSettlement(float perSpin, float cap) =>
+            _settlementOverride = new RemainingSpinSettlementSnapshot(perSpin, cap, 1f, "후보");
+
         private static Data.Profiles.FloorCurriculumSnapshot CurriculumSnapshot()
             => _requiredOverride == null
                 ? Data.Profiles.FloorCurriculumProfile.DefaultSnapshot
@@ -177,6 +200,27 @@ namespace Ascend.Prototype.EditorTools
         /// 「확정할 수 있는데 스핀이 남았다」는 국면의 빈도로 나온다(§3 지표).
         private static readonly float[] TargetSpins =
             { 0f, 1.7f, 1.8f, 1.9f, 1.3f, 1.9f, 1.9f, 1.8f, 1.75f, 1.75f, 2.2f };
+
+        /// <summary>
+        /// 🔴 목표 스핀 배율 (2026-08-07).
+        ///
+        /// 위 배열이 1.7~2.2 로 **낮은** 이유는 바로 위 주석에 있다 — 상한이 5 스핀인데
+        /// 평균 3.2 를 목표로 하면 꼬리가 5 를 넘어 **뒤 층을 아무도 못 본다.**
+        /// 그 판단은 옳았지만 **적재 없는 게임에서 잰 분산**에 근거한다.
+        ///
+        /// 적재를 실으면 커버리지에 여유가 크게 생긴다 — 10층 방문률이 요구 50% 에
+        /// 대해 **81%** 다. 즉 「꼬리가 5 를 넘는다」는 제약이 예전만큼 세지 않다.
+        /// 그래서 목표를 다시 올릴 수 있고, 올려야 한다 — 중앙값 역산만으로는
+        /// 중·후반 클리어율이 97.3 / 94.6% 로 **여전히 대역 위**다.
+        ///
+        /// 배열을 직접 고치지 않고 배율로 두는 이유: 층별 비율(4층만 낮은 것 등)은
+        /// 근거가 따로 있고 그것을 지우면 안 된다. 배율은 **모양을 유지한 채** 수준만 민다.
+        /// `1f` 면 옛 판정과 비트 단위로 같다.
+        /// </summary>
+        public static float TargetSpinScale = 1f;
+
+        private static float TargetSpinFor(int floor) =>
+            Mathf.Min(TargetSpins[floor] * TargetSpinScale, PrototypeCurriculum.For(floor).Spins - 0.5f);
         //                              ↑ 4층만 낮다 — 이유는 아래.
         //
         // ## 4층이 예외인 이유 — 교습 층은 **약한 쪽**에 맞춰야 한다
@@ -208,7 +252,7 @@ namespace Ascend.Prototype.EditorTools
             log.AppendLine();
             log.AppendLine("목표 소요 스핀: " + string.Join(" / ",
                 System.Array.ConvertAll(new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 },
-                    f => $"{f}층 {TargetSpins[f]:F1}")));
+                    f => $"{f}층 {TargetSpinFor(f):F1}")));
             log.AppendLine();
 
             float[] required = null;
@@ -220,7 +264,7 @@ namespace Ascend.Prototype.EditorTools
                 var next = new float[FloorCount];
                 for (int f = 1; f <= FloorCount; f++)
                     next[f - 1] = meanNet[f] > 0.01f
-                        ? Mathf.Round(TargetSpins[f] * meanNet[f] / 5f) * 5f
+                        ? Mathf.Round(TargetSpinFor(f) * meanNet[f] / 5f) * 5f
                         : (required != null ? required[f - 1] : 350f);
 
                 float drift = 0f;
@@ -233,7 +277,7 @@ namespace Ascend.Prototype.EditorTools
                 log.AppendLine("| 층 | 평균 순전력 | 목표 스핀 | 권장 요구 전력 |");
                 log.AppendLine("|---|---|---|---|");
                 for (int f = 1; f <= FloorCount; f++)
-                    log.AppendLine($"| {f} | {meanNet[f]:F1} | {TargetSpins[f]:F1} | **{next[f - 1]:F0}** |");
+                    log.AppendLine($"| {f} | {meanNet[f]:F1} | {TargetSpinFor(f):F1} | **{next[f - 1]:F0}** |");
                 log.AppendLine();
 
                 required = next;
@@ -302,7 +346,12 @@ namespace Ascend.Prototype.EditorTools
             _requiredOverride = null;
             _settlementOverride = null;
 
-            string full = Path.Combine(Directory.GetCurrentDirectory(), SolveReportPath);
+            // ⚠ `GetCurrentDirectory()` 기준이라 **에디터에서만** 프로젝트 루트를 가리킨다.
+            //    헤드리스 러너는 `tools/headless` 에서 도므로 그대로 두면
+            //    `tools/headless/docs/runtime/` 에 쓴다 (2026-08-07 실제로 그랬다 —
+            //    저장소 문서가 안 바뀌어서 옛 파일을 새 산출로 읽을 뻔했다).
+            //    러너는 `SolveReportOverride` 로 `out/` 을 지정한다.
+            string full = SolveReportOverride ?? Path.Combine(Directory.GetCurrentDirectory(), SolveReportPath);
             Directory.CreateDirectory(Path.GetDirectoryName(full));
             File.WriteAllText(full, log.ToString());
             Debug.Log("[상승] 곡선 해찾기 완료 → " + SolveReportPath
@@ -311,6 +360,9 @@ namespace Ascend.Prototype.EditorTools
         }
 
         public const string SolveReportPath = "docs/runtime/BALANCE_SOLVE.md";
+
+        /// <summary>산출 경로를 갈아 끼운다. 헤드리스 러너가 `out/` 을 넣는다.</summary>
+        public static string SolveReportOverride;
         private const int FloorCount = 10;
 
         [MenuItem("Ascend/Run Balance Sweep")]
@@ -380,10 +432,38 @@ namespace Ascend.Prototype.EditorTools
         /// 층마다 「스핀 하나가 평균 몇 전력을 주는가」를 잰다.
         /// 전 스핀을 소진하는 정책으로 돌려야 잔류 저항이 쌓인 후반 스핀까지 표본에 들어온다.
         /// </summary>
+        /// <summary>
+        /// 🔴 **중심통계를 중앙값으로 바꾼다** (2026-08-07).
+        ///
+        /// 요구 전력은 `TargetSpins × 산출` 로 역산된다. 그 식은 산출 분포가
+        /// 얇다는 것을 전제하는데, **적재를 실은 실제 게임에서는 두껍다.**
+        /// 8층 평균 순전력이 표본에 따라 2251 → 2990 → 3424 로 움직였다 —
+        /// 캐스케이드가 곱셈으로 복리가 되므로 소수의 런이 평균을 끌고 간다.
+        ///
+        /// 그 평균으로 역산한 곡선을 실제로 재 봤다 (`docs/runtime/BALANCE_SOLVE.md`).
+        ///
+        ///   완주율 **8.0%** · 10층 방문률 **10.7%** · 세 구간 전부 「너무 어렵다」
+        ///
+        /// 즉 평균을 맞추면 **전형적인 런이 전멸하고 꼬리만 통과한다.**
+        /// `FUN_CRITERIA` §1 이 1차 기준으로 못박은 「모든 층 방문률 ≥ 50%」가
+        /// 정면으로 깨진다.
+        ///
+        /// 중앙값은 그 꼬리에 흔들리지 않는다. 「절반의 런이 이만큼 낸다」는
+        /// 진술이라 `TargetSpins`(= 목표 소요 스핀)의 의미와도 맞는다 —
+        /// 목표는 **전형적인 플레이어**가 몇 스핀에 넘느냐이지 평균이 아니다.
+        ///
+        /// `false` 면 옛 판정과 비트 단위로 같다 — 되돌리기가 값 하나다.
+        /// </summary>
+        public static bool CalibrateWithMedian;
+
         private static float[] Calibrate()
         {
             var sum = new double[11];
             var count = new int[11];
+            // 중앙값을 쓸 때만 표본을 든다. 안 쓸 때 메모리를 잡지 않는다.
+            var samples = CalibrateWithMedian ? new List<float>[11] : null;
+            if (samples != null)
+                for (int f = 0; f < 11; f++) samples[f] = new List<float>();
 
             for (int i = 0; i < CalibrationSeeds; i++)
             {
@@ -409,16 +489,32 @@ namespace Ascend.Prototype.EditorTools
                         SpinResolution r = run.Spin();
                         sum[floor] += r.NetPower;
                         count[floor]++;
+                        samples?[floor].Add(r.NetPower);
                     }
 
                     if (!Settle(run, f)) break;
                 }
             }
 
-            var mean = new float[11];
+            var central = new float[11];
             for (int f = 1; f <= 10; f++)
-                mean[f] = count[f] > 0 ? (float)(sum[f] / count[f]) : 0f;
-            return mean;
+            {
+                if (samples != null && samples[f].Count > 0)
+                {
+                    List<float> s = samples[f];
+                    s.Sort();
+                    // 짝수 표본은 가운데 둘의 평균. 홀짝으로 값이 튀면 표본을
+                    // 하나 늘렸을 때 곡선이 흔들리고, 그러면 재현이 안 된다.
+                    central[f] = s.Count % 2 == 1
+                        ? s[s.Count / 2]
+                        : (s[s.Count / 2 - 1] + s[s.Count / 2]) * 0.5f;
+                }
+                else
+                {
+                    central[f] = count[f] > 0 ? (float)(sum[f] / count[f]) : 0f;
+                }
+            }
+            return central;
         }
 
         // ────────────────────────────────────────────────────────────── 스윕
@@ -611,7 +707,7 @@ namespace Ascend.Prototype.EditorTools
                 OverharvestProfile.DefaultMaxExtraSpins);
 
             return new RunSession(seed, 0f, 0f, overharvest,
-                WeightProfile.DefaultSnapshot, SpinBalanceProfile.DefaultSnapshot,
+                WeightOverride ?? WeightProfile.DefaultSnapshot, SpinBalanceProfile.DefaultSnapshot,
                 _settlementOverride ?? RemainingSpinSettlementProfile.DefaultSnapshot,
                 new TenFloorSource(CurriculumSnapshot()));
         }

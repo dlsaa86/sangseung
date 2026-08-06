@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.EditorTools;
 
 namespace Ascend.Headless
@@ -58,6 +59,35 @@ namespace Ascend.Headless
                         BalanceSweep.BoardBuilds = false;
                         goto case "sweep";
 
+                    // 허용 중량 후보를 실제로 돌려 본다 — `sweepw <시드수> <출력> <허용중량>`.
+                    // 값을 손으로 고르지 않는 것이 요점이다. 2026-08-07 실측에서
+                    // 무게는 구속하지 않는 축이었고(비율 평균 0.518 · 과적 8.35%),
+                    // 어디서 물리기 시작하는지는 재 보기 전에는 모른다.
+                    case "sweepw":
+                    {
+                        float allowed = args.Length > 3 && float.TryParse(
+                            args[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float a)
+                            ? a : WeightProfile.DefaultAllowedWeight;
+                        WeightSnapshot d = WeightProfile.DefaultSnapshot;
+                        BalanceSweep.WeightOverride = new WeightSnapshot(
+                            allowed, d.WeightPowerFactor, d.OverloadRequiredPowerMultiplier,
+                            d.ExcessCurvature, d.OverloadRampWidth, $"허용 {allowed:F0} 후보");
+                        Console.WriteLine($"[sweepw] 허용 중량 {allowed:F0} 으로 돈다");
+                        goto case "sweep";
+                    }
+
+                    // `sweeps <시드수> <출력> <회당비율>` — 정산율 후보를 출하 설정으로 훑는다.
+                    case "sweeps":
+                    {
+                        if (args.Length > 3 && float.TryParse(
+                                args[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float ps))
+                        {
+                            BalanceSweep.SetSettlement(ps, ps * 4f);
+                            Console.WriteLine($"[sweeps] 정산 회당 {ps:F2} · 상한 {ps * 4f:F2}");
+                        }
+                        goto case "sweep";
+                    }
+
                     case "sweep":
                         if (n > 0)
                         {
@@ -68,6 +98,29 @@ namespace Ascend.Headless
                         }
                         report = BalanceSweep.Measure();
                         break;
+
+                    // 요구 전력 곡선 해찾기. 2026-08-07 이전에는 **적재 없는 게임**의
+                    // 산출로 역산했다 — 그래서 빌드를 실은 실제 게임에서 8층이
+                    // 요구의 548%, 9층이 626% 를 한 스핀에 낸다. 이제 보정도 적재를 한다.
+                    // ⚠ `docs/runtime/BALANCE_SOLVE.md` 를 덮어쓴다 (이 툴의 원래 동작).
+                    // 중앙값 역산. 평균은 두꺼운 꼬리에 끌려가 「전형적인 런」을 못 낸다 —
+                    // 평균 곡선의 실측이 완주율 8.0% · 10층 방문률 10.7% 였다.
+                    // `solvemed <시드수> <출력> <목표스핀배율>`
+                    case "solvemed":
+                        BalanceSweep.CalibrateWithMedian = true;
+                        if (args.Length > 3 && float.TryParse(
+                                args[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float ts))
+                        {
+                            BalanceSweep.TargetSpinScale = ts;
+                            Console.WriteLine($"[solvemed] 목표 스핀 배율 {ts:F2}");
+                        }
+                        goto case "solve";
+
+                    case "solve":
+                        if (n > 0) BalanceSweep.CalibrationSeeds = n;
+                        BalanceSweep.SolveReportOverride = Path.GetFullPath(outPath);
+                        BalanceSweep.Solve();
+                        return Finish(sw, mode, n, outPath);
 
                     case "coverage":
                         if (n > 0) CurriculumCoverageProbe.SeedCount = n;
