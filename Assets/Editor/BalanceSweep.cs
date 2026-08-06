@@ -40,9 +40,90 @@ namespace Ascend.Prototype.EditorTools
     {
         public const string ReportPath = "docs/runtime/BALANCE_REPORT.md";
 
-        private const int SeedCount = 300;
-        private const int FirstSeed = 20000;
-        private const int CalibrationSeeds = 120;
+        // ── 표본 수는 상수가 아니라 **호출자가 정한다** (2026-08-05) ──────────────
+        //
+        // 에디터 메뉴로 돌 때는 아래 기본값 그대로다. 값을 열어 둔 이유는 하나뿐이다 —
+        // 이 파일이 `UnityEditor` 를 어트리뷰트로만 쓰고 판정 계층이 순수 C# 이라
+        // **에디터 밖에서 같은 코드가 그대로 돈다.** 실측: 시드 300 · 정책 3종 전체
+        // 스윕이 헤드리스에서 **1.0초**다(에디터 왕복은 도메인 리로드만으로 수십 초).
+        // 그 차이가 만드는 것은 속도가 아니라 **표본 수**다. 300 시드에서 층별 클리어율의
+        // 95% 신뢰구간은 ±3%p 대인데, 이 게임이 판정하려는 대역폭(초반 97~100%,
+        // 후반 82~92%)이 그보다 좁은 구간을 포함한다 — 즉 300 은 대역 판정에 필요한
+        // 분해능이 없다. 30000 시드면 ±0.4%p 로 떨어진다.
+        //
+        // ⚠ 값을 바꾼 채로 두지 않는다. 보고서 머리글에 시드 범위가 찍히므로 서로 다른
+        // 표본 수의 보고서를 비교할 때는 그 줄을 먼저 본다.
+        public const int DefaultSeedCount = 300;
+        public const int DefaultFirstSeed = 20000;
+        public const int DefaultCalibrationSeeds = 120;
+
+        /// <summary>정책당 표본 시드 수. 에디터 기본값은 <see cref="DefaultSeedCount"/>.</summary>
+        public static int SeedCount = DefaultSeedCount;
+
+        /// <summary>첫 시드. 표본을 늘릴 때 앞 구간이 유지되도록 시작점은 고정한다.</summary>
+        public static int FirstSeed = DefaultFirstSeed;
+
+        /// <summary>보정 패스(평균 순전력 실측)의 표본 수.</summary>
+        public static int CalibrationSeeds = DefaultCalibrationSeeds;
+
+        /// <summary>에디터 기본값으로 되돌린다. 표본을 키운 러너가 끝나고 부른다.</summary>
+        public static void ResetSampling()
+        {
+            SeedCount = DefaultSeedCount;
+            FirstSeed = DefaultFirstSeed;
+            CalibrationSeeds = DefaultCalibrationSeeds;
+            BoardBuilds = true;
+        }
+
+        // ── 🔴 적재를 실제로 한다 (2026-08-07) ──────────────────────────────────
+        //
+        // 직전까지 이 스윕은 세 루프 전부에서 `FinishBoarding()` 만 불렀다. 그것은
+        // 「문을 닫고 넘어간다」이므로 **런 내내 아무것도 실리지 않았다.** 즉
+        // `FUN_CRITERIA` 의 모든 대역 — 클리어율·방문률·연쇄 비율·과수확 선택률 —
+        // 이 **빌드가 하나도 없는 게임**에 대한 판정이었다. 노션 `GAMEPLAY CORE`
+        // §3.2「좋은 선택이 결과를 바꾸는 체감」과 §6「빌드 시스템」전체가
+        // 이 게이트에서 **한 번도 측정되지 않았다.**
+        //
+        // 드러난 경위: 카탈로그에 품목을 하나 더한 뒤 `sweep 20000` 이 **비트 단위로
+        // 동일**했다. 15종이 14종일 때와 같은 값을 낼 방법은 하나뿐이다.
+        //
+        // 검사 쪽도 이미 같은 것을 가리키고 있었다 — 2026-08-06 자체 검증 실패 7건 중
+        // 하나가 「적재 무게가 다음 층으로 이어진다 — **런 내내 아무것도 실리지 않음**」.
+        //
+        // 고르는 규칙은 새로 쓰지 않는다. <see cref="Build.BuildLoadPolicy"/> 가 이미
+        // 정본이고 「하네스와 헤드리스 테스트가 **같은 것을** 쓴다」고 스스로 적어
+        // 뒀는데 측정 경로의 호출자가 **0곳**이었다. 이 저장소가 세 번째로 만난 같은
+        // 모양이다 (`MultiplePatterns` 를 켜는 품목 0개 · `OverharvestSnapshot` 호출자 0곳).
+        //
+        // `false` 로 두면 옛 판정과 비트 단위로 같다 — 되돌리기가 값 하나다.
+        public static bool BoardBuilds = true;
+
+        /// <summary>
+        /// 적재 단계를 <see cref="Build.BuildLoadPolicy"/> 로 통과한다.
+        /// 정책이 −1 을 주면(자리가 없거나 후보가 없으면) 그만 집고 문을 닫는다.
+        ///
+        /// 상한 8 은 무한 루프 방지용이다. 슬롯은 승객 4 + 부품 3 이므로 정상 경로는
+        /// 7 을 넘지 않는다 — 넘으면 `TakeBuildOffer` 가 자리를 안 줄이고 있다는 뜻이고,
+        /// 그건 조용히 도는 것보다 멈추는 편이 낫다.
+        /// </summary>
+        private static bool RunBoarding(RunSession run, FloorSession f)
+        {
+            if (f.Phase != FloorPhase.Boarding) return true;
+
+            if (BoardBuilds)
+            {
+                int guard = 0;
+                while (guard++ < 8)
+                {
+                    int pick = Build.BuildLoadPolicy.PickIndex(f.BuildOffers, f.Loadout);
+                    if (pick < 0) break;
+                    if (!run.TakeBuildOffer(pick)) break;
+                }
+            }
+
+            return run.FinishBoarding();
+        }
+
         private const int GuardLimit = 400;
 
         public enum Policy
@@ -314,7 +395,7 @@ namespace Ascend.Prototype.EditorTools
                     if (f == null) break;
                     int floor = Mathf.Clamp(f.Plan.Floor, 1, 10);
 
-                    if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
+                    if (f.Phase == FloorPhase.Boarding && !RunBoarding(run, f)) break;
                     if (f.Phase == FloorPhase.ContractSelection && !SelectEngagedContract(run, f)) break;
 
                     while (f.SpinsRemaining > 0)
@@ -385,7 +466,7 @@ namespace Ascend.Prototype.EditorTools
                     int floor = Mathf.Clamp(f.Plan.Floor, 1, 10);
                     if (floor != lastFloor) { s.Visits[floor]++; lastFloor = floor; }
 
-                    if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
+                    if (f.Phase == FloorPhase.Boarding && !RunBoarding(run, f)) break;
                     if (f.Phase == FloorPhase.ContractSelection && !SelectEngagedContract(run, f)) break;
 
                     bool choiceCounted = false;
@@ -831,7 +912,7 @@ namespace Ascend.Prototype.EditorTools
                     int floor = Mathf.Clamp(f.Plan.Floor, 1, 10);
                     if (floor != lastFloor) { s.Visits[floor]++; lastFloor = floor; }
 
-                    if (f.Phase == FloorPhase.Boarding && !run.FinishBoarding()) break;
+                    if (f.Phase == FloorPhase.Boarding && !RunBoarding(run, f)) break;
                     if (f.Phase == FloorPhase.ContractSelection)
                     {
                         // 없는 인덱스는 거부되므로 0번으로 접는다.

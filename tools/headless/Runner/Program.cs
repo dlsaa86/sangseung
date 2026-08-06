@@ -51,6 +51,13 @@ namespace Ascend.Headless
             {
                 switch (mode)
                 {
+                    // 옛 판정과의 대조군. 2026-08-07 이전의 스윕은 적재를 **하지 않았고**,
+                    // `FUN_CRITERIA` 의 모든 대역이 그 상태에서 정해졌다. 그 값이
+                    // 무엇이었는지 다시 뽑을 수 없으면 「대역이 왜 움직였나」를 판정할 수 없다.
+                    case "sweepnoload":
+                        BalanceSweep.BoardBuilds = false;
+                        goto case "sweep";
+
                     case "sweep":
                         if (n > 0)
                         {

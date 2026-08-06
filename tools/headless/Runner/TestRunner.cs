@@ -43,6 +43,26 @@ namespace Ascend.Headless
             ("시뮬레이터 일치 (SimParity)",   Prototype.Sim.Tests.SimulatorParityTests.RunAll),
         };
 
+        /// <summary>
+        /// ⚠ **여기서 돌지 않아 놓치는 것** (2026-08-07 확인).
+        ///
+        /// 2026-08-06 에디터 자체 검증이 607 PASS / **7 FAIL** 이었는데 이 러너는
+        /// 93 PASS / 0 FAIL 이다. 모순이 아니라 **겹치지 않는다** — 실패한 7건이
+        /// 전부 이 목록 밖 스위트다.
+        ///
+        ///   `Build.Tests.BuildTests` 5건 — `BuildLabelPlacementTests` 를 접어 넣어
+        ///     `TubeController`·`TextMeshPro` 를 잡는다
+        ///   `Data.Profiles.Tests.ProfileTests` 2건 — `Effects`·`Npc` 를 거쳐
+        ///     `ParticleSystem`·`RunSessionBehaviour` 까지 끌고 온다
+        ///
+        /// 둘 다 **판정 자체는 순수 로직**인데 파일 단위 의존 때문에 못 가져온다.
+        /// 대역을 넓혀 흉내 내지 않는다(README 규칙 ②). 대신 그 사실을 여기 적어 둔다 —
+        /// 「헤드리스가 통과했다」를 「전부 통과했다」로 읽으면 안 된다.
+        /// 경위와 분리 제안은 `docs/runtime/HEADLESS_TEST_GAP.md`.
+        /// </summary>
+        private const string UncoveredSuites =
+            "Build.Tests.BuildTests · Data.Profiles.Tests.ProfileTests";
+
         internal static int Run()
         {
             int totalPassed = 0;
@@ -85,6 +105,11 @@ namespace Ascend.Headless
             Console.WriteLine($"[tests] 합계 {totalPassed} PASS / {totalFailed} FAIL");
             if (failedSuites.Count > 0)
                 Console.WriteLine($"[tests] 실패 묶음: {string.Join(", ", failedSuites)}");
+            // 🔴 통과했을 때 이 줄이 가장 중요하다. 2026-08-06 에 에디터는 7 FAIL 인데
+            //    여기는 0 FAIL 이었고, 두 수가 겹치지 않는다는 사실을 아무 데도 안 찍었다.
+            //    「헤드리스 통과」를 「전부 통과」로 읽는 것을 출력이 직접 막는다.
+            Console.WriteLine($"[tests] ⚠ 여기서 안 도는 스위트: {UncoveredSuites} " +
+                              "— 에디터 자체 검증에서만 판정된다 (docs/runtime/HEADLESS_TEST_GAP.md)");
             Console.WriteLine($"shim: warnings={UnityEngine.Debug.WarningCount} " +
                               $"errors={UnityEngine.Debug.ErrorCount}");
 

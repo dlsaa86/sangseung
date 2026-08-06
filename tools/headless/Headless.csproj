@@ -55,6 +55,15 @@
     <Compile Include="$(Scripts)/Diagnostics/RequiredReferenceAttribute.cs" />
     <Compile Include="$(Scripts)/Run/Tests/RunTests.cs" />
     <Compile Include="$(Scripts)/Run/Tests/MercyHungerTests.cs" />
+    <!--
+      ⚠ `Data/Profiles/Tests/ProfileTests.cs` 는 여기 **없다** (2026-08-07 시도했다가 물렸다).
+      2026-08-06 자체 검증 실패 7건 중 2건이 그 스위트라 편입하려 했으나,
+      그 파일이 정적 함수 두 개를 대조하느라 `Effects.AmbientParticleDirector` 와
+      `Npc.PassengerReactionSet` 을 잡고, 그 둘이 `ParticleSystem`·`Material`·
+      **`RunSessionBehaviour`**(이 파일이 아래에서 의도적으로 제외한 것)까지 끌고 온다.
+      대역을 그만큼 넓히면 「흉내 낸 것을 잰다」가 된다 — README 규칙 ②.
+      그 2건은 에디터 자체 검증에서만 판정된다. 경위는 `docs/runtime/HEADLESS_TEST_GAP.md`.
+    -->
     <Compile Include="$(Scripts)/Spin/Tests/*.cs" />
     <Compile Include="$(Scripts)/Sim/Tests/*.cs" />
     <Compile Include="$(GameRoot)/Editor/BalanceSweep.cs" />
