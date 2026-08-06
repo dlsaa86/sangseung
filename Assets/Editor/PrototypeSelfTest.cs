@@ -108,6 +108,10 @@ public static class PrototypeSelfTest
         // 위험 판정의 호출 지점 (`D-1`). 커밋 게이트가 이걸 못 보면 「결정론을 고쳤다」가
         // 다시 검증되지 않은 주장이 된다 — 위 주석이 말한 「한쪽에만 넣으면」의 사례다.
         FoldInSuite("위험 판정 결정론", Ascend.Prototype.Run.Tests.RiskDeterminismTests.RunAll());
+        // 데모 적재는 **측정 도구**다. 이게 조용히 다른 것을 실으면 그 위에서 내린
+        // 「이 빌드는 재미없다」가 통째로 무효가 된다 — 도구가 틀리면 값이 아니라
+        // 결론이 썩는다. 그래서 게이트가 보는 쪽에 넣는다.
+        FoldInSuite("데모 적재", Ascend.Prototype.Demo.Tests.DemoLoadoutTests.RunAll());
 
         _log.AppendLine();
         _log.AppendLine($"결과: {_pass} PASS / {_fail} FAIL");
