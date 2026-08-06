@@ -535,6 +535,17 @@ namespace Ascend.Prototype.EditorTools
             public double TotalMoney;
 
             public int Spins, SpinsWithPurify, SpinsChain3Plus, SpinsChain5Plus, CascadeCapHits;
+
+            /// <summary>
+            /// **완전한 꽝** — 정화도 없고 순전력도 0 이하인 스핀 (노션 `GAMEPLAY CORE` §3.1).
+            ///
+            /// 그 절이 요구하는 것은 「정상 영혼은 항상 기본 진전을 제공한다」와
+            /// 「충분한 재료를 모았는데 **배치 운 때문에 완전한 꽝**이 되는 상황을 줄인다」다.
+            /// 노션이 명시적으로 요구하는 넷 중 유일하게 **측정이 없던 축**이라 붙였다
+            /// (2026-08-07). 영혼 포집망의 설계 주석도 이 값을 겨냥한다고 적어 두었는데
+            /// (「평균 상승이 아니라 완전한 꽝을 줄인다」) 그것을 확인할 수가 없었다.
+            /// </summary>
+            public int DudSpins;
             public int MaxChain;
 
             public readonly Dictionary<PowerBand, int> Bands = new Dictionary<PowerBand, int>();
@@ -624,6 +635,9 @@ namespace Ascend.Prototype.EditorTools
             if (chain >= 5) s.SpinsChain5Plus++;
             if (r.CascadeCapReached) s.CascadeCapHits++;
             if (r.PurifyPower > 0.01f) s.SpinsWithPurify++;
+            // 「완전한 꽝」 — 정화도 못 했고 순전력도 못 얻었다. 잔류 대가까지 물어
+            // 음수가 된 스핀도 꽝이다(플레이어에게는 「아무것도 안 되는데 손해까지」).
+            if (r.PurifyPower <= 0.01f && r.NetPower <= 0.01f) s.DudSpins++;
         }
 
         /// <summary>
@@ -900,6 +914,26 @@ namespace Ascend.Prototype.EditorTools
             sb.AppendLine($"| 연쇄 캡(20) 도달률 | < 1% | — | {cap:F2}% | {(cap < 1.0 ? "✅" : "❌")} |");
             sb.AppendLine($"| 5연쇄 이상 스핀 비율 | (참고) | — | {Pct(s.SpinsChain5Plus, s.Spins):F2}% | |");
             sb.AppendLine($"| 관측 최대 연쇄 | (참고) | {sf.MaxChain} | {s.MaxChain} | |");
+
+            // ── 완전한 꽝 (노션 `GAMEPLAY CORE` §3.1) ──────────────────────────
+            //
+            // 대역에 **숫자를 지어 넣지 않는다.** 노션이 준 것은 방향뿐이다 —
+            // 「정상 영혼은 항상 기본 진전을 제공한다」·「완전한 꽝이 되는 상황을 줄인다」.
+            // 그래서 목표를 「참고」로 두고 값만 낸다. 이 문서가 §1·§3 에서 두 번
+            // 저지른 「내가 고른 숫자를 문서에 있던 숫자라고 적는」 오류를 반복하지 않는다.
+            //
+            // 판정선을 세우려면 근거가 필요하고, 그 근거는 플레이테스트에서 온다
+            // (`FUN_CRITERIA` 「이 기준이 잡지 못하는 것」).
+            double dud = Pct(s.DudSpins, s.Spins), duds = Pct(sf.DudSpins, sf.Spins);
+            sb.AppendLine($"| **완전한 꽝 스핀 비율** | (참고 — 근거 없이 판정 안 함) " +
+                          $"| {duds:F2}% | **{dud:F2}%** | |");
+            sb.AppendLine();
+            sb.AppendLine("> **완전한 꽝** = 정화도 없고 순전력도 0 이하인 스핀. 노션 §3.1 이");
+            sb.AppendLine("> 「충분한 재료를 모았는데 배치 운 때문에 완전한 꽝이 되는 상황을 줄인다」를");
+            sb.AppendLine("> 요구하는데 그 축만 측정이 없었다 (2026-08-07 추가). 영혼 포집망의");
+            sb.AppendLine("> 설계 주석도 「평균 상승이 아니라 완전한 꽝을 줄인다」고 적어 두었지만");
+            sb.AppendLine("> 그것을 확인할 수단이 없었다. **목표 대역은 비워 둔다** — 근거가");
+            sb.AppendLine("> 플레이테스트에서 오기 전까지 숫자를 지어내지 않는다.");
             sb.AppendLine();
         }
 
