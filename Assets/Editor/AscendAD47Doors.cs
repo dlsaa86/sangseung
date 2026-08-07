@@ -62,11 +62,22 @@ namespace Ascend.CaptureHarness.EditorTools
             driverL.transform.SetParent(rig.transform, false);
             driverR.transform.SetParent(rig.transform, false);
 
+            // 문짝을 저작 닫힘 좌표로 먼저 되돌린다 — 이전 실행이 어중간한 자리에서
+            // 멈췄다면 그 자리를 「닫힘」으로 기억해 버린다.
+            leafL.position = new Vector3(-2.117f, 1.203f, -0.502f);
+            leafR.position = new Vector3(-2.117f, 1.203f,  0.502f);
+
             var adapterL = rig.AddComponent<DoorAxisAdapter>();
             var adapterR = rig.AddComponent<DoorAxisAdapter>();
             // 왼쪽 문은 −Z 로, 오른쪽 문은 +Z 로 물러난다 (닫힘 z ∓0.502 → 열림 ∓1.502)
-            adapterL.Configure(driverL.transform, leafL, Vector3.back,    1f, 1f);
-            adapterR.Configure(driverR.transform, leafR, Vector3.forward, 1f, 1f);
+            //
+            // ⚠ `Configure()` 로 필드를 직접 대입하면 안 된다. 2026-08-08 실측 —
+            // 직접 대입한 `_closedWorld` 가 저장 후 (0, 1.203, ∓0.502) 로 되돌아가
+            // 어댑터가 **문짝을 방 한가운데(x=0)로 끌어다 놓았다.** 참조 두 개는 살아남고
+            // 값 타입만 기본값으로 돌아가 「배선은 맞는데 문이 엉뚱한 데 있다」가 된다.
+            // `SerializedObject` + `SetDirty` 로 쓴다.
+            SetupAdapter(adapterL, driverL.transform, leafL, Vector3.back);
+            SetupAdapter(adapterR, driverR.transform, leafR, Vector3.forward);
             log.AppendLine("  AD47_DoorRig 생성 — 드라이버 2, 어댑터 2");
             log.AppendLine("  왼쪽 문 닫힘 " + leafL.position.ToString("F3") + " → −Z 로 1.000m");
             log.AppendLine("  오른쪽   닫힘 " + leafR.position.ToString("F3") + " → +Z 로 1.000m");
@@ -117,6 +128,23 @@ namespace Ascend.CaptureHarness.EditorTools
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
             Debug.Log(log.ToString());
+        }
+
+        /// <summary>
+        /// 어댑터 값을 <c>SerializedObject</c> 로 쓴다.
+        /// 직접 필드 대입은 새로 붙인 컴포넌트에서 직렬화가 보장되지 않는다.
+        /// </summary>
+        private static void SetupAdapter(DoorAxisAdapter a, Transform driver, Transform leaf, Vector3 openDir)
+        {
+            var so = new SerializedObject(a);
+            so.FindProperty("_driver").objectReferenceValue = driver;
+            so.FindProperty("_leaf").objectReferenceValue = leaf;
+            so.FindProperty("_closedWorld").vector3Value = leaf.position;
+            so.FindProperty("_openDirection").vector3Value = openDir;
+            so.FindProperty("_viewSlide").floatValue = 1f;
+            so.FindProperty("_travel").floatValue = 1f;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(a);
         }
 
         /// <summary>뷰가 하는 것과 같은 방식으로 드라이버를 민다 — 검증이 실제 경로를 통과하도록.</summary>

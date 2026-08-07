@@ -6649,7 +6649,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.DoorAxisAdapter
   _driver: {fileID: 1785387881}
   _leaf: {fileID: 1593092641}
-  _closedWorld: {x: 0.00000004388623, y: 1.203, z: 0.502}
+  _closedWorld: {x: -2.117, y: 1.203, z: 0.502}
   _openDirection: {x: 0, y: 0, z: 1}
   _viewSlide: 1
   _travel: 1
@@ -6667,7 +6667,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.DoorAxisAdapter
   _driver: {fileID: 2132479179}
   _leaf: {fileID: 1178837345}
-  _closedWorld: {x: -0.00000004388623, y: 1.203, z: -0.502}
+  _closedWorld: {x: -2.117, y: 1.203, z: -0.502}
   _openDirection: {x: 0, y: 0, z: -1}
   _viewSlide: 1
   _travel: 1
@@ -9600,7 +9600,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -6924440266522343045, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 2.117
+      objectReference: {fileID: 0}
+    - target: {fileID: -6924440266522343045, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.50200015
       objectReference: {fileID: 0}
     - target: {fileID: -3855152350316870689, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_IsActive
@@ -9616,7 +9620,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 603061064031486848, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 2.117
+      objectReference: {fileID: 0}
+    - target: {fileID: 603061064031486848, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.5019998
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_Name
@@ -9656,12 +9664,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1657104543}
-    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 421759530}
-    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1675738627}
     - targetCorrespondingSourceObject: {fileID: -5460973916807880919, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       insertIndex: -1
       addedObject: {fileID: 805546896}
@@ -16350,37 +16352,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 420799675}
   m_Mesh: {fileID: 4300000, guid: 21f1ccd9b6a46a84283fe62d330d3919, type: 2}
---- !u!1 &421759529
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 421759530}
-  m_Layer: 0
-  m_Name: DoorPivot_L
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &421759530
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 421759529}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0.7071067, z: -0, w: -0.7071068}
-  m_LocalPosition: {x: 2.117, y: 1.203, z: 0.502}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 237018043}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &421920640
 GameObject:
   m_ObjectHideFlags: 0
@@ -61157,37 +61128,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1674395982}
   m_Mesh: {fileID: 4300000, guid: 225b33512290de24ea267ae11052e103, type: 2}
---- !u!1 &1675738626
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1675738627}
-  m_Layer: 0
-  m_Name: DoorPivot_R
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1675738627
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1675738626}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0.7071067, z: -0, w: -0.7071068}
-  m_LocalPosition: {x: 2.117, y: 1.203, z: -0.502}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 237018043}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1676706544
 GameObject:
   m_ObjectHideFlags: 0
@@ -75823,7 +75763,7 @@ Transform:
   m_GameObject: {fileID: 2132479178}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
