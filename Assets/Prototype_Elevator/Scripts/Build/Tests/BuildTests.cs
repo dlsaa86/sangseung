@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
+using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.Run;
 using Ascend.Prototype.Spin;
 
@@ -448,20 +450,44 @@ namespace Ascend.Prototype.Build.Tests
             //   ② 어느 런도 정책이 손을 놓지 않는다 — 옛 방식은 아홉 런 전부에서
             //      51kg/100kg 에 그쳤고, 그 회귀를 잡는 것이 이 검사의 원래 목적이다
             int[] seeds = { 4242, 271828, 555, 12321, 777 };
-            int atMax = 0;
+            // ── 2026-08-06 개정 — 시드를 못 박지 않고 **찾는다** ─────────────────
+            //
+            // 위 다섯은 손으로 고른 것이고, `c415733`(적재 대가 볼록화·과적 계단화) 뒤에
+            // 시드 555 가 **3층에서 Crash** 해 3/6칸에 그쳤다. 그건 정책이 손을 놓은 것이
+            // 아니라 **런이 먼저 죽은 것**이다. 두 실패를 한 문장으로 보고하면 다음 사람이
+            // 정책을 고치러 가고, 정책에는 아무 문제가 없다.
+            //
+            // 그래서 둘을 갈라 센다.
+            //   ① 도달성 — 어느 런이든 6칸에 닿는가 (PRD §15.1 캡처의 전제)
+            //   ② 정책 — **살아남은 런 중에서** 칸을 크게 남긴 비율이 있는가
+            // 죽은 런은 ②에서 제외하고 **개수를 보고에 적는다** — 숨기지 않는다.
+            // 조기 사망률이 오르는 것은 밸런스 문제이고, 그건 이 검사가 아니라
+            // 커버리지 프로브가 판정할 일이다.
+            const int Scan = 40;
+            int atMax = 0, survived = 0, died = 0;
             var thin = new StringBuilder();
-            foreach (int seed in seeds)
+            for (int i = 0; i < Scan; i++)
             {
+                int seed = seeds[i % seeds.Length] + (i / seeds.Length) * 1000;
                 var r = DriveWithLoadPolicy(seed);
                 if (r.peakSlots >= BuildLoadout.MaxSlots) atMax++;
+
+                if (r.run.IsFailed) { died++; continue; }
+                survived++;
                 if (r.peakSlots < BuildLoadout.MaxSlots - 1)
                     thin.Append($"시드 {seed} {r.peakSlots}/{BuildLoadout.MaxSlots}칸 ({DescribeEnd(r.run)}) ");
             }
+
             if (atMax == 0)
-                return $"다섯 시드 중 어느 것도 {BuildLoadout.MaxSlots}칸을 채우지 못했다 — " +
-                       "최대 적재 상태가 도달 불가면 그 캡처를 만들 수 없다";
+                return $"{Scan} 시드 중 어느 것도 {BuildLoadout.MaxSlots}칸을 채우지 못했다 — " +
+                       "최대 적재 상태가 도달 불가면 그 캡처를 만들 수 없다 " +
+                       $"(완주 {survived} · 사고 {died})";
+            if (survived == 0)
+                return $"{Scan} 시드가 **전부 사고로 끝났다** — 정책을 판정할 표본이 없다. " +
+                       "이건 적재 정책이 아니라 밸런스 문제다";
             if (thin.Length > 0)
-                return $"정책이 칸을 크게 남긴 런이 있다 — {thin.ToString().Trim()}";
+                return $"살아남은 런 중 정책이 칸을 크게 남긴 것이 있다 (완주 {survived} · 사고 {died}) — " +
+                       thin.ToString().Trim();
             return null;
         }
 
@@ -470,16 +496,45 @@ namespace Ascend.Prototype.Build.Tests
             // 과적 경로가 **도달 가능**한지 묻는다. 도달 불가면 `UP-BUILD-11` 의
             // 과적 경고는 영영 검증되지 않는다 — 구현이 없어서가 아니라 상태에
             // 닿지 못해서다. 1337 은 씬 시드이기도 하다.
-            var over = DriveWithLoadPolicy(1337);
-            if (!over.overCapacity)
-                return $"시드 1337 이 최고 {over.peakWeight:F0}kg / 허용 {over.capAtPeak:F0}kg — " +
-                       $"과적에 닿지 못했다 ({DescribeEnd(over.run)})";
+            // ── 2026-08-06 개정 — 한 시드에 걸지 않는다 ─────────────────────────
+            //
+            // 직전 판본은 시드 1337 하나에 과적 도달을 걸었다. `c415733` 뒤에 그 런은
+            // **6층에서 Crash** 해 최고 88kg/허용 130kg 에 그쳤다. 그런데 이 검사가 묻는
+            // 것은 「1337 이 과적하는가」가 아니라 **「과적 상태에 닿을 수 있는가」**다 —
+            // 닿지 못하면 `UP-BUILD-11` 의 과적 경고가 영영 검증되지 않는다.
+            // 그래서 한 시드를 못 박는 대신 **찾는다.** 표본을 넓히는 것은 완화가 아니다:
+            // 하나도 못 찾으면 그때는 진짜로 도달 불가이고, 그 사실이 더 강하게 드러난다.
+            const int Scan = 60;
+            int reached = 0, died = 0;
+            float bestRatio = 0f;
+            int bestSeed = 0;
+            float bestWeight = 0f, bestCap = 0f;
+            int peakPassengersSeen = 0;
 
-            var full = DriveWithLoadPolicy(12321);
-            if (full.peakPassengers < BuildLoadPolicy.PassengerFloor)
-                return $"시드 12321 의 최대 동시 승객이 {full.peakPassengers}명 — " +
+            for (int seed = 1337; seed < 1337 + Scan; seed++)
+            {
+                var r = DriveWithLoadPolicy(seed);
+                if (r.run.IsFailed) died++;
+                if (r.peakPassengers > peakPassengersSeen) peakPassengersSeen = r.peakPassengers;
+                if (r.overCapacity) { reached++; continue; }
+
+                float ratio = r.capAtPeak > 0f ? r.peakWeight / r.capAtPeak : 0f;
+                if (ratio > bestRatio)
+                {
+                    bestRatio = ratio; bestSeed = seed;
+                    bestWeight = r.peakWeight; bestCap = r.capAtPeak;
+                }
+            }
+
+            if (reached == 0)
+                return $"{Scan} 시드 중 어느 것도 과적에 닿지 못했다 — 가장 가까운 것이 시드 " +
+                       $"{bestSeed} 의 {bestWeight:F0}kg / 허용 {bestCap:F0}kg ({bestRatio:P0}). " +
+                       $"사고로 끝난 런 {died}. 과적 경고를 검증할 수 있는 상태가 존재하지 않는다";
+
+            if (peakPassengersSeen < BuildLoadPolicy.PassengerFloor)
+                return $"{Scan} 시드의 최대 동시 승객이 {peakPassengersSeen}명 — " +
                        $"{BuildLoadPolicy.PassengerFloor}명 이상이어야 동시 반응 제한을 관측한다 " +
-                       $"({DescribeEnd(full.run)})";
+                       $"(사고로 끝난 런 {died})";
             return null;
         }
 
@@ -603,14 +658,50 @@ namespace Ascend.Prototype.Build.Tests
 
         // ── 무게와 과적 ──────────────────────────────────────────────────────
 
+        /// <summary>
+        /// 실은 무게가 요구 전력을 올리는가.
+        ///
+        /// ## 2026-08-06 개정 — 선형식과 특정 무게를 못 박지 않는다
+        ///
+        /// 직전 판본은 `기본 + 16 × 계수` 였다. 둘 다 깨졌다 —
+        /// `c415733` 이 대가를 **볼록**하게 바꿨고(선형식 무효), 같은 커밋이
+        /// 영혼 포집망을 20 → 16kg 으로 내렸다(품목 무게를 손으로 적는 방식 무효).
+        ///
+        /// 그래서 **카탈로그에서 실제 무게를 읽고**, 값이 아니라 성질을 건다.
+        /// 이 검사가 지켜야 하는 것은 「16 × 5 = 80」이 아니라
+        /// **「무게가 늘면 요구 전력이 늘고, 그 증가분이 판정식과 같은 곳에서 나온다」**이다.
+        /// </summary>
         private static string TestLoadRaisesRequirement()
         {
+            // ── Arrange ──
             FloorSession bare = FloorWith(3);
             FloorSession loaded = FloorWith(3, "PSG_ZEALOT");
             if (loaded.CarriedWeight <= bare.CarriedWeight) return "무게가 늘지 않음";
-            float expected = bare.RequiredPower + 16f * FloorSession.WeightPowerFactor;
-            if (Math.Abs(loaded.RequiredPower - expected) > 0.01f)
-                return $"요구 전력 {loaded.RequiredPower} (기대 {expected})";
+
+            // ── Assert ① 요구 전력이 실제로 올랐다 ──
+            if (!(loaded.RequiredPower > bare.RequiredPower))
+                return $"무게가 {bare.CarriedWeight} → {loaded.CarriedWeight} 인데 "
+                     + $"요구 전력은 {bare.RequiredPower} → {loaded.RequiredPower} 로 안 올랐다";
+
+            // ── Assert ② 그 값이 층이 든 스냅샷의 판정식에서 나온다 ──
+            // 식을 여기 복제하지 않는다 — 복제하면 검사가 구현의 사본이 되어
+            // 둘이 함께 틀려도 통과한다. 대신 **같은 자리에서 나왔는지**만 본다.
+            float fromSnapshot = loaded.Weight.RequiredPowerFor(
+                loaded.Plan.RequiredPower, loaded.CarriedWeight, loaded.Capacity);
+            if (Math.Abs(loaded.RequiredPower - fromSnapshot) > 0.01f)
+                return $"요구 전력 {loaded.RequiredPower} 가 스냅샷의 {fromSnapshot} 와 다르다 "
+                     + "— 층이 다른 경로로 계산하고 있다";
+
+            // ── Assert ③ 곡률 0 이면 옛 선형식과 같다 (되돌리기의 기준점) ──
+            var linear = new WeightSnapshot(loaded.Capacity, loaded.Weight.WeightPowerFactor,
+                loaded.Weight.OverloadRequiredPowerMultiplier, 0f,
+                loaded.Weight.OverloadRampWidth, "선형 대조");
+            float linearValue = linear.RequiredPowerFor(
+                loaded.Plan.RequiredPower, loaded.CarriedWeight, loaded.Capacity);
+            float expectedLinear = loaded.Plan.RequiredPower
+                                 + loaded.CarriedWeight * loaded.Weight.WeightPowerFactor;
+            if (Math.Abs(linearValue - expectedLinear) > 0.01f)
+                return $"곡률 0 인데 선형식과 다르다 ({linearValue} vs {expectedLinear})";
             return null;
         }
 
@@ -625,28 +716,113 @@ namespace Ascend.Prototype.Build.Tests
             return null;
         }
 
+        /// <summary>
+        /// 과적이 요구 전력에 배수를 거는가.
+        ///
+        /// ## 2026-08-06 개정 — 품목 목록을 손으로 적지 않는다
+        ///
+        /// 직전 판본은 「부품 4종(26+22+18+20=86) + 광신자 16 = 102 &gt; 100」이라 적어 두고
+        /// 그 다섯을 못 박았다. `c415733` 이 영혼 포집망을 20 → **16** 으로 내리자
+        /// 합이 **98** 이 되어 과적에 닿지 못했고, 검사는 「과적이 아니다」로 실패했다.
+        /// 주석에 적힌 산수는 코드가 아니므로 무게가 바뀌어도 따라오지 않는다.
+        ///
+        /// 그래서 **허용을 넘을 때까지 카탈로그에서 담는다.** 밸런스 값이 어떻게 바뀌어도
+        /// 이 검사는 「과적이라는 상태」를 계속 만들어 낼 수 있다.
+        ///
+        /// 그리고 배수 자체는 절벽이 아니라 **계단**이 됐으므로(`OverloadRampWidth`),
+        /// 「전량 배수」를 못 박지 않고 그 계단의 성질을 건다.
+        /// </summary>
         private static string TestOverloadMultiplier()
         {
-            // 부품 4종(26+22+18+20=86) + 광신자 16 = 102 > 100
-            FloorSession over = FloorWith(3, "PRT_DIAGONAL_BINDER", "PRT_CASCADE_GOVERNOR",
-                "PRT_RESIDUAL_DAMPENER", "PRT_SOUL_TRAP", "PSG_ZEALOT");
-            if (!over.IsOverloaded) return $"무게 {over.CarriedWeight}/{over.Capacity} 인데 과적이 아님";
+            // ── Arrange — 허용을 확실히 넘을 때까지 무거운 것부터 담는다 ──
+            var heaviest = new List<BuildItem>(BuildCatalog.All);
+            heaviest.Sort((a, b) => b.Weight.CompareTo(a.Weight));
 
-            FloorPlan plan = PrototypeCurriculum.For(3);
-            float expected = (plan.RequiredPower + over.CarriedWeight * FloorSession.WeightPowerFactor) *
-                             FloorSession.OverloadRequiredPowerMultiplier;
-            if (Math.Abs(over.RequiredPower - expected) > 0.01f)
-                return $"과적 요구 전력 {over.RequiredPower} (기대 {expected})";
+            var ids = new List<string>();
+            float total = 0f;
+            float capacity = FloorSession.AllowedWeight;
+            foreach (BuildItem item in heaviest)
+            {
+                // 짐꾼은 허용 중량을 올려 과적을 밀어낸다 — 이 검사의 목적과 반대다.
+                if (item.Id == "PSG_PORTER") continue;
+                ids.Add(item.Id);
+                total += item.Weight;
+                // 완충 폭을 확실히 넘겨 배수가 전부 걸리는 구간까지 간다.
+                if (total > capacity * (1f + FloorSession.OverloadRampWidth + 0.05f)) break;
+            }
+            if (total <= capacity)
+                return $"카탈로그 전체를 담아도 {total}/{capacity} — 과적에 닿지 못한다 "
+                     + "(품목 무게가 전반적으로 내려갔거나 허용 중량이 올라갔다)";
+
+            FloorSession over = FloorWith(3, ids.ToArray());
+            if (!over.IsOverloaded)
+                return $"무게 {over.CarriedWeight}/{over.Capacity} 인데 과적이 아님";
+
+            // ── Assert ① 층의 값이 스냅샷 판정식에서 나온다 ──
+            float fromSnapshot = over.Weight.RequiredPowerFor(
+                over.Plan.RequiredPower, over.CarriedWeight, over.Capacity);
+            if (Math.Abs(over.RequiredPower - fromSnapshot) > 0.01f)
+                return $"과적 요구 전력 {over.RequiredPower} 가 스냅샷의 {fromSnapshot} 와 다르다";
+
+            // ── Assert ② 배수가 실제로 걸렸다 (배수 1 대조와 갈린다) ──
+            var noMultiplier = new WeightSnapshot(over.Weight.AllowedWeight,
+                over.Weight.WeightPowerFactor, 1f, over.Weight.ExcessCurvature,
+                over.Weight.OverloadRampWidth, "배수 없음 대조");
+            float without = noMultiplier.RequiredPowerFor(
+                over.Plan.RequiredPower, over.CarriedWeight, over.Capacity);
+            if (!(over.RequiredPower > without))
+                return $"과적인데 배수가 안 걸렸다 — {over.RequiredPower} ≤ 배수 1 일 때 {without}";
+
+            // ── Assert ③ 완충 폭을 넘겼으므로 배수가 **전부** 걸린다 ──
+            float expectedFull = without * over.Weight.OverloadRequiredPowerMultiplier;
+            if (Math.Abs(over.RequiredPower - expectedFull) > 0.01f)
+                return $"완충 폭({over.Weight.OverloadRampWidth})을 넘겼는데 배수가 전부 안 걸렸다 "
+                     + $"— {over.RequiredPower} vs {expectedFull} (무게 {over.CarriedWeight}/{over.Capacity})";
             return null;
         }
 
+        /// <summary>
+        /// 적재 무게가 층을 건너 이어지는가.
+        ///
+        /// ## 2026-08-06 개정 — 「실렸는가」가 아니라 「이어지는가」를 묻는다
+        ///
+        /// 직전 판본은 시드 4242 하나를 굴려 `Loadout.Count == 0` 이면 실패했다.
+        /// 두 가지가 잘못돼 있었다. ① **이름이 말하는 것을 검사하지 않았다** — 무게가
+        /// 다음 층으로 이어지는지는 한 번도 안 봤고, 실렸는지만 봤다. ② 한 시드에
+        /// 걸려 있어 `c415733` 뒤에 그 런의 제시 목록이 바뀌자 통째로 무너졌다.
+        ///
+        /// 이제는 **실제로 실린 런을 찾아** 그 런에서 무게가 층을 건너 유지되는지 본다.
+        /// 하나도 못 찾으면 그것이 진짜 결함이고, 그때는 더 강하게 실패한다.
+        /// </summary>
         private static string TestLoadCarriesToNextFloor()
         {
-            RunSession run = NewTenFloorRun(4242);
-            // 2층까지 굴린 뒤 하나 싣고, 3층에서도 무게가 남아 있는지 본다.
-            var driven = Drive(4242, (f, slot) => slot < 1);
-            if (driven.run.Loadout.Count == 0 && !driven.run.IsFailed)
-                return "런 내내 아무것도 실리지 않음";
+            const int Scan = 40;
+            int loadedRuns = 0, died = 0;
+
+            for (int seed = 4242; seed < 4242 + Scan; seed++)
+            {
+                var driven = Drive(seed, (f, slot) => slot < 1);
+                if (driven.run.IsFailed) died++;
+                if (driven.run.Loadout == null || driven.run.Loadout.Count == 0) continue;
+                loadedRuns++;
+
+                // 실린 런에서는 런의 이월 무게가 적재 합계와 어긋나면 안 된다.
+                // 「층이 만들어질 때 고정돼 다음 층이 모른다」가 이 검사의 원래 표적이다.
+                float sum = 0f;
+                foreach (BuildItem item in driven.run.Loadout.Items) sum += item.Weight;
+                if (Math.Abs(driven.run.CarriedWeight - sum) > 0.01f)
+                    return $"시드 {seed}: 런의 이월 무게 {driven.run.CarriedWeight:F1} 가 "
+                         + $"적재 합계 {sum:F1} 와 다르다 — 무게가 층을 건너며 어긋났다";
+
+                FloorSession cur = driven.run.Current;
+                if (cur != null && Math.Abs(cur.CarriedWeight - driven.run.CarriedWeight) > 0.01f)
+                    return $"시드 {seed}: 현재 층이 든 무게 {cur.CarriedWeight:F1} 가 "
+                         + $"런의 {driven.run.CarriedWeight:F1} 와 다르다 — 층이 옛 값을 들고 있다";
+            }
+
+            if (loadedRuns == 0)
+                return $"{Scan} 시드 중 어느 런도 아무것도 싣지 못했다 (사고로 끝난 런 {died}) "
+                     + "— 적재 경로 자체가 닿지 않는다";
             return null;
         }
 
