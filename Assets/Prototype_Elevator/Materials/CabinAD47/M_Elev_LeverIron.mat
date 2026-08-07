@@ -50,7 +50,7 @@ Material:
     - _EmissionMapEnabled: 0
     - _FalloffPower: 2.9
     - _PS1DistortEnabled: 0
-    - _RimStrength: 0.28
+    - _RimStrength: 0.42
     - _ShadeGamma: 1
     - _ShadeGammaEnabled: 0
     - _ShadowLift: 0.6
@@ -60,7 +60,7 @@ Material:
     - _TriplanarScale: 0.5
     - _VertexSnap: 0
     m_Colors:
-    - _BaseColor: {r: 0.0995, g: 0.0995, b: 0.0995, a: 1}
+    - _BaseColor: {r: 0.34, g: 0.3, b: 0.215, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.15, g: 0.19, b: 0.18, a: 1}
   m_BuildTextureStacks: []
