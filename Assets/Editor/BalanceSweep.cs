@@ -546,7 +546,28 @@ namespace Ascend.Prototype.EditorTools
             /// (「평균 상승이 아니라 완전한 꽝을 줄인다」) 그것을 확인할 수가 없었다.
             /// </summary>
             public int DudSpins;
+
+            // ── 구간별 연쇄 (PD-33, 2026-08-07 사용자 결정: 대역을 다시 세운다) ──
+            //
+            // 평평한 대역 하나로는 노션 `GAMEPLAY CORE` §3.3 을 **표현할 수가 없다** —
+            // 「**초반에는 원인을 읽을 수 있게, 후반에는** 누적된 빌드가 **폭주하는 감각**」.
+            // 그 문장은 하나의 목표치가 아니라 **기울기**를 요구한다.
+            // 그래서 층별로 세고 구간으로 묶는다.
+            public readonly int[] SpinsByFloor = new int[11];
+            public readonly int[] Chain3ByFloor = new int[11];
+            public readonly int[] PurifyByFloor = new int[11];
             public int MaxChain;
+
+            /// <summary>
+            /// 초반(1–3층)에 3연쇄를 **한 번이라도** 본 런 수 (PD-33 판정 ③).
+            ///
+            /// 노션 §17.3 은 「**10분 내** 예상 밖 3연쇄 **1회 이상**」을 요구한다.
+            /// 그건 스핀당 비율이 아니라 **도달률**이고, 비율로 환산하려면
+            /// 「10분이 몇 스핀인가」를 가정해야 한다 — 그 가정이 옛 대역
+            /// `5–15%` 의 상한이 어디서 왔는지 아무도 모르게 된 경로다.
+            /// 도달률로 직접 재면 가정이 필요 없다.
+            /// </summary>
+            public int RunsSawChain3Early;
 
             public readonly Dictionary<PowerBand, int> Bands = new Dictionary<PowerBand, int>();
 
@@ -565,6 +586,9 @@ namespace Ascend.Prototype.EditorTools
                 var run = NewRun(FirstSeed + i);
                 int guard = 0;
                 int lastFloor = -1;
+                // 이 런이 초반에 3연쇄를 봤는가. 누적 카운터의 차이로 잰다 —
+                // 별도 플래그를 `RecordSpin` 에 넘기면 서명이 또 늘어난다.
+                int earlyChainBefore = s.Chain3ByFloor[1] + s.Chain3ByFloor[2] + s.Chain3ByFloor[3];
 
                 while (!run.IsComplete && !run.IsFailed && guard++ < GuardLimit)
                 {
@@ -585,7 +609,7 @@ namespace Ascend.Prototype.EditorTools
                         while (f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0)
                         {
                             SpinResolution r = run.Spin();
-                            RecordSpin(s, in r);
+                            RecordSpin(s, in r, floor);
                         }
 
                         if (f.Phase != FloorPhase.Decision) break;
@@ -621,12 +645,14 @@ namespace Ascend.Prototype.EditorTools
                 if (run.IsComplete && !run.IsFailed) s.Completed++;
                 if (run.IsFailed) s.Failed++;
                 s.TotalMoney += run.Money;
+                if (s.Chain3ByFloor[1] + s.Chain3ByFloor[2] + s.Chain3ByFloor[3] > earlyChainBefore)
+                    s.RunsSawChain3Early++;
             }
 
             return s;
         }
 
-        private static void RecordSpin(SweepStats s, in SpinResolution r)
+        private static void RecordSpin(SweepStats s, in SpinResolution r, int floor)
         {
             s.Spins++;
             int chain = r.ChainDepth;
@@ -638,6 +664,23 @@ namespace Ascend.Prototype.EditorTools
             // 「완전한 꽝」 — 정화도 못 했고 순전력도 못 얻었다. 잔류 대가까지 물어
             // 음수가 된 스핀도 꽝이다(플레이어에게는 「아무것도 안 되는데 손해까지」).
             if (r.PurifyPower <= 0.01f && r.NetPower <= 0.01f) s.DudSpins++;
+
+            s.SpinsByFloor[floor]++;
+            if (chain >= 3) s.Chain3ByFloor[floor]++;
+            if (r.PurifyPower > 0.01f) s.PurifyByFloor[floor]++;
+        }
+
+        /// <summary>구간 [lo, hi] 의 연쇄·정화 비율. 층이 아니라 스핀을 분모로 센다.</summary>
+        private static (double chain3, double purify) SegmentRates(SweepStats s, int lo, int hi)
+        {
+            int spins = 0, chain = 0, purify = 0;
+            for (int f = lo; f <= hi; f++)
+            {
+                spins += s.SpinsByFloor[f];
+                chain += s.Chain3ByFloor[f];
+                purify += s.PurifyByFloor[f];
+            }
+            return (Pct(chain, spins), Pct(purify, spins));
         }
 
         /// <summary>
@@ -907,10 +950,41 @@ namespace Ascend.Prototype.EditorTools
             double pp = Pct(s.SpinsWithPurify, s.Spins), pps = Pct(sf.SpinsWithPurify, sf.Spins);
             double cap = Pct(s.CascadeCapHits, s.Spins);
 
-            sb.AppendLine($"| 3연쇄 이상 스핀 비율 | 5–15% | {p3s:F1}% | **{p3:F1}%** | " +
-                          $"{(p3 >= 5 && p3 <= 15 ? "✅" : "❌")} |");
-            sb.AppendLine($"| 정화 발생 스핀 비율 | 35–65% | {pps:F1}% | **{pp:F1}%** | " +
-                          $"{(pp >= 35 && pp <= 65 ? "✅" : "❌")} |");
+            // ── PD-33 (2026-08-07 사용자 결정) — 대역을 다시 세웠다 ──────────────
+            //
+            // 옛 판정은 `3연쇄 5–15%` · `정화 35–65%` 평평한 대역 둘이었고
+            // **두 상한 모두 출처가 없었다.** 하한만 노션에서 온다.
+            // 값을 깎아 맞추지 않고 **판정을 노션 문장으로 되돌린다.**
+            //
+            //   ① 판독  §10  「그냥 막 터졌다는 실패 / 최소 하나의 원인을 기억」
+            //                → 연쇄가 스핀의 **절반을 넘으면** 사건이 아니라 기본값이다
+            //   ② 기울기 §3.3 「초반에는 원인을 읽을 수 있게, 후반에는 폭주」
+            //                → 이 문장은 목표치가 아니라 **기울기**를 요구한다. 후반 > 초반
+            //   ③ 도달  §17.3「10분 내 예상 밖 3연쇄 1회 이상」
+            //                → 비율이 아니라 **도달률**이다. 초반에 한 번이라도 본 런의 비율
+            //
+            // ③ 이 중요하다. 옛 대역이 이것을 스핀당 비율로 환산하면서 「10분이 몇
+            // 스핀인가」라는 가정을 숨겼고, 그 가정이 상한의 출처를 지웠다.
+            // 도달률로 직접 재면 가정이 필요 없다.
+            (double c3Early, double ppEarly) = SegmentRates(s, 1, 3);
+            (double c3Mid, double ppMid) = SegmentRates(s, 4, 7);
+            (double c3Late, double ppLate) = SegmentRates(s, 8, 10);
+            double sawEarly = Pct(s.RunsSawChain3Early, s.Runs);
+
+            sb.AppendLine($"| ① 연쇄가 기본값이 아닌가 (전 구간 < 50%) | < 50% | {p3s:F1}% | " +
+                          $"**초반 {c3Early:F1}% · 중반 {c3Mid:F1}% · 후반 {c3Late:F1}%** | " +
+                          $"{(c3Early < 50 && c3Mid < 50 && c3Late < 50 ? "✅" : "❌")} |");
+            sb.AppendLine($"| ② 후반이 초반보다 잘 터지는가 (폭주) | 후반 > 초반 | — | " +
+                          $"**{c3Late - c3Early:+0.0;-0.0}%p** | " +
+                          $"{(c3Late > c3Early ? "✅" : "❌")} |");
+            sb.AppendLine($"| ③ 초반에 3연쇄를 본 런 | ≥ 80% | — | **{sawEarly:F1}%** | " +
+                          $"{(sawEarly >= 80 ? "✅" : "❌")} |");
+            sb.AppendLine($"| 3연쇄 이상 스핀 비율 (참고 — 옛 대역 5–15%) | (판정 안 함) " +
+                          $"| {p3s:F1}% | {p3:F1}% | |");
+            sb.AppendLine($"| 정화 발생 스핀 비율 | **≥ 35%** (상한 폐기) | {pps:F1}% | **{pp:F1}%** | " +
+                          $"{(pp >= 35 ? "✅" : "❌")} |");
+            sb.AppendLine($"| └ 구간별 정화 (참고) | — | — | " +
+                          $"초반 {ppEarly:F1}% · 중반 {ppMid:F1}% · 후반 {ppLate:F1}% | |");
             sb.AppendLine($"| 연쇄 캡(20) 도달률 | < 1% | — | {cap:F2}% | {(cap < 1.0 ? "✅" : "❌")} |");
             sb.AppendLine($"| 5연쇄 이상 스핀 비율 | (참고) | — | {Pct(s.SpinsChain5Plus, s.Spins):F2}% | |");
             sb.AppendLine($"| 관측 최대 연쇄 | (참고) | {sf.MaxChain} | {s.MaxChain} | |");
@@ -927,6 +1001,11 @@ namespace Ascend.Prototype.EditorTools
             double dud = Pct(s.DudSpins, s.Spins), duds = Pct(sf.DudSpins, sf.Spins);
             sb.AppendLine($"| **완전한 꽝 스핀 비율** | (참고 — 근거 없이 판정 안 함) " +
                           $"| {duds:F2}% | **{dud:F2}%** | |");
+            sb.AppendLine();
+            sb.AppendLine("> **정화 발생률의 상한을 폐기했다** (PD-33). 노션 §5.3 은 「기본 정화는");
+            sb.AppendLine("> **작은 성공**이다」이고 §3.1 은 「정상 영혼은 **항상** 기본 진전을 제공한다」다 —");
+            sb.AppendLine("> 즉 정화가 잦은 것은 설계 의도이지 결함이 아니다. 옛 상한 65% 에는 출처가");
+            sb.AppendLine("> 없었다. 「작은 성공의 바닥」은 아래 **완전한 꽝** 비율이 대신 지킨다.");
             sb.AppendLine();
             sb.AppendLine("> **완전한 꽝** = 정화도 없고 순전력도 0 이하인 스핀. 노션 §3.1 이");
             sb.AppendLine("> 「충분한 재료를 모았는데 배치 운 때문에 완전한 꽝이 되는 상황을 줄인다」를");

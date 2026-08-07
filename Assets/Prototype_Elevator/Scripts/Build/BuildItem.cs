@@ -91,6 +91,20 @@ namespace Ascend.Prototype.Build
 
         /// <summary>4개 이상 연결 패턴 배수에 <c>Amount</c>를 더한다.</summary>
         ClusterMultiplier,
+
+        // ── PD-30 (2026-08-06) — 「판정 규칙을 바꾸는 품목이 사선 결속기 하나뿐」을 고친다 ──
+        //
+        // 개편 전 실측: 12종 중 사선 결속기가 전체 이득의 **74%**. 대가를 −0.6/−1.2/−1.8 로
+        // 세 번 재 봐도 1등 기여만 선형으로 내려가고 **2등은 3.20%p 에서 한 자리도 안 움직였다.**
+        // 깎아서 풀리는 문제가 아니라는 뜻이다 — `DiagonalCountsAsConnected` 는 밸런스 값이
+        // 아니라 **판이 무엇을 연결로 세는가**를 바꾸는 판정 규칙이고, 그 층위의 품목이
+        // 하나뿐인 것이 문제였다. 아래 둘이 그 층위의 둘째·셋째다.
+
+        /// <summary>남은 저항 <c>Amount</c>개를 잔류 대가 계산에서 면제한다(검침원). 판은 바뀌지 않는다.</summary>
+        ResidualForgive,
+
+        /// <summary>연쇄가 이어질 때 칸 <c>Amount</c>개를 추가로 다시 뒤집는다(연쇄 코일).</summary>
+        ExtraCascadeReroll,
     }
 
     /// <summary>
@@ -145,12 +159,58 @@ namespace Ascend.Prototype.Build
         /// <summary>중복 패턴 판정이 켜져 있을 때만.</summary>
         MultiplePatterns,
 
+        // ── PD-35 (2026-08-07 사용자 결정) — 「승객·부품 둘 다 적극적으로 써야 올라간다」 ──
+        //
+        // 실측이 그 반대였다 (`strategy 3000`): 부품만 **17.17%** · 승객만 **2.80%** ·
+        // 무적재 1.70% · 전부 21.27%. 부품만으로 「전부」의 81% 가 나오므로
+        // **승객은 사실상 없어도 되는 축**이었다.
+        //
+        // 위의 조건 아홉은 전부 **규칙의 상태**만 읽는다(대각이 켜졌나, 문턱이
+        // 내려갔나…). 그래서 「무엇을 함께 실었는가」를 조건으로 걸 수단이 없었고,
+        // 승객과 부품이 서로를 필요로 하게 만들 **경로가 존재하지 않았다.**
+        // 아래 둘이 그 축을 연다 — 노션 §6.1 이 승객 4 + 부품 3 을 동시에 두는 이유이기도 하다.
+
+        /// <summary>승객이 <see cref="BuildEffect.Amount"/> 명 이상 타고 있을 때만 (부품이 요구한다).</summary>
+        PassengersAboard,
+
+        /// <summary>부품이 <see cref="BuildEffect.Amount"/> 개 이상 물려 있을 때만 (승객이 요구한다).</summary>
+        PartsEquipped,
+
         /// <summary>이 층 판에 증식체가 등장할 때만.</summary>
         ProliferatorInPlay,
+
+        /// <summary>
+        /// 연쇄 증분이 층 기준선보다 올라가 있을 때만 (연쇄 조속기 계열이 켠다).
+        ///
+        /// PD-30 이 요구한 것은 「사선 결속기를 깎기」가 아니라 **그 층위를 늘리기**였다.
+        /// 이 조건이 있어야 연쇄 코일↔연쇄 조속기 짝이 성립하고, 그 짝은
+        /// **사선 결속기를 경유하지 않는** 첫 연쇄 시너지다 — 기존 조건
+        /// <see cref="DiagonalConnects"/> 로 묶으면 1등의 지분을 더 키울 뿐이다.
+        /// </summary>
+        CascadeAmplified,
     }
 
     /// <summary>규칙 다발에 가하는 변경 하나. 대상이 필요 없는 종류는 <see cref="Target"/>를 무시한다.</summary>
     [Serializable]
+    /// <summary>
+    /// 지금 실려 있는 승객·부품 수 (PD-35).
+    ///
+    /// 규칙(`SpinRuleSet`)과 분리해서 넘기는 이유: 구성은 **1패스로 바뀌지 않는다.**
+    /// 조건부 효과가 승객 수를 늘릴 수는 없으므로, 이 축을 조건에 넣어도
+    /// `BuildEffectCondition` 주석이 지키는 **순서 무관**이 깨지지 않는다.
+    /// </summary>
+    public readonly struct LoadoutShape
+    {
+        public readonly int Passengers;
+        public readonly int Parts;
+
+        public LoadoutShape(int passengers, int parts)
+        {
+            Passengers = passengers;
+            Parts = parts;
+        }
+    }
+
     public struct BuildEffect
     {
         public BuildEffectKind Kind;
@@ -180,6 +240,21 @@ namespace Ascend.Prototype.Build
             return copy;
         }
 
+        /// <summary>
+        /// 문턱이 있는 조건 (`PassengersAboard` · `PartsEquipped`). 「몇 명/몇 개 이상인가」다.
+        /// 다른 조건은 이 값을 보지 않는다 — 0 이면 옛 동작과 같다.
+        /// </summary>
+        public int ConditionThreshold;
+
+        /// <summary><c>.When(PassengersAboard, 3)</c> — 승객 3명 이상일 때만.</summary>
+        public BuildEffect When(BuildEffectCondition condition, int threshold)
+        {
+            BuildEffect copy = this;
+            copy.Condition = condition;
+            copy.ConditionThreshold = threshold;
+            return copy;
+        }
+
         /// <summary>조건 없이 항상 도는 효과인가. 1패스에서 적용된다.</summary>
         public bool IsUnconditional => Condition == BuildEffectCondition.Always;
 
@@ -189,13 +264,23 @@ namespace Ascend.Prototype.Build
         /// **여기서 규칙을 바꾸지 않는다.** 읽기만 한다 — 판정 중에 판정 대상이 움직이면
         /// 순서 무관이 깨진다.
         /// </summary>
-        public bool IsSatisfiedBy(SpinRuleSet rules)
+        public bool IsSatisfiedBy(SpinRuleSet rules) => IsSatisfiedBy(rules, default);
+
+        /// <param name="shape">
+        /// 지금 실려 있는 승객·부품 수. `PassengersAboard`·`PartsEquipped` 만 읽는다.
+        /// 규칙과 달리 **구성**은 1패스로 바뀌지 않으므로 순서 무관이 유지된다.
+        /// </param>
+        public bool IsSatisfiedBy(SpinRuleSet rules, in LoadoutShape shape)
         {
             if (rules == null) return false;
             switch (Condition)
             {
                 case BuildEffectCondition.Always:
                     return true;
+                case BuildEffectCondition.PassengersAboard:
+                    return shape.Passengers >= ConditionThreshold;
+                case BuildEffectCondition.PartsEquipped:
+                    return shape.Parts >= ConditionThreshold;
                 case BuildEffectCondition.DiagonalConnects:
                     return rules.DiagonalCountsAsConnected;
                 case BuildEffectCondition.SoulsGuaranteed:
@@ -210,6 +295,8 @@ namespace Ascend.Prototype.Build
                     return rules.AllowMultiplePatternsPerKind;
                 case BuildEffectCondition.ProliferatorInPlay:
                     return rules.WeightOf(SymbolKind.Proliferator) > 0f;
+                case BuildEffectCondition.CascadeAmplified:
+                    return rules.CascadeMultiplierStep > rules.BaseCascadeMultiplierStep + 0.0001f;
                 default:
                     return false;
             }
@@ -231,7 +318,10 @@ namespace Ascend.Prototype.Build
                 case BuildEffectCondition.ResidualMitigated:      return "잔류 대가가 완화돼 있을 때";
                 case BuildEffectCondition.ResidualAmplified:      return "잔류 대가가 커져 있을 때";
                 case BuildEffectCondition.MultiplePatterns:       return "중복 패턴 판정이 켜져 있을 때";
+                case BuildEffectCondition.PassengersAboard:       return $"승객이 {ConditionThreshold}명 이상 타고 있을 때";
+                case BuildEffectCondition.PartsEquipped:          return $"부품이 {ConditionThreshold}개 이상 물려 있을 때";
                 case BuildEffectCondition.ProliferatorInPlay:     return "판에 증식체가 있을 때";
+                case BuildEffectCondition.CascadeAmplified:       return "연쇄 배수가 가팔라져 있을 때";
                 default:                                          return "알 수 없는 조건";
             }
         }
@@ -274,6 +364,10 @@ namespace Ascend.Prototype.Build
                     return $"직선 배수 +{Amount:F1}";
                 case BuildEffectKind.ClusterMultiplier:
                     return $"연결 배수 +{Amount:F1}";
+                case BuildEffectKind.ResidualForgive:
+                    return $"잔류 {(int)Amount}개 면제";
+                case BuildEffectKind.ExtraCascadeReroll:
+                    return $"연쇄 재추첨 칸 +{(int)Amount}";
                 default:
                     return "효과 없음";
             }
@@ -351,6 +445,14 @@ namespace Ascend.Prototype.Build
                 case BuildEffectKind.ClusterMultiplier:
                     rules.ClusterMultiplier += Amount;
                     break;
+
+                case BuildEffectKind.ResidualForgive:
+                    rules.ResidualForgiveCount += Math.Max(0, (int)Amount);
+                    break;
+
+                case BuildEffectKind.ExtraCascadeReroll:
+                    rules.ExtraCascadeRerollCells += Math.Max(0, (int)Amount);
+                    break;
             }
         }
     }
@@ -405,7 +507,11 @@ namespace Ascend.Prototype.Build
         public void ApplyTo(SpinRuleSet rules)
         {
             ApplyUnconditionalTo(rules);
-            ApplyConditionalTo(rules, rules);
+            // 단독 적용이므로 구성은 자기 자신 하나다. `PassengersAboard 3` 같은
+            // 조건은 여기서 성립하지 않는다 — 그게 PD-35 가 의도한 바다.
+            ApplyConditionalTo(rules, rules,
+                new LoadoutShape(Kind == BuildItemKind.Passenger ? 1 : 0,
+                                 Kind == BuildItemKind.Part ? 1 : 0));
         }
 
         /// <summary>1패스 — 조건 없는 효과만.</summary>
@@ -421,10 +527,13 @@ namespace Ascend.Prototype.Build
         /// 조건은 거기서만 읽는다. <paramref name="rules"/> 와 같은 객체일 수 있다.
         /// </summary>
         public void ApplyConditionalTo(SpinRuleSet rules, SpinRuleSet probe)
+            => ApplyConditionalTo(rules, probe, default);
+
+        public void ApplyConditionalTo(SpinRuleSet rules, SpinRuleSet probe, in LoadoutShape shape)
         {
             if (Effects == null) return;
             for (int i = 0; i < Effects.Length; i++)
-                if (!Effects[i].IsUnconditional && Effects[i].IsSatisfiedBy(probe))
+                if (!Effects[i].IsUnconditional && Effects[i].IsSatisfiedBy(probe, shape))
                     Effects[i].ApplyTo(rules);
         }
 

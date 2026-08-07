@@ -143,7 +143,13 @@ namespace Ascend.Prototype.Build
             if (!anyConditional) return;
 
             SpinRuleSet probe = rules.Clone();
-            for (int i = 0; i < _items.Count; i++) _items[i].ApplyConditionalTo(rules, probe);
+            // PD-35 — 구성을 조건에 함께 넘긴다. 승객이 부품을 켜고 부품이 승객을 키운다.
+            int passengers = 0, parts = 0;
+            for (int i = 0; i < _items.Count; i++)
+                if (_items[i].Kind == BuildItemKind.Passenger) passengers++; else parts++;
+            var shape = new LoadoutShape(passengers, parts);
+
+            for (int i = 0; i < _items.Count; i++) _items[i].ApplyConditionalTo(rules, probe, shape);
         }
 
         public BuildLoadout Clone()
@@ -216,6 +222,9 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.PurifyThreshold, SymbolKind.Absorber, 2f),
                     BuildEffect.Of(BuildEffectKind.PatternBonus, SymbolKind.Absorber, 0.6f)
                                .When(BuildEffectCondition.DiagonalConnects),
+                    // PD-35 — 계측 기사는 **읽을 계기가 있어야** 눈금을 값으로 바꾼다.
+                    BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Absorber, 1.4f)
+                               .When(BuildEffectCondition.PartsEquipped, 2),
                 },
             },
             new BuildItem
@@ -244,6 +253,10 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.NormalSoulValue, 3f),
                     BuildEffect.Of(BuildEffectKind.NormalSoulValue, 5f)
                                .When(BuildEffectCondition.SoulsGuaranteed),
+                    // PD-35 — **정비공은 손볼 기계가 있어야 정비한다.** 이 카탈로그에서
+                    // 부품 의존이 가장 자연스러운 자리라 여기부터 걸었다.
+                    BuildEffect.Of(BuildEffectKind.NormalSoulValue, 7f)
+                               .When(BuildEffectCondition.PartsEquipped, 2),
                 },
             },
             new BuildItem
@@ -271,6 +284,9 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.Appearance, SymbolKind.Proliferator, 1.25f),
                     BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Proliferator, 1.5f)
                                .When(BuildEffectCondition.ResidualAmplified),
+                    // PD-35 — 광신자의 광기는 **돌아가는 장치 앞에서** 커진다.
+                    BuildEffect.Of(BuildEffectKind.PatternBonus, SymbolKind.Proliferator, 0.6f)
+                               .When(BuildEffectCondition.PartsEquipped, 2),
                 },
             },
 
@@ -290,6 +306,9 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.LineMultiplier, 0.5f),
                     BuildEffect.Of(BuildEffectKind.LineMultiplier, 0.8f)
                                .When(BuildEffectCondition.MultiplePatterns),
+                    // PD-35 — 측량사는 **잴 장치가 물려 있어야** 줄을 값으로 읽는다.
+                    BuildEffect.Of(BuildEffectKind.LineMultiplier, 0.6f)
+                               .When(BuildEffectCondition.PartsEquipped, 2),
                 },
             },
             new BuildItem
@@ -332,6 +351,11 @@ namespace Ascend.Prototype.Build
                 {
                     BuildEffect.Of(BuildEffectKind.DiagonalConnects, 1f),
                     BuildEffect.Of(BuildEffectKind.ClusterMultiplier, -1.2f),
+                    // PD-35 — **사람이 조여야 단단해진다.** 이 품목의 대가는 「느슨하게
+                    // 묶으니 자주 걸리지만 무르다」인데, 승객이 둘 이상이면 그 무름이
+                    // 사라진다. 부품만 실은 플레이어는 대가만 안고 간다.
+                    BuildEffect.Of(BuildEffectKind.ClusterMultiplier, 1.5f)
+                               .When(BuildEffectCondition.PassengersAboard, 2),
                 },
             },
             new BuildItem
@@ -349,6 +373,9 @@ namespace Ascend.Prototype.Build
                     // 기울기만 가팔라 아무 일도 안 했고, 그래서 −1.27%p 였다.
                     BuildEffect.Of(BuildEffectKind.CascadeStep, 0.40f)
                                .When(BuildEffectCondition.DiagonalConnects),
+                    // PD-35 — 조속기는 **승무원이 계기를 읽어야** 기울기를 더 밀 수 있다.
+                    BuildEffect.Of(BuildEffectKind.CascadeStep, 0.35f)
+                               .When(BuildEffectCondition.PassengersAboard, 3),
                 },
             },
             new BuildItem
@@ -363,6 +390,9 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.ResidualMitigation, 0.55f),
                     BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Absorber, 1.4f)
                                .When(BuildEffectCondition.PurifyThresholdLowered),
+                    // PD-35 — 감쇠기는 **치울 손이 있어야** 더 깎는다.
+                    BuildEffect.Of(BuildEffectKind.ResidualMitigation, 0.80f)
+                               .When(BuildEffectCondition.PassengersAboard, 2),
                 },
             },
             new BuildItem
@@ -380,6 +410,9 @@ namespace Ascend.Prototype.Build
                 {
                     BuildEffect.Of(BuildEffectKind.GuaranteeNormalSouls, 1f),
                     BuildEffect.Of(BuildEffectKind.NormalSoulValue, 2f),
+                    // PD-35 — 포집망은 **거둘 사람이 있어야** 한 영혼이 무거워진다.
+                    BuildEffect.Of(BuildEffectKind.NormalSoulValue, 4f)
+                               .When(BuildEffectCondition.PassengersAboard, 2),
                 },
             },
             new BuildItem
@@ -394,6 +427,9 @@ namespace Ascend.Prototype.Build
                 Effects = new[]
                 {
                     BuildEffect.Of(BuildEffectKind.MultiplePatterns, 1f),
+                    // PD-35 — 두 번 세려면 **세어 줄 사람**이 있어야 한다.
+                    BuildEffect.Of(BuildEffectKind.LineMultiplier, 0.5f)
+                               .When(BuildEffectCondition.PassengersAboard, 2),
                 },
             },
 
@@ -442,6 +478,9 @@ namespace Ascend.Prototype.Build
                     BuildEffect.Of(BuildEffectKind.ResidualForgive, 1f),
                     BuildEffect.Of(BuildEffectKind.ResidualForgive, 1f)
                                .When(BuildEffectCondition.ResidualAmplified),
+                    // PD-35 — 검침원은 **읽을 계기가 물려 있어야** 장부를 한 줄 더 지운다.
+                    BuildEffect.Of(BuildEffectKind.ResidualForgive, 1f)
+                               .When(BuildEffectCondition.PartsEquipped, 2),
                 },
             },
 
