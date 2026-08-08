@@ -633,6 +633,7 @@ MonoBehaviour:
   _pivot: {fileID: 266110342}
   _axis: {x: 1, y: 0, z: 0}
   _swingDegrees: 55
+  _holdSwingScale: 1.35
   _resistance: 0.08
   _travel: 0.42
   _overshoot: 2
@@ -11136,11 +11137,6 @@ MeshFilter:
 --- !u!4 &266110342 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -745134866034216691, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
-  m_PrefabInstance: {fileID: 237018042}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &266619364 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -7403029231722816795, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
   m_PrefabInstance: {fileID: 237018042}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &269426407
@@ -56134,7 +56130,6 @@ MonoBehaviour:
   _roots:
   - {fileID: 1759284371}
   - {fileID: 266110342}
-  - {fileID: 266619364}
 --- !u!1 &1488070233
 GameObject:
   m_ObjectHideFlags: 0
