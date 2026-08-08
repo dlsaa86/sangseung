@@ -4107,6 +4107,7 @@ GameObject:
   - component: {fileID: 98471720}
   - component: {fileID: 98471719}
   - component: {fileID: 98471718}
+  - component: {fileID: 98471722}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -4200,6 +4201,34 @@ Transform:
   - {fileID: 1337836311}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &98471722
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 98471717}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd35c1005d95a439590b2a3e2fc01a66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.MachineFocusController
+  _camera: {fileID: 1024763785}
+  _player: {fileID: 98471719}
+  _interactor: {fileID: 98471718}
+  _focus: {fileID: 1021280227}
+  _frameBounds: {fileID: 1021280228}
+  _highlightRoot: {fileID: 237018044}
+  _focusAnchor: {fileID: 0}
+  _enterDuration: 0.35
+  _exitDuration: 0.28
+  _framingMargin: 1.18
+  _rimHover: 0.85
+  _rimFadeSpeed: 6
+  _exitOnEscape: 1
+  _exitOnRightClick: 1
+  _exitOnMove: 1
+  _idleExitSeconds: 0
 --- !u!21 &98520102
 Material:
   serializedVersion: 8
@@ -38648,6 +38677,77 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1019235023}
   m_Mesh: {fileID: 4300000, guid: 2a687a241e33d2746833be872c2209dd, type: 2}
+--- !u!1 &1021280226
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1021280229}
+  - component: {fileID: 1021280228}
+  - component: {fileID: 1021280227}
+  m_Layer: 0
+  m_Name: MachineFocusTarget
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1021280227
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1021280226}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dca2611c251884b1c93301e5063be087, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableMachineFocus
+  _prompt: "\uAE30\uACC4 \uC870\uC791 \u2014 \uB204\uB974\uBA74 \uC9D1\uC911"
+  _canInteract: 1
+  onFocusRequested:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!65 &1021280228
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1021280226}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 2.0987551, y: 2.58425, z: 0.44215155}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!4 &1021280229
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1021280226}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.00000023841858, y: 1.2621185, z: 2.860357}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1022628317
 GameObject:
   m_ObjectHideFlags: 0
@@ -76157,3 +76257,4 @@ SceneRoots:
   - {fileID: 134887227}
   - {fileID: 139835349}
   - {fileID: 1959176498}
+  - {fileID: 1021280229}

@@ -274,6 +274,27 @@ namespace Ascend.Prototype.Player
             _holdConsumed = false;
         }
 
+        private bool _usePointer;
+
+        /// <summary>
+        /// 조준을 마우스 **위치**로 한다(기계 집중 모드). false 면 화면 중앙이다.
+        ///
+        /// `MachineFocusController` 가 집중에 들어가고 나올 때 이 값을 바꾼다.
+        /// 모드를 바꿀 때 진행 중이던 유지 입력은 반드시 취소한다 — 조준의 의미가
+        /// 바뀌는 순간에 진행도를 이어받으면 「보던 것과 다른 것을 당기게」 된다.
+        /// </summary>
+        public bool UsePointer
+        {
+            get => _usePointer;
+            set
+            {
+                if (_usePointer == value) return;
+                _usePointer = value;
+                CancelHold();
+                SetCurrentTarget(null);
+            }
+        }
+
         private IHoldInteractable _holdTarget;
         private float _holdElapsed;
 
@@ -298,7 +319,27 @@ namespace Ascend.Prototype.Player
             if (_viewCamera == null)
                 return null;
 
-            Ray ray = new Ray(_viewCamera.transform.position, _viewCamera.transform.forward);
+            // ── 조준의 출처: 화면 중앙이냐 마우스 위치냐 ───────────────────────
+            //
+            // 기계 집중 모드에서는 **카메라가 고정된다.** 그러면 화면 중앙 크로스헤어로는
+            // 화면 중앙에 있는 것 하나만 누를 수 있고, 「레버를 마우스로 눌러도 시야는
+            // 기계 고정」(2026-08-08 사용자 지시)이 성립하지 않는다.
+            //
+            // 그래서 집중 모드에서는 마우스 **위치**로 광선을 쏜다. 커서도 함께 풀려
+            // 보이게 되므로 두 모드가 손끝에서 구분된다.
+            //   자유 시선 — 커서 잠김 · 화면 중앙 조준 · 카메라가 돈다
+            //   기계 집중 — 커서 풀림 · 마우스 위치 조준 · 카메라 고정
+            Ray ray;
+            if (_usePointer)
+            {
+                var m = Mouse.current;
+                if (m == null) return null;
+                ray = _viewCamera.ScreenPointToRay(m.position.ReadValue());
+            }
+            else
+            {
+                ray = new Ray(_viewCamera.transform.position, _viewCamera.transform.forward);
+            }
             // `UnityEngine.` 을 붙여야 한다. 2026-08-02 에 `Ascend.Prototype.Physics`
             // 네임스페이스가 생기면서, `Ascend.Prototype.*` 안에 있는 이 파일에서
             // 짧은 이름 `Physics` 가 **그 네임스페이스**로 먼저 해석돼 컴파일이 깨졌다
