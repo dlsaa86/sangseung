@@ -125,12 +125,13 @@ review-mode: full
 `solo`로 내리는 것은 Game Studios의 디렉터 게이트를 끄는 것이고, 그 자리를
 **Ouroboros의 검증 게이트가 대신한다** — 게이트를 없애는 게 아니다.
 
-⚠ **6번은 스위치다.** `production/review-mode.txt`에 `solo`를 쓰는 순간
-`.claude/hooks/autonomous-batch-gate.sh`가 켜진다. 이후 모델이 멈추려 할 때마다
-`tools/verify-topdown.ps1 -Batch`가 돌고, 완료 기준에 미달이면 Stop이 차단되며 남은
-항목이 모델에게 돌아간다. 복귀 시 `full`로 되돌리면 그 즉시 꺼진다 — 협업 모드에서는
-이 게이트가 돌지 않는다. 아래 §6의 종료 조건 중 「같은 실패가 3회 반복」은 이 훅이
-직접 구현하고 있어, 정체되면 사람 없이도 스스로 풀고 보고한다.
+⚠ **6번은 더 이상 스위치가 아니다 (2026-08-08 순정 전환).** 예전에는
+`production/review-mode.txt`에 `solo`를 쓰면 `.claude/hooks/autonomous-batch-gate.sh`가
+켜져 완료 기준 미달 시 Stop을 차단했다. **그 훅 배선을 지웠다.** 이제 `review-mode.txt`는
+**모델이 읽는 선언일 뿐 아무것도 강제하지 않는다.**
+
+따라서 아래 §6의 종료 조건은 전부 **모델이 스스로 세고 스스로 멈춰야 한다.**
+「같은 실패가 3회 반복」을 세어 주던 장치가 없다 — 안 세면 아무도 안 센다.
 
 ### 복귀 시
 
