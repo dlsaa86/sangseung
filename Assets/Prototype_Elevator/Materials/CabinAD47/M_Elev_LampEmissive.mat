@@ -83,7 +83,7 @@ Material:
     - _TriplanarScale: 0.5
     - _VertexSnap: 0
     m_Colors:
-    - _BaseColor: {r: 0.86, g: 0.74, b: 0.52, a: 1}
+    - _BaseColor: {r: 0.25800002, g: 0.22200002, b: 0.156, a: 1}
     - _EmissionColor: {r: 1.8, g: 1.28, b: 0.7, a: 1}
     - _MinFillTint: {r: 1, g: 0.82, b: 0.62, a: 1}
     - _ShadowTint: {r: 0.16, g: 0.13, b: 0.1, a: 1}
