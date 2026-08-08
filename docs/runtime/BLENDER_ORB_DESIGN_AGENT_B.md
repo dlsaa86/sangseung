@@ -8,17 +8,20 @@
 > `<scratchpad>/ELV_Cabin_AD47_orbs.fbx`, 렌더는 `orb_silhouette_v1~v5.png` — 지금
 > 저장된 `.blend`에는 반영되어 있지 않다(A가 나중에 다시 저장했다).
 >
-> **🔴 2026-08-09 후속 — team-lead 결정: 이 안(B)도 A안도 채택하지 않는다.**
-> `Assets/Editor/SymbolShapeFactory.cs`(절차형 C# 시스템)가 이미 3종을 구현하고
-> 검증까지 거친 상태였다는 게 뒤늦게 확인됐다. 구슬은 그 기존 시스템 쪽에서
-> 처리한다. 이 문서는 지우지 않고 "안 쓰기로 한 시도"로 보존한다. 이 세션이
-> `.blend` 레벨로 B의 결과를 완전히 복구할 수 있는 백업도 남겨 뒀다(
-> `<scratchpad>/SM_ElevCab_Panel_AD57.pre_orb_edit_backup.blend`, B 저장 직후 스냅샷)
-> — 상세는 `docs/runtime/BLENDER_CONCURRENCY_INCIDENT.md`.
+> **🔴 2026-08-09 후속 (2차 정정) — B(이 문서) 대신 A가 Unity에 채택·커밋(`31fd9a2`)됐다.**
+> 이유는 구슬 품질이 아니라 **SpinGauge**였다 — B는 레버 손잡이와의 20.8mm 겹침을
+> "원래 설계 수치의 오차, 범위 밖"으로 판단해 안 고쳤고, A는 그걸 결함으로 보고
+> 고쳤다. Unity 재확인 결과 A값이 겹치지 않았다(19.2mm 여유) — 그 판단이 채택을 갈랐다.
+> B의 `.blend` 레벨 결과는 **복구되지 않았다**(team-lead가 "복구하지 마라"로 확정) —
+> 다만 이 세션이 편집 시작 전 만든 백업이 우연히 B의 저장 직후 스냅샷이라
+> (`<scratchpad>/SM_ElevCab_Panel_AD57.pre_orb_edit_backup.blend`) **원하면 언제든
+> .blend 레벨로 완전히 되살릴 수 있는 상태로는 남아 있다.**
 >
-> **SpinGauge 부분(§8, 이 문서의 "부가 작업")은 구슬과 무관하게 여전히 유효한 별개
-> 논의다** — B의 Z값(1.700/1.750, 레버 손잡이와 20.8mm 겹침 있음)과 A의 Z값(+40mm
-> 넉지, 겹침 없음) 중 무엇을 채택할지는 `BLENDER_CONCURRENCY_INCIDENT.md` §3 참조.
+> **구슬(3종 모델링) 자체는 절차형(`SymbolShapeFactory.cs`) vs 블렌더 메시(A안, 지금
+> Unity에 렌더러만 꺼진 채 들어가 있음) 중 여전히 사용자 결정 대기**다 — B안(이 문서)은
+> 두 후보 중 어느 쪽도 아니게 됐지만(SpinGauge 문제로 탈락), **형태·재질 설계 자체는
+> 참고 가치가 있어 지우지 않고 그대로 둔다.** 상세는
+> `docs/runtime/BLENDER_CONCURRENCY_INCIDENT.md`, `PENDING_DECISIONS.md` P-20260809-01.
 
 ---
 
