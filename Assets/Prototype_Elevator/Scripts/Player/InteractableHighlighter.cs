@@ -131,7 +131,10 @@ namespace Ascend.Prototype.Player
             if (comp == null) return;
 
             var hint = comp.GetComponent<InteractableHighlightTarget>();
-            Transform root = hint != null ? hint.Root : comp.transform;
+            Transform[] roots = hint != null ? hint.Roots : new[] { comp.transform };
+            if (roots == null || roots.Length == 0) return;
+            Transform root = null;
+            for (int i = 0; i < roots.Length && root == null; i++) root = roots[i];
             if (root == null) return;
 
             // ── 부품마다 그리지 않고 **대상 전체를 감싸는 상자 하나**로 그린다 ──────
@@ -147,12 +150,42 @@ namespace Ascend.Prototype.Player
             // 내주고 「내부에 선이 하나도 없다」를 확실히 얻는 교환이다. 그리고 이 게임의
             // 조작물은 대부분 판·레버·상자꼴이라 손해가 크지 않다.
             Bounds b = default; bool any = false;
-            foreach (var r in root.GetComponentsInChildren<Renderer>(false))
+            foreach (var rt in roots)
             {
-                if (!r.enabled) continue;
-                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+                if (rt == null) continue;
+                foreach (var r in rt.GetComponentsInChildren<Renderer>(false))
+                {
+                    if (!r.enabled) continue;
+                    if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+                }
             }
-            if (!any) return;
+
+            // ⚠ **켜진 렌더러가 없으면 콜라이더로 물러난다** (2026-08-09 사용자 지적).
+            //
+            // 「레버도 선택이 가능한 건데 마우스 올렸을 때 왜 아웃라인 없냐.」
+            //
+            // 원인은 이 저장소의 이중 소유 구조다 — `InteractableLever` 는
+            // `GrayboxWorld/Car/Console/ExecutionLever` 에 붙어 있는데 **그 렌더러는 꺼져
+            // 있고**, 화면에 보이는 레버는 `CabinAD47/SOCKET_ElevPanel` 쪽 메시다.
+            // 그래서 켜진 렌더러가 하나도 없어 여기서 조용히 반환했다 — 조준은 되는데
+            // 외곽선만 없는, 원인을 찾기 어려운 상태가 된다.
+            //
+            // 조준이 성립한다는 것은 **콜라이더가 있다는 뜻**이므로 그것을 쓴다.
+            // 「누를 수 있는 것에는 예외 없이 외곽선이 선다」가 이 기능의 계약이고,
+            // 렌더러가 어디 사는지는 그 계약과 무관하다.
+            if (!any)
+            {
+                foreach (var rt in roots)
+                {
+                    if (rt == null) continue;
+                    foreach (var c in rt.GetComponentsInChildren<Collider>(false))
+                    {
+                        if (!c.enabled) continue;
+                        if (!any) { b = c.bounds; any = true; } else b.Encapsulate(c.bounds);
+                    }
+                }
+            }
+            if (!any || b.size.sqrMagnitude < 1e-6f) return;
 
             Mesh box = BoxMesh();
             if (box == null) return;

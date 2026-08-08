@@ -11138,6 +11138,11 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -745134866034216691, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
   m_PrefabInstance: {fileID: 237018042}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &266619364 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -7403029231722816795, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+  m_PrefabInstance: {fileID: 237018042}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &269426407
 GameObject:
   m_ObjectHideFlags: 0
@@ -27026,6 +27031,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
   _root: {fileID: 688822289}
+  _roots: []
 --- !u!1 &689033989
 GameObject:
   m_ObjectHideFlags: 0
@@ -39556,6 +39562,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
   _root: {fileID: 237018044}
+  _roots: []
 --- !u!1 &1022628317
 GameObject:
   m_ObjectHideFlags: 0
@@ -55955,6 +55962,7 @@ GameObject:
   - component: {fileID: 1482202550}
   - component: {fileID: 1482202549}
   - component: {fileID: 1482202552}
+  - component: {fileID: 1482202553}
   m_Layer: 0
   m_Name: ExecutionLever
   m_TagString: Untagged
@@ -56110,6 +56118,23 @@ MonoBehaviour:
       m_Calls: []
   _holdSeconds: 0.85
   _prompt: "\uB808\uBC84 \uB2F9\uAE30\uAE30"
+--- !u!114 &1482202553
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1482202547}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9070f980954d4983910e9da44229d6e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
+  _root: {fileID: 0}
+  _roots:
+  - {fileID: 1759284371}
+  - {fileID: 266110342}
+  - {fileID: 266619364}
 --- !u!1 &1488070233
 GameObject:
   m_ObjectHideFlags: 0
@@ -64516,6 +64541,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1758114442}
   m_Mesh: {fileID: 4300000, guid: 2a687a241e33d2746833be872c2209dd, type: 2}
+--- !u!4 &1759284371 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -2225548035888158850, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+  m_PrefabInstance: {fileID: 237018042}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1763416748
 GameObject:
   m_ObjectHideFlags: 0

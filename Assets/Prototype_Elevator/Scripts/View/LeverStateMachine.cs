@@ -70,6 +70,9 @@ namespace Ascend.Prototype.View
         [SerializeField] private Vector3 _axis = Vector3.right;
         [SerializeField, Range(10f, 90f)] private float _swingDegrees = 55f;
 
+        [Tooltip("과수확(유지 입력)일 때 각도 배수. 1 이면 일반 당김과 구분되지 않는다.")]
+        [SerializeField, Range(1f, 1.8f)] private float _holdSwingScale = 1.35f;
+
         [Header("당김 (합계 0.5~0.7초)")]
         /// <summary>초기 저항. 이 구간에서 각도가 거의 변하지 않아 「무겁다」가 읽힌다.</summary>
         [SerializeField, Range(0.02f, 0.20f)] private float _resistance = 0.08f;
@@ -195,8 +198,17 @@ namespace Ascend.Prototype.View
         {
             CaptureHome();
             if (_state != State.Holding) return;
+            // 과수확으로 걸렸다는 것을 기억한다. 안 그러면 걸리는 순간 각도가
+            // `_swingDegrees` 로 돌아가 레버가 **위로 튄다** — 가장 깊이 눌렀을 때
+            // 튀어 오르므로 「눌렀다」가 아니라 「놓쳤다」로 읽힌다.
+            _latchedDeep = true;
             Enter(State.Latched);
         }
+
+        /// <summary>걸린 뒤 유지할 각도. 과수확이면 더 깊다.</summary>
+        private float HeldAngle => _swingDegrees * (_latchedDeep ? _holdSwingScale : 1f);
+
+        private bool _latchedDeep;
 
         private void CaptureHome()
         {
@@ -280,7 +292,7 @@ namespace Ascend.Prototype.View
                 case State.Locked:   StepLocked();  break;
                 case State.Pulling:  StepPulling(); break;
                 case State.Latched:
-                    _angle = _swingDegrees;
+                    _angle = HeldAngle;
                     if (!_latchFired && _age >= _deviceReactDelay)
                     {
                         _latchFired = true;
@@ -289,11 +301,11 @@ namespace Ascend.Prototype.View
                     }
                     break;
                 case State.Processing:
-                    _angle = _swingDegrees;
+                    _angle = HeldAngle;
                     if (_age >= _processing) Enter(State.Completed);
                     break;
                 case State.Completed:
-                    _angle = _swingDegrees;
+                    _angle = HeldAngle;
                     if (_age >= _completedHold) Enter(State.Resetting);
                     break;
                 case State.Resetting:
@@ -341,7 +353,16 @@ namespace Ascend.Prototype.View
                 shaped = 0.08f + 0.92f * EaseOut(t);
             }
 
-            _angle = _swingDegrees * shaped;
+            // **과수확은 더 깊이 내려간다** (2026-08-09 사용자 지시).
+            //
+            // 「과수확(길게 눌렀을 때) 하는 거는 레버가 더 아래로 내려가게 애니메이션 해줘,
+            //  일반 레버 돌리는 것보다.」
+            //
+            // 같은 각도로 끝나면 두 조작이 **손끝에서 구분되지 않는다.** 과수확은 판돈을
+            // 걸고 돌이킬 수 없는 선택이므로, 그 무게가 레버가 가는 거리로 보여야 한다.
+            // 저항 구간을 지나 끝까지 눌렀을 때만 이 여분이 나온다 — 도중에 놓으면
+            // 일반 당김보다 얕은 곳에서 튕겨 돌아간다.
+            _angle = _swingDegrees * _holdSwingScale * shaped;
         }
 
         private void StepLocked()
@@ -412,10 +433,12 @@ namespace Ascend.Prototype.View
             float t = Mathf.Clamp01(_age / _resetDuration);
             // 돌아올 때는 오버슈트가 없다. 스프링이 밀어 올리는 것이지
             // 사람이 던지는 것이 아니다.
-            _angle = Mathf.Lerp(_swingDegrees, 0f, EaseOut(t));
+            // 깊이 들어간 만큼 돌아오는 거리도 길다 — 시작점을 걸렸던 각도로 잡는다.
+            _angle = Mathf.Lerp(HeldAngle, 0f, EaseOut(t));
             if (t >= 1f)
             {
                 _angle = 0f;
+                _latchedDeep = false;   // 다음 당김은 다시 일반 깊이에서 시작한다
                 onReturned.Invoke();
                 Enter(State.Idle);
             }
