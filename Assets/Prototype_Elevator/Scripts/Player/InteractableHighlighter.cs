@@ -56,6 +56,7 @@ namespace Ascend.Prototype.Player
         private float _weight;
         private MaterialPropertyBlock _block;
         private Material _shellMaterial;
+        private Material _maskMaterial;
 
         /// <summary>지금 외곽선이 서 있는 렌더러 수. 헤드리스 점검과 진단이 읽는다.</summary>
         public int ShellCount => _shells.Count;
@@ -72,12 +73,22 @@ namespace Ascend.Prototype.Player
                 return;
             }
             _shellMaterial = new Material(shader) { name = "AscendOutlineShell(런타임)" };
+
+            // 마스크는 없어도 외곽선 자체는 나온다 — 다만 부품마다 테두리가 생긴다.
+            // 그래서 경고만 남기고 계속한다.
+            Shader mask = Shader.Find("Ascend/OutlineMask");
+            if (mask == null)
+                Debug.LogWarning("[상승] Ascend/OutlineMask 가 없다. 부품이 여럿인 대상에서 "
+                               + "안쪽에도 테두리가 생긴다.");
+            else
+                _maskMaterial = new Material(mask) { name = "AscendOutlineMask(런타임)" };
         }
 
         private void OnDestroy()
         {
             Clear();
             if (_shellMaterial != null) Destroy(_shellMaterial);
+            if (_maskMaterial != null) Destroy(_maskMaterial);
         }
 
         private void LateUpdate()
@@ -125,26 +136,36 @@ namespace Ascend.Prototype.Player
                 var srcRenderer = mf.GetComponent<MeshRenderer>();
                 if (srcRenderer == null || !srcRenderer.enabled) continue;
 
-                var go = new GameObject("__OutlineShell");
-                go.hideFlags = HideFlags.HideAndDontSave;   // 씬에 저장되지 않는다
-                go.transform.SetParent(mf.transform, false);
-                go.transform.localPosition = Vector3.zero;
-                go.transform.localRotation = Quaternion.identity;
-                go.transform.localScale = Vector3.one;
-
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = _shellMaterial;
-                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
-                // 라이트 프로브를 끄는 이유: 껍질은 무광 단색이라 어차피 조명을 안 받는데,
-                // 켜 두면 프로브 보간 비용만 든다.
-                mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-                mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-
-                _owned.Add(go);
-                _shells.Add(mr);
+                // 마스크가 먼저다 — 대기열 1998 에서 대상 전체를 스텐실 1 로 찍는다.
+                if (_maskMaterial != null) Spawn(mf.transform, mesh, _maskMaterial, "__OutlineMask", false);
+                // 껍질은 1999 에서 스텐실이 1 이 아닌 곳에만 그린다 = 바깥 실루엣 하나.
+                var mr = Spawn(mf.transform, mesh, _shellMaterial, "__OutlineShell", true);
+                if (mr != null) _shells.Add(mr);
             }
+        }
+
+        /// <summary>원본 메시를 그대로 쓰는 자식 렌더러를 만든다. 콜라이더는 붙이지 않는다.</summary>
+        private MeshRenderer Spawn(Transform parent, Mesh mesh, Material material, string name, bool track)
+        {
+            var go = new GameObject(name);
+            go.hideFlags = HideFlags.HideAndDontSave;   // 씬에 저장되지 않는다
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = material;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            // 라이트 프로브를 끄는 이유: 껍질도 마스크도 조명을 안 받는데
+            // 켜 두면 프로브 보간 비용만 든다.
+            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+
+            _owned.Add(go);
+            return track ? mr : null;
         }
 
         private void Apply(bool usable)

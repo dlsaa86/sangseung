@@ -67,6 +67,18 @@ Shader "Ascend/OutlineShell"
             ZTest LEqual
             Blend SrcAlpha OneMinusSrcAlpha
 
+            // **대상이 차지한 영역 안에는 그리지 않는다.** `Ascend/OutlineMask` 가
+            // 대기열 1998 에서 대상 전체를 1 로 찍어 두므로, 여기서 1 이 아닌 곳만
+            // 남기면 결과는 **바깥 실루엣 하나**다.
+            //
+            // 이것이 없으면 부품이 여럿인 대상에서 부품마다 테두리가 생긴다 —
+            // 기계(렌더러 24 개)에서 현창 안쪽마다 초승달이 박혔던 것이 그것이다.
+            Stencil
+            {
+                Ref 1
+                Comp NotEqual
+            }
+
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
