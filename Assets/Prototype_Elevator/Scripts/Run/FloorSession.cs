@@ -460,8 +460,46 @@ namespace Ascend.Prototype.Run
         /// **`CanBank` 과 일부러 분리했다.** 기본 임계 1.00 에서 둘은 같은 값이지만
         /// 같은 것이 아니다 — 확정(브레이크)은 규칙이고 과수확 해금은 **조정 가능한 수치**다.
         /// 하나로 묶어 두면 `UnlockThreshold` 를 바꿔도 아무 일도 일어나지 않는다.
+        ///
+        /// 🔴 **2026-08-09 — 전력 달성만으로는 더 이상 부족하다.** 사용자 지시: 「과수확도
+        /// 그냥 가능하게 하는 게 아니라 아이템이나 승객 조건으로 해 두는 게 좋을 것 같아.
+        /// 아니면 계약으로. 우선 과수확은 기본 옵션이 아니게 해 줘」. 전력 달성률은 이제
+        /// **필요조건일 뿐**이고 <see cref="HasOverharvestKey"/> 도 함께 참이어야 한다
+        /// (AND — 어느 한쪽만으로는 안 열린다, 아래 두 프로퍼티 참고).
+        /// <see cref="Data.Profiles.OverharvestSnapshot.UnlockThreshold"/> 는 건드리지
+        /// 않았다 — 그건 다른 축이고, 같이 움직이면 무엇이 게이트를 걸었는지 분리할 수 없다
+        /// (팀 지시). 자세한 설계 근거는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
         /// </summary>
-        public bool IsOverharvestUnlocked => _overharvest.IsUnlocked(Power, RequiredPower);
+        public bool IsOverharvestUnlocked =>
+            _overharvest.IsUnlocked(Power, RequiredPower) && HasOverharvestKey;
+
+        /// <summary>
+        /// 과수확 레버를 쓸 「열쇠」가 적재에 있는가.
+        /// <see cref="BuildEffectKind.OverharvestUnlock"/> 효과를 가진 품목이
+        /// 실려 있으면 참이다. 지금 카탈로그 기준 두 갈래다 — 부품 「과수확 변압기」
+        /// (런 내내 유지)와 승객 「짐꾼」(하차 층까지만, `BuildAxis.Load`). **열쇠가
+        /// 하나뿐이면 지배적 선택이 된다**는 이 저장소가 반복해서 겪은 문제라 최소
+        /// 두 갈래로 열었다 — 근거는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
+        ///
+        /// `SpinRuleSet` 을 거치지 않고 <c>_loadout</c> 을 직접 스캔한다 —
+        /// <see cref="BuildLoadout.HasEffect"/> 주석에 이유가 있다(요약: 이 게이트는
+        /// 스핀 판정 규칙이 아니라 층 진행 층위의 개념이라 `SpinRuleSet` 이 몰라도 된다).
+        ///
+        /// **`_loadout == null` 이면 참으로 둔다 — 게이트를 느슨하게 하는 선택이 아니다.**
+        /// 실제 런(<see cref="RunSession"/>)은 `_loadout` 필드를 <c>new BuildLoadout()</c>
+        /// 으로 초기화해 두므로(`RunSession.cs`) **실제 플레이에서는 이 값이 절대 null 이
+        /// 아니다** — null 분기는 살아 있는 게임에서 한 번도 타지 않는다. null 이 실제로
+        /// 지나가는 경로는 적재 시스템 자체가 없는 옛 경로(이 파일 생성자 주석의 "Phase 1
+        /// Hero Slice") 하나뿐이고, 그 경로를 그대로 쓰는 기존 테스트가 대량으로 있다.
+        ///
+        /// 반대(=null 이면 항상 잠금)를 골랐다면: 적재 시스템이 아예 없어 열쇠를 실을
+        /// 수단 자체가 없는 경로에 게이트를 거는 모순이 되고, 그 경로를 쓰는 기존
+        /// 테스트들이 — 이 게이트가 지키려는 것(적재가 있는데 열쇠가 없으면 잠긴다)과는
+        /// 무관하게 — 무더기로 깨진다. 그래서 **적재 시스템이 존재할 때만 게이트가
+        /// 적용된다**로 정했다.
+        /// </summary>
+        public bool HasOverharvestKey =>
+            _loadout == null || _loadout.HasEffect(BuildEffectKind.OverharvestUnlock);
 
         /// <summary>남은 스핀과 프로파일 상한 중 작은 쪽. 둘 다 지켜야 한다.</summary>
         public int ExtraSpinLimit => _overharvest.EffectiveExtraSpinLimit(SpinsRemaining);

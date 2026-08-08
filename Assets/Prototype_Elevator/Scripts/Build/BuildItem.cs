@@ -105,6 +105,28 @@ namespace Ascend.Prototype.Build
 
         /// <summary>연쇄가 이어질 때 칸 <c>Amount</c>개를 추가로 다시 뒤집는다(연쇄 코일).</summary>
         ExtraCascadeReroll,
+
+        // ── 2026-08-09 — 과수확 해금 게이트 (사용자 지시: 「과수확도 그냥 가능하게
+        // 하는 게 아니라 아이템이나 승객 조건으로... 우선 과수확은 기본 옵션이 아니게」) ──
+        //
+        // **`SpinRuleSet`을 건드리지 않는 유일한 값이다.** 다른 불리언 효과
+        // (`DiagonalConnects` 등)는 `SpinRuleSet`에 필드를 하나 두고 거기서 조회되지만,
+        // `FloorSession.IsOverharvestUnlocked`는 스핀 판정 규칙이 아니라 **층 진행
+        // 층위의 게이트**라 애초에 `SpinRuleSet`이 알 필요가 없다. 그리고 이번 작업의
+        // 쓰기 권한은 `Scripts/Build/`·`Scripts/Run/`뿐이라 `Scripts/Spin/SpinRuleSet.cs`
+        // 에 새 필드를 추가할 수도 없었다(다른 에이전트 소유). 그래서 조회 경로를
+        // `BuildLoadout.HasEffect`로 옮겼다 — 판정 성격은 같다: "이 종류의 효과가
+        // 실려 있는가"를 묻는다. 자세한 경위는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
+
+        /// <summary>
+        /// 이 효과를 가진 품목이 실려 있으면 과수확 레버의 해금 조건(열쇠)을 만족시킨다.
+        /// 전력 달성률(<see cref="Data.Profiles.OverharvestSnapshot.UnlockThreshold"/>)과는
+        /// **별개의 AND 조건**이다 — 둘 다 참이어야
+        /// <see cref="Run.FloorSession.IsOverharvestUnlocked"/>가 참이다.
+        /// <see cref="SpinRuleSet"/>은 건드리지 않는다(위 설명 참고). <c>Target</c>은
+        /// 쓰지 않으므로 <see cref="SymbolKind.Empty"/>로 둔다.
+        /// </summary>
+        OverharvestUnlock,
     }
 
     /// <summary>
@@ -368,6 +390,8 @@ namespace Ascend.Prototype.Build
                     return $"잔류 {(int)Amount}개 면제";
                 case BuildEffectKind.ExtraCascadeReroll:
                     return $"연쇄 재추첨 칸 +{(int)Amount}";
+                case BuildEffectKind.OverharvestUnlock:
+                    return "과수확 레버 해금";
                 default:
                     return "효과 없음";
             }
@@ -452,6 +476,12 @@ namespace Ascend.Prototype.Build
 
                 case BuildEffectKind.ExtraCascadeReroll:
                     rules.ExtraCascadeRerollCells += Math.Max(0, (int)Amount);
+                    break;
+
+                case BuildEffectKind.OverharvestUnlock:
+                    // 의도적 no-op. 이 종류는 SpinRuleSet 을 바꾸지 않는다 — enum 주석
+                    // 참고. 실수로 빠뜨린 case 처럼 보이지 않도록 명시적으로 남겨 둔다.
+                    // 조회는 `BuildLoadout.HasEffect(BuildEffectKind.OverharvestUnlock)`.
                     break;
             }
         }

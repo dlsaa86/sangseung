@@ -52,6 +52,13 @@ namespace Ascend.Prototype.Build.Tests
             Run("계약과 승객이 함께 적용된다", TestContractAndLoadoutCompose, ref passed, ref failed, report);
             Run("적재 없는 층은 기본 규칙 그대로", TestEmptyLoadoutLeavesRulesAlone, ref passed, ref failed, report);
 
+            // ── 과수확 해금 게이트 (2026-08-09, 사용자 지시: 「과수확은 기본 옵션이
+            //    아니게, 아이템이나 승객 조건으로, 아니면 계약으로」) ──
+            Run("열쇠 없이는 전력을 채워도 과수확이 잠긴다", TestOverharvestLockedWithoutKey, ref passed, ref failed, report);
+            Run("과수확 변압기가 과수확을 해금한다", TestOverharvestTransformerUnlocks, ref passed, ref failed, report);
+            Run("짐꾼도 과수확을 해금한다 (둘째 갈래)", TestPorterAlsoUnlocksOverharvest, ref passed, ref failed, report);
+            Run("열쇠가 있어도 전력 미달이면 과수확은 잠긴다", TestOverharvestKeyAloneIsNotEnough, ref passed, ref failed, report);
+
             // ── 승하차 ──
             Run("목적지 층에서 내리고 요금을 준다", TestPassengerDisembarks, ref passed, ref failed, report);
             Run("부품은 하차하지 않는다", TestPartsStayAboard, ref passed, ref failed, report);
@@ -936,6 +943,87 @@ namespace Ascend.Prototype.Build.Tests
             if (actual.GuaranteedNormalSouls != expected.GuaranteedNormalSouls) return "보장 개수가 달라짐";
             if (actual.DiagonalCountsAsConnected != expected.DiagonalCountsAsConnected) return "대각 연결이 달라짐";
             if (Math.Abs(actual.ResidualMitigation - expected.ResidualMitigation) > 0.001f) return "잔류 완화가 달라짐";
+            return null;
+        }
+
+        // ── 과수확 해금 게이트 ─────────────────────────────────────────────
+
+        /// <summary>
+        /// 요구 전력을 1로 낮춘 최소 층. 스핀 한 번이면 반드시 CanBank 가 된다 — 게이트
+        /// 검사에서 "몇 번 돌려야 닿는가"라는 잡음을 없앤다(`RunTests.NewTweakedSession`
+        /// 과 같은 목적, 같은 이유). <paramref name="itemId"/> 가 null 이면 **빈** 적재를
+        /// 준다(적재 자체가 null 인 것과는 다르다 — null 은 별개 분기다,
+        /// `FloorSession.HasOverharvestKey` 주석 참고). 반환 전에 스핀을 한 번 돌린다.
+        /// </summary>
+        private static FloorSession NewOverharvestGateSession(string itemId)
+        {
+            var plan = new FloorPlan
+            {
+                Floor = 1,
+                RequiredPower = 1f,
+                Spins = 5,
+                SymbolPool = new[] { SymbolKind.NormalSoul },
+                ContractChoices = Array.Empty<ResistanceContract>(),
+            };
+            var loadout = new BuildLoadout();
+            if (!string.IsNullOrEmpty(itemId)) loadout.Add(BuildCatalog.ById(itemId));
+            var session = new FloorSession(plan, new SpinEngine(1), PowerThresholds.Default,
+                0f, ResidualState.Empty, 0f, 0f, loadout);
+            session.Spin();
+            return session;
+        }
+
+        private static string TestOverharvestLockedWithoutKey()
+        {
+            FloorSession bare = NewOverharvestGateSession(null);
+            if (!bare.CanBank) return "전제 불성립 — 요구 전력 1인데 첫 스핀에 못 미침";
+            if (bare.IsOverharvestUnlocked)
+                return "적재는 있는데(빈 적재, 열쇠 없음) 과수확이 해금됐다 — 게이트가 걸리지 않는다";
+            if (bare.HasOverharvestKey) return "빈 적재인데 HasOverharvestKey 가 참이다";
+            return null;
+        }
+
+        private static string TestOverharvestTransformerUnlocks()
+        {
+            FloorSession loaded = NewOverharvestGateSession("PRT_OVERHARVEST_TRANSFORMER");
+            if (!loaded.CanBank) return "전제 불성립 — 요구 전력 1인데 첫 스핀에 못 미침";
+            if (!loaded.IsOverharvestUnlocked) return "과수확 변압기를 실었는데도 잠겨 있다";
+            return null;
+        }
+
+        /// <summary>
+        /// 열쇠가 하나뿐이면 그것이 지배적 선택이 된다(이 저장소가 반복해서 겪은 문제,
+        /// `BUILD_DIVERSITY_AUDIT.md`). 짐꾼(승객, Load 축)을 둘째 갈래로 연다 —
+        /// `BuildAxis.Load` 자체가 "무게와 과수확 위험을 출력으로 바꾼다"로 정의돼 있어
+        /// (`BuildItem.cs`) 이 축에 게이트를 여는 것은 새로 지어낸 연결이 아니다.
+        /// </summary>
+        private static string TestPorterAlsoUnlocksOverharvest()
+        {
+            FloorSession loaded = NewOverharvestGateSession("PSG_PORTER");
+            if (!loaded.CanBank) return "전제 불성립 — 요구 전력 1인데 첫 스핀에 못 미침";
+            if (!loaded.IsOverharvestUnlocked)
+                return "짐꾼을 실었는데도 잠겨 있다 — 열쇠가 한 갈래뿐이다";
+            return null;
+        }
+
+        /// <summary>AND 확인 — 스핀 전(전력 0, 요구 미달)이면 열쇠가 있어도 잠겨 있어야 한다.</summary>
+        private static string TestOverharvestKeyAloneIsNotEnough()
+        {
+            var loadout = new BuildLoadout();
+            loadout.Add(BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+            var plan = new FloorPlan
+            {
+                Floor = 1, RequiredPower = 1f, Spins = 5,
+                SymbolPool = new[] { SymbolKind.NormalSoul },
+                ContractChoices = Array.Empty<ResistanceContract>(),
+            };
+            var session = new FloorSession(plan, new SpinEngine(1), PowerThresholds.Default,
+                0f, ResidualState.Empty, 0f, 0f, loadout);   // 스핀을 돌리지 않는다 — 전력 0
+
+            if (session.CanBank) return "전제 불성립 — 스핀 전인데 이미 CanBank 다";
+            if (!session.HasOverharvestKey) return "전제 불성립 — 열쇠를 실었는데 HasOverharvestKey 가 거짓";
+            if (session.IsOverharvestUnlocked)
+                return "전력이 0(요구 미달)인데 열쇠만으로 해금됐다 — AND 가 아니라 OR 로 동작한다";
             return null;
         }
 

@@ -496,8 +496,20 @@ namespace Ascend.Prototype.Telemetry.Tests
             return null;
         }
 
-        /// <summary>패턴 이름의 서열. 구현의 열거형 값을 빌리지 않는다 — 빌리면 검사가 사라진다.</summary>
-        private static readonly string[] PatternRank = { "None", "Scattered", "Line", "Cluster", "FullBoard" };
+        /// <summary>
+        /// 패턴 이름의 서열. **구현의 열거형 값을 빌리지 않는다 — 빌리면 검사가 사라진다.**
+        ///
+        /// 2026-08-09: `Duo`(쌍, 2.5×)와 `Cross`(십자, 5.0×)를 넣었다.
+        /// 자리는 배수 순서를 따른다 — Line 2.0 &lt; **Duo 2.5** &lt; Cluster 3.0 &lt;
+        /// **Cross 5.0** &lt; FullBoard 10.0.
+        ///
+        /// ⚠ 이 배열을 손으로 유지하는 것이 이 검사의 존재 이유다. 열거형을
+        /// `Enum.GetNames` 로 가져오면 구현이 서열을 바꿔도 검사가 따라 바뀌어
+        /// **아무것도 못 잡는다.** 그러니 새 패턴이 생길 때마다 여기도 손으로 고친다 —
+        /// 그 수고가 비용이 아니라 이 검사의 값이다.
+        /// </summary>
+        private static readonly string[] PatternRank =
+            { "None", "Scattered", "Line", "Duo", "Cluster", "Cross", "FullBoard" };
 
         /// <summary>
         /// `purifyCount`(개수)와 `bestPattern`(최고 하나)만으로는 "무엇이 먼저 터졌는가"가
@@ -1256,6 +1268,19 @@ namespace Ascend.Prototype.Telemetry.Tests
         /// <summary><see cref="Drive"/>와 같지만 확정 전에 한 번은 과수확 레버를 당긴다.</summary>
         private static int DrivePushingLuck(RunSession run)
         {
+            // 과수확 열쇠를 먼저 싣는다 (2026-08-09).
+            //
+            // 과수확이 「요구 전력 100% 를 넘기면 그냥 열린다」에서
+            // 「전력 **그리고** 열쇠」로 바뀌었다(`FloorSession.IsOverharvestUnlocked`).
+            // 이 헬퍼는 빈 적재로 시작하는 `RunSession` 을 받아 추가 스핀이 일어나기를
+            // 기다리는데, 열쇠가 없으면 **50개 시드 전부에서 한 번도 안 일어난다.**
+            //
+            // 게이트를 느슨하게 하는 대신 테스트가 조건을 갖추게 한다 — 이 테스트가
+            // 검증하려는 것은 「과수확으로 산 스핀이 추가 스핀으로 표시되는가」이지
+            // 「과수확이 공짜인가」가 아니다. 그 질문은 그대로 유효하다.
+            if (run.Loadout != null && !run.Loadout.HasEffect(Build.BuildEffectKind.OverharvestUnlock))
+                run.Loadout.Add(Build.BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+
             int spins = 0;
             int guard = 0;
             while (!run.IsComplete && !run.IsFailed && guard++ < 400)

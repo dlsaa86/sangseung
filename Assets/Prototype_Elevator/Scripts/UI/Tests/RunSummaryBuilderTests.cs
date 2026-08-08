@@ -154,6 +154,18 @@ namespace Ascend.Prototype.UI.Tests
                 FloorSession.DefaultAnteRatio, FloorSession.DefaultAnteEscalation,
                 new TenFloorSource());
 
+            // 과수확을 시도할 런에만 열쇠를 싣는다 (2026-08-09).
+            //
+            // 과수확이 「전력 100%」에서 「전력 **그리고** 열쇠」로 바뀌었다
+            // (`FloorSession.IsOverharvestUnlocked`). 빈 적재로는 `CanTakeExtraSpin` 이
+            // 항상 거짓이라 400시드 전부에서 과수확이 안 일어난다.
+            //
+            // ⚠ `overharvest == false` 인 대조군에는 **싣지 않는다.**
+            // `TestNoOverharvestReported` 가 그 대조군에 의존한다 — 양쪽 다 실어 버리면
+            // 「과수확 안 한 런」을 만들 방법이 없어져 대조 자체가 사라진다.
+            if (overharvest)
+                run.Loadout.Add(Build.BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+
             var records = new List<FloorRecord>();
             int guard = 0;
 

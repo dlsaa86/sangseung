@@ -626,6 +626,16 @@ namespace Ascend.Prototype.Run.Tests
             _visited.Clear();
             for (int i = 0; i < 3; i++) yield return null;
 
+            // 🔴 2026-08-09 — 과수확이 열쇠 게이트를 통과해야 열린다(사용자 지시: 「과수확은
+            // 기본 옵션이 아니게」, `docs/runtime/OVERHARVEST_GATE_NOTES.md`). 이 정책의
+            // 후보 선택은 "번호가 가장 작은 것"이라 열쇠 품목이 우연히 뽑힌다는 보장이
+            // 없다 — 아래 후보 선택 로직은 그대로 두고(그건 이 하네스의 결정론 기준이다),
+            // `useOverharvest` 시나리오에서만 열쇠를 직접 보장한다. 6칸 중 1칸만 쓰고
+            // 24kg 뿐이라 "층당 boardCount개 적재" 관측(무게·승객수 대조)에는 끼어들지
+            // 않는다 — 정책이 고르는 `boardCount`개는 그대로 후보 선택 로직이 고른다.
+            if (useOverharvest && !run.Session.Loadout.Contains("PRT_OVERHARVEST_TRANSFORMER"))
+                run.Session.Loadout.Add(BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+
             bool sawBoarding = false;
             bool sawContract = false;
             bool reachedContractFloor = false;

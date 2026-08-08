@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Ascend.Prototype.Build;
 using Ascend.Prototype.Data.Profiles;
 using Ascend.Prototype.Risk;
 using Ascend.Prototype.Spin;
@@ -405,9 +406,19 @@ namespace Ascend.Prototype.Run.Tests
         /// <summary>
         /// 과수확을 당길 수 있는 지점(Decision · 해금 · 스핀 잔여)까지 몬다.
         /// 못 가면 false — 시드마다 되는 것도 안 되는 것도 있다.
+        ///
+        /// 🔴 2026-08-09 — 과수확이 열쇠 게이트를 통과해야 열린다(사용자 지시: 「과수확은
+        /// 기본 옵션이 아니게」, `docs/runtime/OVERHARVEST_GATE_NOTES.md`). 이 스위트가
+        /// 재는 것은 열쇠 유무가 아니라 **위험 판정의 프레임 의존성**이므로, 열쇠는 여기서
+        /// 먼저 확실히 채워 둔다 — `RunSession._loadout`은 절대 null이 아니라
+        /// (`RunSession.cs`) 게이트가 그대로 걸리고, 열쇠 없이는 이 함수가 항상 false만
+        /// 반환해 호출부(`TestAntePeakSurvivesFrameSampling`)가 3000시드 전부를 헛돈다.
         /// </summary>
         private static bool DriveToOverharvestDecision(RunSession run)
         {
+            if (run.Loadout != null && !run.Loadout.Contains("PRT_OVERHARVEST_TRANSFORMER"))
+                run.Loadout.Add(BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+
             FloorSession floor = run.Current;
             if (floor == null) return false;
             if (floor.Phase == FloorPhase.ContractSelection && !run.SelectContract(0)) return false;

@@ -60,6 +60,29 @@ namespace Ascend.Prototype.Build
             return false;
         }
 
+        /// <summary>
+        /// 실려 있는 품목 중 **조건 없이** 발동하는 효과로 <paramref name="kind"/>를 가진
+        /// 것이 있는가. 「열쇠」류 효과(과수확 해금 등) 전용 조회다
+        /// (`FloorSession.IsOverharvestUnlocked` 가 부른다).
+        ///
+        /// `ApplyTo`의 두 패스 판정과 달리 **조건부 효과는 세지 않는다.** 열쇠 자체가
+        /// 조건부이면 "무엇이 열쇠를 여는가"가 다른 규칙 상태에 순환 의존하게 되고,
+        /// `SpinRuleSet`이 아직 없는 적재 단계(Boarding)에서도 판정할 수 없어진다 —
+        /// 열쇠는 "실려 있으면 무조건 켜진다"로 단순하게 둔다. 그래서 이 조회는
+        /// `SpinRuleSet`을 거치지 않고 품목의 정적 카탈로그(`Effects`)만 본다.
+        /// </summary>
+        public bool HasEffect(BuildEffectKind kind)
+        {
+            for (int i = 0; i < _items.Count; i++)
+            {
+                BuildEffect[] effects = _items[i].Effects;
+                if (effects == null) continue;
+                for (int e = 0; e < effects.Length; e++)
+                    if (effects[e].IsUnconditional && effects[e].Kind == kind) return true;
+            }
+            return false;
+        }
+
         /// <summary>이미 실려 있거나 자리가 없으면 거부한다. 조용히 무시하지 않는다.</summary>
         public bool Add(BuildItem item)
         {
@@ -263,13 +286,25 @@ namespace Ascend.Prototype.Build
             {
                 Id = "PSG_PORTER", Label = "짐꾼", Kind = BuildItemKind.Passenger,
                 Axis = BuildAxis.Load,
-                Description = "적재를 다시 묶어 허용 중량을 늘린다. 규칙은 바꾸지 않는다.",
+                Description = "적재를 다시 묶어 허용 중량을 늘린다. 스핀 규칙은 바꾸지 않지만, " +
+                              "과수확 레버의 해금 열쇠를 쥐고 있다.",
                 // 무게 12 → 10. 규칙을 하나도 안 바꾸는 품목이 남들보다 무거울 이유가 없다.
                 // 짐꾼의 값은 **과적 대가가 실제로 물릴 때** 생긴다 — 개편 전 실측에서
                 // 과적은 층의 5.47% 에서만 일어났고, 그래서 이 품목은 「거의 항상 빈 짐」이었다.
                 // 그 대가 축은 `WeightSnapshot` 쪽에서 따로 고친다.
                 Weight = 10f, CapacityBonus = 30f, DestinationFloor = 8, DisembarkReward = 45f,
-                Effects = Array.Empty<BuildEffect>(),
+                // 2026-08-09 — 과수확 해금의 **둘째 갈래** (첫째는 과수확 변압기).
+                // `BuildAxis.Load` 의 정의 자체가 "무게와 과수확 위험을 출력으로
+                // 바꾼다"이고(이 파일 위쪽 enum 주석, BuildItem.cs 의 BuildAxis 참고),
+                // 이 축에 실려 있는 품목은 짐꾼 하나뿐이다 — 새로 지어낸 테마 연결이
+                // 아니라 이미 적혀 있던 축 설명을 실체화한 것이다. 부품(과수확 변압기,
+                // 24kg·런 내내 유지) 대신 승객(짐꾼, 10kg·8층 하차)을 쓰면 **일시적인
+                // 접근권**이 된다는 차이도 있다 — 8층에서 내리면 다시 태우기 전까지
+                // 열쇠가 사라진다. 자세한 근거는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
+                Effects = new[]
+                {
+                    BuildEffect.Of(BuildEffectKind.OverharvestUnlock, 1f),
+                },
             },
             new BuildItem
             {
@@ -315,13 +350,19 @@ namespace Ascend.Prototype.Build
             {
                 Id = "PRT_OVERHARVEST_TRANSFORMER", Label = "과수확 변압기", Kind = BuildItemKind.Part,
                 Axis = BuildAxis.Residual,
-                Description = "정화 보상을 끌어올리는 대신 남긴 저항의 대가도 함께 커진다.",
+                Description = "정화 보상을 끌어올리는 대신 남긴 저항의 대가도 함께 커진다. " +
+                              "과수확 레버의 해금 열쇠이기도 하다.",
                 Weight = 24f,
                 Effects = new[]
                 {
                     BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Absorber, 1.5f),
                     BuildEffect.Of(BuildEffectKind.PurifyReward, SymbolKind.Proliferator, 1.5f),
                     BuildEffect.Of(BuildEffectKind.ResidualMitigation, 1.25f),
+                    // 2026-08-09 — 과수확 해금의 **첫째 갈래**. 이름이 이미 「과수확」이라
+                    // 가장 자연스러운 자리다(팀 지시 근거) — 새 콘텐츠를 만들 필요가 없었다.
+                    // 부품이라 런이 끝날 때까지 유지된다(승객인 짐꾼의 둘째 갈래와 대비되는
+                    // "영구 접근권"). 자세한 근거는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
+                    BuildEffect.Of(BuildEffectKind.OverharvestUnlock, 1f),
                 },
             },
 

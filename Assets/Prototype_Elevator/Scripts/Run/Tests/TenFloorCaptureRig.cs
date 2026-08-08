@@ -756,6 +756,15 @@ namespace Ascend.Prototype.Run.Tests
         private IEnumerator ForceCritical(RunSessionBehaviour run,
             RouletteInteractionBridge bridge, RiskStateView risk)
         {
+            // 🔴 2026-08-09 — 과수확이 열쇠 게이트를 통과해야 열린다(사용자 지시: 「과수확은
+            // 기본 옵션이 아니게」, `docs/runtime/OVERHARVEST_GATE_NOTES.md`). 열쇠가 없으면
+            // 아래 `PushYourLuck()`이 조용히 실패해 이 함수의 목적(과수확을 얹어 Critical을
+            // 강제로 찍는다)이 성립하지 않는다 — 이 캡처 하네스는 위험 단계 재현이 목적이지
+            // 게이트 자체를 검증하는 곳이 아니므로 여기서 직접 보장한다.
+            if (run.Session != null && run.Session.Loadout != null &&
+                !run.Session.Loadout.Contains("PRT_OVERHARVEST_TRANSFORMER"))
+                run.Session.Loadout.Add(BuildCatalog.ById("PRT_OVERHARVEST_TRANSFORMER"));
+
             int guard = 0;
             while (guard++ < 8)
             {
