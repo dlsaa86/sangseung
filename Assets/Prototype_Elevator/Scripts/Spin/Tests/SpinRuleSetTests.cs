@@ -38,6 +38,9 @@ namespace Ascend.Prototype.Spin.Tests
             // ── UP-BUILD-09 · 발동 순서와 추적성 ──
             Run("세션 규칙이 문서화된 발동 순서의 결과와 일치", TestActivationOrderMatchesPipeline, ref passed, ref failed, report);
             Run("순서 뒤집기가 값을 가르지 못함 (카나리아)", TestReversedOrderStillIndistinguishable, ref passed, ref failed, report);
+            Run("계약이 적재에 따라 다른 값을 낸다 (PD-29 안 C)", TestContractReadsLoadout, ref passed, ref failed, report);
+            Run("시너지 계수 0이면 옛 계약과 한 자리도 안 다르다", TestContractSynergyRollsBack, ref passed, ref failed, report);
+            Run("시너지가 세는 개수에 상한이 있다", TestContractSynergyIsCapped, ref passed, ref failed, report);
             Run("발동이 Kind·Pattern·PatternMultiplier 로 추적된다", TestPurifyEventCarriesActivation, ref passed, ref failed, report);
             Run("DescribeCascade 가 단계·발동을 순서대로 담는다", TestDescribeCascadeIsOrdered, ref passed, ref failed, report);
             Run("연쇄 단계가 1부터 오름차순이고 배수가 깊이를 따른다", TestCascadeStepsAreOrdered, ref passed, ref failed, report);
@@ -315,7 +318,10 @@ namespace Ascend.Prototype.Spin.Tests
             if (session.Rules == null) return "계약을 확정했는데 규칙 다발이 없다";
 
             SpinRuleSet documented = PrototypeCurriculum.BuildRules(in plan);
-            documented.Apply(in contract);
+            // 🔴 2026-08-06 (PD-29 안 C): 계약이 **적재를 읽는다.** 규칙을 읽는 게 아니라
+            //    적재의 정적 카탈로그를 세는 것이라 발동 순서는 그대로다 —
+            //    기본값 → 층 규칙 → 계약(적재를 참조) → 승객·부품.
+            documented.Apply(in contract, loadout);
             loadout.ApplyTo(documented);
 
             string actual = Describe(session.Rules);
@@ -336,6 +342,120 @@ namespace Ascend.Prototype.Spin.Tests
             twice.Apply(in contract);
             loadout.ApplyTo(twice);
             if (actual == Describe(twice)) return "계약이 두 번 얹혔다";
+
+            // 🔴 PD-29 안 C 의 배선이 빠지면 잡는 대조군.
+            //    `FloorSession.BuildRules` 가 적재를 안 넘기면 계약의 조건이 항상 0개를
+            //    세어 **개편 전과 같아지는데**, 위 비교만으로는 그게 안 잡힌다 —
+            //    「문서화된 순서」쪽도 같이 안 넘기면 둘 다 옛 값이 되기 때문이다.
+            //
+            //    ⚠ 계수를 0으로 되돌리는 것은 **문서화된 롤백 경로**다(`ASSUMPTION_LOG`).
+            //    그때는 두 값이 같은 것이 정상이므로 조건이 실제로 붙는 경우에만 따진다.
+            if (contract.HasSynergyBonus && contract.SynergyMatches(loadout) > 0)
+            {
+                SpinRuleSet blindContract = PrototypeCurriculum.BuildRules(in plan);
+                blindContract.Apply(in contract);
+                loadout.ApplyTo(blindContract);
+                if (actual == Describe(blindContract))
+                    return "계약이 적재를 읽지 않았다 — PD-29 안 C 배선이 빠졌다 " +
+                           "(`FloorSession.BuildRules` 의 `Apply(in contract, _loadout)`)";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 🔴 **PD-29 안 C 의 판정 줄.** 같은 계약이 **적재에 따라 다른 값**을 내는가.
+        ///
+        /// 이것이 성립하지 않으면 노션 §4 의 「현재 빌드에 가장 유리한 계약은 무엇인가」가
+        /// 데이터로 성립하지 않는다 — 격차가 아무리 작아도 답이 하나면 선택이 아니다
+        /// (`docs/runtime/PENDING_DECISIONS.md` PD-29).
+        /// </summary>
+        private static string TestContractReadsLoadout()
+        {
+            FloorPlan plan = OrderProbeFloor;
+            int index = ContractIndex(plan, SymbolKind.Proliferator);
+            if (index < 0) return $"{plan.Floor}층에 증식체 계약이 없다";
+            ResistanceContract contract = plan.ContractChoices[index];
+            if (!contract.HasSynergyBonus)
+                return null; // 계수 0 = 문서화된 롤백 상태. 이 테스트는 판정할 것이 없다.
+
+            BuildLoadout targeting = OrderProbeLoadout();          // 증식체를 겨냥한다
+            if (targeting == null) return "검사용 적재를 만들지 못했다";
+
+            var blank = new BuildLoadout();
+            BuildItem porter = BuildCatalog.ById("PSG_PORTER");    // 규칙을 하나도 안 바꾼다
+            if (porter == null || !blank.Add(porter)) return "짐꾼을 못 실었다";
+
+            SpinRuleSet withBuild = PrototypeCurriculum.BuildRules(in plan);
+            withBuild.Apply(in contract, targeting);
+
+            SpinRuleSet withoutBuild = PrototypeCurriculum.BuildRules(in plan);
+            withoutBuild.Apply(in contract, blank);
+
+            float a = withBuild.PurifyRewardFor(contract.Target);
+            float b = withoutBuild.PurifyRewardFor(contract.Target);
+            if (a <= b + 0.0001f)
+                return $"겨냥한 적재를 실었는데 계약 값이 그대로다 ({b:F3} → {a:F3}) — " +
+                       "계약이 적재를 읽지 않는다";
+
+            // 규칙을 안 바꾸는 품목만 실은 쪽은 적재가 없는 것과 같아야 한다.
+            SpinRuleSet nothing = PrototypeCurriculum.BuildRules(in plan);
+            nothing.Apply(in contract, null);
+            if (Math.Abs(nothing.PurifyRewardFor(contract.Target) - b) > 0.0001f)
+                return "규칙을 안 바꾸는 품목이 계약 값을 움직였다 — 대상 없는 효과를 세고 있다";
+            return null;
+        }
+
+        /// <summary>
+        /// **되돌릴 수 있는가.** 이 저장소의 2026-08-05·06 개편은 전부 「계수를 0으로 두면
+        /// 옛 게임」을 약속한다. 약속을 문서가 아니라 검사가 들고 있어야 한다.
+        /// </summary>
+        private static string TestContractSynergyRollsBack()
+        {
+            FloorPlan plan = OrderProbeFloor;
+            int index = ContractIndex(plan, SymbolKind.Proliferator);
+            if (index < 0) return $"{plan.Floor}층에 증식체 계약이 없다";
+
+            ResistanceContract rolledBack = plan.ContractChoices[index];
+            rolledBack.SynergyPurifyRewardPerMatch = 0f;
+            rolledBack.SynergyPatternBonusPerMatch = 0f;
+            // ⚠ 축을 늘리면 **여기도 늘려야 한다.** 2026-08-06 에 잔류 완화 축을 나중에
+            //    붙였다가 이 검사가 잡았다 — 롤백 경로가 두 축만 되돌리고 있었다.
+            //    검사가 「계수를 0으로 두면 옛 게임」을 실제로 들고 있다는 증거다.
+            rolledBack.SynergyResidualReliefPerMatch = 0f;
+
+            BuildLoadout loadout = OrderProbeLoadout();
+            if (loadout == null) return "검사용 적재를 만들지 못했다";
+
+            SpinRuleSet withLoadout = PrototypeCurriculum.BuildRules(in plan);
+            withLoadout.Apply(in rolledBack, loadout);
+
+            SpinRuleSet legacy = PrototypeCurriculum.BuildRules(in plan);
+            legacy.Apply(in rolledBack);
+
+            if (Describe(withLoadout) != Describe(legacy))
+                return "계수를 0으로 뒀는데 적재를 넘긴 쪽이 다른 값을 냈다 — 롤백 경로가 깨졌다\n" +
+                       $"    적재 전달 {Describe(withLoadout)}\n    옛 경로   {Describe(legacy)}";
+            return null;
+        }
+
+        /// <summary>
+        /// 상한이 없으면 「빌드에 맞는 계약」이 아니라 **「많이 실은 쪽이 이긴다」**가 된다.
+        /// 적재 칸이 늘수록 계약이 무한히 세지는 것은 PD-29 가 고치려던 것과 같은 모양이다.
+        /// </summary>
+        private static string TestContractSynergyIsCapped()
+        {
+            FloorPlan plan = OrderProbeFloor;
+            int index = ContractIndex(plan, SymbolKind.Proliferator);
+            if (index < 0) return $"{plan.Floor}층에 증식체 계약이 없다";
+            ResistanceContract contract = plan.ContractChoices[index];
+            if (!contract.HasSynergyBonus) return null;
+
+            BuildLoadout loadout = OrderProbeLoadout();
+            if (loadout == null) return "검사용 적재를 만들지 못했다";
+
+            int counted = contract.SynergyMatches(loadout);
+            if (counted > ResistanceContract.SynergyMatchCap)
+                return $"상한 {ResistanceContract.SynergyMatchCap} 인데 {counted} 를 셌다";
             return null;
         }
 

@@ -133,6 +133,53 @@ namespace Ascend.Prototype.Spin
             return board;
         }
 
+        /// <summary>
+        /// 🔴 **연쇄 코일** (PD-30, 2026-08-06) — 재충전이 끝난 판에서 칸을 몇 개 더 뒤집는다.
+        ///
+        /// 빈칸을 채운 **뒤에** 돈다. 순서를 뒤집으면 방금 뒤집은 칸이 다시 빈칸 채움에
+        /// 걸려 두 번 뽑히고, 그러면 이 품목이 재추첨이 아니라 확률 보정이 된다.
+        ///
+        /// 같은 칸이 두 번 뽑힐 수 있다(칸 수가 2 이상일 때). 뽑을 때마다 남은 칸을
+        /// 추려 내면 난수 소비 횟수가 판 상태에 따라 달라져 **시드 재현이 판 의존**이
+        /// 된다 — 재현성을 균일함보다 위에 둔다. 현재 카탈로그의 최대는 2다.
+        ///
+        /// <paramref name="rules"/> 의 칸 수가 0이면 <see cref="Random"/> 을 **건드리지
+        /// 않는다.** 이것이 「계수를 0으로 두면 옛 게임」을 비트 단위로 만드는 지점이다.
+        /// </summary>
+        private static void RerollExtraCells(ref SpinBoard board, SpinRuleSet rules, Random spinRandom)
+        {
+            int count = rules.ExtraCascadeRerollCells;
+            if (count <= 0) return;
+
+            for (int n = 0; n < count; n++)
+            {
+                // **정상 영혼 칸만 고른다.** 첫 판본은 아무 칸이나 골랐고, 실측 기여가
+                // **−2.00%p 로 카탈로그 최하위**였다. 무작위 칸을 뒤집으면 이미 만들어진
+                // 저항 덩어리를 깨뜨려, 「한 번 더 무너질 기회」가 아니라 그냥 잡음이 된다.
+                //
+                // 정상 영혼은 이 단계에서 어차피 수확되고 사라지는 칸이다. 그 자리를
+                // 다시 뽑으면 판의 **저항 밀도**가 올라가고, 이 게임은 그것을 보상한다 —
+                // 정화는 패턴 배수와 캐스케이드를 타지만 정상 영혼은 안 타기 때문이다
+                // (PD-29 §원인 ② 와 영혼 포집망의 개편 전 −3.00%p 가 같은 사실이다).
+                //
+                // 뒤집을 정상 영혼이 없으면 **난수를 뽑지 않는다.** 판 상태로 소비가
+                // 갈리지만 판 자체가 시드에서 결정론적이므로 재현은 유지된다.
+                int candidates = 0;
+                for (int i = 0; i < SpinBoard.Cells; i++)
+                    if (board[i] == SymbolKind.NormalSoul) candidates++;
+                if (candidates == 0) return;
+
+                int pick = spinRandom.Next(candidates);
+                for (int i = 0; i < SpinBoard.Cells; i++)
+                {
+                    if (board[i] != SymbolKind.NormalSoul) continue;
+                    if (pick-- > 0) continue;
+                    board[i] = DrawSymbol(rules, true, spinRandom);
+                    break;
+                }
+            }
+        }
+
         private static void FillEmptyCells(ref SpinBoard board, SpinRuleSet rules, Random spinRandom)
         {
             // 열 0의 위쪽 칸부터 열 2의 아래쪽 칸까지 채운다. 최초 추첨과 동일한
@@ -302,7 +349,12 @@ namespace Ascend.Prototype.Spin
                 }
 
                 if (triggersRefill)
+                {
                     FillEmptyCells(ref after, rules, spinRandom);
+                    // 🔴 연쇄 코일 (PD-30). 0 이면 난수를 한 번도 뽑지 않으므로
+                    //    옛 판본과 **비트 단위로 같다** — 시드 재현이 깨지지 않는다.
+                    RerollExtraCells(ref after, rules, spinRandom);
+                }
 
                 int harvestedNormals = normalSoulCount;
                 float totalStepNormalPower = stepNormalPower;
@@ -376,21 +428,43 @@ namespace Ascend.Prototype.Spin
         {
             int absorberCount = board.CountOf(SymbolKind.Absorber);
             int proliferatorCount = board.CountOf(SymbolKind.Proliferator);
+
+            // 🔴 검침원 (PD-30). **장부에서만** 지운다 — 판의 저항은 그대로 남는다.
+            //    판에서 지우면 다음 스핀의 저항 밀도가 내려가고, 이 게임은 저항 밀도를
+            //    보상하므로 「완화」가 아니라 약화가 된다(PD-29 §원인 ②의 실측).
+            //    흡수체부터 지우는 이유: 흡수체 잔류만 **저장 전력을 실제로 깎는다.**
+            //    증식체 잔류는 다음 스핀 가중치를 올리는 재료라 지울 값이 더 작다.
+            int chargedAbsorbers = absorberCount;
+            int chargedProliferators = proliferatorCount;
+            int forgiven = 0;
+            if (rules.ResidualForgiveCount > 0)
+            {
+                int budget = rules.ResidualForgiveCount;
+                int fromAbsorber = Math.Min(budget, chargedAbsorbers);
+                chargedAbsorbers -= fromAbsorber;
+                budget -= fromAbsorber;
+                int fromProliferator = Math.Min(budget, chargedProliferators);
+                chargedProliferators -= fromProliferator;
+                forgiven = fromAbsorber + fromProliferator;
+            }
             // 개수를 그대로 곱하지 않고 **대가 단위**로 바꿔서 곱한다
             // (`SpinRuleSet.ResidualLoadOf`). 볼록도가 0이면 개수 그대로라 옛 식과 같다.
             // 왜 볼록해야 하는지는 `SpinRuleSet.ResidualEscalation` 주석에 있다 —
             // 요약하면 이득은 캐스케이드를 타고 복리인데 대가만 선형이었다.
-            float storedPowerLoss = SpinRuleSet.ResidualLoadOf(absorberCount, rules.ResidualEscalation) *
+            float storedPowerLoss = SpinRuleSet.ResidualLoadOf(chargedAbsorbers, rules.ResidualEscalation) *
                                     rules.AbsorberResidualPowerLoss *
                                     rules.ResidualPenaltyFor(SymbolKind.Absorber);
             float proliferatorPenalty = rules.ResidualPenaltyFor(SymbolKind.Proliferator);
-            float nextWeightAdd = proliferatorCount * rules.ProliferatorResidualWeightAdd *
+            float nextWeightAdd = chargedProliferators * rules.ProliferatorResidualWeightAdd *
                                   proliferatorPenalty;
 
             return new ResidualState
             {
+                // 개수는 **판에 실제로 남은 것**이다. 면제는 대가에만 걸리므로
+                // 화면·기록은 「6개 남았고 그중 1개는 검침이 끝났다」로 읽혀야 한다.
                 AbsorberCount = absorberCount,
                 ProliferatorCount = proliferatorCount,
+                ForgivenCount = forgiven,
                 StoredPowerLoss = storedPowerLoss,
                 NextProliferatorWeightAdd = nextWeightAdd,
             };

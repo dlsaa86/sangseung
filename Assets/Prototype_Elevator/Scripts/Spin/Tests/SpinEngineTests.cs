@@ -47,6 +47,12 @@ namespace Ascend.Prototype.Spin.Tests
             Run("잭팟은 9칸을 모양으로 보고", TestFullBoardPatternCells, ref passed, ref failed, report);
             Run("패턴 칸 보고가 SpinBoard.Lines 를 오염시키지 않음", TestPatternCellsDoNotAliasLines, ref passed, ref failed, report);
 
+            // ── PD-30 (2026-08-06) — 판정 규칙 층위 2종 ──
+            Run("검침원: 잔류를 장부에서만 지운다 (판은 그대로)", TestResidualForgiveIsLedgerOnly, ref passed, ref failed, report);
+            Run("검침원: 면제 0이면 옛 값과 한 자리도 안 다르다", TestResidualForgiveRollsBack, ref passed, ref failed, report);
+            Run("연쇄 코일: 칸 0이면 난수를 건드리지 않는다", TestExtraRerollZeroIsBitIdentical, ref passed, ref failed, report);
+            Run("연쇄 코일: 칸을 켜면 판이 실제로 달라진다", TestExtraRerollChangesBoard, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Spin Engine Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -342,6 +348,141 @@ namespace Ascend.Prototype.Spin.Tests
             if (rules.WeightOf(SymbolKind.Proliferator) != 2.5f)
                 return "입력 rules가 변형됨";
             return null;
+        }
+
+        /// <summary>
+        /// 🔴 **검침원은 판을 바꾸지 않는다** (PD-30).
+        ///
+        /// 판에서 저항을 지우면 다음 스핀의 저항 밀도가 내려간다. 이 게임은 저항 밀도를
+        /// **보상**하므로(PD-29 §원인 ② 실측: 영혼 가중치를 깎았더니 완주율이 올라갔다)
+        /// 그건 완화가 아니라 약화다. 그래서 대가만 면제하고 개수는 그대로 보고한다.
+        ///
+        /// 이 검사가 없으면 「판에서도 지우자」가 언젠가 「더 자연스러운 구현」으로
+        /// 들어오고, 그때 방향이 조용히 뒤집힌다.
+        /// </summary>
+        private static string TestResidualForgiveIsLedgerOnly()
+        {
+            SpinBoard board = Board(
+                SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul);
+
+            SpinRuleSet plain = BoardRules();
+            SpinResolution before = Resolve(board, plain);
+
+            SpinRuleSet metered = BoardRules();
+            metered.ResidualForgiveCount = 1;
+            SpinResolution after = Resolve(board, metered);
+
+            if (after.Residual.AbsorberCount != before.Residual.AbsorberCount)
+                return $"판의 흡수체 개수가 달라졌다 {before.Residual.AbsorberCount} → " +
+                       $"{after.Residual.AbsorberCount} — 검침원이 판을 건드렸다";
+            if (after.Residual.ForgivenCount != 1)
+                return $"면제 개수가 기록되지 않았다 ({after.Residual.ForgivenCount})";
+
+            float expected = SpinRuleSet.ResidualLoadOf(1, metered.ResidualEscalation)
+                           * metered.AbsorberResidualPowerLoss;
+            if (Math.Abs(after.Residual.StoredPowerLoss - expected) > 0.0001f)
+                return $"면제 뒤 차감 {after.Residual.StoredPowerLoss}, 기대 {expected}";
+            if (after.Residual.StoredPowerLoss >= before.Residual.StoredPowerLoss)
+                return "면제했는데 대가가 줄지 않았다";
+            return null;
+        }
+
+        private static string TestResidualForgiveRollsBack()
+        {
+            SpinBoard board = Board(
+                SymbolKind.Absorber, SymbolKind.Absorber, SymbolKind.Proliferator,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul);
+
+            SpinRuleSet zero = BoardRules();
+            zero.ResidualForgiveCount = 0;
+            SpinResolution a = Resolve(board, zero);
+            SpinResolution b = Resolve(board, BoardRules());
+
+            if (Math.Abs(a.Residual.StoredPowerLoss - b.Residual.StoredPowerLoss) > 0.0001f ||
+                Math.Abs(a.Residual.NextProliferatorWeightAdd - b.Residual.NextProliferatorWeightAdd) > 0.0001f ||
+                a.Residual.ForgivenCount != 0)
+                return "면제 0인데 옛 경로와 값이 갈렸다 — 롤백 경로가 깨졌다";
+            return null;
+        }
+
+        /// <summary>
+        /// 🔴 **0이면 `Random` 을 한 번도 건드리지 않는다 — 못 박은 값으로 확인한다.**
+        ///
+        /// 처음엔 「칸 0인 규칙 둘을 비교」로 썼다가 **변이 검사에서 잡혔다.** 두 쪽 다
+        /// 같은 함수를 지나므로, 칸 0에서 난수를 한 번 뽑도록 망가뜨려도 **양쪽이 똑같이**
+        /// 어긋나 검사가 통과했다. 함수 안의 결함은 그 함수를 지나는 두 값을 비교해서
+        /// 잡을 수 없다.
+        ///
+        /// 그래서 바깥에 기준을 둔다. 아래 값은 연쇄 코일이 **없던 시점**의 결과다.
+        /// 난수 소비 횟수가 달라지면 이 값이 깨진다 — 그리고 그때 실제로 깨지는 것은
+        /// 이 품목이 아니라 **재현성**이다. 캡처 베이스라인·시드 재현·「로그 한 줄로 스핀
+        /// 재현」이 전부 소비 횟수 위에 서 있다.
+        ///
+        /// ⚠ 이 값을 고쳐야 한다면 **의도한 변경일 때만** 고친다. 그리고 그때는
+        /// `Captures/baseline.txt` 도 함께 새로 세운다.
+        ///
+        /// 규칙 다발을 이 검사 안에서 직접 만든다. `BoardRules()` 를 쓰면 밸런스 프로파일
+        /// 변경이 이 못을 흔들어, 재현성 경보가 밸런스 경보와 섞인다.
+        /// </summary>
+        private static string TestExtraRerollZeroIsBitIdentical()
+        {
+            // 🔴 **시드 하나로는 못 잡는다.** 처음엔 시드 77 하나를 못 박았는데, 그 스핀은
+            //    재충전이 걸리지 않아 `RerollExtraCells` 를 **아예 지나가지 않았다.**
+            //    지나가지 않는 코드에 낸 결함은 그 못이 잡지 못한다 — 변이 검사가 그걸 잡았다.
+            //    재충전이 걸리는 스핀이 섞이도록 시드를 넓게 훑어 합계를 못 박는다.
+            double total = 0.0;
+            int refilled = 0;
+            for (int seed = 1; seed <= 40; seed++)
+            {
+                var rules = new SpinRuleSet { MaxCascadeDepth = 2, ExtraCascadeRerollCells = 0 };
+                rules.Weights[SymbolKind.NormalSoul]   = 5f;
+                rules.Weights[SymbolKind.Absorber]     = 3f;
+                rules.Weights[SymbolKind.Proliferator] = 2f;
+
+                var engine = new SpinEngine(4242);
+                SpinResolution r = engine.SpinWithSeed(seed, rules, ResistanceContract.None, ResidualState.Empty);
+                total += r.GrossPower;
+                if (r.Steps.Length > 1) refilled++;
+            }
+
+            // 재충전이 한 번도 안 걸리면 이 검사는 아무것도 지키지 못한다. 그 사실을 말한다.
+            if (refilled == 0)
+                return "시드 40개에서 재충전이 한 번도 안 걸렸다 — 이 못은 코일 경로를 지나지 않는다";
+
+            const double Pinned = 4566.7999;
+            if (Math.Abs(total - Pinned) > 0.001)
+                return $"칸 0인데 옛 결과와 다르다 — 난수 소비가 바뀌었다\n" +
+                       $"    실제 {total:F4} (재충전 {refilled}회)\n    못박은 값 {Pinned:F4}";
+            return null;
+        }
+
+        private static string TestExtraRerollChangesBoard()
+        {
+            var engine = new SpinEngine(4242);
+            SpinRuleSet off = BoardRules();
+            SpinResolution baseline = engine.SpinWithSeed(77, off, ResistanceContract.None, ResidualState.Empty);
+
+            // 여러 시드를 본다. 재충전이 안 걸리는 스핀에서는 이 품목이 아무 일도 안 하는 것이
+            // **정상**이므로, 한 시드만 보고 「효과 없음」이라 판정하면 검사가 거짓말을 한다.
+            for (int seed = 1; seed <= 40; seed++)
+            {
+                var e1 = new SpinEngine(4242);
+                SpinRuleSet plain = BoardRules();
+                SpinResolution a = e1.SpinWithSeed(seed, plain, ResistanceContract.None, ResidualState.Empty);
+
+                var e2 = new SpinEngine(4242);
+                SpinRuleSet coil = BoardRules();
+                coil.ExtraCascadeRerollCells = 1;
+                SpinResolution b = e2.SpinWithSeed(seed, coil, ResistanceContract.None, ResidualState.Empty);
+
+                if (a.FinalBoard.ToString() != b.FinalBoard.ToString() ||
+                    Math.Abs(a.GrossPower - b.GrossPower) > 0.0001f)
+                    return null;   // 한 시드라도 갈리면 배선이 살아 있다
+            }
+            return "시드 40개에서 한 번도 판이 달라지지 않았다 — 연쇄 코일이 배선되지 않았다";
         }
 
         private static string TestAbsorberResidual()

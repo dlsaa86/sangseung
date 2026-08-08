@@ -59,6 +59,22 @@ Shader "Ascend/Stylized"
         _BandFloor      ("계단 0번 칸 바닥 (0 = 기존과 동일)", Range(0, 1)) = 0
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
 
+        // ── `_NearAttenClamp` — 점광의 「크기」 대역 (2026-08-08) ────────────────
+        //
+        // URP 점광은 **반지름이 0** 이다. 그래서 광원에 가까운 면은 `distanceAttenuation`
+        // 이 1 에 붙고, 그 뒤 어떤 계단 수를 써도 최상단 칸에 고정된다. 캐빈 램프는
+        // 천장에서 0.36 m 아래라 바로 위 천장이 정확히 그 상태가 됐다 — 흰색으로 타고
+        // 링 밴딩이 보였다. **광원 세기를 낮춰도 사라지지 않는다**: 넘치는 값을 정하는
+        // 것은 세기가 아니라 거리 감쇠이기 때문이다.
+        //
+        // 블렌더 전구는 물리적 크기가 있어서 근거리에서 이렇게 타지 않는다. 여기서는
+        // 감쇠의 **상한**을 두어 그 크기를 흉내 낸다. 먼 면(감쇠 « 상한)은 영향이 없고,
+        // 가까운 면만 상단 칸에서 내려온다.
+        //
+        // ⚠ **기본값 1 에서 `min(a, 1) == a` 라 비트 단위로 동일하다** —
+        // 이 파일의 「기본값 불변 규약」을 지킨다.
+        _NearAttenClamp ("광원 크기 대역 (1 = 기존과 동일)", Range(0.05, 1)) = 1
+
         // **이 프로퍼티가 없으면 이 셰이더는 어디에도 채택할 수 없다.**
         // `SpinBoardView`(정화 점등) · `InstrumentPanelView`(계기 발광) ·
         // `OverharvestUnlockEffect`(덮개 레일) 셋이 `MaterialPropertyBlock` 으로
@@ -161,6 +177,18 @@ Shader "Ascend/Stylized"
             #pragma fragment Frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+            // ── 점광 그림자 (2026-08-08) ────────────────────────────────────────
+            // 이 셰이더에는 `_ADDITIONAL_LIGHT_SHADOWS` 가 없었다. `ShadowCaster` 패스는
+            // 있어서 그림자맵은 채워지고 있었지만, 키워드가 없으니 **아무도 그 맵을 읽지
+            // 않았다.** 방향광이 있는 동안에는 티가 안 났다 — 주광 그림자는 따로 켜져
+            // 있으니까. 방향광을 끄자(밀폐된 방에 필라이트가 부자연스러워서) 캐빈 램프가
+            // **추가광**이 되었고, 그 순간 방 전체에서 드리운 그림자가 통째로 사라졌다.
+            //
+            // 증상은 톤 문제로 위장한다: 그림자가 없으니 어두운 화소가 생기지 않고,
+            // 아무리 앰비언트·밴드 바닥을 낮춰도 p05 가 내려가지 않는다. 실제로 EEVEE
+            // 기준선과의 마지막 차이가 전부 이것이었다.
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             // **Forward+ 를 선언하지 않으면 추가 광원이 통째로 안 보인다.**
             // 이 프로젝트의 `PC_Renderer` 는 `m_RenderingMode = 2`(ForwardPlus)다.
@@ -201,6 +229,7 @@ Shader "Ascend/Stylized"
                 float  _ShadowLift;
                 float  _BandFloor;
                 float  _RimStrength;
+                float  _NearAttenClamp;
                 float4 _EmissionColor;
                 float4 _BaseMap_ST;
                 float  _DebugOutput;
@@ -329,7 +358,19 @@ Shader "Ascend/Stylized"
             float Quantize(float value, float steps)
             {
                 steps = max(2.0, steps);
-                float band = floor(saturate(value) * steps);
+                // 2026-08-08 — 위에 「기록만 한다」고 적어 둔 그 경계 결함을 고친다.
+                // 「현재 씬에서는 ndotl 최대 0.749 라 미발생」은 **그 램프가 들어오기 전**
+                // 이야기였다. `LT_CabBulb` 는 천장에서 0.36 m 아래에 달려 있어 바로 위
+                // 천장면이 `ndotl ≈ 1`, `distanceAttenuation ≈ 1` 이 되고, 그래서
+                // `floor(1.0 * steps) == steps` → `steps / (steps - 1)` = **1.33** 이
+                // 실제로 나왔다. 천장 광원 자리가 흰색으로 타고 링 모양 밴딩이 보인 것이
+                // 이것이다. 광원 세기를 낮춰도 사라지지 않는다 — 넘치는 값은 세기가 아니라
+                // `distanceAttenuation` 이 정하기 때문이다.
+                //
+                // 클램프는 **결함 조건인 화소에서만** 값을 바꾼다. 나머지 화소는 이미
+                // `floor(v * steps) <= steps - 1` 이라 비트 단위로 동일하다 —
+                // 「기본값 불변 규약」은 그대로 지켜진다.
+                float band = min(floor(saturate(value) * steps), steps - 1.0);
                 return (band + _BandFloor) / (steps - 1.0 + _BandFloor);
             }
 
@@ -467,7 +508,8 @@ Shader "Ascend/Stylized"
                 // 그림자도 끄여 있어(`m_Shadows.m_Type: 0`) `shadowAttenuation == 1` 이다.
                 // 즉 주광에 대해 `atten == pow(1, _FalloffPower) == 1` 로 **상수**이며
                 // `_FalloffPower` 는 주광에 대해 아무 일도 하지 않는다.
-                float atten = pow(saturate(mainLight.distanceAttenuation * mainLight.shadowAttenuation),
+                float atten = pow(min(saturate(mainLight.distanceAttenuation * mainLight.shadowAttenuation),
+                                      _NearAttenClamp),
                                   _FalloffPower);
                 float lambert = QuantizeShade(ndotl * atten, _Steps);
 
@@ -525,9 +567,13 @@ Shader "Ascend/Stylized"
 
                 uint pixelLightCount = GetAdditionalLightsCount();
                 LIGHT_LOOP_BEGIN(pixelLightCount)
-                    Light extra = GetAdditionalLight(lightIndex, input.positionWS);
+                    // 2인자 오버로드는 `shadowAttenuation` 을 **항상 1 로 둔다.**
+                    // 그림자를 실제로 샘플링하는 것은 셋째 인자(그림자 마스크)가 있는 쪽뿐이다.
+                    // 라이트맵을 쓰지 않으므로 마스크는 1 을 넣는다.
+                    Light extra = GetAdditionalLight(lightIndex, input.positionWS, half4(1, 1, 1, 1));
                     float extraNdotl = saturate(dot(normalWS, extra.direction));
-                    float extraAtten = pow(saturate(extra.distanceAttenuation * extra.shadowAttenuation),
+                    float extraAtten = pow(min(saturate(extra.distanceAttenuation * extra.shadowAttenuation),
+                                               _NearAttenClamp),
                                            _FalloffPower);
                     float extraRaw  = extraNdotl * extraAtten;
                     float extraBand = QuantizeShade(extraRaw, _Steps);

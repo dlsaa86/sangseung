@@ -11,7 +11,8 @@ Material:
   m_Shader: {fileID: 4800000, guid: dc8c0106285882343bb29884d5b986b7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
+  m_ValidKeywords:
+  - _SHADEGAMMA_ON
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -38,8 +39,8 @@ Material:
     m_Ints: []
     m_Floats:
     - _AffineAmount: 0
-    - _AmbientFloor: 0.35
-    - _BandFloor: 0.06
+    - _AmbientFloor: 0.03
+    - _BandFloor: 0.012
     - _ColorDepth: 0
     - _ColorDepthEnabled: 0
     - _DebugOutput: 0
@@ -48,13 +49,14 @@ Material:
     - _DetailStrength: 1
     - _DitherStrength: 1
     - _EmissionMapEnabled: 0
-    - _FalloffPower: 2.9
+    - _FalloffPower: 1
+    - _NearAttenClamp: 1
     - _PS1DistortEnabled: 0
-    - _RimStrength: 0.3
-    - _ShadeGamma: 1
-    - _ShadeGammaEnabled: 0
-    - _ShadowLift: 0.15
-    - _Steps: 4
+    - _RimStrength: 0.02
+    - _ShadeGamma: 1.8
+    - _ShadeGammaEnabled: 1
+    - _ShadowLift: 0.18
+    - _Steps: 8
     - _TriplanarBlend: 4
     - _TriplanarEnabled: 0
     - _TriplanarScale: 0.5
@@ -62,6 +64,6 @@ Material:
     m_Colors:
     - _BaseColor: {r: 0.2701, g: 0.255485, b: 0.2442, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _ShadowTint: {r: 0.15, g: 0.19, b: 0.18, a: 1}
+    - _ShadowTint: {r: 0.16, g: 0.13, b: 0.1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

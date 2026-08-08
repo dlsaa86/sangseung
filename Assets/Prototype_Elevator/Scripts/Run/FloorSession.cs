@@ -779,7 +779,10 @@ namespace Ascend.Prototype.Run
             // the single runtime call site, then apply the selected contract once.
             FloorPlan plan = Plan;
             _rules = PrototypeCurriculum.BuildRules(in plan, _balance);
-            _rules.Apply(in contract);
+            // 🔴 적재를 넘긴다 (PD-29 안 C). 계약이 **읽기만** 한다 — 적재 효과는 여전히
+            //    아래 `ApplyTo` 에서만 규칙에 들어간다. 넘기지 않으면 계약의 조건이
+            //    항상 0개를 세어 개편 전과 같아진다.
+            _rules.Apply(in contract, _loadout);
 
             // 발동 순서: 기본값 → 층 규칙 → 계약 → 승객·부품(`SpinRuleSet` 주석).
             // 승객이 계약보다 뒤인 이유는 계약의 곱셈이 승객의 가산 위에 얹히면

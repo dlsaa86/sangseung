@@ -26,6 +26,7 @@ Material:
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _ALPHAPREMULTIPLY_ON
+  - _ENVIRONMENTREFLECTIONS_OFF
   - _SURFACE_TYPE_TRANSPARENT
   m_InvalidKeywords: []
   m_LightmapFlags: 4
@@ -129,7 +130,7 @@ Material:
     - _DstBlend: 10
     - _DstBlendAlpha: 10
     - _EmissionMapEnabled: 0
-    - _EnvironmentReflections: 1
+    - _EnvironmentReflections: 0
     - _FalloffPower: 2.9
     - _GlossMapScale: 0
     - _Glossiness: 0
@@ -144,7 +145,7 @@ Material:
     - _ShadeGamma: 1
     - _ShadeGammaEnabled: 0
     - _ShadowLift: 0.6
-    - _Smoothness: 0.72
+    - _Smoothness: 0.3
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
@@ -163,6 +164,6 @@ Material:
     - _Color: {r: 0.29999998, g: 0.32999998, b: 0.33999997, a: 0.22}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.15, g: 0.19, b: 0.18, a: 1}
-    - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+    - _SpecColor: {r: 0.06, g: 0.06, b: 0.06, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

@@ -133,6 +133,35 @@ namespace Ascend.Prototype.Spin
         /// <summary>잔류 대가 전체를 완화하는 계수(0~1). 잔류 완화형 승객이 낮춘다.</summary>
         public float ResidualMitigation = 1f;
 
+        /// <summary>
+        /// 🔴 **잔류 장부에서 지우는 개수** (PD-30 검침원, 2026-08-06). 0이면 옛 게임.
+        ///
+        /// 판을 바꾸지 않는다 — 남은 저항은 그대로 있고 **대가만** 면제된다.
+        /// 판에서 지우면 다음 스핀의 저항 밀도가 내려가는데, 이 게임은 저항 밀도를
+        /// 보상하므로(`docs/runtime/PENDING_DECISIONS.md` PD-29 §원인 ②) 그건
+        /// 「완화」가 아니라 **약화**가 된다. 방향이 반대인 효과를 붙이지 않는다.
+        /// </summary>
+        public int ResidualForgiveCount = 0;
+
+        /// <summary>
+        /// 🔴 **연쇄가 이어질 때 추가로 다시 뒤집는 칸 수** (PD-30 연쇄 코일, 2026-08-06).
+        /// 0이면 난수를 **한 번도 뽑지 않으므로** 옛 게임과 비트 단위로 같다.
+        ///
+        /// 이 값은 배수가 아니라 **판정 규칙**을 바꾼다 — 판이 한 번 더 무너질 기회를 산다.
+        /// PD-30 의 진단이 「그 층위의 품목이 사선 결속기 하나뿐」이었고, 이것이 둘째다.
+        /// </summary>
+        public int ExtraCascadeRerollCells = 0;
+
+        /// <summary>
+        /// 층 규칙이 정한 연쇄 증분의 **기준선**. 적재가 이 값을 밀어 올렸는지 판정하는
+        /// 데만 쓴다(<see cref="Build.BuildEffectCondition.CascadeAmplified"/>).
+        ///
+        /// 상수와 비교하지 않는 이유: `SpinBalanceProfile` 이 층별로 다른 증분을 줄 수 있어
+        /// 「기본값보다 큰가」가 「적재가 올렸는가」와 같지 않다. 기준선을 들고 있어야
+        /// 조건이 프로파일 변경에 흔들리지 않는다.
+        /// </summary>
+        public float BaseCascadeMultiplierStep = 0.5f;
+
         // ── 조회 헬퍼 (없는 키를 기본값으로 흡수해 호출부를 단순하게 유지) ──
 
         public float WeightOf(SymbolKind kind)
@@ -243,6 +272,7 @@ namespace Ascend.Prototype.Spin
             rules.ClusterMultiplier              = balance.ClusterMultiplier;
             rules.FullBoardMultiplier            = balance.FullBoardMultiplier;
             rules.CascadeMultiplierStep          = balance.CascadeMultiplierStep;
+            rules.BaseCascadeMultiplierStep      = balance.CascadeMultiplierStep;
             rules.AbsorberResidualPowerLoss      = balance.AbsorberResidualPowerLoss;
             rules.ProliferatorResidualWeightAdd  = balance.ProliferatorResidualWeightAdd;
 
@@ -257,16 +287,42 @@ namespace Ascend.Prototype.Spin
         }
 
         /// <summary>계약을 규칙 다발에 적용한다. 세 값이 함께 움직이는 지점은 여기 한 곳뿐이다.</summary>
-        public void Apply(in ResistanceContract contract)
+        public void Apply(in ResistanceContract contract) => Apply(in contract, null);
+
+        /// <summary>
+        /// 🔴 **적재를 읽는 계약** (PD-29 안 C, 2026-08-06).
+        ///
+        /// <paramref name="loadout"/> 이 `null` 이거나 계약이 조건을 안 갖고 있으면
+        /// 세는 수가 0이라 **위 오버로드와 비트 단위로 같다.** 시뮬레이터·성능 프로브처럼
+        /// 적재가 없는 호출부는 한 자리도 안 바뀐다.
+        ///
+        /// ⚠ **여기서 규칙을 읽어 조건을 판정하지 않는다.** 적재의 정적 카탈로그만 센다
+        /// (<see cref="ResistanceContract.SynergyMatches"/>). 계약은 적재보다 **먼저**
+        /// 적용되므로 이 시점의 규칙에는 적재가 아직 없고, 순서를 뒤집으면 계약의 곱셈이
+        /// 승객의 가산 위에 얹혀 같은 조합이 다른 값을 낸다
+        /// (`BuildLoadout.ApplyTo` 주석).
+        /// </summary>
+        public void Apply(in ResistanceContract contract, Build.BuildLoadout loadout)
         {
             if (contract.IsNone) return;
             SymbolKind t = contract.Target;
 
+            int matches = contract.SynergyMatches(loadout);
+            float purifyMultiplier = contract.PurifyRewardMultiplier +
+                                     matches * contract.SynergyPurifyRewardPerMatch;
+            float patternAdd = contract.PatternBonusAdd +
+                               matches * contract.SynergyPatternBonusPerMatch;
+            // 대가는 **가벼워지기만** 하고 1 아래로는 안 내려간다 — 계약이 잔류 대가를
+            // 깎아 주는 물건이 되면 「세 값이 함께 움직인다」가 무너진다.
+            float residualMultiplier = contract.ResidualPenaltyMultiplier -
+                                       matches * contract.SynergyResidualReliefPerMatch;
+            if (residualMultiplier < 1f) residualMultiplier = 1f;
+
             Weights[t] = WeightOf(t) * contract.AppearanceMultiplier;
-            PurifyRewardMultiplier[t]    = PurifyRewardFor(t) * contract.PurifyRewardMultiplier;
-            PatternBonusAdd[t]           = PatternBonusFor(t) + contract.PatternBonusAdd;
+            PurifyRewardMultiplier[t]    = PurifyRewardFor(t) * purifyMultiplier;
+            PatternBonusAdd[t]           = PatternBonusFor(t) + patternAdd;
             ResidualPenaltyMultiplier[t] =
-                (ResidualPenaltyMultiplier.TryGetValue(t, out float r) ? r : 1f) * contract.ResidualPenaltyMultiplier;
+                (ResidualPenaltyMultiplier.TryGetValue(t, out float r) ? r : 1f) * residualMultiplier;
         }
 
         public SpinRuleSet Clone()
@@ -289,6 +345,10 @@ namespace Ascend.Prototype.Spin
                 AbsorberResidualPowerLoss     = AbsorberResidualPowerLoss,
                 ProliferatorResidualWeightAdd = ProliferatorResidualWeightAdd,
                 ResidualMitigation            = ResidualMitigation,
+                // ⚠ 아래 셋도 같은 이유로 복제한다 — `PrepareRules` 가 매 스핀 `Clone()` 한다.
+                ResidualForgiveCount          = ResidualForgiveCount,
+                ExtraCascadeRerollCells       = ExtraCascadeRerollCells,
+                BaseCascadeMultiplierStep     = BaseCascadeMultiplierStep,
                 // ⚠ 이 줄이 빠지면 잔류 대가가 스핀마다 기본값으로 되돌아간다.
                 //   `SpinEngine.PrepareRules` 가 매 스핀 `Clone()` 을 부르기 때문이다.
                 ResidualEscalation            = ResidualEscalation,

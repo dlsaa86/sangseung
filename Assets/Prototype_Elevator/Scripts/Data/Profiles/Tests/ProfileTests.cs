@@ -1679,40 +1679,165 @@ namespace Ascend.Prototype.Data.Profiles.Tests
             return null;
         }
 
+        /// <summary>
+        /// 적재 대가가 **프로파일을 따라오는가** — 그리고 그 곡선이 볼록한가.
+        ///
+        /// ## 2026-08-06 개정 — 완화가 아니라 강화다
+        ///
+        /// 직전 판본은 `기본 + 무게 × 계수` 라는 **선형식을 못 박고** 있었다.
+        /// `c415733`(2026-08-05)이 대가를 볼록하게 바꾸면서 이 단정이 깨졌는데,
+        /// 그 변경은 의도된 것이다 — 실측(`COST_AXIS_AUDIT.md`)에서 곡선이 **오목**해
+        /// 「한 번 싣기 시작하면 더 싣는 것이 항상 유리하다」가 성립했고, 푸시 유어 럭이
+        /// 요구하는 모양은 그 반대다.
+        ///
+        /// 그래서 새 식을 여기에 **다시 적지 않는다.** 식을 복제하면 검사가 구현의
+        /// 사본이 되어 둘이 함께 틀려도 통과한다. 대신 그 식이 만족해야 할 **성질**을 건다.
+        ///
+        /// | 단정 | 깨지면 무엇이 무너지나 |
+        /// |---|---|
+        /// | 곡률 0 이면 옛 선형식과 **비트 동일** | 「곡률은 순수한 덧붙임」이라는 계약이 거짓이 된다 |
+        /// | 곡률이 양수면 선형보다 **비싸다** | 곡률이 조용히 0 으로 되돌아가도 아무도 모른다 |
+        /// | 한계 비용이 **증가**한다 (2차 차분 &gt; 0) | 오목으로 되돌아가 「더 싣는 게 항상 이득」이 부활한다 |
+        /// | 무게 0 이면 대가 0 | 빈 적재에 대가가 붙는다 |
+        /// | 층이 든 값이 주입한 스냅샷과 같다 | 값을 데이터로 옮겨도 게임이 옛 상수를 읽는다 |
+        /// </summary>
         private static string TestRequiredPowerFollowsProfile()
         {
-            // 과적이 아닌 무게. 10 < 37 이므로 배수는 걸리지 않는다.
+            // ── Arrange ──
             var run = ProbeRun(10f);
             if (run.Current == null) return "첫 층이 없다";
             if (run.Current.IsOverloaded) return "10kg 인데 과적으로 판정됐다 (허용 37)";
 
-            float expected = run.Current.Plan.RequiredPower + 10f * 5f;
-            if (!Near(run.Current.RequiredPower, expected))
-                return $"요구 전력 {run.Current.RequiredPower}, 기대 {expected}"
-                     + $" (기본 {run.Current.Plan.RequiredPower} + 10×5). 무게 계수가 상수 2 로 되돌아갔나";
+            WeightSnapshot w = run.Current.Weight;
+            float basePower = run.Current.Plan.RequiredPower;
+
+            // ── Assert ① 곡률 0 이면 옛 선형식과 비트 단위로 같다 ──
+            // 이것이 「곡률은 순수한 덧붙임」이라는 계약이고, 되돌리기의 기준점이다.
+            var linear = new WeightSnapshot(w.AllowedWeight, w.WeightPowerFactor,
+                w.OverloadRequiredPowerMultiplier, 0f, w.OverloadRampWidth, "선형 대조");
+            float linearAt10 = linear.RequiredPowerFor(basePower, 10f, w.AllowedWeight);
+            if (linearAt10 != basePower + 10f * w.WeightPowerFactor)
+                return $"곡률 0 인데 선형식과 다르다 — {linearAt10} vs "
+                     + $"{basePower + 10f * w.WeightPowerFactor}. 「곡률은 순수한 덧붙임」이 거짓이다";
+
+            // ── Assert ② 층이 실제로 쓰는 값이 주입한 스냅샷에서 나온다 ──
+            float fromSnapshot = w.RequiredPowerFor(basePower, 10f, run.Current.Capacity);
+            if (!Near(run.Current.RequiredPower, fromSnapshot))
+                return $"층의 요구 전력 {run.Current.RequiredPower} 가 주입한 스냅샷의 "
+                     + $"{fromSnapshot} 와 다르다 — 판정식이 다른 값을 읽고 있다";
+
+            // ── Assert ③ 곡률이 양수면 선형보다 비싸다 ──
+            if (w.ExcessCurvature <= 0f)
+                return "테스트 프로브의 곡률이 0 이다 — 볼록성을 검사할 수 없다 "
+                     + "(기본값이 0 으로 되돌아갔나)";
+            if (!(run.Current.RequiredPower > linearAt10))
+                return $"곡률 {w.ExcessCurvature} 인데 대가가 선형보다 크지 않다 "
+                     + $"({run.Current.RequiredPower} ≤ {linearAt10})";
+
+            // ── Assert ④ 무게 0 이면 대가 0 ──
+            if (!Near(w.RequiredPowerFor(basePower, 0f, w.AllowedWeight), basePower))
+                return "무게 0 인데 요구 전력이 기본값과 다르다";
+
+            // ── Assert ⑤ 한계 비용이 증가한다 (볼록) ──
+            // 오목으로 되돌아가면 「한 번 싣기 시작하면 더 싣는 것이 항상 유리하다」가
+            // 부활한다. 그게 `c415733` 이 없애려던 바로 그것이다.
+            float step = w.AllowedWeight / 10f;
+            float prevMarginal = -1f;
+            for (int i = 0; i < 10; i++)
+            {
+                float lo = w.RequiredPowerFor(basePower, step * i, w.AllowedWeight);
+                float hi = w.RequiredPowerFor(basePower, step * (i + 1), w.AllowedWeight);
+                float marginal = hi - lo;
+                if (marginal <= 0f)
+                    return $"구간 {i} 의 한계 비용이 {marginal} — 무게가 느는데 대가가 안 는다";
+                if (i > 0 && marginal <= prevMarginal)
+                    return $"구간 {i} 의 한계 비용 {marginal:F3} 가 직전 {prevMarginal:F3} 보다 "
+                         + "크지 않다 — 곡선이 볼록하지 않다 (오목으로 되돌아갔나)";
+                prevMarginal = marginal;
+            }
             return null;
         }
 
+        /// <summary>
+        /// 과적 배수가 **과적일 때만** 걸리고, 절벽이 아니라 계단으로 오르는가.
+        ///
+        /// ## 2026-08-06 개정
+        ///
+        /// 직전 판본은 「비율이 1을 넘는 순간 배수가 전부 걸린다」는 **절벽**을 못 박았다.
+        /// `c415733` 이 완충 폭(`OverloadRampWidth`)을 넣어 1.0 → 1.0+폭 구간에서 선형으로
+        /// 오르게 바꿨다. 근거는 실측이다 — 허용을 넘는 순간 완주율이 **5.70% → 0.07%(81배)**
+        /// 로 떨어졌고, 즉사는 「멈출지 더 갈지」의 저울이 되지 못한다.
+        ///
+        /// 그래서 검사 대상이 「어느 값인가」에서 **「어떤 모양인가」**로 바뀐다.
+        /// 폭 0 이면 옛 절벽과 같아야 하고, 그 동치가 되돌리기의 기준점이다.
+        /// </summary>
         private static string TestOverloadMultiplierAppliesOnlyWhenOver()
         {
-            // 50 > 37 이므로 과적이고 배수 3 이 걸린다.
+            // ── Arrange ──
             var over = ProbeRun(50f);
             if (over.Current == null) return "첫 층이 없다";
+            WeightSnapshot w = over.Current.Weight;
+            float basePower = over.Current.Plan.RequiredPower;
+            float cap = w.AllowedWeight;
+
+            // ── Assert ① 경계 판정은 그대로 「>」다 ──
             if (!over.Current.IsOverloaded)
                 return $"50kg / 허용 {over.Current.Capacity} 인데 과적이 아니다";
-
-            float expectedOver = (over.Current.Plan.RequiredPower + 50f * 5f) * 3f;
-            if (!Near(over.Current.RequiredPower, expectedOver))
-                return $"과적 요구 전력 {over.Current.RequiredPower}, 기대 {expectedOver}"
-                     + " — 과적 배수가 상수 1.5 로 되돌아갔나";
-
-            // 경계 바로 아래에서는 배수가 걸리면 안 된다. 「>」를 「>=」로 바꾸는 실수를 잡는다.
-            var under = ProbeRun(37f);
+            var under = ProbeRun(cap);
             if (under.Current.IsOverloaded)
                 return "정확히 허용 중량인데 과적으로 판정됐다 — 경계가 > 가 아니라 >= 다";
-            float expectedUnder = under.Current.Plan.RequiredPower + 37f * 5f;
-            if (!Near(under.Current.RequiredPower, expectedUnder))
-                return $"경계 요구 전력 {under.Current.RequiredPower}, 기대 {expectedUnder}";
+
+            // ── Assert ② 허용 이하에는 배수가 한 자리도 안 걸린다 ──
+            // 폭이 있어도 이 성질은 유지되어야 한다. 깨지면 「짐을 안 실어도 벌칙」이다.
+            var noMultiplier = new WeightSnapshot(cap, w.WeightPowerFactor, 1f,
+                w.ExcessCurvature, w.OverloadRampWidth, "배수 없음 대조");
+            for (int i = 0; i <= 10; i++)
+            {
+                float weight = cap * i / 10f;
+                float withMul = w.RequiredPowerFor(basePower, weight, cap);
+                float without = noMultiplier.RequiredPowerFor(basePower, weight, cap);
+                if (!Near(withMul, without))
+                    return $"무게 {weight:F1}/{cap} (과적 아님) 인데 배수가 걸렸다 — "
+                         + $"{withMul:F2} vs 배수 1 일 때 {without:F2}";
+            }
+
+            // ── Assert ③ 폭 0 이면 옛 절벽과 같다 ──
+            var cliff = new WeightSnapshot(cap, w.WeightPowerFactor,
+                w.OverloadRequiredPowerMultiplier, w.ExcessCurvature, 0f, "절벽 대조");
+            float justOver = cap * 1.001f;
+            float cliffValue = cliff.RequiredPowerFor(basePower, justOver, cap);
+            float cliffBase = noMultiplier.RequiredPowerFor(basePower, justOver, cap);
+            if (!Near(cliffValue, cliffBase * w.OverloadRequiredPowerMultiplier))
+                return $"폭 0 인데 배수가 전부 걸리지 않는다 — {cliffValue:F2} vs "
+                     + $"{cliffBase * w.OverloadRequiredPowerMultiplier:F2}. 옛 절벽과 달라졌다";
+
+            // ── Assert ④ 폭이 있으면 경계 직후가 **절벽보다 싸다** ──
+            if (w.OverloadRampWidth <= 0f)
+                return "테스트 프로브의 완충 폭이 0 이다 — 계단을 검사할 수 없다 "
+                     + "(기본값이 0 으로 되돌아갔나)";
+            float rampValue = w.RequiredPowerFor(basePower, justOver, cap);
+            if (!(rampValue < cliffValue))
+                return $"완충 폭 {w.OverloadRampWidth} 인데 경계 직후가 절벽과 같거나 비싸다 "
+                     + $"({rampValue:F2} ≥ {cliffValue:F2}) — 계단이 작동하지 않는다";
+
+            // ── Assert ⑤ 폭을 넘어서면 배수가 전부 걸린다 ──
+            float pastRamp = cap * (1f + w.OverloadRampWidth + 0.05f);
+            float full = w.RequiredPowerFor(basePower, pastRamp, cap);
+            float fullBase = noMultiplier.RequiredPowerFor(basePower, pastRamp, cap);
+            if (!Near(full, fullBase * w.OverloadRequiredPowerMultiplier))
+                return $"완충 폭을 넘었는데 배수가 전부 안 걸린다 — {full:F2} vs "
+                     + $"{fullBase * w.OverloadRequiredPowerMultiplier:F2}";
+
+            // ── Assert ⑥ 완충 구간에서 단조 증가한다 ──
+            float prev = -1f;
+            for (int i = 0; i <= 10; i++)
+            {
+                float weight = cap * (1f + w.OverloadRampWidth * i / 10f);
+                float v = w.RequiredPowerFor(basePower, weight, cap);
+                if (i > 0 && !(v > prev))
+                    return $"완충 구간 {i} 에서 요구 전력이 안 올랐다 ({v:F2} ≤ {prev:F2})";
+                prev = v;
+            }
             return null;
         }
 

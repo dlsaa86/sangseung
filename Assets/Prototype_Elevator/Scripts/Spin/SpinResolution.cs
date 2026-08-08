@@ -85,6 +85,13 @@ namespace Ascend.Prototype.Spin
         /// <summary>증식체 잔류로 다음 스핀 증식체 가중치에 더해질 값.</summary>
         public float NextProliferatorWeightAdd;
 
+        /// <summary>
+        /// 검침원이 **장부에서 지운** 잔류 개수(PD-30). 판에는 그대로 남아 있다.
+        /// 0이면 옛 판본이다. 기록에 남기는 이유는 「대가가 왜 이만큼인가」가
+        /// 개수만 봐서는 설명되지 않기 때문이다 — 노션 §10 이 요구하는 인과 순서다.
+        /// </summary>
+        public int ForgivenCount;
+
         public bool IsClean => AbsorberCount == 0 && ProliferatorCount == 0;
 
         public static ResidualState Empty => default;
@@ -97,6 +104,8 @@ namespace Ascend.Prototype.Spin
                 parts.Add($"흡수체 {AbsorberCount}개 → 저장 전력 −{StoredPowerLoss:0.#}");
             if (ProliferatorCount > 0)
                 parts.Add($"증식체 {ProliferatorCount}개 → 다음 스핀 출현 +{NextProliferatorWeightAdd:0.##}");
+            if (ForgivenCount > 0)
+                parts.Add($"검침 {ForgivenCount}개 면제");
             return string.Join(" / ", parts);
         }
     }
