@@ -42,8 +42,13 @@ namespace Ascend.Prototype.Player
         [Tooltip("보이지만 지금은 누를 수 **없을** 때. 색으로 구분해 「왜 안 되는지」를 묻게 만든다.")]
         [SerializeField] private Color _blockedColor = new Color(0.85f, 0.35f, 0.28f, 1f);
 
-        [Tooltip("외곽선 폭(화면 비례). 거리와 무관하게 같은 두께로 보인다.")]
-        [SerializeField, Range(0f, 0.05f)] private float _width = 0.012f;
+        [Tooltip("외곽선이 물체 밖으로 뻗는 총 거리(거리 비례). 선의 바깥 끝을 정한다.")]
+        [SerializeField, Range(0.001f, 0.03f)] private float _width = 0.006f;
+
+        [Tooltip("선 자체의 두께. 마스크는 (_width - _thickness) 만큼 부풀어 " +
+                 "부품 사이 틈을 메우고, 남는 차이가 곧 선이 된다. " +
+                 "_width 보다 크면 안 된다 — 그러면 선이 사라진다.")]
+        [SerializeField, Range(0.0005f, 0.01f)] private float _thickness = 0.002f;
 
         [SerializeField, Range(1f, 30f)] private float _fadeSpeed = 14f;
 
@@ -129,19 +134,83 @@ namespace Ascend.Prototype.Player
             Transform root = hint != null ? hint.Root : comp.transform;
             if (root == null) return;
 
-            foreach (var mf in root.GetComponentsInChildren<MeshFilter>(false))
+            // ── 부품마다 그리지 않고 **대상 전체를 감싸는 상자 하나**로 그린다 ──────
+            //
+            // 사용자 요구(2026-08-09): 「내부 오브젝트는 외곽선이 안 보여야 해.
+            // 말 그대로 외곽선이니까 내부에는 선이 없어야 해, 아무것도.」
+            //
+            // 부품마다 껍질을 만들면 **부품 사이 단차**에서 선이 새어 나온다. 스텐실
+            // 마스크를 부풀려 틈을 메워 봤지만(실측: 안쪽 잔여 2971 화소) 판재 이음매까지는
+            // 못 덮었다. 더 부풀리면 이번엔 선이 물체에서 떨어져 뜬다.
+            //
+            // 상자는 **볼록**이라 안쪽 경계가 애초에 존재하지 않는다. 실루엣의 정밀도를
+            // 내주고 「내부에 선이 하나도 없다」를 확실히 얻는 교환이다. 그리고 이 게임의
+            // 조작물은 대부분 판·레버·상자꼴이라 손해가 크지 않다.
+            Bounds b = default; bool any = false;
+            foreach (var r in root.GetComponentsInChildren<Renderer>(false))
             {
-                Mesh mesh = mf.sharedMesh;
-                if (mesh == null) continue;
-                var srcRenderer = mf.GetComponent<MeshRenderer>();
-                if (srcRenderer == null || !srcRenderer.enabled) continue;
-
-                // 마스크가 먼저다 — 대기열 1998 에서 대상 전체를 스텐실 1 로 찍는다.
-                if (_maskMaterial != null) Spawn(mf.transform, mesh, _maskMaterial, "__OutlineMask", false);
-                // 껍질은 1999 에서 스텐실이 1 이 아닌 곳에만 그린다 = 바깥 실루엣 하나.
-                var mr = Spawn(mf.transform, mesh, _shellMaterial, "__OutlineShell", true);
-                if (mr != null) _shells.Add(mr);
+                if (!r.enabled) continue;
+                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
             }
+            if (!any) return;
+
+            Mesh box = BoxMesh();
+            if (box == null) return;
+
+            // 마스크(부풀지 않은 상자)와 껍질(부푼 상자) 두 장. 마스크가 상자 안쪽을
+            // 스텐실로 막으므로 화면에는 상자 테두리만 남는다 —
+            // 마스크가 없으면 상자가 통째로 칠해진다.
+            if (_maskMaterial != null) SpawnBox(root, b, box, _maskMaterial, "__OutlineMask", false);
+            var mr = SpawnBox(root, b, box, _shellMaterial, "__OutlineShell", true);
+            if (mr != null) _shells.Add(mr);
+        }
+
+        /// <summary>
+        /// 1×1×1 상자 메시. **직접 만들지 않고 Unity 기본 큐브를 빌린다.**
+        ///
+        /// 처음엔 24 정점을 손으로 짰는데 면마다 기저축을 다르게 잡아 **삼각형 감김이
+        /// 뒤죽박죽**이 됐다. `Cull Front` 는 감김으로 앞뒤를 가르므로 어떤 면은 잘리고
+        /// 어떤 면은 남아 **외곽선이 통째로 사라졌다**(실측 0 화소). 기본 큐브는 감김도
+        /// 법선도 정확하고 면당 정점이 분리돼 있어 껍질 확장에 그대로 맞다.
+        /// </summary>
+        private static Mesh BoxMesh()
+        {
+            if (_boxMesh != null) return _boxMesh;
+            var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _boxMesh = tmp.GetComponent<MeshFilter>().sharedMesh;
+            if (Application.isPlaying) Destroy(tmp); else DestroyImmediate(tmp);
+            return _boxMesh;
+        }
+
+        private static Mesh _boxMesh;
+
+        /// <summary>
+        /// 월드 경계 <paramref name="b"/> 를 감싸는 상자 렌더러를 만든다.
+        /// 부모의 스케일을 나눠 줘야 상자가 부모 스케일에 두 번 곱해지지 않는다.
+        /// </summary>
+        private MeshRenderer SpawnBox(Transform parent, Bounds b, Mesh mesh, Material material, string name, bool track)
+        {
+            var go = new GameObject(name);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.transform.SetParent(parent, true);
+            go.transform.position = b.center;
+            go.transform.rotation = Quaternion.identity;   // 경계가 축 정렬이라 회전은 항등
+            Vector3 s = parent.lossyScale;
+            go.transform.localScale = new Vector3(
+                b.size.x / Mathf.Max(1e-5f, Mathf.Abs(s.x)),
+                b.size.y / Mathf.Max(1e-5f, Mathf.Abs(s.y)),
+                b.size.z / Mathf.Max(1e-5f, Mathf.Abs(s.z)));
+
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = material;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+
+            _owned.Add(go);
+            return track ? mr : null;
         }
 
         /// <summary>원본 메시를 그대로 쓰는 자식 렌더러를 만든다. 콜라이더는 붙이지 않는다.</summary>
@@ -171,7 +240,14 @@ namespace Ascend.Prototype.Player
         private void Apply(bool usable)
         {
             Color c = usable ? _usableColor : _blockedColor;
-            c.a *= Mathf.Clamp01(_weight);
+            float w = Mathf.Clamp01(_weight);
+            c.a *= w;
+
+            // 마스크는 선 두께만큼 **덜** 부푼다. 그 차이가 화면에 남는 선이고,
+            // 마스크가 부품 사이 틈을 미리 메우므로 안쪽에는 아무것도 남지 않는다.
+            float outer = _width * w;
+            float inner = Mathf.Max(0f, (_width - _thickness)) * w;
+            if (_maskMaterial != null) _maskMaterial.SetFloat(WidthId, inner);
 
             for (int i = 0; i < _shells.Count; i++)
             {
@@ -179,7 +255,7 @@ namespace Ascend.Prototype.Player
                 if (r == null) continue;
                 r.GetPropertyBlock(_block);
                 _block.SetColor(ColorId, c);
-                _block.SetFloat(WidthId, _width * Mathf.Clamp01(_weight));
+                _block.SetFloat(WidthId, outer);
                 r.SetPropertyBlock(_block);
             }
         }

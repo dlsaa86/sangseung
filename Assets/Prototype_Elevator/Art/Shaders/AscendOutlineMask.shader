@@ -18,6 +18,23 @@
 // A 의 껍질이 B 의 마스크보다 먼저 그려진다 — 그러면 목적이 무너진다.
 Shader "Ascend/OutlineMask"
 {
+    Properties
+    {
+        // 마스크도 **함께 부풀린다** (2026-08-09 사용자 지적).
+        //
+        // 「내부 오브젝트는 외곽선이 안 보여야 해. 말 그대로 외곽선이니까 내부에는
+        //  선이 없어야 해, 아무것도.」
+        //
+        // 마스크를 원본 크기로만 찍으면 **부품과 부품 사이 틈**은 어느 마스크에도
+        // 덮이지 않는다. 그 틈으로 옆 부품의 껍질이 새어 나와 안쪽에 선이 남았다.
+        // 마스크를 조금 부풀려 두면 그 틈이 메워지고, 살아남는 것은 대상 전체의
+        // **바깥 경계 하나**뿐이다.
+        //
+        // 이 값은 껍질 폭보다 **작아야 한다.** 같거나 크면 껍질을 통째로 덮어
+        // 외곽선이 아예 사라진다. 차이가 곧 선의 두께다.
+        _OutlineWidth ("마스크 확장 폭 (거리 비례)", Range(0, 0.03)) = 0.004
+    }
+
     SubShader
     {
         // 껍질이 불투명 뒤로 옮겨졌으므로 마스크도 같이 옮긴다 — 마스크가 껍질보다
@@ -49,13 +66,22 @@ Shader "Ascend/OutlineMask"
             #pragma fragment frag
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct Attributes { float4 positionOS : POSITION; };
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
             struct Varyings   { float4 positionCS : SV_POSITION; };
+
+            CBUFFER_START(UnityPerMaterial)
+                float _OutlineWidth;
+            CBUFFER_END
 
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
-                OUT.positionCS = TransformObjectToHClip(IN.positionOS.xyz);
+                float3 posWS = TransformObjectToWorld(IN.positionOS.xyz);
+                float3 nrmWS = normalize(TransformObjectToWorldNormal(IN.normalOS));
+                // 껍질과 **같은 방식으로** 부풀린다. 두 확장이 같은 규칙을 따라야
+                // 차이가 일정한 두께의 선이 된다.
+                posWS += nrmWS * _OutlineWidth * distance(GetCameraPositionWS(), posWS);
+                OUT.positionCS = TransformWorldToHClip(posWS);
                 return OUT;
             }
 
