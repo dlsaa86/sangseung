@@ -13,6 +13,8 @@ Material:
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _AOMAP_ON
+  - _BANDSOFT_ON
+  - _MINFILL_ON
   - _SHADEGAMMA_ON
   - _SPECULAR_ON
   m_InvalidKeywords: []
@@ -50,6 +52,8 @@ Material:
     - _AffineAmount: 0
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012
+    - _BandSoftEnabled: 1
+    - _BandSoftness: 0.35
     - _ColorDepth: 0
     - _ColorDepthEnabled: 0
     - _DebugOutput: 0
@@ -59,6 +63,8 @@ Material:
     - _DitherStrength: 1
     - _EmissionMapEnabled: 0
     - _FalloffPower: 1
+    - _MinFill: 0.06
+    - _MinFillEnabled: 1
     - _NearAttenClamp: 1
     - _PS1DistortEnabled: 0
     - _RimStrength: 0.02

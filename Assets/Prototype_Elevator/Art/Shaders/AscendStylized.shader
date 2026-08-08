@@ -57,6 +57,39 @@ Shader "Ascend/Stylized"
         // 실내 점광에서 첫 칸이 0 이 되어 직접광이 통째로 사라지는 것을 막는다.
         // 자세한 근거는 아래 `Quantize` 주석에 있다.
         _BandFloor      ("계단 0번 칸 바닥 (0 = 기존과 동일)", Range(0, 1)) = 0
+
+        // ── 계단 경계 부드럽게 (2026-08-08 사용자 지적) ────────────────────────
+        //
+        // 「그림자가 계단식으로 나뉘는 게 좀 어색하다.」
+        //
+        // 계단 자체는 스타일 락이다 — 없애면 이 게임의 그림이 아니다. 어색한 것은
+        // **경계선**이다. `floor` 는 한 화소 안에서 값이 통째로 튀므로 경사면에서
+        // 톱니가 생기고, 그 톱니가 「의도된 계단」이 아니라 「깨진 렌더링」으로 읽힌다.
+        //
+        // 그래서 칸 수도 칸 높이도 건드리지 않고 **경계에서만** 다음 칸으로 넘어가는
+        // 구간을 준다. 칸 폭의 몇 %만 쓰므로 평평한 면은 그대로 평평하다.
+        //
+        // ⚠ 키워드가 꺼진 변형에는 이 코드가 **컴파일되지 않는다.** 기존 머티리얼
+        // 98 장의 그림은 비트 단위로 그대로다 — 이 파일의 「기본값 불변 규약」.
+        [Toggle(_BANDSOFT_ON)] _BandSoftEnabled ("계단 경계 부드럽게 사용", Float) = 0
+        _BandSoftness   ("계단 경계 폭 (칸 폭 대비)", Range(0.02, 1)) = 0.35
+
+        // ── 최소 채우기 — 「기계 주변 테두리가 검정」 (2026-08-08 사용자가 두 번 지적) ──
+        //
+        // 원인은 셰이더가 아니라 **간접광이 없다는 것**이다. 이 씬에는 베이크 GI 라이트맵
+        // 0 장 · ReflectionProbe 0 개 · 활성 조명 2 개뿐이다. 블렌더 EEVEE 는 간접광이
+        // 있어 오목한 곳이 「어둡지만 읽힌다」. Unity 는 점광이 안 닿으면 그냥 0 이다.
+        // 실측: `ambientTerm ≈ 0.00026` — 화면에서 순수 검정과 구분되지 않는다.
+        //
+        // 라이트맵을 굽는 것이 정공법이지만 되돌리기 어렵고 오래 걸린다. 그래서 우선
+        // **알베도에 비례하는 아주 작은 상수**를 더한다. 알베도에 비례시키는 것이 핵심이다 —
+        // 상수를 그냥 더하면 어두운 재질과 밝은 재질이 같은 회색으로 뭉쳐 재질 구분이 죽는다.
+        //
+        // ⚠ 이것은 간접광의 **대역**이지 간접광이 아니다. 방향도 가림도 없다.
+        // 라이트맵이나 프로브가 들어오면 이 항은 꺼야 한다.
+        [Toggle(_MINFILL_ON)] _MinFillEnabled ("최소 채우기 사용", Float) = 0
+        _MinFill        ("최소 채우기 (검은 면의 바닥)", Range(0, 0.3)) = 0.06
+
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
 
         // ── `_NearAttenClamp` — 점광의 「크기」 대역 (2026-08-08) ────────────────
@@ -293,6 +326,8 @@ Shader "Ascend/Stylized"
             #pragma shader_feature_local_fragment _TRIPLANAR_ON
             #pragma shader_feature_local_fragment _SPECULAR_ON
             #pragma shader_feature_local_fragment _AOMAP_ON
+            #pragma shader_feature_local_fragment _BANDSOFT_ON
+            #pragma shader_feature_local_fragment _MINFILL_ON
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -308,6 +343,8 @@ Shader "Ascend/Stylized"
                 float  _AmbientFloor;
                 float  _ShadowLift;
                 float  _BandFloor;
+                float  _BandSoftness;
+                float  _MinFill;
                 float  _RimStrength;
                 float  _NearAttenClamp;
                 float4 _EmissionColor;
@@ -463,8 +500,20 @@ Shader "Ascend/Stylized"
                 // 클램프는 **결함 조건인 화소에서만** 값을 바꾼다. 나머지 화소는 이미
                 // `floor(v * steps) <= steps - 1` 이라 비트 단위로 동일하다 —
                 // 「기본값 불변 규약」은 그대로 지켜진다.
-                float band = min(floor(saturate(value) * steps), steps - 1.0);
-                return (band + _BandFloor) / (steps - 1.0 + _BandFloor);
+                #if defined(_BANDSOFT_ON)
+                    // 경계에서만 다음 칸으로 넘어간다. 칸의 개수·높이·바닥은 그대로다.
+                    // `w` 는 **칸 폭 대비 비율**이라 `_Steps` 를 바꿔도 체감이 유지된다.
+                    float scaled = saturate(value) * steps;
+                    float band   = min(floor(scaled), steps - 1.0);
+                    float w      = clamp(_BandSoftness, 0.02, 1.0);
+                    // `scaled - band` 는 칸 안에서의 위치(0~1). 마지막 w 구간에서만 올라간다.
+                    float blend  = smoothstep(1.0 - w, 1.0, scaled - band);
+                    float soft   = min(band + blend, steps - 1.0);
+                    return (soft + _BandFloor) / (steps - 1.0 + _BandFloor);
+                #else
+                    float band = min(floor(saturate(value) * steps), steps - 1.0);
+                    return (band + _BandFloor) / (steps - 1.0 + _BandFloor);
+                #endif
             }
 
             // **계단 축 재분배 — `UP-FIX-35` / G-4 의 손잡이.**
@@ -775,6 +824,14 @@ Shader "Ascend/Stylized"
                 #endif
 
                 float3 color = ambientTerm + lit;
+
+                #if defined(_MINFILL_ON)
+                    // **AO 뒤에 더한다.** 앞에 두면 AO 가 이 항까지 0 으로 만들어,
+                    // 정작 검게 떨어지는 오목한 곳(= 사용자가 지적한 그 테두리)에서만
+                    // 효과가 사라진다. 「어떤 면도 순수 검정으로 떨어지지 않는다」가
+                    // 이 항의 계약이므로 무엇도 이것을 지우면 안 된다.
+                    color += albedo * _MinFill;
+                #endif
 
                 #if defined(_SPECULAR_ON)
                     // **더한다, 곱하지 않는다.** 이 파일이 회녹색 색조에서 배운 것과 같다 —
