@@ -30,6 +30,11 @@ namespace Ascend.Prototype.View
         /// <summary>9칸. SpinBoard.Index(column, row) 순서를 그대로 따른다.</summary>
         [SerializeField] private Transform[] _cells = new Transform[SpinBoard.Cells];
 
+        [Header("등장·퇴장 전환")]
+        [Tooltip("구슬이 나타나고 사라지는 데 걸리는 시간(초). SetActive로 즉시 켜고 끄면 " +
+            "팝인/팝아웃처럼 보인다 — 이 값만큼 스케일을 0↔1로 물려 부드럽게 만든다.")]
+        [SerializeField, Min(0.01f)] private float _transitionDuration = 0.12f;
+
         [Header("정화 하이라이트")]
         [Tooltip("맥동 최대 배율.")]
         [SerializeField, Min(1f)] private float _highlightScale = 1.35f;
@@ -78,6 +83,16 @@ namespace Ascend.Prototype.View
             /// 원인 추적이 가장 오래 걸리는 종류의 결함이라, 계약을 배열로 바꾼다.
             /// </summary>
             public Renderer[] Renderers;
+
+            /// <summary>목표 표시 상태. true면 결국 다 보여야 한다(Progress가 1을 향해 간다).</summary>
+            public bool TargetOn;
+
+            /// <summary>
+            /// 등장/퇴장 전환 진행도. 0 = 완전히 숨김(스케일 0, 곧 비활성화) ·
+            /// 1 = 완전히 보임. <see cref="ApplyHighlights"/> 에서 하이라이트 배율과
+            /// **곱**해져 최종 localScale이 된다.
+            /// </summary>
+            public float Progress;
         }
 
         private SymbolSlot[][] _slots;
@@ -96,7 +111,7 @@ namespace Ascend.Prototype.View
         {
             _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
-            CacheSlots();
+            EnsureSlots();
             ClearAll();
         }
 
@@ -112,27 +127,52 @@ namespace Ascend.Prototype.View
                 for (int c = 0; c < cell.childCount; c++)
                 {
                     Transform child = cell.GetChild(c);
+                    // 캐싱 시점의 실제 활성 상태를 그대로 시작 목표로 삼는다. 여기서
+                    // 무조건 false(꺼짐)로 시작하면, 씬에 미리 켜진 채로 저작된 자식이
+                    // 있어도 SetCell이 "달라진 게 없다"고 오판해 절대 끄지 않는다.
+                    bool activeNow = child.gameObject.activeSelf;
                     slots[c] = new SymbolSlot
                     {
                         Child = child,
                         BaseScale = child.localScale,
                         // 비활성 자식도 포함한다 — 심볼 하위 전체가 부모와 함께 켜지고 꺼진다.
                         Renderers = child.GetComponentsInChildren<Renderer>(true),
+                        TargetOn = activeNow,
+                        Progress = activeNow ? 1f : 0f,
                     };
                 }
                 _slots[i] = slots;
             }
         }
 
+        /// <summary>
+        /// `_slots` 가 비어 있으면 채운다.
+        ///
+        /// 평소엔 `Awake` 가 먼저 채워 둔다. 그런데 `ShowBoard` 는 Play 모드 없이도
+        /// 호출 가능해야 하는 공개 API이고(그 메서드의 주석 참조), 에디트 모드에서는
+        /// `Awake` 자체가 불리지 않는다(`ExecuteAlways` 가 아니므로). `EyeLevelCapture.cs`
+        /// 처럼 씬을 열자마자 Play 모드 없이 `ShowBoard` 를 부르는 에디터 툴이 실제로
+        /// 있어서, 여기서 지연 초기화를 해 주지 않으면 `_slots` 가 null 인 채로
+        /// 아무 일도 못 하고 조용히 아무것도 안 그린다.
+        /// </summary>
+        private void EnsureSlots()
+        {
+            if (_slots == null) CacheSlots();
+        }
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         /// <summary>
-        /// **진단 전용 게이트.** 0 = 정상 · 1 = `ApplyHighlights` 만 건너뜀 ·
-        /// 2 = `Update` 전체 건너뜀.
+        /// **진단 전용 게이트.** 0 = 정상 · 1 = 전환·하이라이트(`ApplyTransitions`·
+        /// `ApplyHighlights`)만 건너뜀 · 2 = `Update` 전체 건너뜀.
         ///
         /// 소거 측정이 이 컴포넌트를 1,638 B 의 전부로 지목했는데, `ApplyHighlights` 를
         /// 세 가지 방법으로 고쳐도 수치가 안 움직였다. 컴포넌트 단위로는 더 못 좁힌다.
         /// **안을 갈라서 재야 한다** — 어느 쪽이 쓰는지 추측하지 않고.
         /// 기본값 0 이라 켜지 않으면 아무 영향이 없다.
+        ///
+        /// 2026-08-09: 구슬 등장/퇴장 전환(`ApplyTransitions`)을 추가하면서 레벨 1의
+        /// 대상에 포함시켰다 — 둘 다 "매 프레임 도는 시각 폴리싱"이라는 같은 범주라
+        /// 따로 쪼갤 이유가 없었다. 필요해지면 그때 레벨을 하나 더 만든다.
         /// </summary>
         public static int DiagnosticSkip;
 #endif
@@ -141,9 +181,9 @@ namespace Ascend.Prototype.View
         {
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (DiagnosticSkip >= 2) return;
-            if (DiagnosticSkip < 1) ApplyHighlights();
+            if (DiagnosticSkip < 1) ApplyHighlights(ApplyTransitions());
 #else
-            ApplyHighlights();
+            ApplyHighlights(ApplyTransitions());
 #endif
             if (DrivenExternally) return;
 
@@ -170,11 +210,15 @@ namespace Ascend.Prototype.View
         /// <summary>
         /// 주어진 판을 그대로 표시한다. 에디터 캡처와 테스트가 Play 모드 없이
         /// 결과판을 세울 수 있어야 해서 공개한다 — Update는 에디트 모드에서 돌지 않는다.
+        ///
+        /// 그래서 <see cref="SetCell"/> 은 `Application.isPlaying` 이 거짓이면 등장/퇴장
+        /// 전환을 건너뛰고 즉시 최종 모습으로 스냅한다 — Update가 안 도는 호출자에게
+        /// "다음 프레임을 기다리면 마저 그려진다"는 약속을 할 수 없기 때문이다.
         /// </summary>
         public void ShowBoard(SpinBoard board)
         {
             for (int i = 0; i < SpinBoard.Cells && i < _cells.Length; i++)
-                SetCell(_cells[i], board[i]);
+                SetCell(i, board[i]);
         }
 
         /// <summary>칸 하나의 하이라이트 세기(0~1). 연출자가 맥동을 만든다.</summary>
@@ -213,7 +257,7 @@ namespace Ascend.Prototype.View
 
             ClearHighlights();
             for (int i = 0; i < _cells.Length; i++)
-                SetCell(_cells[i], SymbolKind.Empty);
+                SetCell(i, SymbolKind.Empty);
             _lastSpinCount = -1;
             _lastFloor = -1;
             _cleared = true;
@@ -239,7 +283,54 @@ namespace Ascend.Prototype.View
         private float[] _highlightApplied;
 
         /// <summary>
-        /// 정화 점등을 칸에 바른다.
+        /// 등장/퇴장 스케일 전환을 매 프레임 목표(Progress 0 또는 1)로 수렴시킨다.
+        ///
+        /// `localScale` 대입은 여기서 하지 않는다 — `ApplyHighlights` 한 곳에서만 쓴다.
+        /// 두 메서드가 같은 `Transform.localScale`을 따로 쓰면 나중에 실행되는 쪽이
+        /// 앞선 쪽 결과를 덮어써서, 정화 맥동 중에 전환이 겹치면 둘 중 하나가 사라져
+        /// 보인다. 대신 "이번 프레임에 뭔가 실제로 움직였는가"만 돌려주고,
+        /// `ApplyHighlights` 의 "달라진 게 없으면 건너뛴다" 게이트에 그 결과를 끼워
+        /// 넣는다 — 하이라이트 값 자체는 그대로여도 전환 때문에 다시 칠해야 할 수
+        /// 있기 때문이다.
+        ///
+        /// 0 B 확인: 배열(`_slots`, `SymbolSlot[]`)만 인덱스 `for`로 돈다. `foreach`도
+        /// 컬렉션 인터페이스도 없으니 열거자 할당이 생길 자리가 없다. `Mathf.MoveTowards`
+        /// 는 구조체 인자만 받는 정적 함수라 할당하지 않는다.
+        /// </summary>
+        private bool ApplyTransitions()
+        {
+            if (_slots == null) return false;
+
+            float step = Time.deltaTime / _transitionDuration;
+            if (step <= 0f) return false; // 일시정지 등 — 이번 프레임엔 진행할 시간이 없다
+
+            bool changed = false;
+            for (int i = 0; i < _slots.Length; i++)
+            {
+                SymbolSlot[] slots = _slots[i];
+                for (int s = 0; s < slots.Length; s++)
+                {
+                    SymbolSlot slot = slots[s];
+                    if (slot.Child == null) continue;
+
+                    float target = slot.TargetOn ? 1f : 0f;
+                    if (slot.Progress == target) continue;
+
+                    slot.Progress = Mathf.MoveTowards(slot.Progress, target, step);
+                    slots[s] = slot;
+                    changed = true;
+
+                    // 완전히 줄어든 순간에야 끈다 — "꺼진다"가 아니라 "줄어들다가
+                    // 사라진다"로 보이게 하는 것이 이 전환의 목적이다.
+                    if (slot.Progress <= 0f && !slot.TargetOn)
+                        slot.Child.gameObject.SetActive(false);
+                }
+            }
+            return changed;
+        }
+
+        /// <summary>
+        /// 정화 점등과 등장/퇴장 전환을 칸에 함께 바른다.
         ///
         /// **값이 바뀐 칸만 바른다.** 이전에는 매 프레임 27개 슬롯 전부에
         /// `GetPropertyBlock`/`SetPropertyBlock` 을 걸었고, 그것이 **`UP-TECH-05`
@@ -251,8 +342,12 @@ namespace Ascend.Prototype.View
         ///
         /// 하이라이트는 정화 연출 중에만 움직이고 나머지 시간에는 전부 0 이다.
         /// 즉 대부분의 프레임에서 이 27번의 왕복은 **같은 값을 다시 쓰는 것**이었다.
+        ///
+        /// <paramref name="transitioning"/>: 등장/퇴장 전환(<see cref="ApplyTransitions"/>)이
+        /// 이번 프레임에 뭔가를 움직였는가. 하이라이트 값 자체는 안 바뀌었어도 전환이
+        /// 진행 중이면 최종 스케일이 달라지므로, 그 경우엔 건너뛰지 않는다.
         /// </summary>
-        private void ApplyHighlights()
+        private void ApplyHighlights(bool transitioning)
         {
             if (_slots == null) return;
 
@@ -264,7 +359,7 @@ namespace Ascend.Prototype.View
                 bool changed = false;
                 for (int i = 0; i < _highlight.Length; i++)
                     if (Mathf.Abs(Quantize(_highlight[i]) - _highlightApplied[i]) > 0.0001f) { changed = true; break; }
-                if (!changed) return;
+                if (!changed && !transitioning) return;
             }
             else _highlightApplied = new float[_highlight.Length];
 
@@ -281,8 +376,11 @@ namespace Ascend.Prototype.View
                     SymbolSlot slot = slots[s];
                     if (slot.Child == null || !slot.Child.gameObject.activeSelf) continue;
 
-                    // 저작된 스케일에 **곱한다**. 덮어쓰지 않는다.
-                    slot.Child.localScale = slot.BaseScale * scale;
+                    // 저작된 스케일에 하이라이트 배율과 전환 진행도를 **곱**한다. 셋 중
+                    // 하나라도 대입(=)으로 덮으면 나머지의 효과가 사라진다 — 전환만
+                    // 곱하면 정화 맥동이 죽고, 하이라이트만 곱하면 등장 애니메이션이
+                    // 매 프레임 원래 크기로 스냅해 버린다.
+                    slot.Child.localScale = slot.BaseScale * scale * slot.Progress;
 
                     if (slot.Renderers == null) continue;
                     // **`GetPropertyBlock` 을 부르지 않는다.** 그것이 할당의 실제 출처다.
@@ -303,14 +401,73 @@ namespace Ascend.Prototype.View
             }
         }
 
-        private static void SetCell(Transform cell, SymbolKind kind)
+        /// <summary>
+        /// 칸 하나를 지정한 심볼로 맞춘다 — **목표만 정한다.**
+        ///
+        /// 예전엔 여기서 곧바로 `SetActive` 로 켜고 껐다. 그게 사용자가 지적한
+        /// "룰렛 돌릴 때 구슬이 새로 생기고 사라지는 게 어색해"의 원인이었다 —
+        /// 팝인/팝아웃.
+        ///
+        /// 이제 켜지는 슬롯만 여기서 즉시 `SetActive(true)` 하고, 실제로 자라나는 건
+        /// `Update` 의 `ApplyTransitions` 가 시간에 걸쳐 한다. 꺼지는 슬롯은 `SetActive`
+        /// 조차 여기서 안 부른다 — 스케일이 0 까지 줄어든 **뒤**에 `ApplyTransitions`
+        /// 가 끈다. 즉시 끄면 예전과 똑같이 팝아웃한다.
+        ///
+        /// 단, `Application.isPlaying` 이 거짓이면(에디터 캡처 등) 전환을 기다려 줄
+        /// `Update` 자체가 돌지 않으므로 트랜지션을 건너뛰고 즉시 최종 모습으로
+        /// 스냅한다 — `ShowBoard` 의 계약("Update 없이도 결과판을 세울 수 있다")을
+        /// 지키기 위해서다.
+        ///
+        /// 0 B 확인: `_slots[index]` 배열만 인덱스 `for`로 돈다. `child.name`(→
+        /// `KindOf`)은 실제로 판이 바뀔 때만 부른다 — 이 메서드 자체가 `Update`에서
+        /// 매 프레임이 아니라 스핀/층이 바뀐 순간에만 호출된다(호출부인 `Update` 참고).
+        /// </summary>
+        private void SetCell(int index, SymbolKind kind)
         {
-            if (cell == null) return;
-            foreach (Transform child in cell)
+            EnsureSlots();
+            if (_slots == null || index < 0 || index >= _slots.Length) return;
+
+            bool animate = Application.isPlaying;
+            SymbolSlot[] slots = _slots[index];
+            for (int s = 0; s < slots.Length; s++)
             {
-                SymbolKind childKind = KindOf(child.name);
+                SymbolSlot slot = slots[s];
+                if (slot.Child == null) continue;
+
+                SymbolKind childKind = KindOf(slot.Child.name);
                 bool on = childKind != SymbolKind.Empty && childKind == kind;
-                if (child.gameObject.activeSelf != on) child.gameObject.SetActive(on);
+                // 이미 그 목표를 향해 있다 — 다시 만지면(예: 연출자가 같은 판을 반복
+                // 밀어 넣을 때) 진행 중이던 전환이 처음부터 다시 시작돼 버린다.
+                if (slot.TargetOn == on) continue;
+
+                slot.TargetOn = on;
+
+                if (!animate)
+                {
+                    // Update가 돌지 않는 호출 — 다음 프레임을 기다릴 수 없으니 트랜지션
+                    // 없이 바로 최종 모습으로 스냅한다(예전 SetCell과 같은 결과).
+                    slot.Progress = on ? 1f : 0f;
+                    slot.Child.gameObject.SetActive(on);
+                    float amount = index < _highlight.Length ? Quantize(_highlight[index]) : 0f;
+                    float highlightScale = Mathf.Lerp(1f, _highlightScale, amount);
+                    slot.Child.localScale = slot.BaseScale * highlightScale * slot.Progress;
+                }
+                else if (on)
+                {
+                    // 켜질 때: 즉시 보이게 하고, 실제로 자라나는 건 ApplyTransitions가 한다.
+                    // Progress를 0으로 되돌리는 즉시 스케일도 0으로 맞춰 둔다 — 안 그러면
+                    // 이번 프레임엔 아직 ApplyHighlights가 다시 돌지 않아서, 이 자식이
+                    // 마지막으로 칠해졌을 때의(어쩌면 원래 크기인) 스케일이 한 프레임
+                    // 그대로 노출된다 — 자라나기 전에 잠깐 원래 크기로 튀어 보이는 것이다.
+                    slot.Child.gameObject.SetActive(true);
+                    slot.Progress = 0f;
+                    slot.Child.localScale = Vector3.zero;
+                }
+                // else (꺼질 때, animate): 여기서는 SetActive(false)를 부르지 않는다.
+                // Progress도 건드리지 않는다 — 지금 값(대개 1에 가까움)에서부터
+                // ApplyTransitions가 0까지 줄이고, 0에 닿는 순간 SetActive(false)한다.
+
+                slots[s] = slot;
             }
         }
 
