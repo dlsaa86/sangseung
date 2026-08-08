@@ -67,6 +67,9 @@ namespace Ascend.Prototype.View
 
         [SerializeField] private SpinBoardView _board;
         [SerializeField] private PurifyMarkerView _markers;
+
+        [Tooltip("정화 파편을 **정화된 칸 위치에서** 터뜨린다. 비우면 자동으로 찾는다.")]
+        [SerializeField] private Effects.AmbientParticleDirector _particles;
         [SerializeField] private Tempo _tempo = Tempo.Standard;
 
         [Header("템포 (초)")]
@@ -145,7 +148,19 @@ namespace Ascend.Prototype.View
         {
             if (_board == null) _board = FindAnyObjectByType<SpinBoardView>();
             if (_markers == null) _markers = FindAnyObjectByType<PurifyMarkerView>();
+            if (_particles == null) _particles = FindAnyObjectByType<Effects.AmbientParticleDirector>();
+
+            // 정화·연쇄 파편의 소유권을 가져온다. 이유는 그쪽 프로퍼티 주석에 있다 —
+            // 요약하면 이벤트는 **릴이 돌기 전에** 발행되고 터지는 자리도 판이 아니었다.
+            if (_particles != null) _particles.PositionalPurifyDriven = true;
+
             ApplyTempoPreset();
+        }
+
+        /// <summary>연결이 끊기면 소유권도 돌려준다 — 안 그러면 파편이 아무 데서도 안 터진다.</summary>
+        private void OnDestroy()
+        {
+            if (_particles != null) _particles.PositionalPurifyDriven = false;
         }
 
         private void OnValidate() => ApplyTempoPreset();
@@ -396,6 +411,11 @@ namespace Ascend.Prototype.View
             foreach (PurifyEvent purify in step.Purifies)
                 pulses = Mathf.Max(pulses, PulseCountFor(purify.Pattern));
 
+            // 파편은 **맥동이 시작되는 그 프레임에, 정화된 그 칸에서** 터진다.
+            // 이벤트 경로로 터뜨리던 예전에는 판이 해결되는 순간(릴이 돌기 전)에
+            // 월드 원점에서 터져, 화면에는 아무것도 나타나지 않았다.
+            EmitPurifyBurst(step);
+
             float duration = _purifyPulse * TempoScale(depth);
             float elapsed = 0f;
             while (elapsed < duration)
@@ -418,6 +438,34 @@ namespace Ascend.Prototype.View
             }
 
             _markers?.Clear();
+        }
+
+        /// <summary>
+        /// 정화된 칸마다 파편을 터뜨린다. 세기는 맥동 횟수와 같은 근거를 쓴다 —
+        /// 등급이 높을수록 많이. 「왜 터졌는가」가 파편의 양으로도 읽혀야
+        /// 표식을 못 본 사람에게도 등급 차이가 남는다(visual-criteria B-2.6).
+        /// </summary>
+        private void EmitPurifyBurst(CascadeStep step)
+        {
+            if (_particles == null || _board == null || step.Purifies == null) return;
+
+            foreach (PurifyEvent purify in step.Purifies)
+            {
+                if (purify.Cells == null) continue;
+                int count = 8 + 4 * PulseCountFor(purify.Pattern);   // 개수 12 · 직선 16 · 연결 20 · 잭팟 24
+                foreach (int cell in purify.Cells)
+                {
+                    Transform t = _board.CellTransform(cell);
+                    if (t != null) _particles.BurstPurifyAt(t.position, count);
+                }
+            }
+
+            // 연쇄가 이어지는 단계라면 판 중앙에서 한 번 더 — 「또 터졌다」를 알린다.
+            if (step.Depth > 1)
+            {
+                Transform center = _board.CellTransform(SpinBoard.Cells / 2);
+                if (center != null) _particles.BurstCascadeAt(center.position);
+            }
         }
 
         private static int PulseCountFor(PatternKind pattern)

@@ -73,6 +73,11 @@ namespace Ascend.Prototype.Effects
 
         [SerializeField, Min(0.5f)] private float _volumeHeight = 2.4f;
 
+        [Tooltip("사건 버스트(스파크)가 터질 자리. 비우면 이 오브젝트 자신의 위치를 쓴다 — " +
+                 "그런데 이 컴포넌트는 보통 런 루트에 붙어 월드 원점에 있으므로, " +
+                 "비워 두면 파티클이 화면 밖 바닥에서 터진다.")]
+        [SerializeField] private Transform _effectAnchor;
+
         private ParticleSystem _dust;
         private ParticleSystem _rust;
         private ParticleSystem _spark;
@@ -83,6 +88,7 @@ namespace Ascend.Prototype.Effects
         private GameEventBus _bus;
         private RiskLevel _level = RiskLevel.Stable;
         private Material _shared;
+        private Material _sharedGlow;
 
         // 값은 한 번만 읽어 struct 로 들고 있는다. `LateUpdate` 가 매 프레임 도는 경로라
         // 여기서 ScriptableObject 를 다시 묻으면 그 자체가 프레임당 비용이 된다.
@@ -166,15 +172,28 @@ namespace Ascend.Prototype.Effects
             if (shader == null) shader = Shader.Find("Sprites/Default");
             if (shader != null)
             {
-                _shared = new Material(shader) { name = "AscendParticleShared" };
-
                 // ⚠ **텍스처를 반드시 넣는다.** 없으면 빌보드가 흰 하드엣지 쿼드로 그려진다 —
                 // 먼지가 아니라 흰 사각형이 된다. 아래 주석이 기록한 「죽은 픽셀로 읽힌다」는
                 // 독립 평가 지적의 진짜 원인이 이것이었고, 그때는 **크기와 밀도만** 올렸다.
                 // 그래서 사각형이 더 크고 더 많아졌다 (2026-08-08 실측: 먼지 48개 · 녹 17개).
+                //
+                // ⚠⚠ **텍스처만으로는 부족했다** (2026-08-08 재실측). URP `Particles/Unlit` 을
+                // `new Material(shader)` 로 만들면 표면 타입이 **불투명**이라 알파가 통째로
+                // 버려진다. 점 텍스처의 RGB 는 전부 흰색이고 모양은 알파에만 있으므로,
+                // 텍스처를 제대로 물려도 **여전히 흰 사각형**으로 그려졌다. 고친 줄 알고
+                // 넘어갔던 것이 이 한 칸이다 — 블렌드를 세우지 않으면 텍스처는 무의미하다.
                 Texture2D tex = _particleTexture != null ? _particleTexture : BuildFallbackDot();
-                foreach (string prop in new[] { "_BaseMap", "_MainTex" })
-                    if (_shared.HasProperty(prop)) _shared.SetTexture(prop, tex);
+
+                _shared = new Material(shader) { name = "AscendParticleShared" };
+                SetTexture(_shared, tex);
+                ConfigureBlend(_shared, false);
+
+                // 정화·연쇄·스파크는 **가산**이다. 어두운 칸 안에서 알파 블렌딩은
+                // 배경색에 묻히지만 가산은 반드시 밝아진다 — 「빛나는 파편」이 되려면
+                // 배경보다 밝다는 것이 보장돼야 한다.
+                _sharedGlow = new Material(shader) { name = "AscendParticleGlow" };
+                SetTexture(_sharedGlow, tex);
+                ConfigureBlend(_sharedGlow, true);
             }
 
             // **먼지 크기·밀도를 올렸다.** 독립 평가가 「3~5px 사각형 2~4개뿐이라
@@ -183,11 +202,43 @@ namespace Ascend.Prototype.Effects
             // 0.020 → 0.045, 배출률 하한도 6 → 14 로 올린다(아래 ApplyLevel).
             // `UP-VIS-10`(안개·먼지가 결과판을 가리지 않는다)이 상한이라 알파는 그대로 둔다 —
             // 개수와 크기로 존재감을 만들고 불투명도로 만들지 않는다.
-            _dust    = Build("Dust",    new Color(0.72f, 0.68f, 0.58f, 0.16f), 0.045f, 0.9f,  6.0f, false);
-            _rust    = Build("Rust",    new Color(0.55f, 0.28f, 0.13f, 0.40f), 0.030f, 1.6f,  2.6f, true);
-            _spark   = Build("Spark",   new Color(1.00f, 0.72f, 0.32f, 0.85f), 0.012f, 2.4f,  0.9f, true);
-            _purify  = Build("Purify",  new Color(0.72f, 0.92f, 1.00f, 0.75f), 0.022f, 1.1f,  1.4f, true);
-            _cascade = Build("Cascade", new Color(0.85f, 0.78f, 0.45f, 0.70f), 0.018f, 1.8f,  1.1f, true);
+            _dust    = Build("Dust",    new Color(0.72f, 0.68f, 0.58f, 0.16f), 0.045f, 0.9f,  6.0f, false, false);
+            _rust    = Build("Rust",    new Color(0.55f, 0.28f, 0.13f, 0.40f), 0.030f, 1.6f,  2.6f, true,  false);
+            _spark   = Build("Spark",   new Color(1.00f, 0.72f, 0.32f, 0.85f), 0.012f, 2.4f,  0.9f, true,  true);
+            _purify  = Build("Purify",  new Color(0.72f, 0.92f, 1.00f, 0.75f), 0.022f, 1.1f,  1.4f, true,  true);
+            _cascade = Build("Cascade", new Color(0.85f, 0.78f, 0.45f, 0.70f), 0.018f, 1.8f,  1.1f, true,  true);
+        }
+
+        private static void SetTexture(Material m, Texture2D tex)
+        {
+            if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+            if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+        }
+
+        /// <summary>
+        /// 반투명으로 세운다. <paramref name="additive"/> 면 가산 합성.
+        ///
+        /// URP 의 `Particles/Unlit` 은 **표면 타입이 프로퍼티이자 키워드이자 블렌드 상태**라
+        /// 셋을 전부 맞춰야 한다. 하나라도 빠지면 인스펙터에는 「Transparent」로 보이는데
+        /// 실제 드로우는 불투명으로 나가는, 진단하기 나쁜 상태가 된다.
+        /// `Sprites/Default` 폴백에는 이 프로퍼티들이 없으므로 전부 `HasProperty` 로 감싼다.
+        /// </summary>
+        private static void ConfigureBlend(Material m, bool additive)
+        {
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);          // Transparent
+            if (m.HasProperty("_Blend"))   m.SetFloat("_Blend", additive ? 2f : 0f);
+            if (m.HasProperty("_ZWrite"))  m.SetFloat("_ZWrite", 0f);
+            if (m.HasProperty("_SrcBlend"))
+                m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (m.HasProperty("_DstBlend"))
+                m.SetFloat("_DstBlend", additive
+                    ? (float)UnityEngine.Rendering.BlendMode.One
+                    : (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.DisableKeyword("_ALPHAMODULATE_ON");
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         }
 
         /// <summary>
@@ -259,19 +310,48 @@ namespace Ascend.Prototype.Effects
                 case GameEventKind.PurifyScattered:
                 case GameEventKind.PurifyLine:
                 case GameEventKind.PurifyCluster:
-                    Burst(_purify, 10);
+                    if (!PositionalPurifyDriven) Burst(_purify, 10, AnchorPosition);
                     break;
                 // 캐스케이드 유입 — 연쇄가 이어질 때마다 한 번.
                 case GameEventKind.CascadeStep:
-                    Burst(_cascade, 8);
+                    if (!PositionalPurifyDriven) Burst(_cascade, 8, AnchorPosition);
                     break;
                 // 사고 순간의 스파크. 단계 연출과 별개로 사건에 반응한다.
                 case GameEventKind.ResidualDamage:
                 case GameEventKind.CollapseBegan:
-                    Burst(_spark, 16);
+                    Burst(_spark, 16, AnchorPosition);
                     break;
             }
         }
+
+        /// <summary>
+        /// 정화·연쇄 버스트를 <see cref="View.SpinPresenter"/> 가 **칸 위치로** 몰고 있는가.
+        ///
+        /// ## 왜 이 스위치가 필요한가 (2026-08-08)
+        ///
+        /// 이벤트는 `RunSession.Spin()` 이 판을 **해결하는 순간** 전부 발행된다
+        /// (`RouletteInteractionBridge.DoSpin` — 해결이 먼저, `Present()` 가 나중).
+        /// 즉 이벤트로 터뜨리면 **릴이 돌기도 전에** 정화 파편이 터진다. 게다가 이
+        /// 컴포넌트는 런 루트에 붙어 월드 원점에 있어서, 터지는 자리도 판에서 3.3 m
+        /// 떨어진 바닥이었다. **시점과 위치가 둘 다 틀렸고** 그래서 사용자에게는
+        /// 「구슬이 맞았을 때 아무 효과도 없다」로 보였다.
+        ///
+        /// 어디서·언제를 아는 것은 연출을 실제로 돌리는 `SpinPresenter` 뿐이다.
+        /// 그래서 프리젠터가 연결돼 있으면 그쪽이 소유권을 가져가고, 없으면
+        /// 예전 이벤트 경로가 그대로 남는다 — 배선이 빠져도 조용히 사라지지 않게.
+        /// </summary>
+        public bool PositionalPurifyDriven { get; set; }
+
+        /// <summary>사건 버스트가 터질 자리. 앵커가 없으면 자기 위치(보통 월드 원점).</summary>
+        public Vector3 AnchorPosition => _effectAnchor != null ? _effectAnchor.position : transform.position;
+
+        /// <summary>정화 파편을 **그 칸에서** 터뜨린다. `SpinPresenter` 가 맥동과 같은 프레임에 부른다.</summary>
+        public void BurstPurifyAt(Vector3 world, int count = 14)
+            => BurstAt(_purify, count, world, 0.034f, 0.62f, 0.75f);
+
+        /// <summary>연쇄 유입을 판 중앙에서 터뜨린다.</summary>
+        public void BurstCascadeAt(Vector3 world, int count = 12)
+            => BurstAt(_cascade, count, world, 0.028f, 0.80f, 0.95f);
 
         private void LateUpdate()
         {
@@ -315,14 +395,48 @@ namespace Ascend.Prototype.Effects
             main.maxParticles = budget;
         }
 
-        private static void Burst(ParticleSystem system, int count)
+        private static void Burst(ParticleSystem system, int count, Vector3 world)
+            => BurstAt(system, count, world, 0f, 0f, 0f);
+
+        /// <summary>
+        /// 지정한 월드 좌표에서 터뜨린다. 크기·속도·수명에 0 보다 큰 값을 주면 **그 버스트만**
+        /// 시스템 기본값을 덮어쓴다 — 공용 시스템 설정을 건드리지 않으므로 상시 파티클
+        /// (먼지·녹)의 거동은 그대로다.
+        ///
+        /// 흩어짐을 `Random` 으로 만들지 않는다. 이 저장소는 고정 캡처를 비트 단위로
+        /// 비교하므로, 여기서 난수를 쓰면 같은 시드가 같은 그림을 내지 않는다.
+        /// </summary>
+        private static void BurstAt(ParticleSystem system, int count, Vector3 world,
+                                    float size, float speed, float lifetime)
         {
-            if (system == null) return;
-            system.Emit(count);
+            if (system == null || count <= 0) return;
+
+            var p = new ParticleSystem.EmitParams();
+            p.applyShapeToPosition = false;
+            p.position = world;
+            if (size > 0f) p.startSize = size;
+            if (lifetime > 0f) p.startLifetime = lifetime;
+
+            if (speed <= 0f) { system.Emit(p, count); return; }
+
+            for (int i = 0; i < count; i++)
+            {
+                p.velocity = Scatter(i, count) * speed;
+                system.Emit(p, 1);
+            }
+        }
+
+        /// <summary>구면에 고르게 흩는 결정론적 방향. 황금각이라 어느 개수에서도 뭉치지 않는다.</summary>
+        private static Vector3 Scatter(int i, int count)
+        {
+            float y = count <= 1 ? 0f : 1f - 2f * i / (count - 1f);
+            float r = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
+            float a = i * 2.399963f;
+            return new Vector3(Mathf.Cos(a) * r, y * 0.7f, Mathf.Sin(a) * r);
         }
 
         private ParticleSystem Build(string label, Color color, float size,
-                                     float speed, float lifetime, bool worldSpace)
+                                     float speed, float lifetime, bool worldSpace, bool glow)
         {
             var host = new GameObject("Particles_" + label);
             host.transform.SetParent(transform, false);
@@ -350,7 +464,8 @@ namespace Ascend.Prototype.Effects
             var renderer = host.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
-                if (_shared != null) renderer.sharedMaterial = _shared;
+                Material pick = glow && _sharedGlow != null ? _sharedGlow : _shared;
+                if (pick != null) renderer.sharedMaterial = pick;
                 // 결과판을 가리면 안 된다 — `UP-VIS-10` 이 명시적으로 금지한다.
                 // 그래서 그림자도 안 받고 안 만든다. 오버드로우도 이쪽이 싸다.
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -365,6 +480,7 @@ namespace Ascend.Prototype.Effects
         private void OnDestroy()
         {
             if (_shared != null) Destroy(_shared);
+            if (_sharedGlow != null) Destroy(_sharedGlow);
         }
     }
 }
