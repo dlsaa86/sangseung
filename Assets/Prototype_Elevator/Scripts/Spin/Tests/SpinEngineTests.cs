@@ -437,6 +437,23 @@ namespace Ascend.Prototype.Spin.Tests
         ///
         /// 규칙 다발을 이 검사 안에서 직접 만든다. `BoardRules()` 를 쓰면 밸런스 프로파일
         /// 변경이 이 못을 흔들어, 재현성 경보가 밸런스 경보와 섞인다.
+        ///
+        /// 🔴 **2026-08-09 — `NormalSoulValue` 를 이제 이 안에서 직접 못 박는다.** 이 검사가
+        /// `BoardRules()`를 피한 것은 **프로파일** 변경을 막기 위해서였는데, `NormalSoulValue`는
+        /// 프로파일이 아니라 `SpinRuleSet`의 C# 필드 기본값이라 그 방어를 그냥 통과했다 —
+        /// Duo·Cross 패턴 작업에서 그 기본값을 14→11.5로 내리자 이 못이 실제로 흔들렸다.
+        /// 값을 여기서 직접 지정해 두면 앞으로 그 필드 기본값이 다시 바뀌어도 이 검사는
+        /// 흔들리지 않는다 — 이 검사 안에서 만드는 규칙 다발이 지켜야 했던 원래 의도를
+        /// 마저 지킨 것뿐이다.
+        ///
+        /// 못값 자체도 갱신했다(4566.7999 → 5786.8999). **난수 소비가 달라져서가 아니다** —
+        /// 재충전 여부(`refilled`)가 두 값에서 똑같이 6/40 이라는 것과, `NormalSoulValue`를
+        /// 14로 고정한 채 Duo·Cross 판정만 제거하면 옛 값을 소수점까지 정확히 재현한다는
+        /// 것을 별도 콘솔 스크래치로 확인했다(`docs/runtime/PATTERN_IMPL_NOTES.md` 참고).
+        /// 차이(+1220.10)는 이 40시드 표본에서 Duo가 28번 새로 발동해 정화 전력이 늘어난
+        /// 만큼이다 — Duo가 "예전엔 문턱 미달로 버려지던 2칸짜리 저항 쌍"을 정화하기
+        /// 시작한 것이 정확히 이 패턴이 하려던 일이다. Cross는 이 40시드에서 한 번도
+        /// 안 떴다(실측 발생률 0.02~0.04%, 같은 문서 §4).
         /// </summary>
         private static string TestExtraRerollZeroIsBitIdentical()
         {
@@ -448,7 +465,9 @@ namespace Ascend.Prototype.Spin.Tests
             int refilled = 0;
             for (int seed = 1; seed <= 40; seed++)
             {
-                var rules = new SpinRuleSet { MaxCascadeDepth = 2, ExtraCascadeRerollCells = 0 };
+                // NormalSoulValue를 여기서 직접 고정한다 — 위 2026-08-09 주석 참고.
+                var rules = new SpinRuleSet
+                    { MaxCascadeDepth = 2, ExtraCascadeRerollCells = 0, NormalSoulValue = 14f };
                 rules.Weights[SymbolKind.NormalSoul]   = 5f;
                 rules.Weights[SymbolKind.Absorber]     = 3f;
                 rules.Weights[SymbolKind.Proliferator] = 2f;
@@ -463,7 +482,7 @@ namespace Ascend.Prototype.Spin.Tests
             if (refilled == 0)
                 return "시드 40개에서 재충전이 한 번도 안 걸렸다 — 이 못은 코일 경로를 지나지 않는다";
 
-            const double Pinned = 4566.7999;
+            const double Pinned = 5786.8999;
             if (Math.Abs(total - Pinned) > 0.001)
                 return $"칸 0인데 옛 결과와 다르다 — 난수 소비가 바뀌었다\n" +
                        $"    실제 {total:F4} (재충전 {refilled}회)\n    못박은 값 {Pinned:F4}";
