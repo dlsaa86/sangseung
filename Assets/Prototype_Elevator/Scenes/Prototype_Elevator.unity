@@ -9866,6 +9866,22 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 78fb8e6da16561a42a08b1c9d2275248, type: 2}
+    - target: {fileID: 7531313602747744990, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.0971556
+      objectReference: {fileID: 0}
+    - target: {fileID: 7531313602747744990, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.005670536
+      objectReference: {fileID: 0}
+    - target: {fileID: 7531313602747744990, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.000036000532
+      objectReference: {fileID: 0}
+    - target: {fileID: 7531313602747744990, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.017423995
+      objectReference: {fileID: 0}
     - target: {fileID: 7952967315506055807, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_IsActive
       value: 0
@@ -30756,6 +30772,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 812532078}
   m_Mesh: {fileID: 4300000, guid: 2a687a241e33d2746833be872c2209dd, type: 2}
+--- !u!23 &813271705 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 9088336198639723601, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+  m_PrefabInstance: {fileID: 237018042}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &816443166
 GameObject:
   m_ObjectHideFlags: 0
@@ -69167,6 +69188,61 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1954590690}
   m_Mesh: {fileID: 4300000, guid: 2a687a241e33d2746833be872c2209dd, type: 2}
+--- !u!1 &1959176496
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1959176498}
+  - component: {fileID: 1959176497}
+  m_Layer: 0
+  m_Name: PowerGauge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1959176497
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1959176496}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8a4029bd21ab544aaa58b3c56367686, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.PowerGaugeView
+  _fill: {fileID: 813271705}
+  _trackStartX: -0.76508105
+  _trackEndX: 0.31513572
+  _lowEmission: {r: 1.2, g: 0.34, b: 0.05, a: 1}
+  _fullEmission: {r: 1.55, g: 0.72, b: 0.14, a: 1}
+  _overEmission: {r: 2.4, g: 0.28, b: 0.16, a: 1}
+  _overPulseHz: 3.2
+  _overPulseDepth: 0.45
+  _overFullAt: 0.6
+  _previewInEditor: 1
+  _previewRatio: 0.62
+--- !u!4 &1959176498
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1959176496}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1961794575
 GameObject:
   m_ObjectHideFlags: 0
@@ -76543,3 +76619,4 @@ SceneRoots:
   - {fileID: 237018042}
   - {fileID: 134887227}
   - {fileID: 139835349}
+  - {fileID: 1959176498}
