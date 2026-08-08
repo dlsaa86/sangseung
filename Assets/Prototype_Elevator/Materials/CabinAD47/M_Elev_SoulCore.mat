@@ -40,7 +40,7 @@ Material:
     m_Floats:
     - _AffineAmount: 0
     - _AmbientFloor: 0.35
-    - _BandFloor: 0.18
+    - _BandFloor: 0.06
     - _ColorDepth: 0
     - _ColorDepthEnabled: 0
     - _DebugOutput: 0
@@ -54,15 +54,15 @@ Material:
     - _RimStrength: 0.4
     - _ShadeGamma: 1
     - _ShadeGammaEnabled: 0
-    - _ShadowLift: 0.6
+    - _ShadowLift: 0.15
     - _Steps: 4
     - _TriplanarBlend: 4
     - _TriplanarEnabled: 0
     - _TriplanarScale: 0.5
     - _VertexSnap: 0
     m_Colors:
-    - _BaseColor: {r: 0.54, g: 0.38, b: 0.22, a: 1}
-    - _EmissionColor: {r: 1.55, g: 0.92, b: 0.44, a: 1}
+    - _BaseColor: {r: 0.055, g: 0.004, b: 0.003, a: 1}
+    - _EmissionColor: {r: 1.55, g: 0.06, b: 0.025, a: 1}
     - _ShadowTint: {r: 0.15, g: 0.19, b: 0.18, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

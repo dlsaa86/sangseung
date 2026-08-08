@@ -20,9 +20,9 @@ RenderSettings:
   m_FogDensity: 0.018
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.82500005, g: 0.82500005, b: 0.715, a: 1}
-  m_AmbientEquatorColor: {r: 0.605, g: 0.5995, b: 0.51699996, a: 1}
-  m_AmbientGroundColor: {r: 0.374, g: 0.363, b: 0.308, a: 1}
+  m_AmbientSkyColor: {r: 0.061875004, g: 0.061875004, b: 0.053625, a: 1}
+  m_AmbientEquatorColor: {r: 0.045375004, g: 0.044962503, b: 0.038774997, a: 1}
+  m_AmbientGroundColor: {r: 0.028050002, g: 0.027225, b: 0.0231, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
@@ -9686,6 +9686,14 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 767646932e6d2cc428a3c5fb6a50f4a7, type: 2}
+    - target: {fileID: -3175162290414623446, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Range
+      value: 3.4
+      objectReference: {fileID: 0}
+    - target: {fileID: -3175162290414623446, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Intensity
+      value: 65
+      objectReference: {fileID: 0}
     - target: {fileID: -3055616833242699689, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -9802,6 +9810,14 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: f87b014d7ac642c47b182a1ca83d4789, type: 2}
+    - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Range
+      value: 2.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Intensity
+      value: 6
+      objectReference: {fileID: 0}
     - target: {fileID: 4506321046957707841, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -34454,7 +34470,7 @@ Light:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 930165997}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 13
   m_Type: 1
   m_Color: {r: 0.62, g: 0.7, b: 0.74, a: 1}
