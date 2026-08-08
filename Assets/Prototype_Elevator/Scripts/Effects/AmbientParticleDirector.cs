@@ -64,6 +64,10 @@ namespace Ascend.Prototype.Effects
         [Tooltip("파티클 밀도(PRD §14.1 ⑩)의 출처. 비우면 코드 프리셋으로 진행하고 경고를 남긴다.")]
         [SerializeField] private Data.Profiles.PresentationProfile _presentation;
 
+        [Tooltip("파티클 스프라이트. 비워도 절차적 폴백이 들어가므로 흰 사각형이 되지 않는다. " +
+                 "저장소 기본값은 Art/Textures/Generated/T_ParticleDot.png.")]
+        [SerializeField] private Texture2D _particleTexture;
+
         [Tooltip("파티클이 떠 있을 공간의 반지름. 엘리베이터 칸 크기에 맞춘다.")]
         [SerializeField, Min(0.5f)] private float _volumeRadius = 1.35f;
 
@@ -163,6 +167,14 @@ namespace Ascend.Prototype.Effects
             if (shader != null)
             {
                 _shared = new Material(shader) { name = "AscendParticleShared" };
+
+                // ⚠ **텍스처를 반드시 넣는다.** 없으면 빌보드가 흰 하드엣지 쿼드로 그려진다 —
+                // 먼지가 아니라 흰 사각형이 된다. 아래 주석이 기록한 「죽은 픽셀로 읽힌다」는
+                // 독립 평가 지적의 진짜 원인이 이것이었고, 그때는 **크기와 밀도만** 올렸다.
+                // 그래서 사각형이 더 크고 더 많아졌다 (2026-08-08 실측: 먼지 48개 · 녹 17개).
+                Texture2D tex = _particleTexture != null ? _particleTexture : BuildFallbackDot();
+                foreach (string prop in new[] { "_BaseMap", "_MainTex" })
+                    if (_shared.HasProperty(prop)) _shared.SetTexture(prop, tex);
             }
 
             // **먼지 크기·밀도를 올렸다.** 독립 평가가 「3~5px 사각형 2~4개뿐이라
@@ -176,6 +188,42 @@ namespace Ascend.Prototype.Effects
             _spark   = Build("Spark",   new Color(1.00f, 0.72f, 0.32f, 0.85f), 0.012f, 2.4f,  0.9f, true);
             _purify  = Build("Purify",  new Color(0.72f, 0.92f, 1.00f, 0.75f), 0.022f, 1.1f,  1.4f, true);
             _cascade = Build("Cascade", new Color(0.85f, 0.78f, 0.45f, 0.70f), 0.018f, 1.8f,  1.1f, true);
+        }
+
+        /// <summary>
+        /// 에셋이 없어도 흰 사각형으로 되돌아가지 않게 하는 절차적 폴백.
+        ///
+        /// **왜 폴백이 필요한가**: 이 저장소의 반복 실패 유형이 「고쳤는데 조용히 되돌아간다」다.
+        /// 텍스처를 직렬화 필드에만 의존하면 에셋이 옮겨지거나 배선이 끊기는 순간
+        /// 아무 오류 없이 흰 사각형으로 복귀한다. 그건 고친 것이 아니다.
+        ///
+        /// 부드러운 원형 알파. RGB 는 흰색으로 두고 색은 파티클 시스템의 start color 가 낸다.
+        /// 64×64 는 화면에서 3~10 px 로 그려지는 것에 충분하다.
+        /// </summary>
+        private static Texture2D BuildFallbackDot()
+        {
+            const int N = 64;
+            var tex = new Texture2D(N, N, TextureFormat.RGBA32, true)
+            {
+                name = "AscendParticleDot(폴백)",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+            };
+            var px = new Color32[N * N];
+            const float c = (N - 1) * 0.5f;
+            for (int y = 0; y < N; y++)
+            for (int x = 0; x < N; x++)
+            {
+                float dx = (x - c) / (N * 0.5f);
+                float dy = (y - c) / (N * 0.5f);
+                float t = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                float a = t * t * (3f - 2f * t);            // smoothstep
+                a = Mathf.Pow(a, 1.6f);                     // 중심을 조금 더 단단하게
+                px[y * N + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+            tex.SetPixels32(px);
+            tex.Apply(true, false);
+            return tex;
         }
 
         private void OnEnable()
