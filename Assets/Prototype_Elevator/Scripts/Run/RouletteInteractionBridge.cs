@@ -103,6 +103,10 @@ namespace Ascend.Prototype.Run
             if (_presentation == null) _presentation = GetComponent<ISpinPresentation>();
 
             if (_lever != null) _lever.onPulled.AddListener(OnLeverPulled);
+            // 실행 레버를 **길게** = 과수확 (2026-08-08). 아래 `_overharvestLever` 구독도
+            // 남겨 둔다 — 그 레버는 덮개 연출을 계속 담당하고, 언젠가 다시 조준 대상이
+            // 되더라도 같은 곳으로 들어온다. 두 입구가 같은 함수를 부르므로 갈라지지 않는다.
+            if (_lever != null) _lever.onHeld.AddListener(OnOverharvestPulled);
             if (_contractPanel != null) _contractPanel.onOpened.AddListener(OnContractPanelPressed);
             if (_powerTank != null) _powerTank.onBanked.AddListener(OnPowerTankPressed);
             if (_overharvestLever != null) _overharvestLever.onPulled.AddListener(OnOverharvestPulled);
@@ -113,6 +117,7 @@ namespace Ascend.Prototype.Run
         private void OnDestroy()
         {
             if (_lever != null) _lever.onPulled.RemoveListener(OnLeverPulled);
+            if (_lever != null) _lever.onHeld.RemoveListener(OnOverharvestPulled);
             if (_contractPanel != null) _contractPanel.onOpened.RemoveListener(OnContractPanelPressed);
             if (_powerTank != null) _powerTank.onBanked.RemoveListener(OnPowerTankPressed);
             if (_overharvestLever != null) _overharvestLever.onPulled.RemoveListener(OnOverharvestPulled);
@@ -161,19 +166,39 @@ namespace Ascend.Prototype.Run
         {
             if (_lever == null) return;
 
-            // Decision 단계에서는 실행 레버가 죽는다. 그 순간의 선택은 탱크와 과수확 레버
-            // 둘뿐이어야 한다 — 세 번째 선택지가 보이면 두 선택의 대등함이 깨진다
-            // (visual-criteria B-4.12).
+            // Decision 단계의 선택은 **둘이어야 한다** — 세 번째 선택지가 보이면 두 선택의
+            // 대등함이 깨진다 (visual-criteria B-4.12). 그 둘은 이제 이렇게 갈린다.
+            //
+            //     탱크를 **짧게**  = 확정 (안전)
+            //     레버를 **길게**  = 과수확 (위험)
+            //
+            // 2026-08-08 사용자 결정으로 과수확을 실행 레버에 합쳤다. B-4.12 는 지켜진다 —
+            // 선택은 여전히 둘이고, 세 번째 버튼이 늘어난 것이 아니라 **하나가 줄었다.**
+            //
+            // ⚠ 합치기 전 상태는 이지선다가 아니었다. `OverharvestLever` 는 콜라이더가
+            // 없어 조준 자체가 불가능했고 `onPulled` 리스너도 0개였다 — Decision 에서
+            // 누를 수 있는 것은 탱크 하나뿐이었고 **과수확은 도달 불가**였다.
             bool contractStep = alive && f.Phase == FloorPhase.ContractSelection;
             bool spinStep = alive && f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0;
-            _lever.SetCanInteract(contractStep || spinStep);
+            bool overharvestStep = alive && f.Phase == FloorPhase.Decision && f.CanTakeExtraSpin;
+            _lever.SetCanInteract(contractStep || spinStep || overharvestStep);
+
+            // 판정식을 레버 안에서 다시 쓰지 않는다. `CanTakeExtraSpin` 하나가 정본이다 —
+            // 두 벌로 두면 한쪽만 고쳐도 컴파일이 통과한다(아래 `UpdateOverharvestLever` 주석).
+            _lever.SetHoldAvailable(overharvestStep);
 
             int spinsRemaining = f != null ? f.SpinsRemaining : 0;
-            int key = contractStep ? 1000 + _previewIndex : spinsRemaining;
+            int key = overharvestStep ? 2000 + Mathf.RoundToInt(f.PendingAnte)
+                    : contractStep ? 1000 + _previewIndex
+                    : spinsRemaining;
             if (key != _leverPromptKey)
             {
                 _leverPromptKey = key;
-                _lever.SetPrompt(contractStep
+                // 조건을 만족했다는 것을 **화면에서** 알려야 이 설계가 성립한다.
+                // 「길게」라는 몸짓을 배울 곳이 프롬프트뿐이다.
+                _lever.SetPrompt(overharvestStep
+                    ? $"길게 눌러 과수확 — 판돈 {Mathf.RoundToInt(f.PendingAnte)}"
+                    : contractStep
                     ? $"{PreviewContract.Label} 확정"
                     : $"실행 레버 — 스핀 {spinsRemaining}회 남음");
             }
@@ -239,7 +264,18 @@ namespace Ascend.Prototype.Run
             }
 
             if (f.Phase == FloorPhase.Spinning && f.SpinsRemaining > 0)
+            {
                 DoSpin(run);
+                return;
+            }
+
+            // Decision 에서 **짧게** 누른 경우. 여기서 조용히 반환하면 「지금은 안 된다」와
+            // 「버튼이 고장났다」가 구분되지 않는다 — 둘 다 무반응이기 때문이다
+            // (`InteractableLever.onBlocked` 주석이 기록한 그 문제).
+            // 레버가 핀에 부딪혀 튕기면 「짧게로는 안 된다」가 손에 남고,
+            // 프롬프트의 「길게 눌러」를 읽게 만든다.
+            if (f.Phase == FloorPhase.Decision && f.CanTakeExtraSpin && _lever != null)
+                _lever.onBlocked.Invoke();
         }
 
         private void OnOverharvestPulled()

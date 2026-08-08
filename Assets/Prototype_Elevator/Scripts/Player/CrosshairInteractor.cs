@@ -173,6 +173,60 @@ namespace Ascend.Prototype.Player
             bool aimingUsable = _currentInteractable != null && _currentInteractable.CanInteract;
             var hold = _currentInteractable as IHoldInteractable;
 
+            // ── 짧게 = 한 행동, 길게 = 다른 행동 (`ITapAndHoldInteractable`) ──────
+            //
+            // 아래 순수 유지 경로보다 **먼저** 본다. 저쪽은 `HoldSeconds > 0` 이면
+            // 탭을 아예 버리므로, 한 레버가 두 행동을 가질 수 없다.
+            //
+            // 실행 레버가 이 계약을 쓴다 — 탭은 일반 스핀, 길게는 과수확.
+            // 과수확 조건이 아닐 때는 `HoldAvailable` 이 false 라 **평범한 탭 물체**가 되고,
+            // 그때 유지 진행도는 아예 계산하지 않는다(누르고 있어도 아무 표시가 없어야 한다).
+            var tapHold = _currentInteractable as ITapAndHoldInteractable;
+            if (aimingUsable && tapHold != null && tapHold.HoldAvailable && tapHold.HoldSeconds > 0f)
+            {
+                if (mouse.leftButton.wasPressedThisFrame)
+                {
+                    _holdTarget = tapHold;
+                    _holdElapsed = 0f;
+                    _holdConsumed = false;
+                }
+
+                if (mouse.leftButton.isPressed && ReferenceEquals(tapHold, _holdTarget) && !_holdConsumed)
+                {
+                    _holdElapsed += Time.deltaTime;
+                    float t = Mathf.Clamp01(_holdElapsed / tapHold.HoldSeconds);
+                    tapHold.OnHoldProgress(t);
+                    if (t >= 1f)
+                    {
+                        // **긴 행동을 실행하고 짧은 행동은 버린다.** 한 번 누름에 둘 다
+                        // 일어나면 과수확과 일반 스핀이 함께 나가 판이 두 번 굴러간다.
+                        _holdConsumed = true;
+                        _holdElapsed = 0f;
+                        tapHold.OnHoldCompleted();
+                    }
+                }
+                else if (mouse.leftButton.wasReleasedThisFrame)
+                {
+                    bool wasMine = ReferenceEquals(tapHold, _holdTarget);
+                    bool consumed = _holdConsumed;
+                    _holdTarget = null;
+                    _holdElapsed = 0f;
+                    _holdConsumed = false;
+                    // 완성 전에 뗐다 → 짧은 행동. 이미 완성했다면 아무것도 하지 않는다.
+                    if (wasMine && !consumed)
+                    {
+                        tapHold.OnHoldCancelled();
+                        _currentInteractable.Interact(gameObject);
+                    }
+                }
+                return;
+            }
+
+            // 조준이 이 물체를 벗어났는데 유지 중이었다면 취소한다 — 「보다가 딴 데 보면
+            // 취소」가 §7 이 요구하는 것이고, 진행 중 상태로 얼어붙는 물체가 없어야 한다.
+            if (_holdTarget != null && !ReferenceEquals(_holdTarget, _currentInteractable))
+                CancelHold();
+
             // ── 유지 입력 (`MASTER_PRD` §7) ──────────────────────────────────
             //
             // 유지가 필요한 것은 **되돌릴 수 없는 선택 하나뿐**이다. 나머지는 즉시
@@ -217,10 +271,19 @@ namespace Ascend.Prototype.Player
             _holdTarget.OnHoldCancelled();
             _holdTarget = null;
             _holdElapsed = 0f;
+            _holdConsumed = false;
         }
 
         private IHoldInteractable _holdTarget;
         private float _holdElapsed;
+
+        /// <summary>
+        /// 이번 누름에서 **긴 행동이 이미 나갔는가**. `ITapAndHoldInteractable` 전용.
+        ///
+        /// 없으면 유지를 완성한 뒤 손을 뗄 때 짧은 행동까지 함께 나간다 —
+        /// 과수확과 일반 스핀이 한 번 누름에 둘 다 나가 판이 두 번 굴러간다.
+        /// </summary>
+        private bool _holdConsumed;
 
         /// <summary>유지 진행도 0~1. 대상이 없으면 0. HUD·검사가 읽는다.</summary>
         public float HoldProgress =>
