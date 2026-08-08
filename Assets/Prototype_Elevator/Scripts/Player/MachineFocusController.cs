@@ -101,6 +101,9 @@ namespace Ascend.Prototype.Player
         private bool _blending;
         private float _idleFor;
 
+        private Bounds _cachedBounds;
+        private bool _boundsCached;
+
         private static readonly int RimId = Shader.PropertyToID("_RimStrength");
 
         private void Awake()
@@ -262,14 +265,22 @@ namespace Ascend.Prototype.Player
                 return;
             }
 
-            Collider c = _frameBounds != null ? _frameBounds
-                       : _focus != null ? _focus.GetComponent<Collider>() : null;
-            if (c == null)
+            // ⚠ **꺼진 콜라이더의 `bounds` 는 크기 0 이다.** 집중 중에는 콜라이더를 끄므로,
+            // 어떤 이유로든 꺼진 상태에서 여기 들어오면 범위가 0 이 되어 카메라가 기계
+            // **한가운데**로 들어간다(벽 안에서 보게 된다). 그래서 한 번 잰 값을 캐시한다.
+            if (!_boundsCached)
             {
-                pos = _restPos; rot = _restRot; return;
+                Collider c = _frameBounds != null ? _frameBounds
+                           : _focus != null ? _focus.GetComponent<Collider>() : null;
+                if (c == null || c.bounds.size.sqrMagnitude < 1e-6f)
+                {
+                    pos = _restPos; rot = _restRot; return;
+                }
+                _cachedBounds = c.bounds;
+                _boundsCached = true;
             }
 
-            Bounds b = c.bounds;
+            Bounds b = _cachedBounds;
 
             // 플레이어가 서 있는 쪽에서 본다 — 패널의 법선을 몰라도 되고,
             // 뒤로 돌아가 벽 안에서 보는 사고가 원리적으로 생기지 않는다.
