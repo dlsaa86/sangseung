@@ -473,6 +473,24 @@ namespace Ascend.Prototype.Spin
         /// <summary>연결 덩어리가 `Cluster` 등급이 되는 최소 크기. 그 아래는 배수 없는 인접 정화다.</summary>
         private const int ClusterMinimumSize = 4;
 
+        /// <summary>
+        /// 🔴 **Duo(쌍) 최소 크기** (2026-08-09, `PLAN_BUILD_DEPENDENCY.md` §C-2).
+        /// 기존 최소 정화 개수(기본 3, `SpinRuleSet.MinimumCountFor`)보다 낮다 — "다른 종류
+        /// 옆에 있다"만으로 보상하는 것이 이 패턴의 핵심이라 문턱을 일부러 더 낮춰 놨다.
+        /// </summary>
+        private const int DuoMinimumSize = 2;
+
+        /// <summary>3×3 판에서 유일한 중심 칸(통관1·행1). Cross(십자) 판정의 축이다.</summary>
+        private const int CrossCenterIndex = 4;
+
+        /// <summary>
+        /// 중심(인덱스 4)의 직교 4방향 — 열 우선 인덱싱(<see cref="SpinBoard.Index"/>)에서
+        /// 항상 이 네 칸이다(홀수 인덱스). 나머지 짝수 {0,2,6,8}은 중심과 대각으로만 닿는
+        /// 모서리라 Cross 판정에서는 값을 보지 않는다. 3×3 고정 프로토타입이라 매번
+        /// <see cref="SpinBoard.OrthogonalNeighbours"/>로 다시 구하지 않고 상수로 둔다.
+        /// </summary>
+        private static readonly int[] CrossWheelIndices = { 1, 3, 5, 7 };
+
         /// <summary>"모양이 없다"를 뜻하는 표식. null 과 구분하려고 쓴다.</summary>
         private static readonly int[] EmptyShape = new int[0];
 
@@ -481,12 +499,26 @@ namespace Ascend.Prototype.Spin
             var matches = new List<PatternMatch>(SymbolKinds.ResistanceKinds.Length);
             foreach (SymbolKind kind in SymbolKinds.ResistanceKinds)
             {
-                if (board.CountOf(kind) < rules.MinimumCountFor(kind)) continue;
+                // Duo(2칸)가 기존 최소 정화 개수(기본 3)보다 낮은 문턱을 요구하므로, 이 종류를
+                // 통째로 건너뛰는 조기 탈출 기준도 그만큼 낮춰야 한다. 그대로 두면 2칸짜리
+                // Duo가 여기서 전부 걸러진다 — Duo를 넣으면서 발견한 함정이라 남겨 둔다.
+                int earlyExitThreshold = Math.Min(DuoMinimumSize, rules.MinimumCountFor(kind));
+                if (board.CountOf(kind) < earlyExitThreshold) continue;
 
                 bool fullBoard = board.CountOf(kind) == SpinBoard.Cells;
+
+                // Cross는 중심이 "다른" 저항체를 요구한다 — kind 자신의 개수·연결과 무관하게
+                // 독립적으로 성립 여부가 갈리므로 다른 등급과 계산 순서를 맞출 필요는 없다.
+                bool cross = TryFindCross(board, kind, out int[] crossCells);
+
                 int[] clusterCells = FindConnectedComponent(
                     board, kind, rules.DiagonalCountsAsConnected, ClusterMinimumSize);
                 bool cluster = clusterCells != null;
+
+                // Duo — 연결 덩어리(2칸 이상)가 다른 저항체와 인접하는가. Cluster·Scattered와
+                // 같은 FindConnectedComponent를 재사용해 "붙어 있다"의 뜻을 여기서 새로
+                // 만들지 않는다(이 파일의 인접 판정은 전부 DiagonalCountsAsConnected 하나를 따른다).
+                bool duo = TryFindDuo(board, kind, rules.DiagonalCountsAsConnected, out int[] duoCells);
 
                 // 붙어 있기만 하면 인정하는 아래 등급. V자·작은 ㄴ자처럼 직선도
                 // 아니고 4칸도 안 되는 모양이 여기 걸린다. 배수는 없다(1.0).
@@ -508,10 +540,21 @@ namespace Ascend.Prototype.Spin
 
                 if (!rules.AllowMultiplePatternsPerKind)
                 {
+                    // 우선순위는 배수 크기 순이다 — FullBoard(10.0) > Cross(5.0) >
+                    // Cluster(3.0) > Duo(2.5) > Line(2.0) > Scattered(1.0). 같은 칸 배치가
+                    // 여러 등급을 동시에 만족할 수 있다(예: 십자의 바퀴 4칸이 모서리를 타고
+                    // 다른 kind와도 이어져 Cluster 조건까지 채우거나, 직선 3개가 마침
+                    // 다른 종류와 인접해 Duo 조건까지 채우는 경우 — 둘 다 실측 스크래치로
+                    // 재현해 확인했다). 반드시 하나만 골라야 중복 계상되지 않으므로, 더
+                    // 어렵고 배수가 큰 쪽이 이긴다. `PATTERN_IMPL_NOTES.md`에 근거를 남겼다.
                     if (fullBoard)
                         matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
+                    else if (cross)
+                        matches.Add(new PatternMatch(kind, PatternKind.Cross, lineKind, crossCells));
                     else if (cluster)
                         matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
+                    else if (duo)
+                        matches.Add(new PatternMatch(kind, PatternKind.Duo, lineKind, duoCells));
                     else if (line)
                         matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
                     else if (scattered)
@@ -524,8 +567,12 @@ namespace Ascend.Prototype.Spin
                 // 각 성립 패턴을 별도 이벤트로 남겨 로그와 보상에 모두 반영한다.
                 if (fullBoard)
                     matches.Add(new PatternMatch(kind, PatternKind.FullBoard, lineKind, fullBoardCells));
+                if (cross)
+                    matches.Add(new PatternMatch(kind, PatternKind.Cross, lineKind, crossCells));
                 if (cluster)
                     matches.Add(new PatternMatch(kind, PatternKind.Cluster, lineKind, clusterCells));
+                if (duo)
+                    matches.Add(new PatternMatch(kind, PatternKind.Duo, lineKind, duoCells));
                 if (line)
                     matches.Add(new PatternMatch(kind, PatternKind.Line, lineKind, lineCells));
                 if (scattered)
@@ -604,6 +651,73 @@ namespace Ascend.Prototype.Spin
 
             lineKind = LineKind.Column;
             return null;
+        }
+
+        /// <summary>
+        /// 🔴 **Cross(십자)** (2026-08-09, `PLAN_BUILD_DEPENDENCY.md` §C-2). <paramref name="wheelKind"/>
+        /// 가 중심을 뺀 직교 4방향(<see cref="CrossWheelIndices"/>)을 전부 채우고, 중심 칸이
+        /// **다른 저항체**일 때 성립한다. 모서리 4칸(0,2,6,8)은 무엇이든 상관없다 —
+        /// 문서 도해에서 "E"로 표시된 칸이 이것이다.
+        ///
+        /// 중심이 wheelKind와 같으면 성립하지 않는다 — 그러면 그 종류가 5칸(중심+바퀴)
+        /// 이상 직교로 이어진 것이라 Cluster/FullBoard 영역이지 십자가 아니다. 중심이
+        /// 저항체가 아니면(정상 영혼) 애초에 "다른 저항체에 둘러싸였다"는 그림이 안 된다 —
+        /// 그래서 <see cref="SymbolKinds.IsResistance"/>를 함께 요구한다.
+        /// </summary>
+        private static bool TryFindCross(SpinBoard board, SymbolKind wheelKind, out int[] wheelCells)
+        {
+            wheelCells = null;
+            SymbolKind center = board[CrossCenterIndex];
+            if (!center.IsResistance() || center == wheelKind) return false;
+
+            for (int i = 0; i < CrossWheelIndices.Length; i++)
+                if (board[CrossWheelIndices[i]] != wheelKind) return false;
+
+            // CrossWheelIndices를 그대로 돌려주면 소비자가 정렬·수정할 때 이 static
+            // readonly 배열까지 오염된다(TryFindLine의 SpinBoard.Lines와 같은 함정).
+            wheelCells = new[]
+                { CrossWheelIndices[0], CrossWheelIndices[1], CrossWheelIndices[2], CrossWheelIndices[3] };
+            return true;
+        }
+
+        /// <summary>
+        /// 🔴 **Duo(쌍)** (2026-08-09, §C-2). <paramref name="kind"/>의 연결 덩어리(2칸 이상)가
+        /// 다른 저항체와 인접하면 <paramref name="duoCells"/>에 그 덩어리를 실어 true를 돌려준다.
+        ///
+        /// <see cref="FindConnectedComponent"/>가 돌려주는 "가장 큰 덩어리"만 검사한다 —
+        /// Cluster·Scattered와 같은 단순화다(둘 다 판 전체에서 가장 큰 덩어리 하나만 본다).
+        /// 3×3처럼 작은 판에서 이 단순화가 "더 큰 덩어리가 있는데 그건 다른 종류와 안
+        /// 닿고, 더 작은 덩어리가 따로 있는데 그게 닿는" 경우를 놓칠 수 있지만, 기존 코드가
+        /// 이미 같은 한계를 갖고 있어 이 판정만 예외로 만들지 않았다.
+        /// </summary>
+        private bool TryFindDuo(SpinBoard board, SymbolKind kind, bool diagonal, out int[] duoCells)
+        {
+            duoCells = FindConnectedComponent(board, kind, diagonal, DuoMinimumSize);
+            if (duoCells == null) return false;
+            return TouchesOtherResistance(board, duoCells, kind, diagonal);
+        }
+
+        /// <summary>
+        /// <paramref name="cells"/> 중 하나라도 <paramref name="kind"/>가 아닌 저항체와
+        /// 인접하면 true. 저항체가 지금은 둘뿐이지만(<see cref="SymbolKind.Absorber"/>·
+        /// <see cref="SymbolKind.Proliferator"/>) "kind가 아니면"이 아니라 "다른 저항체면"으로
+        /// 물은 이유는 §C-6이 예고한 세 번째 저항체(동조형)가 들어와도 이 함수가 고쳐 쓸
+        /// 필요 없이 그대로 맞기 때문이다.
+        /// </summary>
+        private bool TouchesOtherResistance(SpinBoard board, int[] cells, SymbolKind kind, bool diagonal)
+        {
+            for (int i = 0; i < cells.Length; i++)
+            {
+                int neighbourCount = diagonal
+                    ? SpinBoard.AllNeighbours(cells[i], _neighbourBuffer)
+                    : SpinBoard.OrthogonalNeighbours(cells[i], _neighbourBuffer);
+                for (int n = 0; n < neighbourCount; n++)
+                {
+                    SymbolKind neighbourKind = board[_neighbourBuffer[n]];
+                    if (neighbourKind.IsResistance() && neighbourKind != kind) return true;
+                }
+            }
+            return false;
         }
 
         private static int[] CellsOf(SpinBoard board, SymbolKind kind)

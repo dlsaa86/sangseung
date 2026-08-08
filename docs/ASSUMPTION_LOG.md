@@ -1259,3 +1259,157 @@
   이름(`Sym_NormalSoul` / `Sym_Absorber` / `Sym_Proliferator`)은 `SpinBoardView` 가
   읽으므로 유지한다.
 - 사용자 확인 필요 여부: 낮음 — 애초에 임시로 지시된 것이다.
+
+## A-20260809-01 · 과수확 해금 게이트 — 열쇠 두 갈래·`_loadout == null` 처리
+
+- 상태: Active
+- 작성일: 2026-08-09
+- 관련 요구사항: 2026-08-09 사용자 지시 — 「과수확도 그냥 가능하게 하는 게 아니라
+  아이템이나 승객 조건으로 해 두는 게 좋을 것 같아. 아니면 계약으로. 우선 과수확은
+  기본 옵션이 아니게 해 줘」.
+- 사용한 가정:
+  1. **열쇠는 부품 「과수확 변압기」(`PRT_OVERHARVEST_TRANSFORMER`, 기존 저작물) +
+     승객 「짐꾼」(`PSG_PORTER`, 기존 저작물) 두 갈래.** 계약 축은 쓰지 않았다 —
+     `ResistanceContract`가 `Scripts/Spin/`에 있어 이번 작업 쓰기 권한 밖이었다.
+  2. **`_loadout == null`이면 게이트를 적용하지 않는다**(전력 달성률만으로 해금 —
+     기존 동작 그대로). `_loadout`이 **비어 있지만 null은 아닌** 경우(실제 런의
+     기본 상태)는 게이트가 걸린다 — 열쇠가 없으면 잠긴다.
+- 선택 이유:
+  1. 열쇠 하나만 열면 그것이 지배적 선택이 된다(`BUILD_DIVERSITY_AUDIT.md`가 이미
+     겪은 실패 패턴). 두 갈래는 기존 콘텐츠 중 이름·설명이 이미 과수확과 맞닿아
+     있는 것을 그대로 썼다 — 새 콘텐츠를 짓지 않았다. 과수확 변압기는 이름 자체가
+     과수확이고, 짐꾼은 `BuildAxis.Load`의 정의("무게와 과수확 위험을 출력으로
+     바꾼다", `BuildItem.cs`)가 이미 과수확을 가리키고 있었다. 부품(런 내내 유지)과
+     승객(짐꾼은 8층 하차 — 일시적 접근권)을 하나씩 섞어 "영구 열쇠"와 "한시적
+     열쇠"라는 자연스러운 차이도 생겼다.
+  2. `_loadout == null`은 실제 플레이 경로가 아니다 — `RunSession._loadout`은
+     필드 초기화에서 이미 `new BuildLoadout()`으로 정해져 있어(`RunSession.cs:17`)
+     **절대 null을 넘기지 않는다**. null은 적재 시스템 자체가 없는 옛 경로
+     (`FloorSession` 생성자 주석의 "Phase 1 Hero Slice")와 그 경로로 지어진
+     기존 헤드리스 테스트 다수만 지나간다. 그 경로에 게이트를 걸면 "열쇠를 실을
+     수단 자체가 없는데 잠긴다"는 모순이 되고, 실제 플레이와 무관한 테스트가
+     대량으로 깨진다. 반대로 실제 런은 `_loadout`이 항상 존재하므로(처음엔 비어
+     있을 뿐) 이 완화가 실제 게임의 게이트를 약화시키지 않는다.
+- 구현 위치: `Assets/Prototype_Elevator/Scripts/Build/BuildItem.cs`
+  (`BuildEffectKind.OverharvestUnlock`), `Scripts/Build/BuildLoadout.cs`
+  (`HasEffect`, 카탈로그 두 항목), `Scripts/Run/FloorSession.cs`
+  (`IsOverharvestUnlocked`, `HasOverharvestKey`).
+- 교체 방법: 계약 축을 열려면 `ResistanceContract`(Spin 소유)에 "이 계약을 골랐으면
+  과수확 열쇠를 준다" 플래그를 추가하고 `FloorSession.HasOverharvestKey`에 OR로
+  묶는다. `_loadout == null`을 잠금으로 바꾸려면 그 브랜치를 쓰는 모든 헤드리스
+  테스트(`RunTests.cs` 다수)에 빈 `BuildLoadout()`을 명시적으로 넘기도록 먼저
+  고쳐야 한다 — 안 그러면 그 테스트들이 깨진다.
+- 사용자 확인 필요 여부: 낮음 — 되돌릴 수 있는 선택이고, 사용자 지시("우선")가
+  이미 임시성을 전제하고 있다. 다만 **계약 축을 아예 안 열었다는 사실**은 확인이
+  필요할 수 있다(권한 제약 때문이지 설계 판단으로 뺀 것이 아니다).
+
+## A-20260809-02 · 구슬 3종 — 지름·재질·정면 축을 실측 없이 판단으로 정함
+
+- 상태: Active
+- 작성일: 2026-08-09
+- 관련 요구사항: team-lead 지시(2단계) — 「구슬(영혼 수확체) 종류별로 우선 다
+  해놔줘. 시인성 잘 보여야 해. 형태만 보고도 직관적으로 알 수 있어야 해」.
+  상세는 `docs/runtime/BLENDER_ORB_DESIGN.md` 참조.
+- 사용한 가정:
+  1. **구슬 지름 = 셀 실측 안지름(232.04mm)의 65%** (지시 범위 60~70%의 정확한
+     중간값을 임의로 선택). `ReferenceRoomSpec.cs`의 기존 `SoulRadius` 공식
+     (유리 지름의 40%)을 따르지 않았다 — 그 공식을 그대로 쓰면 92.8mm로,
+     이번 지시(60~70%)의 절반 수준이라 지시를 어기게 된다.
+  2. **재질**: Normal=`M_Cab_Bulb`, Absorber=`M_Elev_CavityDark`,
+     Proliferator=`M_Elev_SirenLens`. 셋 다 `alpha=1.0`(불투명) 확인 후 골랐다.
+  3. **정면 축 = -Y** (이번 세션이 임의로 정한 규약). 챔버에 실제로 설치될 때의
+     "플레이어 쪽" 축과 같은지 확인하지 않았다.
+  4. 셋 다 `SOCKET_ElevPanel` 자식이 아니라 **부모 없는 top-level 오브젝트**로
+     캐빈에서 3m+ 떨어진 빈 공간(X=6~8)에 뒀다.
+- 선택 이유:
+  1. 65%는 60~70% 지시 구간의 중간값이라는 것 외에 다른 근거는 없다 — **디자인
+     판단이지 실측이 아니다.** 다만 과거 이 챔버가 "너무 큰 구슬"로 후면을
+     뚫은 사고 이력이 있어(`WindowGlassDiameter` 스펙 주석), 챔버 안 최종
+     배치 전 반드시 재확인이 필요하다고 `BLENDER_ORB_DESIGN.md` §1.3·§9에
+     명시했다.
+  2. 재질은 후보 9개의 실제 셰이더 값(블렌드 모드·알파·발광)을 전부 조회해
+     투명한 것(`M_Elev_ChamberGlass`, alpha 0.15)과 이미 과다 사용 중인 것
+     (`M_Elev_GaugeFill`)을 제외하고 골랐다 — 이름만 보고 고르지 않았다.
+  3. 정면 축은 검증 실루엣 렌더를 어느 각도로 찍을지 정해야 진행할 수 있어
+     자체적으로 정했다. 회전 하나로 되돌릴 수 있는 결정이라 사용자 확인 없이
+     진행했다.
+- 구현 위치: `.../ElevPanel_v10/SM_ElevCab_Panel_AD57.blend`의
+  `SM_Sym_NormalSoul` / `SM_Sym_Absorber` / `SM_Sym_Proliferator`.
+- 교체 방법: 지름은 `ORB_RADIUS` 상수 하나만 바꾸고 세 함수를 재실행하면 된다
+  (재사용 가능한 스크립트가 스크래치패드에 남아 있다). 정면 축이 틀렸으면
+  오브젝트 전체를 Y축 기준 회전만 하면 되고 재모델링은 필요 없다.
+- 사용자 확인 필요 여부: **있음** — 지름 비율(65%)과 챔버 후면 클리어런스는
+  실제 배치 전 반드시 검증해야 한다. 정면 축도 챔버 설치 방향과 대조가 필요하다.
+
+## A-20260809-03 · Duo·Cross 패턴 — `PatternKind` 값 재배치와 우선순위 사슬
+
+- 상태: Active
+- 작성일: 2026-08-09
+- 관련 요구사항: team-lead 지시(상대 배치 패턴 1단) — 「구슬 2종류가 어떤 모양으로
+  나와야 점수 더 주고, 그래야만 올라갈 수 있게」. 상세는
+  `docs/runtime/PATTERN_IMPL_NOTES.md` 참조.
+- 사용한 가정:
+  1. **`PatternKind` 열거형 값을 배수 크기 순으로 재배치**했다 —
+     `Scattered=1 < Line=2 < Duo=3 < Cluster=4(원래 3) < Cross=5 < FullBoard=6(원래 4)`.
+     새 값을 끝에 덧붙이지 않고 기존 `Cluster`·`FullBoard`의 숫자를 밀었다.
+  2. **우선순위 사슬(중복 계상 방지)을 배수 크기 순으로 정했다** —
+     `FullBoard > Cross > Cluster > Duo > Line > Scattered`. 같은 칸 배치가 두 등급을
+     동시에 만족하면(반례를 콘솔 스크래치로 재현해 확인) 배수가 큰 쪽이 이긴다.
+  3. **Duo의 최소 크기(2)를 위해 `FindMatches`의 조기 탈출 문턱을 낮췄다** —
+     `rules.MinimumCountFor(kind)`(기본 3) 단독에서
+     `Math.Min(2, rules.MinimumCountFor(kind))`로.
+- 선택 이유:
+  1. 값을 끝에 붙이면(`Duo=5, Cross=6` 식) 기존 값은 안 바뀌지만
+     `SpinResolution.Summary()`의 "최고 패턴" 로직(`p.Pattern > best`, 정수 비교)이
+     배수와 어긋난 순서로 "최고"를 뽑을 수 있다. 재배치 전 `PatternKind`가
+     **어디에도 직렬화되지 않는다**는 것(`.asset`/`.unity`/`.prefab` grep 결과 0건)과
+     소비하는 3개 파일(`SpinPresenter.cs`·`PurifyMarkerLayout.cs`·`FloorSession.cs`)이
+     전부 **이름으로** `switch`한다는 것을 먼저 확인했다 — 확인 없이는 되돌리기
+     어려운 변경이라 승인 없이 진행하지 않았을 것이다.
+  2. 우선순위를 배수 순으로 두면 "더 어렵고 배수가 큰 패턴이 이긴다"가 기존
+     `FullBoard > Cluster > Line > Scattered` 사슬의 사상과 일치한다. 임의로 다른
+     순서(예: 발견 순서, 칸 수 순)를 골랐으면 왜 그 순서인지 설명할 근거가 없었다.
+  3. 안 낮추면 Duo가 아예 안 뜬다 — 기존 네 패턴이 전부 3 이상을 요구해서 생긴
+     가드였는데 Duo는 그 전제를 깬다. 되돌릴 수 있는 결정(상수 하나)이라 기본값으로
+     진행했다.
+- 구현 위치: `Scripts/Spin/PatternKind.cs`(열거형·`TriggersRefill`),
+  `Scripts/Spin/SpinEngine.cs`(`FindMatches`의 우선순위 사슬과 조기 탈출 문턱,
+  `TryFindCross`/`TryFindDuo`/`TouchesOtherResistance`),
+  `Scripts/Spin/SpinRuleSet.cs`(`DuoMultiplier`/`CrossMultiplier`,
+  `PatternMultiplierFor`, `Clone()`).
+- 교체 방법: `PATTERN_IMPL_NOTES.md` §7 "되돌리는 법" 참조. 열거형 값을 되돌릴 필요는
+  없다 — 아무도 `Duo`/`Cross`를 안 만들면 무해하다.
+- 사용자 확인 필요 여부: **낮음** — 전부 코드 내부 구현 세부사항이고 직렬화·외부
+  참조가 없음을 확인했다. 다만 Cross의 실측 발생률(§ 아래 A-20260809-04)은 밸런스
+  판단이 필요할 수 있다.
+
+## A-20260809-04 · Cross 실측 발생률이 계획 문서 추정치와 100배 이상 어긋남
+
+- 상태: Active
+- 작성일: 2026-08-09
+- 관련 요구사항: `docs/runtime/PLAN_BUILD_DEPENDENCY.md` §C-2 "Cross" — 문서는 발생률을
+  "추정 3%"로 적어 뒀다. team-lead 지시: 「문서의 추정 값을 사실로 받아들이지 마라.
+  네가 코드에서 다시 재라」.
+- 사용한 가정: Unity를 열 수 없어 실제 `SpinBalanceProfile`/`PrototypeCurriculum`
+  가중치 대신 **근사 가중치**(정상영혼 60%·흡수체 20%·증식체 20%)로 콘솔 스크래치
+  10000판을 뽑아 대신 측정했다. 실측: Cross **0.02~0.04%**, Duo **17.75~27.20%**
+  (직교/대각 연결 두 경우, 상세는 `PATTERN_IMPL_NOTES.md` §4).
+  이 근사치를 "재측정 완료"로 취급하지 않고 **1단 구현은 그대로 진행**했다 — 배수
+  자체(2.5×/5.0×)는 team-lead가 이미 정한 값이라 되돌릴 수 있는 결정이 아니라고
+  보고 바꾸지 않았다.
+- 선택 이유: Cross가 극히 희귀하다는 사실 자체는 구현을 막을 이유가 아니다 —
+  §C-4가 예고한 `CrossPatternMode`(중심 고정 빌드 효과, 2단)가 이 격차를 메우도록
+  이미 설계돼 있었다(문서에 "Cross 확률 ×2" 효과가 명시돼 있음). 즉 "지금은 희귀하고
+  나중에 빌드로 보정한다"는 것이 문서 자체의 로드맵과 일치한다 — 배수를 지금
+  임의로 올리면 그 로드맵을 앞질러 결정하는 것이 된다.
+- 구현 위치: 수치 자체는 안 바꿨다. 발생률 실측값은
+  `docs/runtime/PATTERN_IMPL_NOTES.md` §4·§5-2, `PatternKind.cs`의 `Cross` 케이스
+  주석에 남겼다.
+- 교체 방법: 근사 가중치가 아니라 실제 커리큘럼으로 재측정하려면 Unity PlayMode에서
+  `RunSimulator`를 돌리거나, `SpinBalanceProfile`의 실제 값을 읽어 스크래치를
+  다시 돌리면 된다.
+- 사용자 확인 필요 여부: **있음(권장, 차단 아님)** — 1단 완료 후 "Cross가 실전에서
+  전혀 안 뜬다"는 피드백이 나오면 이 항목을 먼저 본다. 2단에서 `CrossPatternMode`를
+  넣을 계획이면 그대로 진행하면 되고, 1단만으로 완결하고 싶다면 `CrossMultiplier`를
+  올리거나 바퀴 조건을 완화하는 재조정이 필요하다 — 이건 밸런스 판단이라 이번
+  구현자 권한 밖에 뒀다.

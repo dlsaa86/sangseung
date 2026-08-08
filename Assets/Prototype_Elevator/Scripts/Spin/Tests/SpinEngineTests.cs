@@ -53,6 +53,17 @@ namespace Ascend.Prototype.Spin.Tests
             Run("연쇄 코일: 칸 0이면 난수를 건드리지 않는다", TestExtraRerollZeroIsBitIdentical, ref passed, ref failed, report);
             Run("연쇄 코일: 칸을 켜면 판이 실제로 달라진다", TestExtraRerollChangesBoard, ref passed, ref failed, report);
 
+            // ── 상대 배치 패턴 Duo·Cross (2026-08-09, PLAN_BUILD_DEPENDENCY.md §C-2·C-7 1단) ──
+            Run("Cross: 중심이 다른 저항체·바퀴 4칸이면 성립", TestCrossDetectsWheelAroundDifferentCenter, ref passed, ref failed, report);
+            Run("Cross: 중심이 저항체가 아니면 성립하지 않음 (거짓 양성 방지)", TestCrossRequiresResistantCenter, ref passed, ref failed, report);
+            Run("Cross 가 Cluster 와 동시 성립해도 중복 계상 없이 Cross 가 이김", TestCrossOutranksClusterWhenBothQualify, ref passed, ref failed, report);
+            Run("Cross: 같은 판을 두 번 풀어도 같은 결과 (결정론)", TestCrossIsDeterministic, ref passed, ref failed, report);
+            Run("Duo: 연결 쌍이 다른 저항체와 인접하면 성립", TestDuoDetectsPairAdjacentToOtherKind, ref passed, ref failed, report);
+            Run("Duo: 다른 저항체가 없으면 성립하지 않음 (거짓 양성 방지)", TestDuoRequiresAdjacencyToOtherKind, ref passed, ref failed, report);
+            Run("Duo 가 Line 과 동시 성립해도 중복 계상 없이 Duo 가 이김", TestDuoOutranksLineWhenBothQualify, ref passed, ref failed, report);
+            Run("Cluster 가 Duo 와 동시 성립해도 중복 계상 없이 Cluster 가 이김", TestClusterOutranksDuoWhenBothQualify, ref passed, ref failed, report);
+            Run("Duo: 실전 가중치 시드 스윕에서도 결정론 (공허한 통과 아님)", TestDuoIsDeterministicAcrossRandomSpins, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Spin Engine Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -752,20 +763,29 @@ namespace Ascend.Prototype.Spin.Tests
             rules.Weights[SymbolKind.Absorber] = 0f;
             rules.Weights[SymbolKind.Proliferator] = 1f;
 
-            // 흡수체 4개가 직교로 붙어 Cluster. 증식체 2개는 문턱(3) 아래라 살아남는다.
+            // 흡수체 4개(0,1,3,4)가 직교로 붙어 Cluster. 증식체 2개(6,8)는 서로 붙어 있지
+            // 않은 채 흩어져 있다 — 개수(3 미만)로도, 2026-08-09에 추가된 Duo(연결 2칸 +
+            // 다른 종류 인접)로도 안 걸린다. 원래는 인덱스 2·5를 썼는데, 그 두 칸은 서로
+            // 붙어 있어 Duo 추가 이후 이 자리에서 Cluster와 함께 Duo로도 정화됐다 —
+            // 재충전 가중치가 증식체 100%라 정화 뒤 같은 심볼로 다시 채워져 아래 값
+            // 비교는 우연히 통과했지만 "정화도 수확도 되지 않았다"는 이 테스트의 전제가
+            // 깨져 있었다. 6·8은 서로 인접하지 않아(각각 고립 성분, 크기 1) Duo의
+            // "연결 2칸 이상" 조건 자체가 성립하지 않으므로 진짜 생존 칸이다.
             SpinBoard before = Board(
-                SymbolKind.Absorber,     SymbolKind.Absorber,     SymbolKind.Proliferator,
-                SymbolKind.Absorber,     SymbolKind.Absorber,     SymbolKind.Proliferator,
-                SymbolKind.NormalSoul,   SymbolKind.NormalSoul,   SymbolKind.NormalSoul);
+                SymbolKind.Absorber,     SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Absorber,     SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Proliferator, SymbolKind.NormalSoul,   SymbolKind.Proliferator);
             SpinResolution result = Resolve(before, rules);
 
             if (result.Steps.Length < 2) return $"캐스케이드가 열리지 않음 (단계 {result.Steps.Length})";
             if (result.Steps[0].Purifies[0].Pattern != PatternKind.Cluster)
                 return $"첫 패턴 {result.Steps[0].Purifies[0].Pattern}";
+            if (result.Steps[0].Purifies.Length != 1)
+                return $"1단계 발동 {result.Steps[0].Purifies.Length}건, 기대 1건 (증식체가 함께 터지면 안 된다)";
 
             SpinBoard after = result.Steps[0].BoardAfter;
-            // 증식체 2칸(인덱스 2, 5)은 정화도 수확도 되지 않았으므로 그대로여야 한다.
-            if (after[2] != SymbolKind.Proliferator || after[5] != SymbolKind.Proliferator)
+            // 증식체 2칸(인덱스 6, 8)은 정화도 수확도 되지 않았으므로 그대로여야 한다.
+            if (after[6] != SymbolKind.Proliferator || after[8] != SymbolKind.Proliferator)
                 return $"생존 칸이 재충전으로 덮어써짐 — {after}";
             if (after.HasEmpty())
                 return $"재충전 후에도 빈칸이 남음 — {after}";
@@ -1015,6 +1035,279 @@ namespace Ascend.Prototype.Spin.Tests
                     return "보고 배열을 수정했더니 SpinBoard.Lines 가 바뀌었다";
             return null;
         }
+
+        // ── 상대 배치 패턴 Duo·Cross (2026-08-09, PLAN_BUILD_DEPENDENCY.md §C-2·C-7 1단) ──
+        //
+        // 모든 배치는 손으로 유도하기 전에 임시 콘솔 스크래치(SpinEngine.FindMatches 와
+        // 같은 우선순위 사슬을 옮겨 심은 것)로 먼저 돌려 확인했다 — 3×3 인접 기하는
+        // 눈대중으로 틀리기 쉽다(모서리 칸이 중심의 대각 이웃일 뿐 아니라 "바퀴" 칸
+        // 두 개와는 직교로 붙어 있다는 것이 이 검증에서 드러난 실수였다). 세부 근거는
+        // `docs/runtime/PATTERN_IMPL_NOTES.md` 참조.
+
+        /// <summary>
+        /// 중심(인덱스4)이 증식체, 바퀴 4칸(1,3,5,7)이 흡수체, 모서리(0,2,6,8)는 관계없는
+        /// 정상 영혼. 가장 단순한 Cross 성립 배치 — 중심이 배제되고 바퀴만 정화되는지까지 본다.
+        /// </summary>
+        private static string TestCrossDetectsWheelAroundDifferentCenter()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.NormalSoul, SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Absorber,   SymbolKind.Proliferator, SymbolKind.Absorber,
+                SymbolKind.NormalSoul, SymbolKind.Absorber,     SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            if (result.Steps.Length == 0 || result.Steps[0].Purifies.Length == 0)
+                return "정화 이벤트가 없다 — Cross가 성립하지 않았다";
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Kind != SymbolKind.Absorber) return $"발동 종류 {purify.Kind}, 기대 흡수체";
+            if (purify.Pattern != PatternKind.Cross) return $"패턴 {purify.Pattern}, 기대 Cross";
+            if (Math.Abs(purify.PatternMultiplier - rules.CrossMultiplier) > 0.0001f)
+                return $"배수 {purify.PatternMultiplier}, 기대 {rules.CrossMultiplier}";
+            if (purify.Cells == null || purify.Cells.Length != 4)
+                return $"정화 칸 {purify.Cells?.Length ?? -1}, 기대 4 (바퀴만, 중심은 제외)";
+            if (purify.PatternCells == null || purify.PatternCells.Length != 4)
+                return $"모양 칸 {purify.PatternCells?.Length ?? -1}, 기대 4";
+
+            var expected = new[] { 1, 3, 5, 7 };
+            for (int i = 0; i < expected.Length; i++)
+                if (purify.Cells[i] != expected[i])
+                    return $"정화 칸 {string.Join(",", purify.Cells)}, 기대 {string.Join(",", expected)}";
+            foreach (int cell in purify.Cells)
+                if (cell == CrossCenterIndexForTests) return "중심 칸(증식체)이 정화 대상에 섞였다";
+            return null;
+        }
+
+        /// <summary>
+        /// 바퀴 4칸은 흡수체지만 중심이 저항체가 아니라 정상 영혼이면 Cross가 성립하지
+        /// 않는다. 바퀴 칸들은 직교로는 중심을 거쳐야만 서로 닿으므로(모서리를 통하면
+        /// 닿지만 모서리도 정상 영혼이다), 이 배치에서는 Cluster·Duo·Line·Scattered
+        /// 무엇도 성립하지 않아야 한다 — Cross 가드뿐 아니라 "바퀴가 고립된다"는
+        /// 전제 자체를 함께 확인한다(거짓 양성 방지).
+        /// </summary>
+        private static string TestCrossRequiresResistantCenter()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.NormalSoul, SymbolKind.Absorber,   SymbolKind.NormalSoul,
+                SymbolKind.Absorber,   SymbolKind.NormalSoul, SymbolKind.Absorber,
+                SymbolKind.NormalSoul, SymbolKind.Absorber,   SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            int purifies = 0;
+            foreach (CascadeStep step in result.Steps)
+                if (step.Purifies != null) purifies += step.Purifies.Length;
+            if (purifies != 0)
+                return $"중심이 저항체가 아닌데 정화가 {purifies}건 발생했다 (거짓 양성)";
+            return null;
+        }
+
+        /// <summary>
+        /// 모서리 두 칸(0,6)이 바퀴와 같은 흡수체라 직교로 다리를 놓아, 이 배치는
+        /// Cross(바퀴 1,3,5,7)와 Cluster({0,1,3,6,7}, 5칸 연결)를 **동시에** 만족한다 —
+        /// 대각 연결 스위치 없이도 충돌한다는 것이 스크래치 검증에서 나온 사실이다.
+        /// Cross(5.0×)가 Cluster(3.0×)보다 배수가 커서 우선순위 사슬에서 이겨야 하고,
+        /// 흡수체 발동은 정확히 한 건이어야 한다(중복 계상되면 두 건이 잡힌다).
+        /// </summary>
+        private static string TestCrossOutranksClusterWhenBothQualify()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber, SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Absorber, SymbolKind.Proliferator, SymbolKind.Absorber,
+                SymbolKind.Absorber, SymbolKind.Absorber,     SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            if (result.Steps.Length == 0 || result.Steps[0].Purifies.Length == 0)
+                return "정화 이벤트가 없다";
+            int absorberEvents = 0;
+            PurifyEvent onlyAbsorberEvent = default;
+            foreach (PurifyEvent p in result.Steps[0].Purifies)
+                if (p.Kind == SymbolKind.Absorber) { absorberEvents++; onlyAbsorberEvent = p; }
+            if (absorberEvents != 1)
+                return $"흡수체 발동 {absorberEvents}건, 기대 1건 (Cross·Cluster가 중복 계상됐다)";
+            if (onlyAbsorberEvent.Pattern != PatternKind.Cross)
+                return $"패턴 {onlyAbsorberEvent.Pattern}, 기대 Cross (Cluster에 우선순위를 뺏겼다)";
+            if (onlyAbsorberEvent.Cells.Length != 4)
+                return $"정화 칸 {onlyAbsorberEvent.Cells.Length}, 기대 4 (바퀴만, Cluster의 5칸이 아니다)";
+            return null;
+        }
+
+        /// <summary>
+        /// 같은 판·같은 규칙이면 Cross 판정도 결정론적이어야 한다. 실측 발생률이
+        /// 0.02~0.04%(`PATTERN_IMPL_NOTES.md`)라 무작위 스윕으로는 좀처럼 안 걸리므로,
+        /// 직접 만든 판을 두 번 풀어 비교하는 쪽이 훨씬 안정적이다.
+        /// </summary>
+        private static string TestCrossIsDeterministic()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.NormalSoul, SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Absorber,   SymbolKind.Proliferator, SymbolKind.Absorber,
+                SymbolKind.NormalSoul, SymbolKind.Absorber,     SymbolKind.NormalSoul);
+
+            SpinResolution a = Resolve(board, rules);
+            SpinResolution b = Resolve(board, rules);
+            if (!Equivalent(a, b)) return "같은 판·같은 규칙인데 Cross 결과가 갈렸다";
+            if (a.Steps.Length == 0 || a.Steps[0].Purifies.Length == 0 ||
+                a.Steps[0].Purifies[0].Pattern != PatternKind.Cross)
+                return "전제가 깨졌다 — 이 보드는 Cross가 성립해야 한다";
+            return null;
+        }
+
+        /// <summary>
+        /// 흡수체 2개(인덱스0,1 — 연결)가 증식체(인덱스4)와 인접. 2칸은 Scattered 기본
+        /// 최소(3)에도 못 미치므로, Duo가 없었다면 이 배치는 정화가 전혀 없어야 정상이다.
+        /// </summary>
+        private static string TestDuoDetectsPairAdjacentToOtherKind()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber,   SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.Proliferator, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul,   SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            if (result.Steps.Length == 0 || result.Steps[0].Purifies.Length == 0)
+                return "정화 이벤트가 없다 — Duo가 성립하지 않았다";
+            PurifyEvent purify = result.Steps[0].Purifies[0];
+            if (purify.Kind != SymbolKind.Absorber) return $"발동 종류 {purify.Kind}";
+            if (purify.Pattern != PatternKind.Duo) return $"패턴 {purify.Pattern}, 기대 Duo";
+            if (Math.Abs(purify.PatternMultiplier - rules.DuoMultiplier) > 0.0001f)
+                return $"배수 {purify.PatternMultiplier}, 기대 {rules.DuoMultiplier}";
+            if (purify.Cells == null || purify.Cells.Length != 2)
+                return $"정화 칸 {purify.Cells?.Length ?? -1}, 기대 2 (증식체 칸은 포함되지 않는다)";
+            if (purify.Cells[0] != 0 || purify.Cells[1] != 1)
+                return $"정화 칸 {string.Join(",", purify.Cells)}, 기대 0,1";
+            return null;
+        }
+
+        /// <summary>
+        /// 흡수체 2개가 붙어 있지만 판 전체에 다른 저항체가 하나도 없다 — Duo의 "다른
+        /// 종류와 인접" 조건이 실제로 걸러내는지를 본다. 거짓 양성이 거짓 음성보다
+        /// 위험하다는 지시에 따라 이 방향의 검사를 반드시 남긴다.
+        /// </summary>
+        private static string TestDuoRequiresAdjacencyToOtherKind()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber,   SymbolKind.Absorber,   SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            int purifies = 0;
+            foreach (CascadeStep step in result.Steps)
+                if (step.Purifies != null) purifies += step.Purifies.Length;
+            if (purifies != 0)
+                return $"다른 저항체가 없는데 정화가 {purifies}건 발생했다 (거짓 양성)";
+            return null;
+        }
+
+        /// <summary>
+        /// row0(인덱스0,3,6)이 흡수체 직선이고, idx0이 증식체(idx1)와 인접 — Line과 Duo가
+        /// 동시에 성립한다. Duo(2.5×)가 Line(2.0×)보다 배수가 커서 우선순위 사슬에서
+        /// 이겨야 한다. "직선이어도 다른 종류 옆이면 더 쳐준다"가 사용자가 요청한 상대
+        /// 배치 보상의 핵심이라 이 역전이 의도한 동작이다.
+        /// </summary>
+        private static string TestDuoOutranksLineWhenBothQualify()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber, SymbolKind.Proliferator, SymbolKind.NormalSoul,
+                SymbolKind.Absorber, SymbolKind.NormalSoul,   SymbolKind.NormalSoul,
+                SymbolKind.Absorber, SymbolKind.NormalSoul,   SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            if (result.Steps.Length == 0 || result.Steps[0].Purifies.Length == 0)
+                return "정화 이벤트가 없다";
+            int absorberEvents = 0;
+            PurifyEvent onlyAbsorberEvent = default;
+            foreach (PurifyEvent p in result.Steps[0].Purifies)
+                if (p.Kind == SymbolKind.Absorber) { absorberEvents++; onlyAbsorberEvent = p; }
+            if (absorberEvents != 1)
+                return $"흡수체 발동 {absorberEvents}건, 기대 1건 (Line·Duo가 중복 계상됐다)";
+            if (onlyAbsorberEvent.Pattern != PatternKind.Duo)
+                return $"패턴 {onlyAbsorberEvent.Pattern}, 기대 Duo (Line에 우선순위를 뺏겼다)";
+            if (onlyAbsorberEvent.Cells.Length != 3)
+                return $"정화 칸 {onlyAbsorberEvent.Cells.Length}, 기대 3";
+            return null;
+        }
+
+        /// <summary>
+        /// 2×2 흡수체 덩어리(인덱스0,1,3,4)가 증식체(인덱스5, 인덱스4와 인접)와 닿아
+        /// 있다 — Cluster와 Duo가 동시에 성립한다. Cluster(3.0×)가 Duo(2.5×)보다 커서
+        /// 이겨야 하고, 흡수체 발동은 정확히 한 건이어야 한다.
+        /// </summary>
+        private static string TestClusterOutranksDuoWhenBothQualify()
+        {
+            SpinRuleSet rules = BoardRules();
+            SpinBoard board = Board(
+                SymbolKind.Absorber, SymbolKind.Absorber,     SymbolKind.NormalSoul,
+                SymbolKind.Absorber, SymbolKind.Absorber,     SymbolKind.Proliferator,
+                SymbolKind.NormalSoul, SymbolKind.NormalSoul, SymbolKind.NormalSoul);
+            SpinResolution result = Resolve(board, rules);
+
+            if (result.Steps.Length == 0 || result.Steps[0].Purifies.Length == 0)
+                return "정화 이벤트가 없다";
+            int absorberEvents = 0;
+            PurifyEvent onlyAbsorberEvent = default;
+            foreach (PurifyEvent p in result.Steps[0].Purifies)
+                if (p.Kind == SymbolKind.Absorber) { absorberEvents++; onlyAbsorberEvent = p; }
+            if (absorberEvents != 1)
+                return $"흡수체 발동 {absorberEvents}건, 기대 1건 (Cluster·Duo가 중복 계상됐다)";
+            if (onlyAbsorberEvent.Pattern != PatternKind.Cluster)
+                return $"패턴 {onlyAbsorberEvent.Pattern}, 기대 Cluster (Duo에 우선순위를 뺏겼다)";
+            if (onlyAbsorberEvent.Cells.Length != 4)
+                return $"정화 칸 {onlyAbsorberEvent.Cells.Length}, 기대 4";
+            return null;
+        }
+
+        /// <summary>
+        /// Duo는 실측 발생률이 약 17.8%(`PATTERN_IMPL_NOTES.md`)라 무작위 스핀 표본에서도
+        /// 안정적으로 나온다. 실제 커리큘럼 가중치로 4개 시드 × 500스핀을 두 엔진에 각각
+        /// 돌려 매 스핀 결과가 일치하는지 보고, Duo가 최소 한 번은 나왔는지도 확인한다 —
+        /// 손으로 만든 판 하나가 아니라 실전 분포로도 결정론이 흔들리지 않는지가 목적이다.
+        /// `TestPurifiedCellsAreContiguous`와 같은 시드·스핀 수를 써서 기존 스윕과
+        /// 같은 신뢰도로 맞췄다.
+        /// </summary>
+        private static string TestDuoIsDeterministicAcrossRandomSpins()
+        {
+            int duoSeen = 0;
+            foreach (int seed in new[] { 1337, 4242, 271828, 8675309 })
+            {
+                FloorPlan plan = PrototypeCurriculum.For(8);
+                SpinRuleSet rules = PrototypeCurriculum.BuildRules(in plan);
+                ResistanceContract none = ResistanceContract.None;
+                ResidualState residual = ResidualState.Empty;
+
+                var engineA = new SpinEngine(seed);
+                var engineB = new SpinEngine(seed);
+
+                for (int i = 0; i < 500; i++)
+                {
+                    int spinSeed = SpinSeed.Derive(seed, 8, i);
+                    SpinResolution a = engineA.SpinWithSeed(spinSeed, rules, in none, in residual, 8, i);
+                    SpinResolution b = engineB.SpinWithSeed(spinSeed, rules, in none, in residual, 8, i);
+                    if (!Equivalent(a, b))
+                        return $"시드 {seed} 스핀 {i}: 같은 스핀 시드인데 결과가 다르다";
+
+                    if (a.Steps == null) continue;
+                    foreach (CascadeStep step in a.Steps)
+                    {
+                        if (step.Purifies == null) continue;
+                        foreach (PurifyEvent p in step.Purifies)
+                            if (p.Pattern == PatternKind.Duo) duoSeen++;
+                    }
+                }
+            }
+            if (duoSeen == 0) return "2000스핀을 돌았는데 Duo가 한 번도 안 나왔다 — 검사가 공허하게 통과했다";
+            return null;
+        }
+
+        /// <summary>Cross 판정 중심 칸 인덱스. SpinEngine 내부 상수(CrossCenterIndex)와 값이 같아야
+        /// 의미가 있지만, private const라 테스트에서 직접 참조할 수 없어 값만 복제해 둔다.</summary>
+        private const int CrossCenterIndexForTests = 4;
 
         private static SpinResolution Resolve(SpinBoard board, SpinRuleSet rules)
         {

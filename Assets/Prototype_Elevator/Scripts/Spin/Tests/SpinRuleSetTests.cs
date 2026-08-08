@@ -45,6 +45,10 @@ namespace Ascend.Prototype.Spin.Tests
             Run("DescribeCascade 가 단계·발동을 순서대로 담는다", TestDescribeCascadeIsOrdered, ref passed, ref failed, report);
             Run("연쇄 단계가 1부터 오름차순이고 배수가 깊이를 따른다", TestCascadeStepsAreOrdered, ref passed, ref failed, report);
 
+            // ── Duo·Cross 배수 (2026-08-09, PLAN_BUILD_DEPENDENCY.md §C-2) ──
+            Run("PatternMultiplierFor 가 Duo·Cross 배수를 돌려준다", TestDuoCrossMultiplierWiring, ref passed, ref failed, report);
+            Run("Duo·Cross 배수가 Clone() 을 살아남는다", TestDuoCrossMultiplierSurvivesClone, ref passed, ref failed, report);
+
             report.Insert(0, "[상승] === Spin Rule Set Guards ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
@@ -628,6 +632,51 @@ namespace Ascend.Prototype.Spin.Tests
                 return "연쇄가 깊어졌는데 배수가 오르지 않는다";
             if (result.ChainDepth != result.Steps.Length)
                 return $"ChainDepth {result.ChainDepth} 가 단계 수 {result.Steps.Length} 와 다르다";
+            return null;
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Duo·Cross 배수 (2026-08-09) — SpinRuleSet 배선 누락 방지
+        // ────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 🔴 2026-08-09 — `PatternMultiplierFor`의 switch에 Duo·Cross 케이스를 빠뜨리면
+        /// `default: return 0f;`로 떨어져 배수가 조용히 0이 된다. 다른 패턴(Line·Cluster·
+        /// FullBoard)도 전부 이 스위치를 통해서만 값을 받으므로 같은 함정이 새 패턴에도
+        /// 그대로 적용된다 — 직접 값을 대조해 막는다.
+        /// </summary>
+        private static string TestDuoCrossMultiplierWiring()
+        {
+            SpinRuleSet rules = SpinRuleSet.CreateDefault();
+            float duo = rules.PatternMultiplierFor(PatternKind.Duo, SymbolKind.Absorber);
+            if (Math.Abs(duo - rules.DuoMultiplier) > 0.0001f)
+                return $"Duo 배수 {duo}, 기대 {rules.DuoMultiplier} — switch가 default로 떨어졌을 수 있다";
+
+            float cross = rules.PatternMultiplierFor(PatternKind.Cross, SymbolKind.Absorber);
+            if (Math.Abs(cross - rules.CrossMultiplier) > 0.0001f)
+                return $"Cross 배수 {cross}, 기대 {rules.CrossMultiplier} — switch가 default로 떨어졌을 수 있다";
+            return null;
+        }
+
+        /// <summary>
+        /// 🔴 2026-08-09 — `SpinEngine.PrepareRules`가 매 스핀 `Clone()`을 부른다
+        /// (이 파일의 다른 주석들이 이미 지적한 함정 — "이 줄이 빠지면 잔류 대가가
+        /// 스핀마다 기본값으로 되돌아간다"). Duo·Cross 배수를 `Clone()`의 복제 목록에
+        /// 추가하는 것을 잊으면, 커스텀 값을 준 원본은 멀쩡해 보여도 **엔진이 실제로
+        /// 쓰는 복제본**은 항상 기본값(2.5·5.0)으로 돌아간다 — 기본값 자체를 검사하면
+        /// 이 버그가 안 잡히므로 일부러 기본값이 아닌 값을 준다.
+        /// </summary>
+        private static string TestDuoCrossMultiplierSurvivesClone()
+        {
+            SpinRuleSet original = SpinRuleSet.CreateDefault();
+            original.DuoMultiplier = 9.25f;
+            original.CrossMultiplier = 9.75f;
+
+            SpinRuleSet clone = original.Clone();
+            if (Math.Abs(clone.DuoMultiplier - 9.25f) > 0.0001f)
+                return $"Clone 후 DuoMultiplier {clone.DuoMultiplier}, 기대 9.25 — Clone()이 이 필드를 빠뜨렸다";
+            if (Math.Abs(clone.CrossMultiplier - 9.75f) > 0.0001f)
+                return $"Clone 후 CrossMultiplier {clone.CrossMultiplier}, 기대 9.75 — Clone()이 이 필드를 빠뜨렸다";
             return null;
         }
 

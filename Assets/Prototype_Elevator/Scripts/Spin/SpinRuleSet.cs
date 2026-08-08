@@ -38,8 +38,21 @@ namespace Ascend.Prototype.Spin
         /// 옛 규칙보다 **어렵다**. 붙어 있으면 모양을 가리지 않고 인정하지만,
         /// 떨어진 같은 문양을 더는 같이 지우지 않기 때문이다.
         /// 85% 로 되돌리려면 이 값을 올리면 된다 — 그건 난이도 결정이다.
+        ///
+        /// 🔴 **2026-08-09 — 14.0 → 11.5** (`PLAN_BUILD_DEPENDENCY.md` §C-3·C-7 1단).
+        /// 사용자 지시: "기본적으로 레버만 당겨서는 게임을 통과할 수 없게" 만든다.
+        /// 자체 검증 기준선(610 PASS / 4 FAIL)의 실패 중 "고정 시드 3개 이상이 10층
+        /// 완주"(실측 1회)와 "무계약 런도 절반 이상 6층 도달"(실측 1/6)이 이 조정과
+        /// `SpinEngine.FindMatches`의 Duo·Cross 판정이 함께 겨냥하는 지표다.
+        ///
+        /// ⚠ **이 값 하나만 내리면 그냥 더 어려워지기만 한다** — 반드시 Duo(2.5×)·
+        /// Cross(5.0×) 패턴 판정과 같이 간다. 패턴 없는 기본산을 요구 전력 아래로
+        /// 떨어뜨리고, 패턴이 그 격차를 메우는 것이 이 조정의 전제다(§C-3 "기본산 =
+        /// 요구의 70~80%"). 문서의 "무빌드 완주율 60%" 추정치는 이 커밋 시점에
+        /// 검증되지 않은 수치다 — 실측은 이 조정 이전 9시드 중 1시드 완주였다.
+        /// 되돌리려면 11.5 → 14.0 (그리고 Duo·Cross 판정도 함께 되돌려야 한다).
         /// </summary>
-        public float NormalSoulValue = 14f;
+        public float NormalSoulValue = 11.5f;
 
         /// <summary>스핀마다 정상 영혼을 최소 이만큼 보장한다. 0이면 보장 없음(공정성 안전장치).</summary>
         public int GuaranteedNormalSouls = 0;
@@ -65,6 +78,22 @@ namespace Ascend.Prototype.Spin
 
         /// <summary>9칸 동일 저항 잭팟 배수.</summary>
         public float FullBoardMultiplier = 10f;
+
+        /// <summary>
+        /// 🔴 **Duo(쌍) 배수** (2026-08-09, `PLAN_BUILD_DEPENDENCY.md` §C-2).
+        /// 한 종류의 연결 덩어리(2칸 이상)가 다른 저항체와 인접하면 붙는다. Line(2.0)보다
+        /// 높고 Cluster(3.0)보다 낮다 — 가장 자주 뜨는 상호작용 패턴이라 배수는 가장 낮게 잡았다.
+        /// 판정은 `SpinEngine.FindMatches`(Duo 우선순위: Cluster보다 아래, Line보다 위).
+        /// </summary>
+        public float DuoMultiplier = 2.5f;
+
+        /// <summary>
+        /// 🔴 **Cross(십자) 배수** (2026-08-09, `PLAN_BUILD_DEPENDENCY.md` §C-2).
+        /// 한 종류가 중심에서 다른 저항체에 직교로 완전히 둘러싸이면 붙는다. Cluster(3.0)보다
+        /// 높고 FullBoard(10.0)보다 낮다 — 실측 발생률이 약 0.02~0.04%(문서 추정 3%보다
+        /// 훨씬 희귀, `PATTERN_IMPL_NOTES.md`)라 우연보다는 승객·부품으로 노리는 패턴에 가깝다.
+        /// </summary>
+        public float CrossMultiplier = 5.0f;
 
         /// <summary>종류별 패턴 배수 가산(계약의 PatternBonusAdd가 여기에 더해진다).</summary>
         public readonly Dictionary<SymbolKind, float> PatternBonusAdd = new Dictionary<SymbolKind, float>();
@@ -239,7 +268,9 @@ namespace Ascend.Prototype.Spin
             {
                 case PatternKind.Scattered: baseMultiplier = 1f; break;
                 case PatternKind.Line:      baseMultiplier = LineMultiplier; break;
+                case PatternKind.Duo:       baseMultiplier = DuoMultiplier; break;
                 case PatternKind.Cluster:   baseMultiplier = ClusterMultiplier; break;
+                case PatternKind.Cross:     baseMultiplier = CrossMultiplier; break;
                 case PatternKind.FullBoard: baseMultiplier = FullBoardMultiplier; break;
                 default:                    return 0f;
             }
@@ -333,7 +364,9 @@ namespace Ascend.Prototype.Spin
                 GuaranteedNormalSouls         = GuaranteedNormalSouls,
                 PurifyValuePerSymbol          = PurifyValuePerSymbol,
                 LineMultiplier                = LineMultiplier,
+                DuoMultiplier                 = DuoMultiplier,
                 ClusterMultiplier             = ClusterMultiplier,
+                CrossMultiplier               = CrossMultiplier,
                 FullBoardMultiplier           = FullBoardMultiplier,
                 DiagonalCountsAsConnected     = DiagonalCountsAsConnected,
                 AllowMultiplePatternsPerKind  = AllowMultiplePatternsPerKind,
