@@ -232,7 +232,14 @@ namespace Ascend.Prototype.Player
             // 유지가 필요한 것은 **되돌릴 수 없는 선택 하나뿐**이다. 나머지는 즉시
             // 반응해야 하고, 거기에 유지를 붙이면 조작이 굼떠진다. 그래서 분기가
             // `IHoldInteractable` 구현 여부 하나에 걸린다.
-            if (aimingUsable && hold != null && hold.HoldSeconds > 0f)
+            // 🔴 `tapHold == null` 이 **반드시 있어야 한다.**
+            //
+            // `ITapAndHoldInteractable` 은 `IHoldInteractable` 을 상속하고 `HoldSeconds` 도
+            // 0 보다 크다. 이 조건이 없으면, 위에서 `HoldAvailable == false` 라 건너뛴 물체를
+            // **여기가 잡아챈다.** 그리고 이 경로는 탭을 버리고 유지만 받는다 —
+            // 즉 과수확 조건이 아닐 때 **일반 스핀도 0.85초 꾹 눌러야** 하게 된다.
+            // (2026-08-08 에 실제로 그렇게 만들었고 사용자가 「레버 조작이 이상하다」로 잡았다.)
+            if (aimingUsable && hold != null && tapHold == null && hold.HoldSeconds > 0f)
             {
                 if (mouse.leftButton.isPressed)
                 {

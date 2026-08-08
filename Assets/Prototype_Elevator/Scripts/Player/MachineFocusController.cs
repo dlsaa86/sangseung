@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -39,14 +38,12 @@ namespace Ascend.Prototype.Player
     ///     WASD     배우지 않아도 되는 유일한 조작 — 물러나면 풀린다
     ///     자동      할 일이 없으면 붙잡아 두지 않는다 (기본 꺼짐, 아래 참조)
     ///
-    /// ## 아웃라인을 새 렌더 패스로 만들지 않은 이유
+    /// ## 외곽선은 이 클래스가 하지 않는다
     ///
-    /// URP 에는 기본 아웃라인이 없고, 이 저장소에는 렌더러 피처도 아웃라인 셰이더도 없다.
-    /// 그런데 `Ascend/Stylized` 에는 이미 **실루엣 림 항**이 있다 —
-    /// 「실루엣을 살짝 세운다. 『큰 실루엣』이 락의 첫 항목이고, 무지 머티리얼끼리 겹치면
-    /// 경계가 사라진다.」 그 값을 올리는 것이 곧 테두리 강조다.
-    /// `MaterialPropertyBlock` 으로 렌더러별로 올리므로 머티리얼을 복제하지 않고,
-    /// 새 패스도 스텐실도 필요 없다.
+    /// 처음에는 여기서 기계만 빛냈지만, 사용자가 「이건 **모든 오브젝트**에 해당하는 거임」
+    /// 이라고 범위를 넓혔다(2026-08-08). 그래서 <see cref="InteractableHighlighter"/> 로
+    /// 옮겼고, 기계는 <see cref="InteractableHighlightTarget"/> 으로 빛낼 범위를 가리킨다.
+    /// 두 곳에서 칠하면 같은 `MaterialPropertyBlock` 을 서로 덮어써 깜빡인다.
     /// </summary>
     public sealed class MachineFocusController : MonoBehaviour
     {
@@ -59,8 +56,10 @@ namespace Ascend.Prototype.Player
         [Tooltip("집중했을 때 화면에 담을 범위. 비우면 _focus 의 콜라이더를 쓴다.")]
         [SerializeField] private Collider _frameBounds;
 
-        [Tooltip("이 아래의 Ascend/Stylized 렌더러가 하일라이트 대상이 된다.")]
-        [SerializeField] private Transform _highlightRoot;
+        // ⚠ 하일라이트는 이 클래스가 하지 않는다. `InteractableHighlighter` 가 **모든**
+        // 상호작용물에 대해 처리하고(2026-08-08 사용자 지시: 「이건 모든 오브젝트에
+        // 해당하는 거임」), 기계는 `InteractableHighlightTarget` 으로 빛낼 범위를 가리킨다.
+        // 여기서 또 칠하면 두 곳이 같은 `MaterialPropertyBlock` 을 덮어써 깜빡인다.
 
         [Header("카메라")]
         [Tooltip("비우면 _frameBounds 를 화면에 담는 자리를 계산한다.")]
@@ -69,10 +68,6 @@ namespace Ascend.Prototype.Player
         [SerializeField, Range(0.1f, 1.0f)] private float _exitDuration = 0.28f;
         [Tooltip("계산한 거리에 곱하는 여유. 1 이면 범위가 화면에 꽉 찬다.")]
         [SerializeField, Range(1.0f, 2.0f)] private float _framingMargin = 1.18f;
-
-        [Header("하일라이트 (셰이더의 실루엣 림)")]
-        [SerializeField, Range(0f, 1f)] private float _rimHover = 0.85f;
-        [SerializeField, Range(0f, 8f)] private float _rimFadeSpeed = 6f;
 
         [Header("나가기")]
         [SerializeField] private bool _exitOnEscape = true;
@@ -86,12 +81,6 @@ namespace Ascend.Prototype.Player
 
         public bool IsFocused { get; private set; }
 
-        private readonly List<Renderer> _highlightTargets = new List<Renderer>();
-        private readonly List<float> _rimBase = new List<float>();
-        private MaterialPropertyBlock _block;
-        private float _rim;                     // 현재 림 가중치 0~1
-        private bool _hovering;
-
         private Vector3 _restPos;
         private Quaternion _restRot;
         private Vector3 _goalPos;
@@ -104,15 +93,11 @@ namespace Ascend.Prototype.Player
         private Bounds _cachedBounds;
         private bool _boundsCached;
 
-        private static readonly int RimId = Shader.PropertyToID("_RimStrength");
-
         private void Awake()
         {
             if (_camera == null) _camera = Camera.main;
             if (_player == null) _player = GetComponentInParent<FirstPersonController>();
             if (_interactor == null) _interactor = GetComponentInParent<CrosshairInteractor>();
-            _block = new MaterialPropertyBlock();
-            CollectHighlightTargets();
         }
 
         private void OnEnable()
@@ -125,43 +110,10 @@ namespace Ascend.Prototype.Player
             if (_focus != null) _focus.onFocusRequested.RemoveListener(Enter);
         }
 
-        /// <summary>
-        /// 하일라이트 대상을 모은다. `Ascend/Stylized` 만 — 림 항이 그 셰이더에만 있다.
-        /// 원래 `_RimStrength` 를 기억해 둔다. 그것을 잃으면 집중을 나올 때 값이
-        /// 프리팹 기본값으로 튀어 **머티리얼이 조용히 바뀐다.**
-        /// </summary>
-        private void CollectHighlightTargets()
-        {
-            _highlightTargets.Clear();
-            _rimBase.Clear();
-            if (_highlightRoot == null) return;
-
-            foreach (var r in _highlightRoot.GetComponentsInChildren<Renderer>(true))
-            {
-                var m = r.sharedMaterial;
-                if (m == null || m.shader == null) continue;
-                if (m.shader.name != "Ascend/Stylized") continue;
-                if (!m.HasProperty(RimId)) continue;
-                _highlightTargets.Add(r);
-                _rimBase.Add(m.GetFloat(RimId));
-            }
-        }
-
         private void Update()
         {
-            UpdateHover();
             UpdateExitInput();
             UpdateBlend();
-            ApplyHighlight();
-        }
-
-        private void UpdateHover()
-        {
-            // 집중 중에는 테두리를 끈다 — 이미 그 안에 들어와 있으므로 「여기를 누르세요」가
-            // 더 이상 정보가 아니고, 켜 두면 화면 전체가 번져 구슬 판독을 방해한다.
-            bool want = !IsFocused && _focus != null && _interactor != null
-                        && ReferenceEquals(_interactor.CurrentInteractable, _focus);
-            _hovering = want;
         }
 
         private void UpdateExitInput()
@@ -329,21 +281,5 @@ namespace Ascend.Prototype.Player
             }
         }
 
-        private void ApplyHighlight()
-        {
-            float target = _hovering ? 1f : 0f;
-            _rim = Mathf.MoveTowards(_rim, target, _rimFadeSpeed * Time.deltaTime);
-
-            for (int i = 0; i < _highlightTargets.Count; i++)
-            {
-                var r = _highlightTargets[i];
-                if (r == null) continue;
-                float baseRim = i < _rimBase.Count ? _rimBase[i] : 0.25f;
-                float v = Mathf.Lerp(baseRim, _rimHover, _rim);
-                r.GetPropertyBlock(_block);
-                _block.SetFloat(RimId, v);
-                r.SetPropertyBlock(_block);
-            }
-        }
     }
 }

@@ -619,11 +619,26 @@ namespace Ascend.Prototype.View
 
         private void SetBar(float ratio, Color color)
         {
+            // ── 바 길이는 **100 에서 끝난다** (2026-08-08 사용자 지시) ─────────────
+            //
+            // 「전력 게이지도 끝까지 숫자 100 써 있는 곳까지 차야 하는데 이상한 곳에 멈추네.
+            //  100까지는 동일하게 채워지고 100 이상 가면 색상 바뀌고 이펙트 주는 걸로,
+            //  바는 더 이상 안 늘어나고.」
+            //
+            // 직전 판본은 `clamped / _maxRatio` 였다. `_maxRatio` 가 3 이므로 요구 전력을
+            // 정확히 채워도(ratio 1.0) 바는 **1/3 만** 찼다 — 눈금판의 「100」과 어긋난다.
+            // 눈금은 요구 전력을 100 으로 읽는데 바는 300% 를 만점으로 그리고 있었다.
+            //
+            // 초과분은 길이가 아니라 **색과 발광**이 맡는다. 그래야 「가득 찼다」와
+            // 「넘쳤다」가 한 눈금 위에서 구분된다 — 길이로 둘 다 표현하면 100 지점이
+            // 아무 의미 없는 중간 지점이 된다.
+            float fill = Mathf.Clamp01(ratio);
+            float over = Mathf.Max(0f, ratio - 1f);          // 0 = 미달·정확 · >0 = 초과
+
             if (_barPivot != null)
             {
-                float clamped = Mathf.Clamp(ratio, 0f, _maxRatio);
                 Vector3 scale = _barPivot.localScale;
-                scale.x = _barWidth * (clamped / Mathf.Max(0.0001f, _maxRatio));
+                scale.x = _barWidth * fill;
                 _barPivot.localScale = scale;
             }
 
