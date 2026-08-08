@@ -90,6 +90,16 @@ namespace Ascend.Prototype.Effects
         private Material _shared;
         private Material _sharedGlow;
 
+        [Tooltip("정화 섬광의 색과 최대 세기·반경.")]
+        [SerializeField] private Color _flashColor = new Color(0.72f, 0.92f, 1.00f, 1f);
+        [SerializeField, Range(0f, 12f)] private float _flashIntensity = 5.5f;
+        [SerializeField, Range(0.2f, 3f)] private float _flashRange = 1.1f;
+        [Tooltip("초당 감쇠. 맥동(0.55초)보다 조금 길게 남도록 잡는다.")]
+        [SerializeField, Range(0.5f, 8f)] private float _flashFade = 2.2f;
+
+        private Light _flash;
+        private float _flashLevel;
+
         // 값은 한 번만 읽어 struct 로 들고 있는다. `LateUpdate` 가 매 프레임 도는 경로라
         // 여기서 ScriptableObject 를 다시 묻으면 그 자체가 프레임당 비용이 된다.
         private Data.Profiles.PresentationSnapshot _values = CodePreset;
@@ -202,6 +212,17 @@ namespace Ascend.Prototype.Effects
             // 0.020 → 0.045, 배출률 하한도 6 → 14 로 올린다(아래 ApplyLevel).
             // `UP-VIS-10`(안개·먼지가 결과판을 가리지 않는다)이 상한이라 알파는 그대로 둔다 —
             // 개수와 크기로 존재감을 만들고 불투명도로 만들지 않는다.
+            // 정화 섬광용 광원 하나. 꺼진 채로 만들고 `FlashAt` 이 켠다.
+            var flashGo = new GameObject("PurifyFlash");
+            flashGo.transform.SetParent(transform, false);
+            _flash = flashGo.AddComponent<Light>();
+            _flash.type = LightType.Point;
+            _flash.color = _flashColor;
+            _flash.range = _flashRange;
+            _flash.intensity = 0f;
+            _flash.shadows = LightShadows.None;   // 섬광에 그림자는 비용만 든다
+            _flash.enabled = false;
+
             _dust    = Build("Dust",    new Color(0.72f, 0.68f, 0.58f, 0.16f), 0.045f, 0.9f,  6.0f, false, false);
             _rust    = Build("Rust",    new Color(0.55f, 0.28f, 0.13f, 0.40f), 0.030f, 1.6f,  2.6f, true,  false);
             _spark   = Build("Spark",   new Color(1.00f, 0.72f, 0.32f, 0.85f), 0.012f, 2.4f,  0.9f, true,  true);
@@ -345,9 +366,40 @@ namespace Ascend.Prototype.Effects
         /// <summary>사건 버스트가 터질 자리. 앵커가 없으면 자기 위치(보통 월드 원점).</summary>
         public Vector3 AnchorPosition => _effectAnchor != null ? _effectAnchor.position : transform.position;
 
-        /// <summary>정화 파편을 **그 칸에서** 터뜨린다. `SpinPresenter` 가 맥동과 같은 프레임에 부른다.</summary>
+        /// <summary>
+        /// 정화 파편을 **그 칸에서** 터뜨린다. `SpinPresenter` 가 맥동과 같은 프레임에 부른다.
+        ///
+        /// 값을 키운 근거(2026-08-09 실측): 직전 값(크기 0.034 · 수명 0.75)으로 실제
+        /// 정화 순간을 찍어 보니 **창 안에 파란 점 몇 개**가 전부였다. 먼지와 구분이 안 되고
+        /// 맥동(0.55 초)이 끝나기도 전에 사라진다. 크기·수명·속도를 올려 파편이 맥동과
+        /// 같은 시간을 살고 창 밖으로 번지게 한다.
+        /// </summary>
         public void BurstPurifyAt(Vector3 world, int count = 14)
-            => BurstAt(_purify, count, world, 0.034f, 0.62f, 0.75f);
+            => BurstAt(_purify, count, world, 0.055f, 0.80f, 1.15f);
+
+        /// <summary>
+        /// 정화 순간의 **섬광**. 어두운 캐빈에서 「맞았다」를 파는 가장 강한 신호다.
+        ///
+        /// 파티클만으로는 약했다 — 파편은 작고 배경이 어두워 존재감이 안 난다. 빛은
+        /// **주변 면까지 함께 밝혀서** 사건이 일어난 위치를 공간적으로 알린다.
+        ///
+        /// ⚠ **광원은 하나만 쓴다.** 이 프로젝트의 URP 설정은 추가광 상한이 4 이고
+        /// 캐빈 램프와 영혼 스필이 이미 둘을 쓴다. 정화 칸마다 광원을 만들면 상한을 넘겨
+        /// **기존 조명이 조용히 꺼진다.** 그래서 여러 칸이 동시에 정화돼도 광원은 하나이고
+        /// 위치는 그 칸들의 중심이다.
+        /// </summary>
+        public void FlashAt(Vector3 world, float strength = 1f)
+        {
+            if (_flash == null) return;
+            _flash.transform.position = world;
+            _flashLevel = Mathf.Max(_flashLevel, Mathf.Clamp01(strength));
+            // **세기를 여기서 바로 준다.** `LateUpdate` 에만 맡기면 켜진 첫 프레임이
+            // 세기 0 으로 그려진다 — 섬광은 짧아서 그 한 프레임이 곧 시작의 실종이다.
+            _flash.intensity = _flashIntensity * _flashLevel;
+            _flash.color = _flashColor;
+            _flash.range = _flashRange;
+            _flash.enabled = true;
+        }
 
         /// <summary>연쇄 유입을 판 중앙에서 터뜨린다.</summary>
         public void BurstCascadeAt(Vector3 world, int count = 12)
@@ -355,6 +407,15 @@ namespace Ascend.Prototype.Effects
 
         private void LateUpdate()
         {
+            // 섬광 감쇠. 0 이 되면 광원을 **끈다** — 켜 둔 채 세기만 0 으로 두면
+            // URP 의 추가광 슬롯을 계속 먹어서 다른 조명이 밀려난다.
+            if (_flash != null && _flashLevel > 0f)
+            {
+                _flashLevel = Mathf.Max(0f, _flashLevel - _flashFade * Time.deltaTime);
+                if (_flashLevel <= 0.001f) { _flashLevel = 0f; _flash.enabled = false; }
+                else _flash.intensity = _flashIntensity * _flashLevel;
+            }
+
             RiskLevel level = _risk != null ? _risk.Level : RiskLevel.Stable;
             if (level != _level)
             {

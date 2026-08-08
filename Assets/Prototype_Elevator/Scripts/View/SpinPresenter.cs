@@ -449,16 +449,26 @@ namespace Ascend.Prototype.View
         {
             if (_particles == null || _board == null || step.Purifies == null) return;
 
+            Vector3 sum = Vector3.zero; int lit = 0; int grade = 1;
             foreach (PurifyEvent purify in step.Purifies)
             {
                 if (purify.Cells == null) continue;
-                int count = 8 + 4 * PulseCountFor(purify.Pattern);   // 개수 12 · 직선 16 · 연결 20 · 잭팟 24
+                int pulses = PulseCountFor(purify.Pattern);
+                grade = Mathf.Max(grade, pulses);
+                int count = 14 + 6 * pulses;   // 개수 20 · 직선 26 · 연결 32 · 잭팟 38
                 foreach (int cell in purify.Cells)
                 {
                     Transform t = _board.CellTransform(cell);
-                    if (t != null) _particles.BurstPurifyAt(t.position, count);
+                    if (t == null) continue;
+                    _particles.BurstPurifyAt(t.position, count);
+                    sum += t.position; lit++;
                 }
             }
+
+            // **섬광은 하나다.** 칸마다 광원을 켜면 URP 추가광 상한(4)을 넘겨 기존 조명이
+            // 조용히 꺼진다. 정화된 칸들의 **중심**에서 한 번 터뜨리고, 세기는 등급을 따른다 —
+            // 잭팟이 개수 정화와 같은 밝기면 「왜 터졌는가」가 빛에서 사라진다.
+            if (lit > 0) _particles.FlashAt(sum / lit, Mathf.Clamp01(0.55f + 0.15f * grade));
 
             // 연쇄가 이어지는 단계라면 판 중앙에서 한 번 더 — 「또 터졌다」를 알린다.
             if (step.Depth > 1)
