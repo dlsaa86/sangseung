@@ -90,6 +90,18 @@ Shader "Ascend/Stylized"
         [Toggle(_MINFILL_ON)] _MinFillEnabled ("최소 채우기 사용", Float) = 0
         _MinFill        ("최소 채우기 · 알베도 비례", Range(0, 1)) = 0.06
 
+        // ⚠ 상수 바닥에 **색이 필요하다** (2026-08-09 사용자 지적).
+        //
+        // 「꺼먼 건 없어졌는데 너무 회색이잖아. 채도도 없고 흐려 보이는 건 또 이상해.
+        //  검은색이 너무 진한 게 문제였지, 적당히 진해야지. 벽색보다 조금 진한 정도.」
+        //
+        // 첫 판본의 상수 바닥은 **흰색**이었다. 흰색을 더하면 어두운 면일수록 상대적으로
+        // 많이 밝아지는데, 그 밝아지는 성분에 색이 없으므로 **채도가 씻겨 나간다.**
+        // 검정을 없앤 대가로 회색을 얻은 것이고, 그건 고친 게 아니라 다른 곳으로 옮긴 것이다.
+        //
+        // 간접광은 원래 **주변 면의 색을 띤다.** 이 방은 따뜻한 갈색이므로 그 색으로 채운다.
+        _MinFillTint    ("상수 바닥의 색 (간접광 색조)", Color) = (1.0, 0.82, 0.62, 1)
+
         // ⚠ **알베도 비례만으로는 부족했다** (2026-08-08 실측).
         //
         // 기계 둘레의 검은 액자는 `SM_Cab_PanelRecess` 인데, 그 면이 어두운 이유가
@@ -359,6 +371,7 @@ Shader "Ascend/Stylized"
                 float  _BandSoftness;
                 float  _MinFill;
                 float  _MinFillFlat;
+                float4 _MinFillTint;
                 float  _RimStrength;
                 float  _NearAttenClamp;
                 float4 _EmissionColor;
@@ -844,7 +857,8 @@ Shader "Ascend/Stylized"
                     // 정작 검게 떨어지는 오목한 곳(= 사용자가 지적한 그 테두리)에서만
                     // 효과가 사라진다. 「어떤 면도 순수 검정으로 떨어지지 않는다」가
                     // 이 항의 계약이므로 무엇도 이것을 지우면 안 된다.
-                    color += albedo * _MinFill + _MinFillFlat;
+                    // 상수 바닥에 색을 곱한다 — 흰색으로 더하면 채도가 씻겨 회색이 된다.
+                    color += albedo * _MinFill + _MinFillFlat * _MinFillTint.rgb;
                 #endif
 
                 #if defined(_SPECULAR_ON)
