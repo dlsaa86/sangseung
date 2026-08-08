@@ -454,6 +454,23 @@ namespace Ascend.Prototype.EditorTools
         ///
         /// 목구멍을 축에서 밀어 **한쪽으로 무너뜨리고**, 테두리 꼭짓점 반지름을
         /// 결정론적으로 ±10% 흔든다. 완전 대칭이면 무엇을 만들든 아이콘이 된다.
+        ///
+        /// ## 실루엣은 따로 뚫어야 했다 (`UP-FIX-93`, 2026-08-09)
+        ///
+        /// 위 절은 **밝기** 기준 분리였다. 그런데 전 재질을 검정 무광으로 바꿔 순수
+        /// 윤곽만 찍자 흡수체는 **꽉 찬 육각형**이었다 — 안으로 꺼진 아가리는 깊이
+        /// 방향 특징이라 정투영에는 원래 안 나타난다(뒤가 막힌 깔때기는 안이 비었든
+        /// 찼든 정면에서는 그냥 원뿔이다). 게다가 옛 `rThroatIn`(반지름의 17%)이
+        /// 목구멍 핵(<see cref="AbsorberThroatCenter"/>, 반지름 ≈0.016m)보다 작아서,
+        /// 기하상 유일하게 뚫려 있던 그 작은 구멍마저 핵이 다 막고 있었다
+        /// (Monte-Carlo 재현: 자기 윤곽 대비 채움률 **1.000**).
+        ///
+        /// 그래서 `rThroat`·`rThroatIn`을 키웠다 — `rThroatIn`이 발광 고리
+        /// (<see cref="BuildAbsorberRing"/>, 바깥지름 0.64·rRim)를 넘어서야 고리와 핵이
+        /// 벽에 안 닿고 뜨고, 고리 밖·핵 밖 양쪽에 배경이 비치는 틈이 실제로 생긴다.
+        /// `rRim`·`rRimIn`(앞 테두리)과 깊이(zRim·zThroat)는 그대로다 — 크기 서열과
+        /// 챔버 여유가 걸린 값이라 손대지 않았다. 재계산한 채움률(1.000 → 0.704)과
+        /// 근거는 `docs/runtime/ABSORBER_SILHOUETTE_NOTES.md`.
         /// </summary>
         private static Mesh BuildMaw()
         {
@@ -473,8 +490,13 @@ namespace Ascend.Prototype.EditorTools
             }
             float rRim = AbsorberSpan * 0.5f / jMax;   // 아가리 바깥
             float rRimIn = rRim * 0.86f;           // 아가리 안쪽 — 테두리 폭 14%
-            float rThroat = rRim * 0.30f;          // 목구멍 바깥
-            float rThroatIn = rRim * 0.17f;        // 목구멍 안쪽
+            // ⚠ 목구멍을 **정말로** 뚫는다. 옛 값(0.30f/0.17f)은 기하상 열려 있었지만
+            // 반지름이 목구멍 핵보다 작아 핵이 구멍을 통째로 막았다 — 정투영 실루엣은
+            // 그래서 꽉 찬 육각형으로 렌더됐다. rThroatIn 을 고리 바깥지름(0.64·rRim)
+            // 보다 크게 잡아야 고리·핵이 벽에서 떨어져 뜨고, 그 사이사이에 배경이
+            // 비치는 「고리 + 틈 + 작은 점」 실루엣이 만들어진다.
+            float rThroat = rRim * 0.85f;          // 목구멍 바깥 — 이전 0.30f
+            float rThroatIn = rRim * 0.72f;        // 목구멍 안쪽 — 이전 0.17f, 관통 구멍 반지름
             float depth = AbsorberSpan * AbsorberDepthRatio * DepthFlatten;
             float zRim = -depth * 0.5f;            // 앞(관찰자 쪽)
             float zThroat = depth * 0.5f;
