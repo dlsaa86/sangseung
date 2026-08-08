@@ -7,6 +7,18 @@
 > `docs/runtime/PENDING_DECISIONS.md` **P-20260809-01** 에 있다. 이 산출물의 FBX는
 > `<scratchpad>/ELV_Cabin_AD47_orbs.fbx`, 렌더는 `orb_silhouette_v1~v5.png` — 지금
 > 저장된 `.blend`에는 반영되어 있지 않다(A가 나중에 다시 저장했다).
+>
+> **🔴 2026-08-09 후속 — team-lead 결정: 이 안(B)도 A안도 채택하지 않는다.**
+> `Assets/Editor/SymbolShapeFactory.cs`(절차형 C# 시스템)가 이미 3종을 구현하고
+> 검증까지 거친 상태였다는 게 뒤늦게 확인됐다. 구슬은 그 기존 시스템 쪽에서
+> 처리한다. 이 문서는 지우지 않고 "안 쓰기로 한 시도"로 보존한다. 이 세션이
+> `.blend` 레벨로 B의 결과를 완전히 복구할 수 있는 백업도 남겨 뒀다(
+> `<scratchpad>/SM_ElevCab_Panel_AD57.pre_orb_edit_backup.blend`, B 저장 직후 스냅샷)
+> — 상세는 `docs/runtime/BLENDER_CONCURRENCY_INCIDENT.md`.
+>
+> **SpinGauge 부분(§8, 이 문서의 "부가 작업")은 구슬과 무관하게 여전히 유효한 별개
+> 논의다** — B의 Z값(1.700/1.750, 레버 손잡이와 20.8mm 겹침 있음)과 A의 Z값(+40mm
+> 넉지, 겹침 없음) 중 무엇을 채택할지는 `BLENDER_CONCURRENCY_INCIDENT.md` §3 참조.
 
 ---
 
