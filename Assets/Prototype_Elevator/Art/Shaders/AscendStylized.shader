@@ -179,6 +179,30 @@ Shader "Ascend/Stylized"
         _SpecSteps      ("하이라이트 계단 수 (1 = 켜짐/꺼짐)", Range(1, 4)) = 2
         _SpecThreshold  ("하이라이트 문턱 (아래는 정확히 0)", Range(0, 1)) = 0.25
         _SpecSoftness   ("문턱 부드러움 (계단 경계 앤티에일리어싱)", Range(0.001, 0.3)) = 0.05
+
+        // ── 구운 AO (기본 꺼짐, 2026-08-08) ────────────────────────────────
+        //
+        // 독립 평가의 1순위 지적이 「드리운 그림자가 없다」였다. 인계 문서는
+        // `AD53_BAKEALL` 의 `use_pass_direct/indirect` 를 켜라고 제안했지만 **그건 못 쓴다** —
+        // 빛을 알베도에 구우면 Unity 가 그 위에 런타임 조명을 또 곱한다. 이중 조명을
+        // 피하려면 런타임 점광을 줄여야 하고, 그러면 아래 조명 누산부 주석이 세 번의
+        // 실패로 기록한 그것이 재현된다(「추가 광원이 위험 단계를 나른다」).
+        //
+        // **AO 는 조명과 무관하다.** 곱해도 이중 조명이 되지 않고 점광이 그대로 산다.
+        // 접촉 음영과 접지감만 얻고 위험 단계 연출은 손대지 않는다.
+        // (2026-08-08 사용자 결정: 「AO 정도만 굽고 광원 그림자는 굽지 마라」)
+        //
+        // **주변광에만 곱한다.** AO 가 가리는 것은 사방에서 오는 간접광이지 특정
+        // 광원에서 곧게 오는 직접광이 아니다. 직접광까지 곱하면 램프를 정면으로 받는
+        // 면이 크레바스라는 이유로 어두워져 광원 위치가 안 읽힌다.
+        //
+        // ⚠ 기본값 `"white"` 가 곱셈 중립이지만 그것에 의존하지 않는다 —
+        //   키워드가 꺼지면 샘플링 코드 자체가 컴파일되지 않는다(규약의 ②).
+        // ⚠ `uv` 는 구운 알베도(`BK_*`)가 쓰는 것과 **같은 변수**다. 둘 다 블렌더의
+        //   `UVBake` 레이어로 구웠으므로 그래야 정렬이 맞는다.
+        [Toggle(_AOMAP_ON)] _AOMapEnabled ("구운 AO 사용", Float) = 0
+        _AOMap          ("AO 맵 (흰색 = 중립)", 2D) = "white" {}
+        _AOStrength     ("AO 세기", Range(0, 1)) = 1
     }
 
     SubShader
@@ -237,6 +261,7 @@ Shader "Ascend/Stylized"
             #pragma shader_feature_local_fragment _DETAILMAP_ON
             #pragma shader_feature_local_fragment _TRIPLANAR_ON
             #pragma shader_feature_local_fragment _SPECULAR_ON
+            #pragma shader_feature_local_fragment _AOMAP_ON
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -283,6 +308,9 @@ Shader "Ascend/Stylized"
                 float  _SpecSteps;
                 float  _SpecThreshold;
                 float  _SpecSoftness;
+                float  _AOMapEnabled;
+                float4 _AOMap_ST;
+                float  _AOStrength;
             CBUFFER_END
 
             TEXTURE2D(_BaseMap);
@@ -291,6 +319,8 @@ Shader "Ascend/Stylized"
             SAMPLER(sampler_EmissionMap);
             TEXTURE2D(_DetailMap);
             SAMPLER(sampler_DetailMap);
+            TEXTURE2D(_AOMap);
+            SAMPLER(sampler_AOMap);
 
             struct Attributes
             {
@@ -702,6 +732,18 @@ Shader "Ascend/Stylized"
                 float3 sh = SampleSH(normalWS);
                 float3 ambientTerm = albedo * sh * _ShadowLift
                                    + _ShadowTint.rgb * 0.35 * saturate(Lum(sh) * 2.0);
+                #if defined(_AOMAP_ON)
+                    // **주변광에만 곱한다.** AO 가 가리는 것은 사방에서 오는 간접광이지
+                    // 광원에서 곧게 오는 직접광이 아니다. `lit` 까지 곱하면 램프를 정면으로
+                    // 받는 면이 「크레바스라서」 어두워져 광원 위치가 안 읽힌다.
+                    //
+                    // 이 씬은 `m_AmbientMode: 3`(Flat) 이라 `sh` 가 상수다 —
+                    // 즉 주변광은 지금 **화면 어디서도 변하지 않는 평면**이고,
+                    // AO 를 곱하는 것이 그 평면에 형태를 주는 유일한 수단이다.
+                    float ao = SAMPLE_TEXTURE2D(_AOMap, sampler_AOMap, uv).r;
+                    ambientTerm *= lerp(1.0, ao, saturate(_AOStrength));
+                #endif
+
                 float3 color = ambientTerm + lit;
 
                 #if defined(_SPECULAR_ON)
