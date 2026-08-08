@@ -61,6 +61,7 @@ Material:
     - _FalloffPower: 2.5
     - _MinFill: 0.18
     - _MinFillEnabled: 1
+    - _MinFillFlat: 0.004
     - _NearAttenClamp: 1
     - _PS1DistortEnabled: 0
     - _RimStrength: 0.25

@@ -31,6 +31,10 @@ Shader "Ascend/OutlineShell"
         // 월드 고정 폭으로 하면 가까이서는 두껍고 멀리서는 사라진다.
         // 카메라 거리에 곱해지는 비율이다. 0.006 이면 2 m 거리에서 12 mm.
         _OutlineWidth ("외곽선 폭 (거리 비례)", Range(0, 0.03)) = 0.006
+
+        // 껍질을 시선 축으로 얼마나 뒤로 밀 것인가. 폭과 같은 규모면 충분하다.
+        // 0 이면 얇은 면에서 껍질이 물체 앞으로 나와 안쪽까지 칠해진다.
+        _DepthPush    ("깊이 밀어내기 (거리 비례)", Range(0, 0.05)) = 0.010
     }
 
     SubShader
@@ -74,6 +78,7 @@ Shader "Ascend/OutlineShell"
             CBUFFER_START(UnityPerMaterial)
                 float4 _OutlineColor;
                 float  _OutlineWidth;
+                float  _DepthPush;
             CBUFFER_END
 
             Varyings vert(Attributes IN)
@@ -94,8 +99,22 @@ Shader "Ascend/OutlineShell"
                 // 이것이 껍질 방식이 성립하는 이유 자체다.
                 //
                 // 카메라 거리를 곱해 화면상 폭을 일정하게 유지한다.
-                float dist = distance(GetCameraPositionWS(), posWS);
+                float3 toCam = GetCameraPositionWS() - posWS;
+                float  dist  = length(toCam);
+                float3 viewDir = toCam / max(1e-5, dist);
+
                 posWS += nrmWS * _OutlineWidth * dist;
+
+                // ⚠ **깊이를 카메라 반대쪽으로 밀어낸다** (2026-08-09 사용자 지적).
+                //
+                // 「외곽선만 선택되어야 하는데 안쪽 객체까지 선택되는 느낌이야.」
+                //
+                // 법선으로만 부풀리면 **얇거나 평평한 면**에서 부풀린 뒷면이 원래 앞면보다
+                // 카메라 쪽으로 나올 수 있다. 그러면 껍질이 더 가까운 깊이를 써 버려서
+                // 물체가 그 위를 덮지 못하고 **안쪽까지 칠해진다** — 테두리가 아니라 덩어리다.
+                // 이 셰이더가 성립하는 전제 자체가 「껍질은 항상 물체보다 뒤에 있다」이므로,
+                // 그것을 법선 방향에 맡기지 않고 시선 축에서 직접 보장한다.
+                posWS -= viewDir * _DepthPush * dist;
 
                 OUT.positionCS = TransformWorldToHClip(posWS);
                 return OUT;
