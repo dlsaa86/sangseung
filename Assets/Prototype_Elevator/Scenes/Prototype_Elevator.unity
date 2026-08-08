@@ -38623,6 +38623,10 @@ MonoBehaviour:
   _volumeRadius: 1.35
   _volumeHeight: 2.4
   _effectAnchor: {fileID: 1696499021}
+  _flashColor: {r: 0.72, g: 0.92, b: 1, a: 1}
+  _flashIntensity: 2.8
+  _flashRange: 1.1
+  _flashFade: 2.2
 --- !u!1 &999307431
 GameObject:
   m_ObjectHideFlags: 0

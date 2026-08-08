@@ -213,29 +213,6 @@ namespace Ascend.Prototype.Player
             return track ? mr : null;
         }
 
-        /// <summary>원본 메시를 그대로 쓰는 자식 렌더러를 만든다. 콜라이더는 붙이지 않는다.</summary>
-        private MeshRenderer Spawn(Transform parent, Mesh mesh, Material material, string name, bool track)
-        {
-            var go = new GameObject(name);
-            go.hideFlags = HideFlags.HideAndDontSave;   // 씬에 저장되지 않는다
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = Vector3.one;
-
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = material;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-            // 라이트 프로브를 끄는 이유: 껍질도 마스크도 조명을 안 받는데
-            // 켜 두면 프로브 보간 비용만 든다.
-            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-
-            _owned.Add(go);
-            return track ? mr : null;
-        }
 
         private void Apply(bool usable)
         {
