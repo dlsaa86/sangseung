@@ -26866,6 +26866,7 @@ GameObject:
   - component: {fileID: 688822290}
   - component: {fileID: 688822293}
   - component: {fileID: 688822294}
+  - component: {fileID: 688822295}
   m_Layer: 0
   m_Name: ContractPanel
   m_TagString: Untagged
@@ -26998,8 +26999,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9d5f1657daeb841918fbcf1647fc1a05, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.ContractPanelGrayboxView
-  _run: {fileID: 0}
-  _bridge: {fileID: 0}
+  _run: {fileID: 998528527}
+  _bridge: {fileID: 998528529}
   _slots:
   - {fileID: 261537652}
   - {fileID: 1005101795}
@@ -27011,6 +27012,19 @@ MonoBehaviour:
   _previewingColor: {r: 0.95, g: 0.8, b: 0.35, a: 1}
   _confirmedColor: {r: 0.45, g: 0.9, b: 0.7, a: 1}
   _unselectedColor: {r: 0.2, g: 0.21, b: 0.23, a: 1}
+--- !u!114 &688822295
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 688822288}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9070f980954d4983910e9da44229d6e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
+  _root: {fileID: 688822289}
 --- !u!1 &689033989
 GameObject:
   m_ObjectHideFlags: 0
