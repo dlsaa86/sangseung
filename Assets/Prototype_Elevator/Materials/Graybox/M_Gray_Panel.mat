@@ -141,7 +141,7 @@ Material:
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
-    - _MinFill: 0.06
+    - _MinFill: 0.18
     - _MinFillEnabled: 1
     - _NearAttenClamp: 1
     - _OcclusionStrength: 1

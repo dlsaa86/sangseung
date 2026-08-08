@@ -4240,10 +4240,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlighter
   _interactor: {fileID: 98471718}
-  _rimHighlight: 0.85
-  _rimDisabled: 0.45
+  _usableColor: {r: 1, g: 0.86, b: 0.45, a: 1}
+  _blockedColor: {r: 0.85, g: 0.35, b: 0.28, a: 1}
+  _width: 0.012
   _fadeSpeed: 9
-  _emissionBoost: 2.2
 --- !u!21 &98520102
 Material:
   serializedVersion: 8
@@ -10106,7 +10106,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 3271e16539324e84aaa8860998d4af88, type: 2}
     - target: {fileID: 9088336198639723601, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_Enabled
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

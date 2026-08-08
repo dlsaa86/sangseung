@@ -63,8 +63,9 @@ Material:
     - _DitherStrength: 1
     - _EmissionMapEnabled: 0
     - _FalloffPower: 1
-    - _MinFill: 0.06
+    - _MinFill: 0.18
     - _MinFillEnabled: 1
+    - _MinFillFlat: 0.005
     - _NearAttenClamp: 1
     - _PS1DistortEnabled: 0
     - _RimStrength: 0.02

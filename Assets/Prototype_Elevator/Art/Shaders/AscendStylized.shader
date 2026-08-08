@@ -88,7 +88,20 @@ Shader "Ascend/Stylized"
         // ⚠ 이것은 간접광의 **대역**이지 간접광이 아니다. 방향도 가림도 없다.
         // 라이트맵이나 프로브가 들어오면 이 항은 꺼야 한다.
         [Toggle(_MINFILL_ON)] _MinFillEnabled ("최소 채우기 사용", Float) = 0
-        _MinFill        ("최소 채우기 (검은 면의 바닥)", Range(0, 0.3)) = 0.06
+        _MinFill        ("최소 채우기 · 알베도 비례", Range(0, 1)) = 0.06
+
+        // ⚠ **알베도 비례만으로는 부족했다** (2026-08-08 실측).
+        //
+        // 기계 둘레의 검은 액자는 `SM_Cab_PanelRecess` 인데, 그 면이 어두운 이유가
+        // 재질의 기본색(0.5)이 아니라 **구운 알베도 텍스처가 거기서 거의 검정**이라는
+        // 것이었다. `albedo * _MinFill` 은 알베도가 0 에 가까우면 아무리 올려도 0 이다 —
+        // `_MinFill` 을 0.06 → 0.55 로 아홉 배 올렸는데 그 띠의 휘도는
+        // **0.0494 → 0.0525** 밖에 안 움직였다(벽은 정상적으로 움직였다).
+        //
+        // 그래서 **알베도와 무관한 바닥**을 따로 둔다. 이것이 「어떤 면도 순수 검정으로
+        // 떨어지지 않는다」를 실제로 보장하는 항이다. 값이 크면 어두운 재질과 밝은 재질이
+        // 같은 회색으로 뭉치므로 **아주 작게** 쓰고, 필요한 면에만 올린다.
+        _MinFillFlat    ("최소 채우기 · 상수 바닥 (알베도 무관)", Range(0, 0.15)) = 0
 
         _RimStrength    ("실루엣 림", Range(0, 1)) = 0.25
 
@@ -345,6 +358,7 @@ Shader "Ascend/Stylized"
                 float  _BandFloor;
                 float  _BandSoftness;
                 float  _MinFill;
+                float  _MinFillFlat;
                 float  _RimStrength;
                 float  _NearAttenClamp;
                 float4 _EmissionColor;
@@ -830,7 +844,7 @@ Shader "Ascend/Stylized"
                     // 정작 검게 떨어지는 오목한 곳(= 사용자가 지적한 그 테두리)에서만
                     // 효과가 사라진다. 「어떤 면도 순수 검정으로 떨어지지 않는다」가
                     // 이 항의 계약이므로 무엇도 이것을 지우면 안 된다.
-                    color += albedo * _MinFill;
+                    color += albedo * _MinFill + _MinFillFlat;
                 #endif
 
                 #if defined(_SPECULAR_ON)
