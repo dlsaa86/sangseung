@@ -9814,6 +9814,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 70677f677c47aa04c9796a8bb36dc52a, type: 2}
+    - target: {fileID: -2195135562810903909, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: -1655358017578735992, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -9869,6 +9873,10 @@ PrefabInstance:
     - target: {fileID: 603061064031486848, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_LocalPosition.z
       value: -0.50199974
+      objectReference: {fileID: 0}
+    - target: {fileID: 646445544234116387, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Enabled
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 796748745494945837, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -10018,6 +10026,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 5a38622496f584c4b952494c33cc374f, type: 2}
+    - target: {fileID: 6256301831983139674, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6435267433253840714, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_CastShadows
       value: 1
@@ -10140,11 +10152,6 @@ Transform:
 --- !u!23 &237018045 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 3234610581954567196, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
-  m_PrefabInstance: {fileID: 237018042}
-  m_PrefabAsset: {fileID: 0}
---- !u!108 &237018046 stripped
-Light:
-  m_CorrespondingSourceObject: {fileID: -3175162290414623446, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
   m_PrefabInstance: {fileID: 237018042}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &250269832
@@ -38279,6 +38286,7 @@ MonoBehaviour:
   - {fileID: 179785953}
   - {fileID: 730820030}
   - {fileID: 1861151497}
+  _transitionDuration: 0.12
   _highlightScale: 1.35
   _purifyEmission: {r: 1, g: 0.86, b: 0.55, a: 1}
   _purifyEmissionStrength: 3
@@ -40506,7 +40514,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c1be6397a3db7d4aa357105fbdcc8a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.View.MachineImpactView
-  _keyLight: {fileID: 237018046}
+  _keyLight: {fileID: 0}
   _surge: 1.55
   _sag: 0.55
   _warningLens: {fileID: 237018045}
