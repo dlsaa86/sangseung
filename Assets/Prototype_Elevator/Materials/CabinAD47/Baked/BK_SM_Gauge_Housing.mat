@@ -12,6 +12,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _AOMAP_ON
   - _SHADEGAMMA_ON
   - _SPECULAR_ON
   m_InvalidKeywords: []
@@ -25,6 +26,10 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _AOMap:
+        m_Texture: {fileID: 2800000, guid: a54835d5e22d54c1bbef01651fdb7c72, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: 0ababe19080fc0f489235dfb5eac84ed, type: 3}
         m_Scale: {x: 1, y: 1}
@@ -39,6 +44,9 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _AODirect: 0.7
+    - _AOMapEnabled: 1
+    - _AOStrength: 1
     - _AffineAmount: 0
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012

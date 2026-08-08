@@ -89,12 +89,36 @@ def setup(samples=SAMPLES, ao_dist=AO_DIST):
 
     bk = sc.render.bake
     bk.use_selected_to_active = False
-    bk.use_clear = True
+
+    # ⚠ **배경을 지우지 않는다.** `use_clear = True` 는 UV 아일랜드 밖을 이미지의
+    # 초기색(검정)으로 밀어 버린다. AO 를 `ambientTerm *= ao` 로 곱하는데 배경이 0 이면
+    # 이중선형 필터링과 밉맵이 그 검정을 아일랜드 안쪽으로 번지게 해 **테두리가 검게 죈다.**
+    # AO 맵의 곱셈 중립 배경은 **흰색(1.0)** 이다. `bake_one` 이 이미지를 흰색으로 만들고
+    # 여기서 지우지 않으면, 아일랜드만 덮이고 배경은 흰색으로 남는다.
+    #
+    # (실측: `use_clear=True` 로 구운 첫 판의 평균값이 0.08~0.14 였다. AO 가 나쁜 게
+    #  아니라 배경이 검정이라 그랬다 — 아일랜드 안쪽은 흰색으로 정상이었다.)
+    bk.use_clear = False
     bk.margin = margin_value()
 
 
 def margin_value():
     return MARGIN
+
+
+def albedo_bake_manifest():
+    """`AD53_BAKEALL` 의 `SIZES`·`ORDER` 를 그대로 가져온다.
+
+    베껴 두면 갈라진다. AO 는 알베도와 **같은 오브젝트 집합·같은 해상도**여야 하므로
+    출처를 하나로 둔다. AD53 은 모듈 수준에 부작용이 없어(문자열·함수·리스트뿐)
+    빈 네임스페이스에 exec 해도 안전하다.
+    """
+    txt = bpy.data.texts.get("AD53_BAKEALL")
+    if txt is None:
+        raise RuntimeError("AD53_BAKEALL 텍스트 블록이 없다 — 잘못된 .blend 를 열었다")
+    ns = {}
+    exec(txt.as_string(), ns)  # noqa: S102 — 저장소 안의 우리 스크립트다
+    return ns["SIZES"], ns["ORDER"]
 
 
 def bake_one(objname, res):
@@ -116,6 +140,10 @@ def bake_one(objname, res):
 
     img = bpy.data.images.new("__ao", res, res, alpha=False, float_buffer=False)
     img.colorspace_settings.name = 'Non-Color'      # AO 는 색이 아니라 데이터다.
+
+    # **배경을 흰색으로 만든다** — 곱셈 중립값. `setup()` 의 `use_clear = False` 와 한 쌍이다.
+    # 새로 만든 이미지는 GENERATED 라 `generated_color` 가 실제 픽셀을 채운다.
+    img.generated_color = (1.0, 1.0, 1.0, 1.0)
 
     added = []
     for m in me.materials:

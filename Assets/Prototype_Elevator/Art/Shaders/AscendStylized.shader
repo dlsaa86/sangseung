@@ -192,9 +192,28 @@ Shader "Ascend/Stylized"
         // 접촉 음영과 접지감만 얻고 위험 단계 연출은 손대지 않는다.
         // (2026-08-08 사용자 결정: 「AO 정도만 굽고 광원 그림자는 굽지 마라」)
         //
-        // **주변광에만 곱한다.** AO 가 가리는 것은 사방에서 오는 간접광이지 특정
-        // 광원에서 곧게 오는 직접광이 아니다. 직접광까지 곱하면 램프를 정면으로 받는
-        // 면이 크레바스라는 이유로 어두워져 광원 위치가 안 읽힌다.
+        // **직접광에도 곱한다 — 주변광에만 곱는 것은 이 씬에서 무효다.**
+        //
+        // 처음엔 주변광에만 곱었다. 「AO 가 가리는 것은 간접광이지 직접광이 아니다」는
+        // 물리적으로 옳지만 **이 씬에서는 아무 일도 하지 않는다.** 실측(2026-08-08):
+        //
+        //     ambientMode = Flat · ambientLight linear = (0.001, 0.001, 0.002)
+        //     주변광 실효 휘도 0.00146 · × _ShadowLift 0.18 → ambientTerm ≈ 0.00026
+        //     AO 45장을 배선하고 켠 뒤 평균 휘도 0.1035 → 0.1035 (변화 0)
+        //
+        // 그리고 반대 논거도 틀렸다. 「직접광에 곱하면 램프를 정면으로 받는 면이
+        // 크레바스라는 이유로 어두워져 광원 위치가 안 읽힌다」고 적었지만 —
+        // **크레바스 깊숙한 면은 램프를 향해도 실제로 어두워야 한다.** 램프가 가려져
+        // 있으니까. 이 셰이더에 쓸 만한 점광 그림자가 없으므로 AO 가 그 대역이다.
+        // 게다가 곱셈은 `ndotl · 감쇠` 의 **형태를 보존**하므로 광원 위치는 계속 읽힌다.
+        // 원래 걱정은 AO 가 형태를 *대체*할 때만 성립하는 것이었다.
+        //
+        // `_AODirect` 로 직접광 쪽 비율을 따로 둔다 — 1.0 은 물리적으로 과하고
+        // (AO 는 반구 평균이라 방향광에 그대로 쓰면 이중 계산이다) 0 은 무효다.
+        //
+        // ⚠ 진단 6·7 (`addTerm = lit - mainTerm`) 이 이제 AO 를 포함한다.
+        //   AO 는 픽셀당 **양의 상수 배율**이라 그 진단이 보는 위험 단계 단조성은
+        //   보존된다. 절대값만 낮아진다.
         //
         // ⚠ 기본값 `"white"` 가 곱셈 중립이지만 그것에 의존하지 않는다 —
         //   키워드가 꺼지면 샘플링 코드 자체가 컴파일되지 않는다(규약의 ②).
@@ -203,6 +222,7 @@ Shader "Ascend/Stylized"
         [Toggle(_AOMAP_ON)] _AOMapEnabled ("구운 AO 사용", Float) = 0
         _AOMap          ("AO 맵 (흰색 = 중립)", 2D) = "white" {}
         _AOStrength     ("AO 세기", Range(0, 1)) = 1
+        _AODirect       ("직접광에 곱하는 비율 (0 = 주변광만 → 이 씬에선 무효)", Range(0, 1)) = 0.7
     }
 
     SubShader
@@ -311,6 +331,7 @@ Shader "Ascend/Stylized"
                 float  _AOMapEnabled;
                 float4 _AOMap_ST;
                 float  _AOStrength;
+                float  _AODirect;
             CBUFFER_END
 
             TEXTURE2D(_BaseMap);
@@ -733,15 +754,13 @@ Shader "Ascend/Stylized"
                 float3 ambientTerm = albedo * sh * _ShadowLift
                                    + _ShadowTint.rgb * 0.35 * saturate(Lum(sh) * 2.0);
                 #if defined(_AOMAP_ON)
-                    // **주변광에만 곱한다.** AO 가 가리는 것은 사방에서 오는 간접광이지
-                    // 광원에서 곧게 오는 직접광이 아니다. `lit` 까지 곱하면 램프를 정면으로
-                    // 받는 면이 「크레바스라서」 어두워져 광원 위치가 안 읽힌다.
-                    //
-                    // 이 씬은 `m_AmbientMode: 3`(Flat) 이라 `sh` 가 상수다 —
-                    // 즉 주변광은 지금 **화면 어디서도 변하지 않는 평면**이고,
-                    // AO 를 곱하는 것이 그 평면에 형태를 주는 유일한 수단이다.
-                    float ao = SAMPLE_TEXTURE2D(_AOMap, sampler_AOMap, uv).r;
-                    ambientTerm *= lerp(1.0, ao, saturate(_AOStrength));
+                    // 위 프로퍼티 주석의 실측 근거를 따른다 — 이 씬은 주변광이
+                    // 선형 0.00146 이라 **주변광에만 곱면 화면이 비트 단위로 안 바뀐다.**
+                    // 직접광에도 `_AODirect` 비율로 곱해야 접촉 음영이 실제로 보인다.
+                    float ao     = SAMPLE_TEXTURE2D(_AOMap, sampler_AOMap, uv).r;
+                    float aoStr  = saturate(_AOStrength);
+                    ambientTerm *= lerp(1.0, ao, aoStr);
+                    lit         *= lerp(1.0, ao, aoStr * saturate(_AODirect));
                 #endif
 
                 float3 color = ambientTerm + lit;
