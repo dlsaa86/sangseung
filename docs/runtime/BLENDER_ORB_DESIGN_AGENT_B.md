@@ -1,4 +1,14 @@
-# 구슬(영혼 수확체) 3종 모델링 — 실루엣 삼분법
+# 구슬(영혼 수확체) 3종 모델링 — 실루엣 삼분법 ("에이전트 B" 원본, 그대로 보존)
+
+> ⚠ **이 파일은 원래 `docs/runtime/BLENDER_ORB_DESIGN.md` 였다.** 같은 지시를 다른
+> 에이전트("A")가 동시에 수행했고, A가 자기 보고서를 그 경로에 쓰려다 이 내용을 발견해
+> **원본 그대로 이 파일명으로 옮겨 보존**했다(내용은 한 글자도 고치지 않았다). 현재
+> `docs/runtime/BLENDER_ORB_DESIGN.md` 에는 A의 보고서가 있고, 두 안의 비교·최종 선택은
+> `docs/runtime/PENDING_DECISIONS.md` **P-20260809-01** 에 있다. 이 산출물의 FBX는
+> `<scratchpad>/ELV_Cabin_AD47_orbs.fbx`, 렌더는 `orb_silhouette_v1~v5.png` — 지금
+> 저장된 `.blend`에는 반영되어 있지 않다(A가 나중에 다시 저장했다).
+
+---
 
 **작업 일시**: 2026-08-09 (자율주행, `production/review-mode.txt` 와 무관하게 team-lead 직접 지시)
 **도구**: `tools/blender_bridge.py`, 대상 파일: `.../ElevPanel_v10/SM_ElevCab_Panel_AD57.blend`
