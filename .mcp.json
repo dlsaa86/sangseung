@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blender": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "tools/blender_mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}
