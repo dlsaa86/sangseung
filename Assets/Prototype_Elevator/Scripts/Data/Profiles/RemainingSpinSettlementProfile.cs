@@ -57,12 +57,31 @@ namespace Ascend.Prototype.Data.Profiles
                      fileName = "RemainingSpinSettlementProfile")]
     public sealed class RemainingSpinSettlementProfile : ScriptableObject
     {
-        [Header("정산 (T-05 임시 기본값)")]
-        [Tooltip("남은 스핀 1회당 요구 전력의 몇 배를 정산하는가. T-05 기본값 0.05 (=5%).")]
-        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.25f;
+        // ⚠ **이 기본값들은 위 표의 채택값이어야 한다** (2026-08-08 정정).
+        //
+        // 2026-08-04 에 15%/60% 를 채택했는데 그 결정이 `.asset` 에만 반영됐고 코드에는
+        // `0.25 / 1.00` 이 남아 있었다. 옛 T-05 값(0.05/0.20)도 아닌 제3의 값이라
+        // 어디서 온 것인지 이력에 없다. 툴팁도 두 판본 전 문구였다.
+        //
+        // 그래서 자체 검증 4건이 계속 실패했다 — 특히 「층당 상한 60% 를 넘지 않는다」는
+        // 프리셋이 100% 인 한 통과가 **원리적으로 불가능**했다. 여러 세션 동안
+        // 「밸런스라 지금 작업과 무관하다」로 미뤄졌지만 **밸런스가 아니라 갈라진 값**이었다.
+        //
+        // 실제 파급은 테스트가 아니었다. `BalanceSweep.cs:768` 이
+        // `_settlementOverride ?? DefaultSnapshot` 이라, **오버라이드 없이 돌린 밸런스
+        // 스윕은 전부 25%/100% 로 계산됐다.** 그 결과로 조정한 값이 있으면 근거가 흔들린다.
+        //
+        // 게임 플레이는 영향이 없었다 — 씬의 `AscendRun`(`RunSessionBehaviour`)이
+        // `.asset` 을 제대로 배선하고 있어서 15%/60% 로 굴러갔다. 그래서 안 보였다.
+        //
+        // ⚠ **필드 초기값을 바꿔도 기존 `.asset` 은 안 변한다** (이미 0.15/0.6 이
+        // 직렬화돼 있다). 바뀌는 것은 새로 만드는 에셋과 아래 `DefaultSnapshot` 이다.
+        [Header("정산 (2026-08-04 실측 채택값 · 위 표 참조)")]
+        [Tooltip("남은 스핀 1회당 요구 전력의 몇 배를 정산하는가. 채택값 0.15 (=15%).")]
+        [SerializeField, Range(0f, 0.3f)] private float _perSpinRatio = 0.15f;
 
-        [Tooltip("층당 정산 상한. 요구 전력의 몇 배인가. T-05 기본값 0.20 (=20%).")]
-        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 1.00f;
+        [Tooltip("층당 정산 상한. 요구 전력의 몇 배인가. 채택값 0.60 (=60%).")]
+        [SerializeField, Range(0f, 1f)] private float _floorCapRatio = 0.60f;
 
         [Tooltip("정산 전력을 돈으로 바꾸는 비율. 1 이면 전력 1 = 돈 1.")]
         [SerializeField, Min(0f)] private float _moneyPerPower = 1f;
@@ -71,9 +90,19 @@ namespace Ascend.Prototype.Data.Profiles
         public float FloorCapRatio => _floorCapRatio;
         public float MoneyPerPower => _moneyPerPower;
 
-        /// <summary>코드 프리셋. 에셋이 배선되지 않아도 규칙이 사라지지 않는다.</summary>
+        /// <summary>
+        /// 코드 프리셋. 에셋이 배선되지 않아도 규칙이 사라지지 않는다.
+        ///
+        /// ⚠ **위 필드 초기값과 반드시 같아야 한다.** 이 값과 필드가 갈라지면
+        /// 「에셋 없이도 규칙이 사라지지 않는다」가 거짓이 되고, 그 순간 이 프리셋은
+        /// 안전망이 아니라 **조용한 두 번째 밸런스**가 된다. 2026-08-08 까지 정확히
+        /// 그 상태였다 — 필드·프리셋 둘 다 0.25/1.00, 채택값은 0.15/0.60.
+        ///
+        /// `BalanceSweep` 과 헤드리스 테스트가 이 값을 쓴다. 밸런스를 바꿀 때는
+        /// `.asset` 과 여기를 **같이** 바꾼다.
+        /// </summary>
         public static RemainingSpinSettlementSnapshot DefaultSnapshot =>
-            new RemainingSpinSettlementSnapshot(0.25f, 1.00f, 1f, "코드 프리셋");
+            new RemainingSpinSettlementSnapshot(0.15f, 0.60f, 1f, "코드 프리셋");
 
         public RemainingSpinSettlementSnapshot Snapshot =>
             new RemainingSpinSettlementSnapshot(_perSpinRatio, _floorCapRatio, _moneyPerPower, name);
