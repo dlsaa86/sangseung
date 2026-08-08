@@ -62,7 +62,7 @@ Material:
     - _DitherStrength: 1
     - _EmissionMapEnabled: 0
     - _FalloffPower: 1
-    - _MinFill: 0.18
+    - _MinFill: 0.06
     - _MinFillEnabled: 1
     - _MinFillFlat: 0.004
     - _NearAttenClamp: 1
@@ -85,6 +85,7 @@ Material:
     m_Colors:
     - _BaseColor: {r: 0.86, g: 0.74, b: 0.52, a: 1}
     - _EmissionColor: {r: 1.8, g: 1.28, b: 0.7, a: 1}
+    - _MinFillTint: {r: 1, g: 0.82, b: 0.62, a: 1}
     - _ShadowTint: {r: 0.16, g: 0.13, b: 0.1, a: 1}
     - _SpecTint: {r: 1, g: 0.96999997, b: 0.9, a: 1}
   m_BuildTextureStacks: []

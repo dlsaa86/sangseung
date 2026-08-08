@@ -141,7 +141,7 @@ Material:
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
-    - _MinFill: 0.18
+    - _MinFill: 0.06
     - _MinFillEnabled: 1
     - _MinFillFlat: 0.004
     - _NearAttenClamp: 1
@@ -178,6 +178,7 @@ Material:
     - _BaseColor: {r: 0.17554723, g: 0.19310196, b: 0.21065666, a: 1}
     - _Color: {r: 0.09999997, g: 0.10999996, b: 0.11999995, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _MinFillTint: {r: 1, g: 0.82, b: 0.62, a: 1}
     - _ShadowTint: {r: 0.16, g: 0.13, b: 0.1, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecTint: {r: 1, g: 1, b: 1, a: 1}

@@ -20,7 +20,9 @@ Shader "Ascend/OutlineMask"
 {
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry-2" }
+        // 껍질이 불투명 뒤로 옮겨졌으므로 마스크도 같이 옮긴다 — 마스크가 껍질보다
+        // **먼저** 찍히기만 하면 된다(2998 < 2999).
+        Tags { "RenderType" = "Transparent" "RenderPipeline" = "UniversalPipeline" "Queue" = "Transparent-2" }
 
         Pass
         {
@@ -30,7 +32,9 @@ Shader "Ascend/OutlineMask"
             // 색도 깊이도 건드리지 않는다. 스텐실만 남긴다.
             ColorMask 0
             ZWrite Off
-            ZTest LEqual
+            // 껍질이 `ZTest Always` 라 마스크도 같아야 한다. `LEqual` 로 두면 대상이
+            // 가려졌을 때 스텐실이 안 찍혀서 껍질이 안쪽까지 통째로 칠해진다.
+            ZTest Always
             Cull Back
 
             Stencil

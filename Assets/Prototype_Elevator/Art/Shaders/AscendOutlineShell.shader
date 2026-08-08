@@ -48,7 +48,17 @@ Shader "Ascend/OutlineShell"
         // 그래서 깊이 검사에 기대지 않고 **그리는 순서**로 해결한다. 껍질이 먼저 그려지고
         // 물체가 그 위를 덮으면, 화면에는 껍질이 물체보다 삐져나온 가장자리만 남는다.
         // 이 방식은 물체가 어떤 셰이더를 쓰든, 깊이 텍스처가 있든 없든 성립한다.
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry-1" }
+        // **불투명 뒤에, 깊이 검사 없이** 그린다 (2026-08-09 사용자 지시).
+        //
+        // 「외곽선은 맨 위로 보이게, 모든 오브젝트를 뚫고 보이게 하면 해결될 것 같아.」
+        //
+        // 앞서는 불투명보다 **먼저**(1999) 그려 물체가 덮게 했다. 그 방식은 돌출된
+        // 물체에는 맞지만, 기계처럼 **오목한 액자 안에 들어간** 대상은 바깥 실루엣이
+        // 프레임에 가려 테두리가 거의 안 보였다. 안쪽 오염은 없앴는데 신호도 같이 죽었다.
+        //
+        // 그래서 순서를 뒤집는다 — 전부 그린 뒤 맨 위에 얹는다. 가려짐을 포기하는
+        // 대신 **어떤 상황에서도 보이는 것**을 얻는다. 사용자가 그 교환을 택했다.
+        Tags { "RenderType" = "Transparent" "RenderPipeline" = "UniversalPipeline" "Queue" = "Transparent-1" }
 
         Pass
         {
@@ -63,8 +73,9 @@ Shader "Ascend/OutlineShell"
             Cull Front
             // 깊이를 쓴다 — 그래야 껍질보다 앞에 있는 다른 물체가 테두리를 가려서
             // 벽 너머로 비쳐 보이지 않는다.
-            ZWrite On
-            ZTest LEqual
+            // 깊이를 쓰지도 검사하지도 않는다 — 무엇에도 가리지 않고 맨 위에 얹힌다.
+            ZWrite Off
+            ZTest Always
             Blend SrcAlpha OneMinusSrcAlpha
 
             // **대상이 차지한 영역 안에는 그리지 않는다.** `Ascend/OutlineMask` 가
