@@ -418,6 +418,19 @@ namespace Ascend.Prototype.View
         /// 스냅한다 — `ShowBoard` 의 계약("Update 없이도 결과판을 세울 수 있다")을
         /// 지키기 위해서다.
         ///
+        /// **고정 캡처 중에도 스냅한다** (`Time.captureDeltaTime > 0`).
+        /// `TenFloorCaptureRig` 은 `ShowBoard` 뒤 `WaitFrames(3)` 만 기다리고 찍는데,
+        /// `captureDeltaTime` 이 1/60 이라 3 프레임은 0.05 초다 — 0.12 초 전환의 42% 다.
+        /// 즉 기준 이미지에 **덜 자란 구슬**이 박힌다.
+        ///
+        /// `captureDeltaTime` 이 결정론을 세우므로 그 값 자체는 매번 같고, 그래서
+        /// 캡처가 흔들리지는 **않는다** — 흔들리는 게 아니라 **일관되게 틀린다.**
+        /// 재현되는 오류가 재현되지 않는 오류보다 낫지만, 기준 이미지는 정착한 판이어야
+        /// 한다. 대기 프레임을 늘려 맞추는 방법도 있었지만 그러면 전환 시간을 바꿀 때마다
+        /// 캡처 하네스를 따라 고쳐야 한다 — 두 곳이 조용히 어긋날 자리를 만드는 셈이다.
+        ///
+        /// 대가: 전환 자체를 캡처로 남길 수 없다. 지금은 그럴 이유가 없다.
+        ///
         /// 0 B 확인: `_slots[index]` 배열만 인덱스 `for`로 돈다. `child.name`(→
         /// `KindOf`)은 실제로 판이 바뀔 때만 부른다 — 이 메서드 자체가 `Update`에서
         /// 매 프레임이 아니라 스핀/층이 바뀐 순간에만 호출된다(호출부인 `Update` 참고).
@@ -427,7 +440,7 @@ namespace Ascend.Prototype.View
             EnsureSlots();
             if (_slots == null || index < 0 || index >= _slots.Length) return;
 
-            bool animate = Application.isPlaying;
+            bool animate = Application.isPlaying && Time.captureDeltaTime <= 0f;
             SymbolSlot[] slots = _slots[index];
             for (int s = 0; s < slots.Length; s++)
             {
