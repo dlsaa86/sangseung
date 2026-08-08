@@ -4,6 +4,28 @@
 
 ---
 
+## ✅ 2026-08-08 Mac 에서 실측 — 1번 걱정은 일어나지 않았다
+
+**텍스처 16장이 전부 packed 였다. 깨진 것은 0장이다.**
+
+```
+python3 tools/blender_bridge.py -c "..."   ← 실측 방법은 그 파일 참조
+DATA-MISSING: 0     16장 모두 has_data=True, 픽셀 수 정상
+```
+
+경로는 확실히 전부 죽었다 — `C:/Users/hufea/...` 는 Mac 에 없고, `T_Elev_Surf_A/B`·
+`T_Floor_A`·`T_Iron_A` 넷은 아래 경고대로 세션 임시 폴더를 가리킨다. **그런데 이미지
+데이터가 `.blend` 안에 박혀 있어서 렌더에는 아무 지장이 없다.** 누군가 저장 전에
+Pack Resources 를 눌렀거나 자동 팩이 걸려 있었다.
+
+⚠ **그래도 경로는 죽은 채다.** 지금 「Unpack」 하거나 「Reload」 를 누르면 그 순간
+데이터가 사라진다. 외부 파일로 되돌리고 싶으면 먼저 **File → External Data →
+Unpack Resources → Write files to current directory** 로 꺼낸 뒤 경로를 다시 잡는다.
+
+아래 원문은 이력으로 남긴다.
+
+---
+
 ## ⚠ 먼저 해야 할 것 — 안 하면 블렌더가 Mac 에서 깨진다
 
 ### 1. 텍스처 4장이 **세션 임시 폴더**를 가리키고 있다
