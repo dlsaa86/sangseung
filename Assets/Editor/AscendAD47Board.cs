@@ -79,12 +79,48 @@ namespace Ascend.CaptureHarness.EditorTools
             log.AppendLine("  → 행 0 은 " + (rowSign < 0 ? "위" : "아래") + ", 열 0 은 x 가 " + (colSign > 0 ? "작은" : "큰") + " 쪽");
 
             // ── 2. AD47 챔버 9개를 같은 규칙으로 정렬한다 ──────────────────
+            //
+            // 🔴 **앵커는 챔버 유리다. `SM_Soul_Core_*` 가 아니다** (2026-08-08 정정).
+            //
+            // 원래 이 함수는 `SM_Soul_Core_*` 의 바운드 중심을 격자로 썼다. 그 결과
+            // 그레이박스 구슬이 **기계 앞 635 mm 허공에 떠 있었다** — 사용자가
+            // 「구슬 위치가 기계랑 안 맞다」고 지적한 것이 그것이다.
+            //
+            // 블렌더 실측(`tools/blender_bridge.py`)이 원인을 확정했다.
+            //   · `SM_Chamber_Glass_*` 유리면      Y 2.788 ~ 2.826
+            //   · `SM_ChamberArray` 전체 깊이       135 mm (Y 2.795 ~ 2.930)
+            //   · 유리 **뒤쪽** 공동                없음 (−7 mm)
+            // 즉 635 mm 를 담을 공동이 애초에 존재하지 않는다. 구슬은 벽 뒤에 파묻힌
+            // 것이 아니라 **방 쪽으로 튀어나와 떠 있었다.**
+            //
+            // 게다가 `SM_Soul_Core_*` 는 **현재 블렌더 파일에 더 이상 없다**(AD57 에서
+            // 삭제됐다). Unity 의 FBX 가 AD47 판이라 그것만 남아 있는 것이다. 즉 이
+            // 앵커는 「지워진 것의 옛 좌표」이고 앞으로도 갱신되지 않는다.
+            //
+            // 챔버 유리는 살아 있고, 깊이 135 mm 안에 들어가야 하는 것이 구슬이므로
+            // 그쪽이 정본이다. 유리가 없으면 옛 앵커로 물러나되 **경고를 남긴다** —
+            // 조용히 물러나면 이 사고가 그대로 재현된다.
             var cores = cab.GetComponentsInChildren<Transform>(true)
-                           .Where(t => t.name.StartsWith("SM_Soul_Core_"))
+                           .Where(t => t.name.StartsWith("SM_Chamber_Glass_"))
                            .ToList();
+            if (cores.Count == 9)
+            {
+                log.AppendLine("  앵커: SM_Chamber_Glass_* 9개 (챔버 유리면)");
+            }
+            else
+            {
+                var legacy = cab.GetComponentsInChildren<Transform>(true)
+                                .Where(t => t.name.StartsWith("SM_Soul_Core_"))
+                                .ToList();
+                Debug.LogWarning("[상승] SM_Chamber_Glass_* 가 9개가 아니다 (" + cores.Count
+                               + ") — SM_Soul_Core_* 로 물러난다. ⚠ 그 앵커는 2026-08-08 에"
+                               + " 구슬을 기계 앞 635mm 허공에 띄운 원인이다. 결과를 눈으로 확인할 것.");
+                log.AppendLine("  ⚠ 앵커 폴백: SM_Soul_Core_* (유리 " + cores.Count + "개뿐)");
+                cores = legacy;
+            }
             if (cores.Count != 9)
             {
-                Debug.LogError("[상승] AD47 구슬이 9개가 아니다 (" + cores.Count + ") — 중단한다.");
+                Debug.LogError("[상승] 챔버 앵커가 9개가 아니다 (" + cores.Count + ") — 중단한다.");
                 return;
             }
 
@@ -154,8 +190,23 @@ namespace Ascend.CaptureHarness.EditorTools
             }
 
             // ── 4. 셀과 그레이박스 구슬 ────────────────────────────────────
-            var rootT = cab.transform.Find(CellRoot);
-            if (rootT != null) Object.DestroyImmediate(rootT.gameObject);
+            //
+            // 🔴 **깊이 탐색으로 지운다. `Find` 는 직속 자식만 본다** (2026-08-08 정정).
+            //
+            // 직전 판본은 `cab.transform.Find(CellRoot)` 였다. 그런데 실제 경로는
+            // `CabinAD47/SOCKET_ElevPanel/BoardCells` — **직속 자식이 아니다.**
+            // (첫 실행은 `cab` 직속으로 만들지만 이후 다른 배선이 소켓 아래로 옮긴다.)
+            // 그래서 재실행마다 못 찾고 새로 만들어 **구슬 63개가 매번 누적됐다.**
+            // 실측: 한 번 재실행하니 63 → 126 이 됐다. 옛 집합은 `_cells` 에서 떨어져
+            // 나가 조작에 반응하지 않으면서 계속 그려진다 — 화면에는 구슬이 두 벌 겹친다.
+            int purged = 0;
+            foreach (var t in cab.GetComponentsInChildren<Transform>(true).ToList())
+            {
+                if (t == null || t.name != CellRoot) continue;
+                Object.DestroyImmediate(t.gameObject);
+                purged++;
+            }
+            if (purged > 0) log.AppendLine("  옛 " + CellRoot + " 제거: " + purged + "개");
             var root = new GameObject(CellRoot);
             root.transform.SetParent(cab.transform, false);
 
@@ -174,11 +225,26 @@ namespace Ascend.CaptureHarness.EditorTools
                 BuildAbsorber(cell.transform, matAbsorb);
                 BuildProliferator(cell.transform, matProlif);
 
-                // 원래 구슬 메시는 끈다 — 그레이박스가 그 자리를 대신한다
-                slot[i].gameObject.SetActive(false);
-
+                // ⚠ **여기서 `slot[i]` 를 끄지 않는다.** 앵커가 챔버 유리로 바뀌었으므로
+                // 예전처럼 `slot[i].gameObject.SetActive(false)` 를 하면 **유리 9장을 끈다.**
+                // 앵커(위치의 출처)와 교체 대상(끌 것)은 다른 역할이고, 한 변수로 겸하면
+                // 앵커를 바꾸는 순간 조용히 다른 것을 끄게 된다.
                 slot[i] = cell.transform;
             }
+
+            // 원래 구슬 메시는 끈다 — 그레이박스가 그 자리를 대신한다.
+            // 앵커와 무관하게 **`SM_Soul_Core_*` 만** 대상으로 삼는다. 없으면(AD57 에서
+            // 삭제됐다) 끌 것이 없으므로 0 개가 정상이다.
+            int hidden = 0;
+            foreach (var t in cab.GetComponentsInChildren<Transform>(true))
+            {
+                if (!t.name.StartsWith("SM_Soul_Core_")) continue;
+                if (!t.gameObject.activeSelf) continue;
+                Undo.RecordObject(t.gameObject, "hide legacy soul core");
+                t.gameObject.SetActive(false);
+                hidden++;
+            }
+            log.AppendLine("  옛 구슬 메시 끔: " + hidden + "개 (SM_Soul_Core_*)");
 
             // ── 5. 재배선 ─────────────────────────────────────────────────
             for (int i = 0; i < 9; i++)
