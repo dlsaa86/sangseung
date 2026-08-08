@@ -702,6 +702,7 @@ MonoBehaviour:
   onReturned:
     m_PersistentCalls:
       m_Calls: []
+  _holdSource: {fileID: 1482202552}
 --- !u!1 &17507368
 GameObject:
   m_ObjectHideFlags: 0
@@ -55004,6 +55005,16 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+  onHeld:
+    m_PersistentCalls:
+      m_Calls: []
+  onHoldBegan:
+    m_PersistentCalls:
+      m_Calls: []
+  onHoldCancelled:
+    m_PersistentCalls:
+      m_Calls: []
+  _holdSeconds: 0.85
   _prompt: "\uB808\uBC84 \uB2F9\uAE30\uAE30"
 --- !u!1 &1488070233
 GameObject:

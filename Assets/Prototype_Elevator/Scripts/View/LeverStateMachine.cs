@@ -50,6 +50,18 @@ namespace Ascend.Prototype.View
             Completed,
             /// <summary>원위치로 돌아가는 중.</summary>
             Resetting,
+
+            /// <summary>
+            /// **유지 입력 중.** 각도가 시간이 아니라 `InteractableLever.HoldProgress` 를 따른다.
+            ///
+            /// `IHoldInteractable` 문서가 요구하는 것이다 — 「진행도는 상호작용물이 연출로
+            /// 갚아야 한다. 레버가 실제로 내려가는 것이 진행 표시이고, 그것이 §7 의
+            /// 『강한 금속 걸쇠 피드백』의 시각 절반이다.」
+            ///
+            /// ⚠ 열거자 **끝에** 넣었다. 중간에 끼우면 직렬화된 값이 밀려 씬의 상태가
+            /// 다른 상태로 바뀐다.
+            /// </summary>
+            Holding,
         }
 
         [Header("피벗")]
@@ -102,7 +114,89 @@ namespace Ascend.Prototype.View
         /// <summary>지금 입력을 받을 수 있는가. 스팸 방지의 근거이기도 하다.</summary>
         public bool AcceptsInput => _state == State.Idle || _state == State.Ready || _state == State.Locked;
 
-        private void Awake() => CaptureHome();
+        [Header("유지 입력 연출")]
+        /// <summary>
+        /// 진행도를 읽어 올 레버. 비우면 부모에서 찾는다.
+        ///
+        /// **View 가 Model 을 읽는 방향이다.** 반대로 `InteractableLever` 가 이 클래스를
+        /// 참조하면 입력 계층이 연출을 알게 되고, 그러면 연출을 바꿀 때마다 입력을 고쳐야 한다.
+        /// </summary>
+        [SerializeField] private Player.InteractableLever _holdSource;
+
+        private void Awake()
+        {
+            CaptureHome();
+            if (_holdSource == null) _holdSource = FindHoldSource();
+        }
+
+        private void OnEnable()
+        {
+            if (_holdSource == null) _holdSource = FindHoldSource();
+            if (_holdSource == null) return;
+            _holdSource.onHoldBegan.AddListener(BeginHold);
+            _holdSource.onHoldCancelled.AddListener(AbortHold);
+            _holdSource.onHeld.AddListener(LatchFromHold);
+        }
+
+        private void OnDisable()
+        {
+            if (_holdSource == null) return;
+            _holdSource.onHoldBegan.RemoveListener(BeginHold);
+            _holdSource.onHoldCancelled.RemoveListener(AbortHold);
+            _holdSource.onHeld.RemoveListener(LatchFromHold);
+        }
+
+        /// <summary>
+        /// 진행도의 출처를 찾는다.
+        ///
+        /// ⚠ **부모에서 찾으면 안 된다.** 실측(2026-08-08)하면 이 저장소의 씬에서
+        /// `LeverStateMachine` 은 `Console/ExecutionLeverBase/ExecutionLeverHandle` 에 있고
+        /// `InteractableLever` 는 `Console/ExecutionLever` 에 있다 — **형제 서브트리**다.
+        /// 둘은 계층이 아니라 UnityEvent 로 이어져 있다. `GetComponentInParent` 는 null 을
+        /// 돌려주고, 그러면 유지 연출이 조용히 안 나온다.
+        ///
+        /// 그래서 씬에서 명시 배선하는 것이 정본이고, 이 탐색은 마지막 안전망일 뿐이다.
+        /// 레버가 여러 개가 되면 이 폴백은 더 이상 옳지 않으므로 그때 경고가 뜨게 해 둔다.
+        /// </summary>
+        private Player.InteractableLever FindHoldSource()
+        {
+            var own = GetComponentInParent<Player.InteractableLever>();
+            if (own != null) return own;
+
+            var found = FindObjectsByType<Player.InteractableLever>(FindObjectsSortMode.None);
+            if (found == null || found.Length == 0) return null;
+            if (found.Length > 1)
+                Debug.LogWarning($"[상승] {name}: InteractableLever 가 {found.Length} 개다 — " +
+                                 "_holdSource 를 씬에서 명시 배선해야 한다. 지금은 첫 번째를 쓴다.");
+            return found[0];
+        }
+
+        /// <summary>유지가 시작됐다. 각도를 진행도에 맡긴다.</summary>
+        public void BeginHold()
+        {
+            CaptureHome();
+            if (_state == State.Locked) { Blocked(); return; }
+            if (_state != State.Idle && _state != State.Ready) return;
+            Enter(State.Holding);
+        }
+
+        /// <summary>완성 전에 놓았다. 되돌아온다 — 걸리지 않으므로 `onLatched` 는 안 나간다.</summary>
+        public void AbortHold()
+        {
+            if (_state != State.Holding) return;
+            Enter(State.Resetting);
+        }
+
+        /// <summary>
+        /// 유지를 완성했다. **`Pulling` 을 거치지 않고 바로 걸린다** —
+        /// 레버는 이미 내려가 있으므로 당김 애니메이션을 다시 재생하면 튄다.
+        /// </summary>
+        public void LatchFromHold()
+        {
+            CaptureHome();
+            if (_state != State.Holding) return;
+            Enter(State.Latched);
+        }
 
         private void CaptureHome()
         {
@@ -205,12 +299,49 @@ namespace Ascend.Prototype.View
                 case State.Resetting:
                     StepResetting();
                     break;
+                case State.Holding:
+                    StepHolding();
+                    break;
                 default:
                     _angle = 0f;
                     break;
             }
 
             Apply();
+        }
+
+        /// <summary>
+        /// 유지 중. **각도가 시간이 아니라 진행도를 따른다.** 손을 멈추면 레버도 멈춘다 —
+        /// 그것이 「내가 누르고 있는 만큼 내려간다」를 손에 남기는 유일한 방법이다.
+        ///
+        /// 저항 구간을 진행도에도 준다. 초반 <see cref="_resistance"/> 비율에서 각도가
+        /// 거의 변하지 않아 「무겁다」가 읽히고, 그 뒤로 열린다. 시간 기반 `StepPulling`
+        /// 과 같은 감각을 쓰되 축만 시간 → 진행도로 바꾼 것이다.
+        ///
+        /// ⚠ 여기서 걸림(`Latched`)으로 스스로 넘어가지 않는다. 완성 판정은 입력 계층이
+        /// 하고(`CrosshairInteractor`), 그 결과가 `LatchFromHold()` 로 들어온다.
+        /// 두 곳에서 판정하면 진행도 1 과 완성이 갈라진다.
+        /// </summary>
+        private void StepHolding()
+        {
+            if (_holdSource == null) { _angle = 0f; return; }
+
+            float p = Mathf.Clamp01(_holdSource.HoldProgress);
+            float r = Mathf.Clamp(_resistance / Mathf.Max(0.0001f, _resistance + _travel), 0.05f, 0.45f);
+
+            float shaped;
+            if (p <= r)
+            {
+                // 저항 구간 — 눌러도 거의 안 움직인다. 전체 각도의 8% 까지만.
+                shaped = 0.08f * (p / r);
+            }
+            else
+            {
+                float t = (p - r) / Mathf.Max(0.0001f, 1f - r);
+                shaped = 0.08f + 0.92f * EaseOut(t);
+            }
+
+            _angle = _swingDegrees * shaped;
         }
 
         private void StepLocked()
