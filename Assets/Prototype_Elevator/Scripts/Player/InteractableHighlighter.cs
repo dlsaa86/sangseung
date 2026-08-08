@@ -187,6 +187,25 @@ namespace Ascend.Prototype.Player
             }
             if (!any || b.size.sqrMagnitude < 1e-6f) return;
 
+            // 메시 모양으로 따는 대상(레버처럼 형태가 곧 정체성인 것)은 원본 메시를 쓴다.
+            // 부품이 적어야 성립한다 — 많으면 이음매마다 선이 샌다(기계가 그랬다).
+            if (hint != null && hint.MeshOutline)
+            {
+                foreach (var rt in roots)
+                {
+                    if (rt == null) continue;
+                    foreach (var mf in rt.GetComponentsInChildren<MeshFilter>(false))
+                    {
+                        var src = mf.GetComponent<MeshRenderer>();
+                        if (src == null || !src.enabled || mf.sharedMesh == null) continue;
+                        if (_maskMaterial != null) SpawnAt(mf.transform, mf.sharedMesh, _maskMaterial, "__OutlineMask", false);
+                        var m = SpawnAt(mf.transform, mf.sharedMesh, _shellMaterial, "__OutlineShell", true);
+                        if (m != null) _shells.Add(m);
+                    }
+                }
+                return;
+            }
+
             Mesh box = BoxMesh();
             if (box == null) return;
 
@@ -216,6 +235,28 @@ namespace Ascend.Prototype.Player
         }
 
         private static Mesh _boxMesh;
+
+        /// <summary>원본 메시를 그 자리에 그대로 겹쳐 놓는다 (메시 모양 외곽선용).</summary>
+        private MeshRenderer SpawnAt(Transform parent, Mesh mesh, Material material, string name, bool track)
+        {
+            var go = new GameObject(name);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = material;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+
+            _owned.Add(go);
+            return track ? mr : null;
+        }
 
         /// <summary>
         /// 월드 경계 <paramref name="b"/> 를 감싸는 상자 렌더러를 만든다.

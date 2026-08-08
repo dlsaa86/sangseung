@@ -7969,7 +7969,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1.0000001, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -14280,6 +14280,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 336265977}
   m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!4 &341308919 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -603975745918859553, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+  m_PrefabInstance: {fileID: 237018042}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &344733151
 GameObject:
   m_ObjectHideFlags: 0
@@ -15595,7 +15600,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -20641,7 +20646,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 0.22, y: 0.22, z: 0.06}
   m_Center: {x: 0, y: 0, z: -0.03}
@@ -23584,7 +23589,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 0.99999994, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -26687,7 +26692,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -27028,6 +27033,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
   _root: {fileID: 688822289}
   _roots: []
+  _meshOutline: 0
 --- !u!1 &689033989
 GameObject:
   m_ObjectHideFlags: 0
@@ -32199,6 +32205,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 847311984}
   m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!4 &850130198 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -5288329697026795443, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+  m_PrefabInstance: {fileID: 237018042}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &851989634
 GameObject:
   m_ObjectHideFlags: 0
@@ -39559,6 +39570,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
   _root: {fileID: 237018044}
   _roots: []
+  _meshOutline: 0
 --- !u!1 &1022628317
 GameObject:
   m_ObjectHideFlags: 0
@@ -45002,6 +45014,8 @@ GameObject:
   - component: {fileID: 1161398051}
   - component: {fileID: 1161398050}
   - component: {fileID: 1161398049}
+  - component: {fileID: 1161398055}
+  - component: {fileID: 1161398054}
   m_Layer: 0
   m_Name: PowerTank
   m_TagString: Untagged
@@ -45092,7 +45106,7 @@ CapsuleCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_Radius: 0.5
   m_Height: 2
@@ -45121,6 +45135,45 @@ Transform:
   m_Children: []
   m_Father: {fileID: 716368239}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1161398054
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1161398048}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9070f980954d4983910e9da44229d6e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractableHighlightTarget
+  _root: {fileID: 0}
+  _roots:
+  - {fileID: 1424538774}
+  - {fileID: 341308919}
+  - {fileID: 850130198}
+  _meshOutline: 0
+--- !u!65 &1161398055
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1161398048}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.4133879, y: 0.4814368, z: 0.223456}
+  m_Center: {x: -1.9479876, y: 0.26614296, z: 3.9185412}
 --- !u!1 &1166310958
 GameObject:
   m_ObjectHideFlags: 0
@@ -48268,7 +48321,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -51895,7 +51948,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 0.34, y: 1.52, z: 0.26}
   m_Center: {x: 0, y: 0, z: 0}
@@ -56130,6 +56183,7 @@ MonoBehaviour:
   _roots:
   - {fileID: 1759284371}
   - {fileID: 266110342}
+  _meshOutline: 1
 --- !u!1 &1488070233
 GameObject:
   m_ObjectHideFlags: 0
@@ -71032,7 +71086,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1.0000001, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}

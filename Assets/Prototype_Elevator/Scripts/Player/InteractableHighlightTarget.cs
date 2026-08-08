@@ -22,6 +22,24 @@ namespace Ascend.Prototype.Player
         [Tooltip("보이는 것이 여러 곳에 흩어져 있을 때. 하나라도 채우면 이쪽이 이긴다.")]
         [SerializeField] private Transform[] _roots;
 
+        [Tooltip("켜면 **메시 모양 그대로** 외곽선을 딴다. 끄면 감싸는 상자.")]
+        [SerializeField] private bool _meshOutline;
+
+        /// <summary>
+        /// 외곽선을 메시 모양으로 딸 것인가, 감싸는 상자로 할 것인가.
+        ///
+        /// ## 왜 대상마다 다른가 (2026-08-09)
+        ///
+        /// 상자는 **볼록**이라 내부에 선이 절대 안 생긴다. 그래서 부품이 많은 기계
+        /// (렌더러 24개)는 상자여야 한다 — 메시로 따면 판재 이음매마다 선이 샌다.
+        ///
+        /// 그런데 레버는 **T자**다. 상자로 감싸면 모양이 사라지고 「무엇을 골랐는지」가
+        /// 흐려진다. 조각이 둘뿐이라 스텐실 마스크가 그 사이 틈을 충분히 메운다.
+        ///
+        /// 즉 이건 하나로 정할 수 있는 문제가 아니다 — **부품 수와 형태가 정한다.**
+        /// </summary>
+        public bool MeshOutline => _meshOutline;
+
         public Transform Root => _root != null ? _root : transform;
 
         /// <summary>

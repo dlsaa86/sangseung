@@ -329,7 +329,7 @@ namespace Ascend.Prototype.Spin
                 // 그래서 1층의 몫은 "레버를 당기면 판이 돌고 정상 영혼이 전력이 된다"까지다.
                 // 정화가 우연히 나올 수는 있지만 그것을 이 층의 교습 목표로 적지 않는다.
                 TeachesRule   = "1인칭 이동·조준 클릭·자동 스핀·정상 영혼이 전력이 된다",
-                RequiredPower = 225f, Spins = 5, SymbolPool = SoulAndAbsorber,
+                RequiredPower = 330f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = Array.Empty<ResistanceContract>(),
                 ResistanceWeightScale = 1.0f,
             },
@@ -338,7 +338,7 @@ namespace Ascend.Prototype.Spin
                 Floor         = 2,
                 CoreQuestion  = "흩어진 3개와 한 줄로 선 3개는 무엇이 다른가?",
                 TeachesRule   = "직선 3개 패턴 배수",
-                RequiredPower = 415f, Spins = 5, SymbolPool = SoulAndAbsorber,
+                RequiredPower = 430f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = Array.Empty<ResistanceContract>(),
                 // 기본 밀도에서 직선은 스핀당 0.08회다. 5스핀이면 기대 0.4회 —
                 // 플레이어 3분의 2가 "직선을 가르치는 층"에서 직선을 한 번도 못 본다.
@@ -357,7 +357,7 @@ namespace Ascend.Prototype.Spin
                 Floor         = 3,
                 CoreQuestion  = "연결이 4개가 되면 판이 어떻게 무너지는가?",
                 TeachesRule   = "4개 이상 직교 연결 → 제거 후 빈칸 재추첨과 첫 캐스케이드",
-                RequiredPower = 525f, Spins = 5, SymbolPool = SoulAndAbsorber,
+                RequiredPower = 550f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = Array.Empty<ResistanceContract>(),
                 // 4개 연결은 기본 밀도에서 스핀당 0.21회. 캐스케이드를 처음 보여주는 층이므로
                 // 2층보다 한 단계 더 올려 5스핀 안에 거의 확실히 한 번은 터지게 한다.
@@ -370,7 +370,7 @@ namespace Ascend.Prototype.Spin
                 CoreQuestion  = "위험을 더 불러들이고 더 큰 보상을 받을 것인가?",
                 TeachesRule   = "흡수체 계약 — 출현률·보상·잔류 대가가 함께 오른다",
                 // 계약이 처음 등장하는 층. 08/99번 배치에서는 6층이었다 (D-20260801-01).
-                RequiredPower = 645f, Spins = 5, SymbolPool = SoulAndAbsorber,
+                RequiredPower = 680f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = new[] { ResistanceContract.None, AbsorberContract },
                 // 3층과 같은 밀도를 유지한다. 계약은 「저항을 더 불러들이는」 거래인데
                 // 판에 저항이 희박하면 그 거래가 무엇을 바꾸는지 볼 수 없다.
@@ -383,7 +383,7 @@ namespace Ascend.Prototype.Spin
                 CoreQuestion  = "나는 어떤 엔진을 만들 것인가?",
                 TeachesRule   = "승객·부품 보상과 빌드 방향 선택",
                 // 03번의 "휴식 + 빌드 선택". 요구 전력을 올리지 않는 것이 휴식이다.
-                RequiredPower = 545f, Spins = 5, SymbolPool = SoulAndAbsorber,
+                RequiredPower = 820f, Spins = 5, SymbolPool = SoulAndAbsorber,
                 ContractChoices = Array.Empty<ResistanceContract>(),
                 // 휴식은 **요구 전력**을 안 올리는 것이지 판을 비우는 것이 아니다.
                 // 밀도를 낮추면 「내가 만든 엔진이 어떻게 도는지」를 볼 판이 없어진다.
@@ -396,7 +396,7 @@ namespace Ascend.Prototype.Spin
                 CoreQuestion  = "남긴 증식체는 위험인가 다음 스핀의 재료인가?",
                 TeachesRule   = "증식체와 잔류 가중치 이월",
                 // 증식체가 처음 등장하는 층 — 여기서부터 풀이 3종이다. 08/99번에서는 7층.
-                RequiredPower = 710f, Spins = 5, SymbolPool = FullPool,
+                RequiredPower = 970f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { ResistanceContract.None, ProliferatorContract },
                 // ⚠ 6~10층 배율이 3 이상인 이유 — **종류 수 보정을 이미 포함한 값이다.**
                 //
@@ -420,7 +420,7 @@ namespace Ascend.Prototype.Spin
                 TeachesRule   = "계약 비교 — 흡수체와 증식체 중 무엇이 내 빌드에 맞는가",
                 // 두 계약이 처음으로 **나란히** 놓이는 층. 4층은 흡수체 하나, 6층은 증식체
                 // 하나뿐이라 비교가 성립하지 않았다.
-                RequiredPower = 975f, Spins = 5, SymbolPool = FullPool,
+                RequiredPower = 1130f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { ResistanceContract.None, AbsorberContract, ProliferatorContract },
                 ResistanceWeightScale = 1.5f,   // 0.75 × 2종
                 MustBePlayed = true,   // 두 계약이 나란히 놓이는 유일한 층
@@ -430,7 +430,7 @@ namespace Ascend.Prototype.Spin
                 Floor         = 8,
                 CoreQuestion  = "무게를 더 지고도 요구 전력을 넘길 수 있는가?",
                 TeachesRule   = "적재 압박 — 무게가 요구 전력과 과적 위험을 함께 올린다",
-                RequiredPower = 1965f, Spins = 5, SymbolPool = FullPool,
+                RequiredPower = 1300f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { ResistanceContract.None, AbsorberContract, ProliferatorContract },
                 ResistanceWeightScale = 1.6f,   // 0.8 × 2종
                 // 마지막 적재 기회. 이 층이 가르치는 것이 곧 적재의 대가다.
@@ -441,7 +441,7 @@ namespace Ascend.Prototype.Spin
                 Floor         = 9,
                 CoreQuestion  = "이미 올라갈 수 있는데, 한 번 더 돌릴 것인가?",
                 TeachesRule   = "푸시 유어 럭 — 확정과 추가 스핀의 기대값 비교",
-                RequiredPower = 1875f, Spins = 5, SymbolPool = FullPool,
+                RequiredPower = 1480f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { ResistanceContract.None, AbsorberContract, ProliferatorContract },
                 ResistanceWeightScale = 1.7f,   // 0.85 × 2종
                 EmphasizePushYourLuck = true,
@@ -454,7 +454,7 @@ namespace Ascend.Prototype.Spin
                 TeachesRule   = "새 규칙 없음 — 지금까지의 종합 시험",
                 // 10층만 계약이 강제(선택지에 None이 없다)라 산출량이 크게 오른다.
                 // 요구 전력의 급등은 그 보정이지, 보스를 숫자로만 어렵게 만든 것이 아니다.
-                RequiredPower = 1275f, Spins = 5, SymbolPool = FullPool,
+                RequiredPower = 1670f, Spins = 5, SymbolPool = FullPool,
                 ContractChoices = new[] { AbsorberContract, ProliferatorContract },
                 ResistanceWeightScale = 1.8f,   // 0.9 × 2종
             },
