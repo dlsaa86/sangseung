@@ -156,6 +156,29 @@ Shader "Ascend/Stylized"
         [Toggle(_TRIPLANAR_ON)] _TriplanarEnabled ("삼중 평면 UV 사용", Float) = 0
         _TriplanarScale ("삼중 평면 크기 (m 당 반복)", Range(0.05, 8)) = 0.5
         _TriplanarBlend ("삼중 평면 혼합 날카로움", Range(1, 16)) = 4
+
+        // ── 금속 하이라이트 (기본 꺼짐, 2026-08-08) ────────────────────────
+        //
+        // **이 셰이더에는 스페큘러 항이 하나도 없었다.** `spec`·`halfDir`·`reflect`·
+        // GGX 어느 것도 0 건이다. 그래서 금속이 빛날 방법이 물리적으로 없었고,
+        // 독립 평가가 기계를 「찰흙 같다」고 지적한 것이 이것이다 — 재질 문제가
+        // 아니라 **없는 항을 조정하려 한 것**이었다.
+        //
+        // 왜 GGX 가 아닌가: 이 파일의 첫 문단이 URP/Lit 을 버린 이유가
+        // 「부드러운 하이라이트」다. 물리 기반 스페큘러를 그대로 넣으면 그 이유를
+        // 스스로 되돌린다. 그래서 블린-퐁을 구한 **뒤 계단으로 끊는다** —
+        // 이 파일이 램버트·감쇠·림에 이미 쓰는 것과 같은 처리다.
+        //
+        // ⚠ **문턱 아래를 정확히 0 으로 만드는 것이 핵심이다.** `Quantize` 를
+        // 재사용하지 않는 이유가 그것이다 — 저쪽은 `_BandFloor` 를 더하므로
+        // 하이라이트가 없어야 할 면에도 상수 밝기가 남아 방 전체가 뿌예진다.
+        [Toggle(_SPECULAR_ON)] _SpecularEnabled ("금속 하이라이트 사용", Float) = 0
+        _SpecTint       ("하이라이트 색", Color) = (1, 0.97, 0.90, 1)
+        _SpecPower      ("하이라이트 날카로움", Range(4, 256)) = 48
+        _SpecStrength   ("하이라이트 세기", Range(0, 4)) = 0.8
+        _SpecSteps      ("하이라이트 계단 수 (1 = 켜짐/꺼짐)", Range(1, 4)) = 2
+        _SpecThreshold  ("하이라이트 문턱 (아래는 정확히 0)", Range(0, 1)) = 0.25
+        _SpecSoftness   ("문턱 부드러움 (계단 경계 앤티에일리어싱)", Range(0.001, 0.3)) = 0.05
     }
 
     SubShader
@@ -213,6 +236,7 @@ Shader "Ascend/Stylized"
             #pragma shader_feature_local_fragment _EMISSIONMAP_ON
             #pragma shader_feature_local_fragment _DETAILMAP_ON
             #pragma shader_feature_local_fragment _TRIPLANAR_ON
+            #pragma shader_feature_local_fragment _SPECULAR_ON
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -252,6 +276,13 @@ Shader "Ascend/Stylized"
                 float  _TriplanarEnabled;
                 float  _TriplanarScale;
                 float  _TriplanarBlend;
+                float  _SpecularEnabled;
+                float4 _SpecTint;
+                float  _SpecPower;
+                float  _SpecStrength;
+                float  _SpecSteps;
+                float  _SpecThreshold;
+                float  _SpecSoftness;
             CBUFFER_END
 
             TEXTURE2D(_BaseMap);
@@ -474,6 +505,34 @@ Shader "Ascend/Stylized"
                 }
             #endif
 
+            #if defined(_SPECULAR_ON)
+                // 계단으로 끊은 블린-퐁. 광원 하나가 기여하는 하이라이트를 돌려준다.
+                //
+                // `atten` 은 호출부가 이미 `_FalloffPower` 까지 먹인 감쇠다. 하이라이트도
+                // 같은 감쇠를 타야 「빠른 감쇠」라는 스타일 락이 하이라이트에서만 깨지지 않는다.
+                //
+                // **알베도를 곱하지 않는다.** 하이라이트는 표면에서 튄 빛이지 재질 색이
+                // 아니다. 곱하면 어두운 무쇠에서 하이라이트가 사라져 「금속이 빛나지 않는다」는
+                // 원래 증상이 그대로 남는다.
+                float3 StylizedSpec(float3 normalWS, float3 lightDir, float3 viewDirWS,
+                                    float3 lightColor, float atten)
+                {
+                    float3 halfDir = SafeNormalize(lightDir + viewDirWS);
+                    float  raw     = PositivePow(saturate(dot(normalWS, halfDir)), _SpecPower);
+
+                    // 문턱 아래는 **정확히 0**. `smoothstep` 은 하한 아래에서 0 을 보장하므로
+                    // 이 성질이 부동소수점 오차 없이 성립한다.
+                    float  t     = smoothstep(_SpecThreshold, _SpecThreshold + _SpecSoftness, raw);
+
+                    // `ceil` 이라 t 가 0 을 넘는 순간 첫 칸(1/steps)으로 뛴다 — 그게 계단이다.
+                    // `steps = 1` 이면 켜짐/꺼짐 두 값뿐이라 가장 거친 스탬프가 된다.
+                    float  steps = max(1.0, floor(_SpecSteps));
+                    float  band  = ceil(t * steps) / steps;
+
+                    return lightColor * _SpecTint.rgb * band * atten * _SpecStrength;
+                }
+            #endif
+
             half4 Frag(Varyings input) : SV_Target
             {
                 float3 normalWS = normalize(input.normalWS);
@@ -540,6 +599,20 @@ Shader "Ascend/Stylized"
                 float3 mainTerm = albedo * mainLight.color * lambert;
                 float3 lit = mainTerm;
 
+                #if defined(_SPECULAR_ON)
+                    // ⚠ 아래쪽 림이 쓰는 `viewDir` 과 같은 값이지만 **그 줄을 위로 옮기지
+                    // 않고 여기서 새로 만든다.** 옮기면 기능이 **꺼진** 변형의 코드까지
+                    // 바뀐다 — 「기본값 불변 규약」은 꺼진 변형이 종전과 비트 단위로 같기를
+                    // 요구한다. 켜진 변형에서는 컴파일러가 공통부분식으로 합치므로 비용은 없다.
+                    float3 specViewDir = normalize(GetWorldSpaceViewDir(input.positionWS));
+
+                    // **하이라이트는 `lit` 에 넣지 않는다.** 진단 6·7 이
+                    // `addTerm = lit - mainTerm` 으로 추가 광원 기여만 떼어 보는데,
+                    // 여기에 섞으면 그 진단이 조용히 거짓말을 하게 된다.
+                    float3 specAccum = StylizedSpec(normalWS, mainLight.direction, specViewDir,
+                                                    mainLight.color, atten);
+                #endif
+
                 // 진단 6·7 이 쓰는 누적기. `color` 에 들어가지 않으므로 출력에 영향이 없다.
                 float addRaw  = 0.0;   // 양자화 **입력**의 합 (연속)
                 float addBand = 0.0;   // 양자화 **출력**의 합 (계단)
@@ -580,6 +653,15 @@ Shader "Ascend/Stylized"
                     lit += albedo * extra.color * extraBand;
                     addRaw  += extraRaw;
                     addBand += extraBand;
+
+                    #if defined(_SPECULAR_ON)
+                        // 이 씬에서 **하이라이트를 실어 나르는 것은 사실상 이 루프뿐이다** —
+                        // 방향광 루트가 꺼져 있고 활성 조명 2개가 전부 점광이다
+                        // (`LT_CabBulb` · `LT_SoulSpill`). 주광 쪽에도 넣어 두는 것은
+                        // 나중에 방향광을 되살릴 때 하이라이트만 빠지지 않게 하기 위해서다.
+                        specAccum += StylizedSpec(normalWS, extra.direction, specViewDir,
+                                                  extra.color, extraAtten);
+                    #endif
                 LIGHT_LOOP_END
 
                 // **빛은 더한다. 스타일은 더한 뒤에 건다.**
@@ -621,6 +703,12 @@ Shader "Ascend/Stylized"
                 float3 ambientTerm = albedo * sh * _ShadowLift
                                    + _ShadowTint.rgb * 0.35 * saturate(Lum(sh) * 2.0);
                 float3 color = ambientTerm + lit;
+
+                #if defined(_SPECULAR_ON)
+                    // **더한다, 곱하지 않는다.** 이 파일이 회녹색 색조에서 배운 것과 같다 —
+                    // 곱하면 어두운 기본색이 0 이 되어 하이라이트도 같이 사라진다.
+                    color += specAccum;
+                #endif
 
                 // **계단은 이미 걸려 있다 — 빛마다, 감쇠에.** 여기서 최종 휘도에 또 걸지 않는다.
                 //
