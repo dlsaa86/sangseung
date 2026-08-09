@@ -158,10 +158,28 @@ namespace Ascend.Prototype.View
         [SerializeField] private Color _bandLocked = new Color(0.34f, 0.11f, 0.09f);
         [SerializeField] private Color _bandUnlocked = new Color(0.86f, 0.22f, 0.14f);
 
-        [Tooltip("남은 스핀 슬러그 — 남은 것.")]
-        [SerializeField] private Color _pipLeft = new Color(0.74f, 0.26f, 0.17f);
+        // 남은 스핀 슬러그 — 사용자 지시 (2026-08-09):
+        //   「5개일때 초록, 4개일때도 초록, 3개 2개는 주황, 1개일땐 빨강」
+        //
+        // ⚠ **칸 번호가 아니라 남은 개수로 정한다.** 칸마다 색이 다르면 색을 보고도
+        //   개수를 세어야 하고, 그러면 색이 하는 일이 없다. 여섯 개가 한꺼번에
+        //   같은 색으로 바뀌어야 「이제 위험하다」가 세지 않고 읽힌다.
+        [Tooltip("남은 스핀이 넉넉하다 (4개 이상).")]
+        [SerializeField] private Color _pipSafe = new Color(0.28f, 0.70f, 0.30f);
+        [Tooltip("남은 스핀이 줄었다 (2~3개).")]
+        [SerializeField] private Color _pipWarn = new Color(0.90f, 0.48f, 0.10f);
+        [Tooltip("마지막 한 번 (1개).")]
+        [SerializeField] private Color _pipLast = new Color(0.88f, 0.16f, 0.11f);
         [Tooltip("남은 스핀 슬러그 — 이미 쓴 것.")]
         [SerializeField] private Color _pipSpent = new Color(0.10f, 0.095f, 0.088f);
+
+        /// <summary>
+        /// 켜져 있는 슬러그의 색. 회색조에서도 갈리도록 **명도가 함께 내려간다** —
+        /// 초록 0.55 → 주황 0.52 → 빨강 0.36. 색상만 바꾸면 이 저장소가 두 번 겪은
+        /// 「색거리는 2배인데 회색조에서 같은 밴드」가 그대로 재현된다.
+        /// </summary>
+        private Color PipColor(int left)
+            => left >= 4 ? _pipSafe : left >= 2 ? _pipWarn : _pipLast;
 
         /// <summary>
         /// 발광 배수. **면적이 작아도 1 을 넘기면 블룸이 번져 면적 이득이 사라진다**
@@ -183,7 +201,7 @@ namespace Ascend.Prototype.View
         private int _shownSpinCap = int.MinValue;
         private int _shownFloors = int.MinValue;
         private int _shownPower = int.MinValue;
-        private int _shownPercent = int.MinValue;
+        private int _shownRequired = int.MinValue;
         private int _shownAnte = int.MinValue;
         private int _shownMultiplierMilli = int.MinValue;
         private bool _runOverShown;
@@ -203,7 +221,7 @@ namespace Ascend.Prototype.View
             _shownSpinCap = int.MinValue;
             _shownFloors = int.MinValue;
             _shownPower = int.MinValue;
-            _shownPercent = int.MinValue;
+            _shownRequired = int.MinValue;
             _shownAnte = int.MinValue;
             _shownMultiplierMilli = int.MinValue;
             _runOverShown = false;
@@ -289,6 +307,7 @@ namespace Ascend.Prototype.View
             }
 
             if (_spinPips == null) return;
+            Color lit = PipColor(left);
             for (int i = 0; i < _spinPips.Length; i++)
             {
                 Renderer pip = _spinPips[i];
@@ -298,8 +317,18 @@ namespace Ascend.Prototype.View
                 bool exists = i < cap;
                 if (pip.gameObject.activeSelf != exists) pip.gameObject.SetActive(exists);
                 if (!exists) continue;
+
+                // 🔴 **렌더러를 여기서 켠다.** 「레버를 당겨도 인디케이터에 변화가 없다」의
+                //    진짜 원인이 이것이었다 (2026-08-09 씬 점검). 배열은 `size=6 · null=0`
+                //    으로 멀쩡했고 색 대비도 충분했는데 **여섯 개 전부
+                //    `renderer.enabled == false`** 였다. GameObject 는 활성이라
+                //    `activeSelf` 검사에는 걸리지 않는다 — 그래서 몇 라운드 동안
+                //    「배선은 다 돼 있는데 왜 안 보이나」로 남아 있었다.
+                //    색만 칠하는 코드는 보이지 않는 것을 칠할 수 있다.
+                if (!pip.enabled) pip.enabled = true;
+
                 bool remaining = i < left;
-                SetColor(pip, remaining ? _pipLeft : _pipSpent, remaining ? 0.30f : 0f);
+                SetColor(pip, remaining ? lit : _pipSpent, remaining ? 0.30f : 0f);
             }
         }
 
@@ -332,18 +361,26 @@ namespace Ascend.Prototype.View
         private void ApplyNumbers(FloorSession floor, float ratio)
         {
             int power = Mathf.RoundToInt(floor.Power);
-            int percent = Mathf.RoundToInt(ratio * 100f);
-            if (power != _shownPower || percent != _shownPercent)
+            int required = Mathf.RoundToInt(floor.RequiredPower);
+            if (power != _shownPower || required != _shownRequired)
             {
                 _shownPower = power;
-                _shownPercent = percent;
+                _shownRequired = required;
+                // 사용자 지시 (2026-08-09): 「전력을 **숫자로만** 표현한다」.
+                //
+                // 퍼센트를 뺀 이유는 자리 부족이 아니라 **층 콘솔이 이미 숫자로
+                // 말하고 있기 때문**이다. 한 화면에서 한쪽은 `1400`, 한쪽은 `78%` 면
+                // 플레이어가 두 체계를 동시에 읽고 머릿속에서 환산해야 한다.
+                // 그리고 요구 전력은 위로 끝이 없으므로 퍼센트는 언젠가 거짓말을 한다 —
+                // 분모가 계속 커지면 같은 100% 가 매번 다른 양을 뜻한다.
+                //
                 // ⚠ **두 값 사이를 넓게 벌린다** (`UP-FIX-93`).
                 // 계기판의 `요구 0 0%` 가 세 토큰 간격이 균등해져 「요구값과 달성률을
                 // 가를 수 없다」는 회귀를 만들었다. 여기서는 토큰이 둘뿐이고
                 // 사이를 세 칸 띄운다 — 좁은 판이 아니라 넓은 판이라 여유가 있다.
                 _text.Clear();
-                _text.Append("전력 ").AppendFormat("{0:F0}", floor.Power)
-                     .Append("   ").Append(percent).Append('%');
+                _text.Append("저장 ").AppendFormat("{0:F0}", floor.Power)
+                     .Append("   필요 ").AppendFormat("{0:F0}", floor.RequiredPower);
                 SetPowerLine(_text.ToString());
             }
 
@@ -401,7 +438,7 @@ namespace Ascend.Prototype.View
 
             if (_spinNumeral != null) _spinNumeral.SetText("0");
             if (_ascentNumeral != null) _ascentNumeral.SetText(run.IsFailed ? "0" : "—");
-            SetPowerLine($"전력 {last.FinalPower:F0}   {ratio * 100f:F0}%");
+            SetPowerLine($"저장 {last.FinalPower:F0}   필요 {last.RequiredPower:F0}");
             if (_reserveLine != null)
                 _reserveLine.SetText(run.IsFailed ? "배수 0.00배   손실 —" : "확정 완료");
         }

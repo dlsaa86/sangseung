@@ -56,6 +56,20 @@ namespace Ascend.Prototype.Player
         [Tooltip("집중했을 때 화면에 담을 범위. 비우면 _focus 의 콜라이더를 쓴다.")]
         [SerializeField] private Collider _frameBounds;
 
+        /// <summary>
+        /// 범위에 **함께** 담을 것들. 사용자 지시 (2026-08-09):
+        /// 「버튼 누르면 기계 위에 층수까지 한눈에 보이게」.
+        ///
+        /// ⚠ 콜라이더를 키워서 해결하지 않는다. `_frameBounds` 는 조준 상자를 겸하므로
+        ///   (`SetFocusColliderEnabled` 참조) 키우면 **기계 위 빈 공간을 클릭해도
+        ///   기계가 잡힌다.** 화면에 담을 범위와 손으로 짚는 범위는 다른 것이고,
+        ///   여기서 합집합을 뜨면 둘을 분리한 채로 목적을 이룬다.
+        ///
+        /// 비어 있으면 종전 동작 그대로다 — 배선 안 해도 깨지지 않는다.
+        /// </summary>
+        [Tooltip("범위에 함께 담을 렌더러. 기계 위 층수 표시가 여기 들어간다.")]
+        [SerializeField] private Renderer[] _alsoFrame;
+
         // ⚠ 하일라이트는 이 클래스가 하지 않는다. `InteractableHighlighter` 가 **모든**
         // 상호작용물에 대해 처리하고(2026-08-08 사용자 지시: 「이건 모든 오브젝트에
         // 해당하는 거임」), 기계는 `InteractableHighlightTarget` 으로 빛낼 범위를 가리킨다.
@@ -229,6 +243,17 @@ namespace Ascend.Prototype.Player
                     pos = _restPos; rot = _restRot; return;
                 }
                 _cachedBounds = c.bounds;
+
+                // 기계 위 층수 표시를 같이 담는다. **캐시 안에서 합친다** — 밖에서
+                // 매번 합치면 집중 중에 층수가 바뀔 때 화각이 흔들린다.
+                for (int i = 0; _alsoFrame != null && i < _alsoFrame.Length; i++)
+                {
+                    Renderer extra = _alsoFrame[i];
+                    // 꺼진 렌더러의 bounds 는 신뢰할 수 없다. `_frameBounds` 가 꺼졌을 때
+                    // 범위가 0 이 되던 것과 같은 함정이라 여기서도 막는다.
+                    if (extra != null && extra.enabled && extra.gameObject.activeInHierarchy)
+                        _cachedBounds.Encapsulate(extra.bounds);
+                }
                 _boundsCached = true;
             }
 
