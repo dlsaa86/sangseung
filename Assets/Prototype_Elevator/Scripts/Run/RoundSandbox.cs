@@ -60,7 +60,70 @@ namespace Ascend.Prototype.Run
         private string _lastEvent = "라운드 시작";
         private float _lastGain;
 
+        /// <summary>
+        /// 본선 런. **꽂으면 가짜 전력을 쓰지 않고 실제 스핀 결과를 받는다**
+        /// (2026-08-09 사용자 결정: 「RoundSession 을 본선에 연결한다」).
+        ///
+        /// 이 척추는 목표층·이동 비용·최대 이동층을 이미 갖고 있고 검사로 잠겨 있었지만,
+        /// **전력을 스스로 지어내고 있었다**(`_powerPerSpin` + `_powerJitter`).
+        /// 그래서 규칙은 옳은데 게임과 무관했다. 여기가 그 유일한 이음매다.
+        /// </summary>
+        [Header("본선 연결")]
+        [Tooltip("비우면 예전처럼 가짜 전력으로 도는 샌드박스가 된다.")]
+        [SerializeField] private RunSessionBehaviour _run;
+
+        private Events.GameEventBus _bus;
+
+        /// <summary>플레이어가 ▲▼ 로 고른 층. 확인을 누르기 전까지는 이동하지 않는다.</summary>
+        public int SelectedFloor { get; private set; }
+
         public void BindReadout(TMPro.TMP_Text readout) => _readout = readout;
+
+        private void OnEnable()
+        {
+            if (_run == null) _run = FindFirstObjectByType<RunSessionBehaviour>();
+            if (_run != null) _run.RunStarted += OnRunStarted;
+            Subscribe(_run != null && _run.Session != null ? _run.Session.Events : null);
+        }
+
+        private void OnDisable()
+        {
+            if (_run != null) _run.RunStarted -= OnRunStarted;
+            Subscribe(null);
+        }
+
+        private void OnRunStarted(RunSession session)
+        {
+            Subscribe(session != null ? session.Events : null);
+            Restart();
+        }
+
+        private void Subscribe(Events.GameEventBus bus)
+        {
+            if (_bus == bus) return;
+            if (_bus != null) _bus.Published -= OnGameEvent;
+            _bus = bus;
+            if (_bus != null) _bus.Published += OnGameEvent;
+        }
+
+        /// <summary>
+        /// 실제 스핀이 끝날 때마다 그 **순 전력**을 라운드에 넣는다.
+        ///
+        /// ⚠ `NetPower` 는 음수가 될 수 있다(잔류 저항). `RoundSession.Spin` 은 그대로
+        ///   받아야 한다 — 여기서 0 으로 깎으면 잔류 저항이 화면에서만 사라진다.
+        /// </summary>
+        private void OnGameEvent(Events.GameEvent e)
+        {
+            if (e.Kind != Events.GameEventKind.SpinResolved) return;
+            if (Round.IsOver || Round.SpinsRemaining <= 0) return;
+            _round.Spin(e.FloatValue);
+            _lastGain = e.FloatValue;
+            _lastEvent = $"스핀 {(e.FloatValue >= 0 ? "+" : "")}{e.FloatValue:0} 전력 · 남은 스핀 {_round.SpinsRemaining}";
+            ClampSelection();
+        }
+
+        /// <summary>본선에 붙어 있으면 전력을 스스로 짓지 않는다.</summary>
+        public bool DrivenByRun => _run != null;
 
         private void LateUpdate()
         {
@@ -97,18 +160,69 @@ namespace Ascend.Prototype.Run
                 _startFloor);
             _lastEvent = $"라운드 시작 — 목표 {_targetFloor}층 · 스핀 {_spins}";
             _lastGain = 0f;
+            SelectedFloor = _round.CurrentFloor;
         }
 
         public bool CanSpin => !Round.IsOver && Round.SpinsRemaining > 0;
 
         public void Spin()
         {
+            // ⚠ 본선에 붙어 있으면 **여기서 전력을 짓지 않는다.** 실제 스핀이
+            //   `SpinResolved` 로 넣어 준다. 둘 다 넣으면 한 번 돌리고 두 번 번다.
+            if (DrivenByRun) return;
             if (!CanSpin) return;
             float gain = Mathf.Max(0f, _powerPerSpin + UnityEngine.Random.Range(-_powerJitter, _powerJitter));
             gain = Mathf.Round(gain);
             _round.Spin(gain);
             _lastGain = gain;
             _lastEvent = $"스핀 +{gain:0} 전력 · 남은 스핀 {_round.SpinsRemaining}";
+            ClampSelection();
+        }
+
+        // ── 층 선택 (▲ ▼ 확인) ──────────────────────────────────────────────
+        //
+        // 사용자 명세 (2026-08-09): 「버튼은 올라가기·내려가기·확인 3종류. 층버튼을
+        // 누를 때마다 목표층수(선택한 층수)가 표시되고, 확인을 누르면 해당 층으로 이동.
+        // 갈 수 있는 최대 층수는 스테이지별로 상이하다.」
+        //
+        // 즉 ▲▼ 는 **이동이 아니라 선택**이다. 누를 때마다 움직이면 되돌릴 수 없는
+        // 조작이 연타로 일어나고, 전력이 한 층씩 조용히 빠진다.
+
+        /// <summary>지금 전력과 스테이지 상한 안에서 갈 수 있는 가장 높은 층.</summary>
+        public int HighestReachable => Mathf.Min(Round.Travel.MaxFloor,
+                                                 Round.CurrentFloor + Round.MaxFloorsNow);
+
+        /// <summary>내려갈 수 있는 가장 낮은 층. 하강도 전력을 쓴다.</summary>
+        public int LowestReachable => Mathf.Max(Round.Travel.MinFloor,
+                                                Round.CurrentFloor - Round.MaxFloorsNow);
+
+        public void AdjustSelection(int delta)
+        {
+            if (Round.IsOver) return;
+            SelectedFloor = Mathf.Clamp(SelectedFloor + delta, LowestReachable, HighestReachable);
+            int need = Mathf.RoundToInt(Round.Travel.CostFor(SelectedFloor - Round.CurrentFloor));
+            _lastEvent = SelectedFloor == Round.CurrentFloor
+                ? "선택 — 현재 층"
+                : $"선택 {SelectedFloor}층 · 필요 전력 {need}";
+        }
+
+        /// <summary>전력이 모자라거나 층이 바뀌면 선택을 유효 범위로 되돌린다.</summary>
+        private void ClampSelection()
+        {
+            SelectedFloor = Mathf.Clamp(SelectedFloor, LowestReachable, HighestReachable);
+        }
+
+        public bool CanConfirm => !Round.IsOver && SelectedFloor != Round.CurrentFloor
+                                  && CanMove(SelectedFloor - Round.CurrentFloor);
+
+        /// <summary>확인 — 고른 층으로 실제로 이동한다.</summary>
+        public void Confirm()
+        {
+            if (Round.IsOver) return;
+            int delta = SelectedFloor - Round.CurrentFloor;
+            if (delta == 0) { _lastEvent = "현재 층이다"; return; }
+            Move(delta);
+            SelectedFloor = Round.CurrentFloor;
         }
 
         public bool CanMove(int delta)
@@ -127,6 +241,9 @@ namespace Ascend.Prototype.Run
             _lastEvent = $"{dir} {Math.Abs(r.FloorsMoved)}층 → {r.ToFloor}층 · 전력 −{r.PowerSpent:0}";
             if (_round.Outcome == RoundOutcome.Survived)
                 _lastEvent += $"   ★ 도달! 남은 스핀 {_round.SpinsRemaining} → {_round.MoneyEarned:0} 골드";
+            // 이동하면 전력이 줄어 갈 수 있는 범위가 좁아진다. 선택이 범위 밖에
+            // 남아 있으면 확인 버튼이 영원히 죽은 채로 보인다.
+            ClampSelection();
         }
 
         public bool CanResolve => !Round.IsOver && Round.SpinsRemaining == 0;
@@ -146,8 +263,13 @@ namespace Ascend.Prototype.Run
             string head = r.IsOver
                 ? (r.Outcome == RoundOutcome.Survived ? "도달" : "추락")
                 : $"목표 {r.Goal.TargetFloor}층";
-            return $"{head}\n"
+            int need = Mathf.RoundToInt(r.Travel.CostFor(SelectedFloor - r.CurrentFloor));
+            string sel = SelectedFloor == r.CurrentFloor
+                ? "선택 —"
+                : $"선택 {SelectedFloor}층 (필요 {need})";
+            return $"{head}   최대 {r.Travel.MaxFloor}층\n"
                  + $"현재 {r.CurrentFloor}층   전력 {r.Power:0}\n"
+                 + $"{sel}   갈 수 있는 곳 {LowestReachable}~{HighestReachable}층\n"
                  + $"목표까지 {r.PowerToGoal:0}   스핀 {r.SpinsRemaining}/{r.Goal.Spins}\n"
                  + $"{_lastEvent}";
         }
@@ -161,7 +283,13 @@ namespace Ascend.Prototype.Run
     /// </summary>
     public sealed class InteractableRoundButton : MonoBehaviour, IInteractable
     {
-        public enum ButtonAction { Spin, Move, Resolve, Restart }
+        /// <summary>
+        /// ⚠ `Move` 는 **누르는 즉시 이동한다.** 사용자 명세는 그게 아니라
+        ///   「▲▼ 로 고르고 **확인**을 눌러야 이동」이므로 `Select` 와 `Confirm` 을
+        ///   추가했다. `Move` 는 샌드박스 단독 시험용으로 남긴다 —
+        ///   지우면 씬에 남아 있는 옛 버튼이 MISSING 이 된다.
+        /// </summary>
+        public enum ButtonAction { Spin, Move, Resolve, Restart, Select, Confirm }
 
         [SerializeField] private RoundSandbox _sandbox;
         [SerializeField] private ButtonAction _action = ButtonAction.Move;
@@ -196,6 +324,15 @@ namespace Ascend.Prototype.Run
                     case ButtonAction.Spin:    return $"스핀 ({_sandbox.Round.SpinsRemaining} 남음)";
                     case ButtonAction.Resolve: return "라운드 종료";
                     case ButtonAction.Restart: return "다시 시작";
+                    case ButtonAction.Select:
+                        return $"{(_floorDelta > 0 ? "올라가기" : "내려가기")}  →  {_sandbox.SelectedFloor + _floorDelta}층";
+                    case ButtonAction.Confirm:
+                    {
+                        int d = _sandbox.SelectedFloor - _sandbox.Round.CurrentFloor;
+                        if (d == 0) return "확인 — 층을 고른다";
+                        return $"확인 — {_sandbox.SelectedFloor}층으로 이동 " +
+                               $"(전력 {_sandbox.Round.Travel.CostFor(d):0})";
+                    }
                     default:
                         string dir = _floorDelta > 0 ? "상승" : "하강";
                         return $"{Math.Abs(_floorDelta)}층 {dir}  (전력 {PowerNeeded:0})";
@@ -213,6 +350,13 @@ namespace Ascend.Prototype.Run
                     case ButtonAction.Spin:    return _sandbox.CanSpin;
                     case ButtonAction.Resolve: return _sandbox.CanResolve;
                     case ButtonAction.Restart: return true;
+                    // 선택은 **범위 안에서만** 눌린다. 끝에 닿으면 죽어야
+                    // 「더 못 간다」가 손끝에 전해진다.
+                    case ButtonAction.Select:
+                        return !_sandbox.Round.IsOver &&
+                               _sandbox.SelectedFloor + _floorDelta >= _sandbox.LowestReachable &&
+                               _sandbox.SelectedFloor + _floorDelta <= _sandbox.HighestReachable;
+                    case ButtonAction.Confirm: return _sandbox.CanConfirm;
                     default:                   return _sandbox.CanMove(_floorDelta);
                 }
             }
@@ -226,6 +370,8 @@ namespace Ascend.Prototype.Run
                 case ButtonAction.Spin:    _sandbox.Spin(); break;
                 case ButtonAction.Resolve: _sandbox.Resolve(); break;
                 case ButtonAction.Restart: _sandbox.Restart(); break;
+                case ButtonAction.Select:  _sandbox.AdjustSelection(_floorDelta); break;
+                case ButtonAction.Confirm: _sandbox.Confirm(); break;
                 default:                   _sandbox.Move(_floorDelta); break;
             }
         }

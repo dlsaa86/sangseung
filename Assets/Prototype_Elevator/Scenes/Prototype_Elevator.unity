@@ -7256,9 +7256,9 @@ MonoBehaviour:
   m_Script: {fileID: 362251427}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Run.InteractableRoundButton
-  _sandbox: {fileID: 0}
-  _action: 1
-  _floorDelta: 1
+  _sandbox: {fileID: 1610143913}
+  _action: 5
+  _floorDelta: 0
 --- !u!23 &146934212
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -7528,7 +7528,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.05, y: 0.105}
+  m_AnchoredPosition: {x: 0.32, y: 0.108}
   m_SizeDelta: {x: 0.58, y: 0.0576}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &154236547
@@ -32621,7 +32621,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.6, y: 0.105}
+  m_AnchoredPosition: {x: -0.32, y: 0.108}
   m_SizeDelta: {x: 0.58, y: 0.0576}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &791577946
@@ -34311,7 +34311,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.05, y: -0.01}
+  m_AnchoredPosition: {x: 0.32, y: -0.018}
   m_SizeDelta: {x: 0.58, y: 0.0992}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &831334354
@@ -52015,7 +52015,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Run.InteractableRoundButton
   _sandbox: {fileID: 1610143913}
-  _action: 1
+  _action: 4
   _floorDelta: 1
 --- !u!23 &1249101076
 MeshRenderer:
@@ -56013,7 +56013,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1363306041
 Transform:
   m_ObjectHideFlags: 0
@@ -65082,7 +65082,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1598840803
 Transform:
   m_ObjectHideFlags: 0
@@ -65752,12 +65752,13 @@ MonoBehaviour:
   _startFloor: 1
   _powerPerFloor: 60
   _minFloor: 1
-  _maxFloor: 100
+  _maxFloor: 10
   _moneyPerUnusedSpin: 4
   _powerPerSpin: 140
   _powerJitter: 60
   _readout: {fileID: 598720616}
   _gainDisplay: {fileID: 0}
+  _run: {fileID: 998528527}
 --- !u!4 &1610143914
 Transform:
   m_ObjectHideFlags: 0
@@ -77996,7 +77997,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Run.InteractableRoundButton
   _sandbox: {fileID: 1610143913}
-  _action: 1
+  _action: 4
   _floorDelta: -1
 --- !u!23 &1993834250
 MeshRenderer:
@@ -83331,7 +83332,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.6, y: -0.02}
+  m_AnchoredPosition: {x: -0.32, y: -0.022}
   m_SizeDelta: {x: 0.58, y: 0.184}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2110817523
