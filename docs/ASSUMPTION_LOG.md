@@ -1208,7 +1208,7 @@
 
 - 상태: Active
 - 작성일: 2026-08-08
-- 관련 요구사항: `.claude/OPERATING_MODES.md` §3 진입 절차 6번
+- 관련 요구사항: `AGENTS.md` §3 진입 절차 6번
   (「`review-mode` 를 `solo` 로 내린다」).
 - 사용한 가정: 사용자가 취침·자율주행을 명시했지만 **`production/review-mode.txt` 를
   `full` 로 유지한다.**

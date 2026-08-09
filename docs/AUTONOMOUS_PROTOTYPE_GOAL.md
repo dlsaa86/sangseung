@@ -27,7 +27,7 @@
 ## 0.2 이 문서가 정하지 않는 것
 
 - Unity 기술 계약 → `docs/TECH_SPEC.md`
-- 시각 평가 기준 → `docs/VISUAL_SPEC.md`, `.claude/visual-criteria.md`
+- 시각 평가 기준 → `docs/VISUAL_SPEC.md`, `docs/VISUAL_CRITERIA.md`
 - 파일 소유권과 병렬 규칙 → `CLAUDE.md`
 - 이미 확정된 설계 결정 → `docs/DECISION_LOG.md`
 
@@ -89,7 +89,7 @@ Unity Editor는 실행 중이며 Unity MCP를 사용할 수 있다. 사용자에
 6. `docs/VISUAL_SPEC.md`
 7. `docs/DECISION_LOG.md`
 8. `docs/ASSUMPTION_LOG.md`
-9. `.claude/visual-criteria.md`
+9. `docs/VISUAL_CRITERIA.md`
 10. `Assets/Plans/`의 작업 명세
 11. `docs/references/`에 존재하는 모든 이미지와 설명
 12. 아래 Notion 원본과 연결된 관련 하위 페이지
@@ -1018,7 +1018,12 @@ watchdog은 시간창(기본 60분) 안에서 재실행 횟수가 상한(기본 
 이번 실행은 토큰 절약보다 결과물의 정확성, 완성도, 검증 가능성을 우선한다.
 
 리드 세션은 Opus Ultracode Dynamic Workflow로 작동한다. 전문 분석·비판·테스트·비주얼
-평가·성능 검증에는 `.claude/agents/`의 Opus 전문 서브에이전트를 적극적으로 사용한다.
+평가·성능 검증에는 서브에이전트를 적극적으로 사용한다.
+
+> **2026-08-09 정정.** 프로젝트 전용 에이전트 정의(`.claude/agents/` 47개)는
+> prime-agent 전환 때 삭제했다. 이제 쓸 수 있는 것은 전역 에이전트뿐이고,
+> **평가자와 구현자를 분리한다**는 요구는 그대로다 — 분리를 강제하던 파일이
+> 없어졌을 뿐이므로 사람이 갈라 준다. 도구 분담은 `AGENTS.md` 「도구 분담」 참조.
 
 **단순히 같은 작업을 반복시키지 않는다.** 추가 연산은 독립적인 시도, 반증, 테스트,
 측정, 비교에만 쓴다. 토큰 사용량이나 작업 시간 자체를 성과로 간주하지 않는다.

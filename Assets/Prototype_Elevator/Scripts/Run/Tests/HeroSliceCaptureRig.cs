@@ -263,7 +263,7 @@ namespace Ascend.Prototype.Run.Tests
 
         /// <summary>
         /// 직선 정화의 표식을 잡는다. 연결(패스 C)과 나란히 놓고 보면 "형태가 다른가"를
-        /// 판정할 수 있다 — `.claude/visual-criteria.md` B-2.6 이 요구하는 비교다.
+        /// 판정할 수 있다 — `docs/VISUAL_CRITERIA.md` B-2.6 이 요구하는 비교다.
         ///
         /// 시드 1 / 계약 없음 / 첫 스핀에서 대각선 [0,4,8] 이 성립한다(헤드리스 탐색 결과).
         /// </summary>

@@ -1430,7 +1430,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 ### UP-VIS-07 — 시각 루브릭 통과 (판독성·스타일 평균 4.0 이상)
 - 분류: Required · 출처: PRD §15.2 통과 조건
 - 상태: CONNECTED · 패스: P3 P4
-- 구현: `.claude/visual-criteria.md`, `.claude/skills/visual-verify/SKILL.md`
+- 구현: `docs/VISUAL_CRITERIA.md`, `docs/VISUAL_VERIFY_LOOP.md`
 - 접근: 해당 없음
 - 검증: `docs/runtime/VISUAL_VERDICT.md` 의 독립 판정
 - 증거: `docs/runtime/VISUAL_VERDICT.md`, `Captures/TenFloor/manifest.txt`
@@ -1839,7 +1839,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 ### UP-TEST-10 — 독립 시각 평가 기록
 - 분류: Required · 출처: PRD §1.2 「구현 에이전트가 자신의 결과를 스스로 통과시키지 않는다」, §15.3
 - 상태: CONNECTED · 패스: P3 P4
-- 구현: `.claude/skills/visual-verify/SKILL.md`, `.claude/agents/visual-critic.md`, `docs/runtime/VISUAL_VERDICT.md`
+- 구현: `docs/VISUAL_VERIFY_LOOP.md`, `docs/VISUAL_VERIFY_LOOP.md`, `docs/runtime/VISUAL_VERDICT.md`
 - 접근: 해당 없음
 - 검증: `docs/runtime/VISUAL_VERDICT.md`의 마지막 `VERDICT:` 줄
 - 증거: `docs/runtime/VISUAL_VERDICT.md`
@@ -2063,7 +2063,7 @@ PRD §15.2 루브릭 통과 + `docs/runtime/VISUAL_VERDICT.md`가 `ACCEPT`.
 | UP-VIS-11 | `VisualQualityProfile` High `_shadowDistance: 30` vs `PC_RPAsset.asset:57` `m_ShadowDistance: 50` — **어긋난다** | 성능 리포트가 **거짓 조건을 인용**한다. 7필드 중 6이 소비처 0 → 예산이 아니라 **라벨** | UP-PLAT-05, UP-TECH-07 |
 | UP-AUD-08 | `PlayedKindsMask` 가 variant 를 버린다(`AudioDirector.cs:671`) | 「응력음 1회」와 「네 단계 각각」이 **구분되지 않는다** — §8.3 의 증거가 될 수 없다 | UP-RISK-05 |
 | UP-TEST-12 | GC 인용 수치(10,443 / 8,805 / 1,638 B)의 **원본 로그가 덮어써졌다.** 현재 파일은 10807/9173/9176/10803 | 문서가 **디스크에 없는 숫자**를 인용한다 (이 저장소가 반복한 실패) | UP-TECH-05 |
-| UP-VIS-12 | 6라운드 시각 채점이 전부 **절대 5점 척도**인데 `.claude/visual-criteria.md:6-7` 이 그것을 **금지**한다 | 통과 조건의 **측정 방법 자체가 절차 위반**이다 | UP-VIS-07 |
+| UP-VIS-12 | 6라운드 시각 채점이 전부 **절대 5점 척도**인데 `docs/VISUAL_CRITERIA.md:6-7` 이 그것을 **금지**한다 | 통과 조건의 **측정 방법 자체가 절차 위반**이다 | UP-VIS-07 |
 | UP-DOC-03 | 출처 표기 다수가 동결 `MASTER_PRD.md` 에서 해소되지 않는다 — `§14.1`·`§17.4`·`§9.3`·`§10.3`·`§7.3`·`§13.3/4`·`§15.2`. 동결본은 **§15 에서 끝나고 §16·17 이 없다** | 「출처를 확인하라」가 불가능해진다. 실제 출처는 Notion N08 | 다수 |
 | UP-DOC-04 | 백로그 자기모순 — `UP-VIS-01` 서술이 「`UP-VIS-04` 는 NOT_STARTED」라 적지만 그 항목은 SKELETON. 심볼 머티리얼도 「배정되지 않는다」 ↔ 「전부 `M_Gray_Readout` 공유」로 **정반대** (후자가 맞다) | 같은 문서의 두 줄이 서로를 부정한다 | UP-VIS-01, UP-VIS-04 |
 | UP-VIS-13 | `MAT_Ascend_*`·`MAT_Sym_*` **6종과 셰이더가 씬·코드·프리팹 참조 0건**. 게다가 머티리얼 6개가 `_AmbientFloor: 0.18` 을 직렬화로 덮어써 **「0.35 로 올렸다」가 채택 대상에 적용돼 있지 않다** | 다음 채택 시도가 **고치기 전 값으로** 다시 실패한다 | UP-VIS-04 |

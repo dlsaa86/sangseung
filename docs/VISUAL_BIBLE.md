@@ -335,7 +335,7 @@ not photorealistic and not pixel art.
 
 > "측정 가능한 차이 없이 무작정 반복하지 않는다. 각 반복은 **변경 이유, 기대 효과, 실제 결과**를 기록한다."
 
-이 프로토콜은 저장소 `visual-verify` 스킬 및 `.claude/visual-criteria.md`와 함께 사용한다.
+이 프로토콜은 저장소 `visual-verify` 스킬 및 `docs/VISUAL_CRITERIA.md`와 함께 사용한다.
 
 ---
 

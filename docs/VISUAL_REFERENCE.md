@@ -3,7 +3,7 @@
 > 상태: **아트 디렉션 기준.** 사용자가 「엘리베이터 디자인은 이런 식으로 생각 중이다.
 > 이런 느낌으로 반영해 달라」며 제시했다.
 > 상위: `VISUAL_SPEC.md` → `VISUAL_BIBLE.md` §2.1 → **이 문서** → `GRAPHICS_TARGET.md`
-> `.claude/visual-criteria.md` §C 「레퍼런스」가 **미지정**이었고, 이 문서가 그 자리를 채운다.
+> `docs/VISUAL_CRITERIA.md` §C 「레퍼런스」가 **미지정**이었고, 이 문서가 그 자리를 채운다.
 
 ---
 

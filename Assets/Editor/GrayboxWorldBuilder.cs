@@ -245,7 +245,7 @@ public static class GrayboxWorldBuilder
         // 통관별 정지 버튼은 **만들지 않는다.**
         //
         // `D-20260730-04`가 통관별 정지 버튼·타이밍 정지를 1차 프로토타입에서 제외했고,
-        // `.claude/visual-criteria.md` B-5.13은 "타이밍 바·정지 버튼·반응속도를 요구하는
+        // `docs/VISUAL_CRITERIA.md` B-5.13은 "타이밍 바·정지 버튼·반응속도를 요구하는
         // UI가 남아 있는가 — 잔재가 보이면 실패다"를 감점 항목으로 못박았다.
         //
         // 예전에는 여기서 `StopButton_1~3`·`ButtonPivot_1~3`·`ButtonLabel_1~3`을 만든 뒤

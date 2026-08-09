@@ -31,7 +31,7 @@ Notion은 계속 수정되는 기획 원본이다. 실제 구현 세션에서는
 
 - [`TECH_SPEC.md`](./TECH_SPEC.md) — Unity 구조, 상태 모델, 테스트 및 성능 기준
 - [`VISUAL_SPEC.md`](./VISUAL_SPEC.md) — 비주얼 방향과 시각 검증 기준
-  (상세 루브릭: `.claude/visual-criteria.md`)
+  (상세 루브릭: `docs/VISUAL_CRITERIA.md`)
 
 - 축 1의 문서가 이 둘보다 **더 구체적이고 더 엄격하면** 그쪽을 따르고, 내용을
   `TECH_SPEC.md`/`VISUAL_SPEC.md` 또는 전용 설계 문서로 동결한다.

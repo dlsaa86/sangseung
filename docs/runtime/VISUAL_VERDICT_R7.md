@@ -34,7 +34,7 @@
 
 ## 0.5 채점 방식을 바꾼다 — `UP-VIS-12` 는 정당하다
 
-`.claude/visual-criteria.md:6-7` 을 읽었다.
+`docs/VISUAL_CRITERIA.md:6-7` 을 읽었다.
 
 > 각 항목마다 A/B/동일 중 하나를 고르게 한다. 10점 만점 절대 점수는 쓰지 않는다 —
 > 비전 모델의 절대 점수는 같은 이미지를 두 번 물어도 흔들린다.
@@ -293,5 +293,5 @@ C·E·D 행도 이미지와 일치한다.
 **참조 경로**
 
 - 캡처 세트: `Captures/symbols_v5_20260805/`
-- 기준: `.claude/visual-criteria.md`
+- 기준: `docs/VISUAL_CRITERIA.md`
 - 직전 판정: `docs/runtime/VISUAL_VERDICT.md` (6차 = 4061행~)

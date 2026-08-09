@@ -50,7 +50,7 @@ Assets/Prototype_Elevator/
   Data/PrototypeConfig.asset
 Assets/CaptureHarness/
 Assets/Plans/
-.claude/visual-criteria.md
+docs/VISUAL_CRITERIA.md
 Captures/
 ```
 
@@ -321,7 +321,7 @@ Idle
 
 # 14. 캡처와 검증
 
-- 화면에 보이는 변경은 `Assets/CaptureHarness`와 `.claude/visual-criteria.md`를 사용해 검증한다.
+- 화면에 보이는 변경은 `Assets/CaptureHarness`와 `docs/VISUAL_CRITERIA.md`를 사용해 검증한다.
 - 캡처 조건은 해상도, FOV, 카메라 위치, 품질 프리셋, 시드로 고정한다.
 - 구현자가 자신의 결과를 최종 평가하지 않는다.
 - 가능한 경우 평가자는 신규/기존 빌드를 모르는 상태에서 비교한다.
