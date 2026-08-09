@@ -196,14 +196,31 @@ namespace Ascend.Prototype.Run
         public int LowestReachable => Mathf.Max(Round.Travel.MinFloor,
                                                 Round.CurrentFloor - Round.MaxFloorsNow);
 
+        /// <summary>
+        /// 「몇 층 **이동하는가**」를 부호와 함께 한 토큰으로 만든다.
+        ///
+        /// 사용자 지시(2026-08-09): 「현재 층버튼의 위아래를 누르면 **몇 층 이동하는지**
+        /// 알기 쉽게 표현되어야 함」. 직전 판본은 **도착 층수**만 보여 줬는데,
+        /// 도착 층에서 현재 층을 빼는 계산을 플레이어에게 시키는 셈이었다 —
+        /// 층이 7734 까지 가는 게임에서 그 뺄셈은 매번 부담이다.
+        ///
+        /// 도착 층을 지우지 않고 **함께** 쓴다. 둘은 다른 질문에 답한다 —
+        /// 도착 층은 「어디로 가나」, 이동량은 「얼마나 가나」다.
+        /// </summary>
+        public static string DeltaToken(int delta)
+            => delta == 0 ? "그대로"
+             : delta > 0 ? $"▲{delta}층"
+             : $"▼{-delta}층";
+
         public void AdjustSelection(int delta)
         {
             if (Round.IsOver) return;
             SelectedFloor = Mathf.Clamp(SelectedFloor + delta, LowestReachable, HighestReachable);
-            int need = Mathf.RoundToInt(Round.Travel.CostFor(SelectedFloor - Round.CurrentFloor));
-            _lastEvent = SelectedFloor == Round.CurrentFloor
+            int moved = SelectedFloor - Round.CurrentFloor;
+            int need = Mathf.RoundToInt(Round.Travel.CostFor(moved));
+            _lastEvent = moved == 0
                 ? "선택 — 현재 층"
-                : $"선택 {SelectedFloor}층 · 필요 전력 {need}";
+                : $"선택 {SelectedFloor}층  {DeltaToken(moved)} 이동 · 필요 전력 {need}";
         }
 
         /// <summary>전력이 모자라거나 층이 바뀌면 선택을 유효 범위로 되돌린다.</summary>
@@ -263,10 +280,11 @@ namespace Ascend.Prototype.Run
             string head = r.IsOver
                 ? (r.Outcome == RoundOutcome.Survived ? "도달" : "추락")
                 : $"목표 {r.Goal.TargetFloor}층";
-            int need = Mathf.RoundToInt(r.Travel.CostFor(SelectedFloor - r.CurrentFloor));
-            string sel = SelectedFloor == r.CurrentFloor
+            int moved = SelectedFloor - r.CurrentFloor;
+            int need = Mathf.RoundToInt(r.Travel.CostFor(moved));
+            string sel = moved == 0
                 ? "선택 —"
-                : $"선택 {SelectedFloor}층 (필요 {need})";
+                : $"선택 {SelectedFloor}층  {DeltaToken(moved)} 이동 (필요 {need})";
             return $"{head}   최대 {r.Travel.MaxFloor}층\n"
                  + $"현재 {r.CurrentFloor}층   전력 {r.Power:0}\n"
                  + $"{sel}   갈 수 있는 곳 {LowestReachable}~{HighestReachable}층\n"
@@ -331,16 +349,20 @@ namespace Ascend.Prototype.Run
                         // 그래서 다음에 선택될 층과, 현재 층에서 거기까지의 비용을 함께 쓴다 —
                         // 한 칸 값이 아니라 **총액**이어야 「지금 갈 수 있나」가 바로 읽힌다.
                         int next = _sandbox.SelectedFloor + _floorDelta;
-                        int cost = Mathf.RoundToInt(
-                            _sandbox.Round.Travel.CostFor(next - _sandbox.Round.CurrentFloor));
-                        return $"{(_floorDelta > 0 ? "올라가기" : "내려가기")}  →  {next}층   전력 {cost}";
+                        int moved = next - _sandbox.Round.CurrentFloor;
+                        int cost = Mathf.RoundToInt(_sandbox.Round.Travel.CostFor(moved));
+                        // 「몇 층 이동하는가」를 도착 층보다 **앞에** 둔다 — 버튼을 연타할 때
+                        // 눈이 먼저 닿는 자리가 변화량이어야 한다.
+                        return $"{(_floorDelta > 0 ? "올라가기" : "내려가기")}  " +
+                               $"{RoundSandbox.DeltaToken(moved)} 이동  →  {next}층   전력 {cost}";
                     }
                     case ButtonAction.Confirm:
                     {
                         int d = _sandbox.SelectedFloor - _sandbox.Round.CurrentFloor;
                         if (d == 0) return "확인 — 층을 고른다";
-                        return $"확인 — {_sandbox.SelectedFloor}층으로 이동 " +
-                               $"(전력 {_sandbox.Round.Travel.CostFor(d):0})";
+                        return $"확인 — {RoundSandbox.DeltaToken(d)} 이동 " +
+                               $"({_sandbox.Round.CurrentFloor}층 → {_sandbox.SelectedFloor}층 · " +
+                               $"전력 {_sandbox.Round.Travel.CostFor(d):0})";
                     }
                     default:
                         string dir = _floorDelta > 0 ? "상승" : "하강";

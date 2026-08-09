@@ -44,6 +44,30 @@ namespace Ascend.Prototype.View
         [Tooltip("칸별 내부 발광판. SpinBoard.Index(column,row) 순서.")]
         [SerializeField] private Renderer[] _glows = new Renderer[Cells];
 
+        /// <summary>
+        /// 칸별 **사각 모듈 테두리**. 사용자 요청: 「모양이 맞아서 전력으로 인정되는
+        /// 순간은 **모듈 자체가 밝아지는** 연출 — 모듈 네모로 생겼으니까」.
+        ///
+        /// 원형 발광(<see cref="_glows"/>)과 **역할이 다르다.** 원형은 「기계가 돌고
+        /// 있다」를 계속 말하고, 이쪽은 **적중한 순간에만** 켜져 「이 칸이 전력이 됐다」
+        /// 하나만 말한다. 그래서 쉼·스핀 단계가 없고 적중 감쇠만 쓴다.
+        ///
+        /// ⚠ 재질이 **가산 합성**이라 검은색이면 화면에 아무것도 더하지 않는다.
+        ///   불투명 판을 얹으면 볼트와 베벨을 덮어 모듈이 오히려 밋밋해진다.
+        /// </summary>
+        [Tooltip("칸별 사각 모듈 테두리(가산). 적중 순간에만 켜진다.")]
+        [SerializeField] private Renderer[] _moduleGlows = new Renderer[Cells];
+
+        /// <summary>
+        /// 모듈 테두리가 적중에서 내는 빛.
+        ///
+        /// 처음 값 `(1.15, 0.68, 0.22)` 은 **코어가 흰색으로 포화**돼 기계 부품이 아니라
+        /// UI 선택 박스처럼 읽혔다. 가산 합성 위에 블룸이 한 번 더 얹히므로 1.0 근처면
+        /// 이미 화면에서 흰색이 된다 — 색을 지키려면 1 아래로 둬야 한다.
+        /// </summary>
+        [Tooltip("모듈 테두리가 적중에서 내는 빛. 가산+블룸이라 1을 넘기면 흰색으로 탄다.")]
+        [SerializeField] private Color _moduleHit = new Color(0.95f, 0.55f, 0.18f);
+
         [SerializeField] private RunSessionBehaviour _run;
         [Tooltip("도는 중인지 판단한다. 비면 스핀 맥동 없이 쉼/적중만 쓴다.")]
         [SerializeField] private SoulReelView _reel;
@@ -69,6 +93,7 @@ namespace Ascend.Prototype.View
         private GameEventBus _bus;
         private readonly float[] _hitLevel = new float[Cells];   // 1 → 0 으로 감쇠
         private readonly Color[] _applied = new Color[Cells];
+        private readonly Color[] _appliedModule = new Color[Cells];
         private int _lastSpinSeen = -1;
 
         private void Awake()
@@ -76,7 +101,11 @@ namespace Ascend.Prototype.View
             _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindFirstObjectByType<RunSessionBehaviour>();
             if (_reel == null) _reel = FindFirstObjectByType<SoulReelView>();
-            for (int i = 0; i < Cells; i++) _applied[i] = new Color(-1f, -1f, -1f);
+            for (int i = 0; i < Cells; i++)
+            {
+                _applied[i] = new Color(-1f, -1f, -1f);
+                _appliedModule[i] = new Color(-1f, -1f, -1f);
+            }
         }
 
         private void OnEnable()
@@ -154,26 +183,46 @@ namespace Ascend.Prototype.View
 
             for (int i = 0; i < Cells; i++)
             {
-                Renderer r = _glows[i];
-                if (r == null) continue;
+                float hit = _hitLevel[i];
 
-                // 적중 → 스핀 → 쉼 순으로 덮는다. 적중이 가장 세다.
-                Color c = _idle;
-                if (spinning) c = Color.Lerp(_idle, _spin, pulse);
-                if (_hitLevel[i] > 0.001f)
+                // ── 원형 통관 내부 — 적중 → 스핀 → 쉼 순으로 덮는다. 적중이 가장 세다.
+                Renderer r = _glows[i];
+                if (r != null)
                 {
-                    c = Color.Lerp(c, _hit, _hitLevel[i]);
-                    _hitLevel[i] = Mathf.Max(0f, _hitLevel[i] - decay);
+                    Color c = _idle;
+                    if (spinning) c = Color.Lerp(_idle, _spin, pulse);
+                    if (hit > 0.001f) c = Color.Lerp(c, _hit, hit);
+
+                    // 값이 그대로면 건드리지 않는다 — 쉼 상태에서 9칸을 매 프레임 쓰지 않기 위해.
+                    if (!Approximately(_applied[i], c))
+                    {
+                        _applied[i] = c;
+                        r.GetPropertyBlock(_block);
+                        _block.SetColor(BaseColorId, c);
+                        _block.SetColor(EmissionColorId, c);
+                        r.SetPropertyBlock(_block);
+                    }
                 }
 
-                // 값이 그대로면 건드리지 않는다 — 쉼 상태에서 9칸을 매 프레임 쓰지 않기 위해.
-                if (Approximately(_applied[i], c)) continue;
-                _applied[i] = c;
+                // ── 사각 모듈 테두리 — 적중만 말한다. 가산이라 0 이면 완전히 사라진다.
+                Renderer m = _moduleGlows != null && i < _moduleGlows.Length ? _moduleGlows[i] : null;
+                if (m != null)
+                {
+                    Color mc = _moduleHit * hit;
+                    mc.a = 1f;   // 가산 경로라 알파는 쓰이지 않지만 0 으로 두면 셰이더 변형에 걸린다
+                    if (!Approximately(_appliedModule[i], mc))
+                    {
+                        _appliedModule[i] = mc;
+                        m.GetPropertyBlock(_block);
+                        _block.SetColor(BaseColorId, mc);
+                        _block.SetColor(EmissionColorId, mc);
+                        m.SetPropertyBlock(_block);
+                    }
+                }
 
-                r.GetPropertyBlock(_block);
-                _block.SetColor(BaseColorId, c);
-                _block.SetColor(EmissionColorId, c);
-                r.SetPropertyBlock(_block);
+                // 감쇠는 **두 곳을 다 쓴 뒤 한 번만.** 예전처럼 원형 분기 안에서 깎으면
+                // 원형이 비어 있는 칸에서 모듈 테두리가 영원히 안 꺼진다.
+                if (hit > 0.001f) _hitLevel[i] = Mathf.Max(0f, hit - decay);
             }
         }
 
