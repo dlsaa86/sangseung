@@ -1,5 +1,16 @@
 # Bake UV export 순서 사고 — 원인·수정·재검증
 
+> ## ⚠ 다음 사람이 가장 먼저 읽어야 하는 문장
+>
+> **이 `.blend`의 export 인자는 `tools/blender/build_cabin.py`가 아니라, `.blend`
+> 안에 저장된 텍스트 블록 `AD48_EXPORT`에서 가져온다.** `bpy.data.texts["AD48_EXPORT"]`
+> 를 열어 그 스크립트를 그대로 따르지 않으면(특히 "슬롯0을 굽기 UV로 잠깐
+> 바꿔치기했다가 반드시 되돌린다"는 부분), 이름·개수 검증은 다 통과하는데 **캐빈이
+> 2.5배 어두워지는** 사고가 그대로 재현된다 — 이번에 실제로 그랬다. 원인은 처음에
+> `build_cabin.py`의 `export()` 인자를 쓰라고 지시했던 것이었다(팀리드 판단, 이번
+> 사고의 실제 근본 원인). `object_types`도 `AD48_EXPORT` 원문(`{'MESH','EMPTY','LIGHT'}`)
+> 을 기준으로 삼는다 — 다른 문서·지시가 다르게 말해도 이 텍스트 블록이 우선한다.
+
 **작업 일시**: 2026-08-09 · **담당**: implementer (`tools/blender_bridge.py`)
 **대상 파일**: `SM_ElevCab_Panel_AD57.blend` (동일 파일 — `SM_Cab_*` 캐빈 셸이 여기 같이 들어있다)
 **계기**: 이전 세션의 `ELV_Cabin_AD47_new.fbx`(구슬+SpinGauge 수정)를 Unity에 넣었더니
@@ -12,21 +23,22 @@ UV0(TEXCOORD0)이 굽기(0~1) 대신 저작(월드 스케일) UV로 나갔다고
 
 | 항목 | 결과 |
 |---|---|
-| 원인 | **내가 몰랐던 것** — 이 파일은 export 전용 절차가 `.blend` 안 텍스트 블록
-  `AD48_EXPORT`로 이미 확립돼 있었다. 슬롯0을 굽기 UV로 **임시로** 바꿔치기하고
-  export 후 **반드시 되돌리는** 절차다. 나는 이걸 모른 채 `bpy.ops.export_scene.fbx()`를
-  직접 불러 파일을 "있는 그대로" 내보냈고, 그 "있는 그대로"의 슬롯0은 저작 UV였다 |
+| 원인 | 위 상자 참조 — `build_cabin.py` 인자로는 `AD48_EXPORT`의 UV 바꿔치기 절차를
+  건너뛴다 |
 | 수정 | `AD48_EXPORT` 절차를 그대로 재현 — 슬롯0 **좌표값만** 굽기 UV로 임시 복사 →
   export → 슬롯0 좌표값을 저장해 둔 원본으로 **정확히 복원**. 레이어를 지우거나
   이름을 바꾸거나 새로 만들지 않았다 |
 | 검증 | export한 FBX를 **새 빈 씬에 재import**해서 슬롯0 범위가 0~1인지 직접 확인 —
-  4개 메시 전부 통과 (§3) |
-| 산출물 | `<scratchpad>/ELV_Cabin_AD47_fixed.fbx` (4,193,692 bytes) |
-| `.blend` 저장 여부 | UV 단독으로는 저장할 필요가 없었지만(복원값이 원본과 일치),
-  **`SM_Gauge_Fill` 연장(§6, 사용자 지시로 추가)이 영구 변경이라 최종적으로 1회
-  저장했다** — export도 게이지 작업 이후 한 번만 다시 실행(지시대로) |
+  4개 메시 전부 통과, `SM_Gauge_Fill`·Light 2개도 재import로 값까지 확인 (§3·§6.4·§7) |
+| 산출물 | `<scratchpad>/ELV_Cabin_AD47_fixed.fbx` (**4,196,428 bytes**, `LIGHT` 포함
+  최종본) |
+| `.blend` 저장 여부 | `SM_Gauge_Fill` 연장(§6, 사용자 지시)이 영구 변경이라 **1회
+  저장했다.** 그 뒤 `LIGHT` 포함해 재export할 때는 게이지 정점을 다시 안 건드렸으므로
+  추가 저장 없음(§7) |
 | `SM_Gauge_Fill` | 0%~61.7%에서 **0%~100%로 연장** — 정점 이동만, 오차 0.0mm (§6) |
-| 미해결 | `object_types`에 `LIGHT` 포함 여부 — §4.1 참조, **team-lead 확인 필요** |
+| `object_types` | **해소됨** — `{'MESH','EMPTY','LIGHT'}`로 재export, `strings`
+  Light 토큰 2개 = 기준선과 일치, 재import로 `LT_CabBulb`/`LT_SoulSpill` 값까지
+  확인 (§7) |
 
 ---
 
@@ -153,18 +165,13 @@ for o in meshes:
 
 ## 4. 못 한 것 · 확신 없는 것 — 숨기지 않는다
 
-### 4.1 ⚠ `object_types`에 `LIGHT`를 뺐다 — team-lead 확인 필요
+### 4.1 ~~`object_types`에 `LIGHT`를 뺐다~~ → **해소됨 (§7)**
 
-지시서가 이번에 **두 번** `{'MESH','EMPTY'}`를 명시해서 그대로 따랐다. 그런데
-`AD48_EXPORT`(검증된 절차) 원문은 `object_types={'MESH','EMPTY','LIGHT'}`를 쓴다.
-그리고 현재 `Assets/`에 살아 있는 정상 FBX(`01ae239`)를 `strings`로 뒤져 보니
-**`Light` 토큰이 5개** 나온다 — 즉 **지금 정상 작동 중인 파일에는 라이트가
-포함돼 있다.** 내가 만든 `ELV_Cabin_AD47_fixed.fbx`에는 라이트가 없다.
-
-라이트가 Unity 쪽에서 별도로 관리되고 FBX의 라이트는 애초에 안 쓰는 것이라면
-문제없지만, 확인된 사실이 아니라 **추정**이다. team-lead가 임포트하기 전에
-확인이 필요하다 — 필요하면 `object_types={'MESH','EMPTY','LIGHT'}`로 다시 export
-하겠다(스왑-export-복원 절차 전체를 재실행하면 되므로 비용은 크지 않다).
+처음엔 지시서가 명시한 `{'MESH','EMPTY'}`를 그대로 따라 `LIGHT`를 뺐었다. team-lead가
+"`AD48_EXPORT` 원문대로 `LIGHT` 포함, 기준선과 다른 걸 남기지 마라"고 정정해 재export
+했다 — 상세·최종 검증 숫자는 §7. (참고: team-lead가 처음 잰 기준선 Light 토큰 수는
+"5개"였다가 재측정으로 "2개"로 정정됐다 — 실제 씬의 LIGHT 타입 오브젝트도 정확히
+2개(`LT_CabBulb`, `LT_SoulSpill`)였다.)
 
 ### 4.2 `path_mode='STRIP'`(지시서·이전 export와 동일) vs `AD48_EXPORT`의 `'COPY'`
 
@@ -268,7 +275,79 @@ Y = [2.873251, 2.917874]   Z = [0.798538, 0.848119]   (수정 전과 완전 동�
 
 ---
 
-## 7. 부록 — 스크립트 (감사용)
+## 7. `LIGHT` 포함 재export — 최종본
+
+§4.1에서 미뤘던 것. team-lead가 "`AD48_EXPORT` 원문대로, 기준선과 다른 걸 남기지
+마라"고 정정해 `object_types={'MESH','EMPTY','LIGHT'}`로 다시 export했다. 게이지
+정점(§6)은 이미 저장돼 있어 다시 옮기지 않았고, UV 스왑→export→복원만 반복했다
+(그 사이 `.blend`가 그대로였다는 것도 재확인: `is_dirty=False`, 파일 크기·경로 불변).
+
+### 7.1 최종 파일
+
+`<scratchpad>/ELV_Cabin_AD47_fixed.fbx` — **4,196,428 bytes** (LIGHT 제외판 4,193,676
+대비 +2,752 bytes, 라이트 2개분과 대략 일치하는 크기 증가).
+
+### 7.2 `strings` 검증 — 넷 다 숫자로
+
+| 문자열 | 카운트 | 기준선(정상 `Assets/` FBX, 커밋 `01ae239`) | 일치 |
+|---|---|---|---|
+| `UVBake` | 57 | 57 | ✅ |
+| `SOCKET_ElevPanel` | 2 | 2 | ✅ |
+| `Light`(정확 토큰) | **2** | 2(team-lead 재측정값) | ✅ |
+| `SM_SpinGauge` | 6 | — (기준선엔 없음, 이번 작업 자체가 추가한 것) | ✅ |
+| (덧붙임) `LT_CabBulb` / `LT_SoulSpill` | 2 / 2 | — | ✅ 이름까지 확인 |
+
+### 7.3 ⚠ 재import 검증 중 발견한 것 — 이 Blender 빌드의 FBX 임포터 자체 버그
+
+`LIGHT`가 포함된 FBX를 재import하면 **블렌더 자신의 번들 애드온이 예외를 던지며
+전체 import가 취소된다**(오브젝트 0개 생성):
+
+```
+File ".../io_scene_fbx/import_fbx.py", line 2255, in blen_read_light
+    lamp.cycles.cast_shadow = lamp.use_shadow
+AttributeError: 'CyclesLightSettings' object has no attribute 'cast_shadow'
+```
+
+원문(`import_fbx.py:2254`)이 `if hasattr(lamp, "cycles"):`로 `.cycles` **속성 자체의
+존재**만 확인하고 그 안의 `.cast_shadow` **하위 속성**은 확인 없이 바로 대입한다 —
+이 Blender 5.2.0 LTS 빌드에 딸려 온 Cycles 애드온의 `CyclesLightSettings`에는 그
+하위 속성이 없다. **내 export 코드와 무관한, 이 블렌더 설치본 자체의 번들 애드온
+버전 불일치 버그다** — `AD48_EXPORT`가 만드는 실제 정상 FBX를 이 블렌더로 재import
+해도 같은 이유로 똑같이 깨질 것이다(재현 조건이 "라이트가 포함된 FBX를 이 블렌더로
+재import"이지 내 스크립트의 특정 동작이 아니다).
+
+**우회**: 검증 스크립트 안에서만, `io_scene_fbx.import_fbx.blen_read_light`를 원본과
+동일하되 문제의 두 줄(`hasattr` 체크 + `cast_shadow` 대입)만 뺀 함수로 **메모리
+상에서만** 바꿔치기했다 — 디스크의 블렌더 설치 파일은 전혀 건드리지 않았고, 검증이
+끝난 뒤 원래 함수로 되돌렸다(`blen_read_light is _ORIGINAL_blen_read_light → True`로
+확인). export 자체는 이 코드를 전혀 거치지 않는다 — **오직 "내가 만든 FBX를 다시
+읽어서 확인하는" 이 검증 단계에서만 필요했다.**
+
+이 우회로 재import가 성공했고, 라이트 두 개의 실제 값까지 확인했다:
+
+| 오브젝트 | 타입 | Energy | Color |
+|---|---|---|---|
+| `LT_CabBulb` | POINT | 52.0 | (1.0, 0.82, 0.5) |
+| `LT_SoulSpill` | POINT | 13.0 | (1.0, 0.42, 0.22) |
+
+현재 씬의 라이브 오브젝트(`bpy.data.objects`)를 직접 조회한 값(energy 52 / 13)과
+**정확히 일치** — export→FBX→import 왕복에서 라이트 데이터가 손실 없이 보존된다.
+
+### 7.4 UV·게이지 재확인 (LIGHT 포함판에서도)
+
+같은 재import에서 §3·§6.4와 동일한 항목을 다시 쟀다 — **전부 그대로**:
+
+```
+① UV 슬롯0: 4개 메시 전부 0~1 범위 (SM_Cab_Ceiling/FloorTrim/Wall_Back/Wall_Left)
+② SM_Gauge_Fill 월드 X = [-0.753628, 0.28213]   오차 0.0mm / 0.0mm
+```
+
+`LIGHT`를 추가해도 `MESH`/`EMPTY` 쓰기 경로는 전혀 영향받지 않는다는 것을 실측으로
+확인한 셈이다(애초에 `object_types`는 타입별 독립 필터라 서로 간섭할 이유가 없다).
+
+---
+
+## 8. 부록 — 스크립트 (감사용)
 
 **UV**: `uv_a_investigate.py`(§1 전수 조사, `AD48_EXPORT`/`AD43_DOOR2PANEL` 텍스트
 블록 원문 확인) · `uv_b_swap_export_revert.py`(§2 1차 스왑→export→복원 검증,
@@ -276,10 +355,19 @@ Y = [2.873251, 2.917874]   Z = [0.798538, 0.848119]   (수정 전과 완전 동�
 
 **게이지**: `gauge_a_investigate.py`(§6.1 라벨 재클러스터링·그루브 교차검증·
 `SM_Gauge_Fill` 정점 전수 덤프) · `gauge_b_extend_fill.py`(§6.3 정점 이동) ·
-`gauge_c_final_export_save.py`(UV 스왑 + **최종 export 1회** + UV 복원 + **저장**,
+`gauge_c_final_export_save.py`(UV 스왑 + export(LIGHT 제외판) + UV 복원 + **저장**,
 이번 세션의 유일한 `wm.save_mainfile()` 호출) · `gauge_d_reimport_verify.py`
-(§3·§6.4 — UV 4종 + 게이지 통합 재import 검증).
+(§6.4 — UV 4종 + 게이지 재import 검증, LIGHT 제외판 기준).
 
-**최종 산출물**: `<scratchpad>/ELV_Cabin_AD47_fixed.fbx`(4,193,676 bytes) — UV 수정과
-게이지 연장이 **함께** 실려 있다. `.blend`도 저장됐다(23,189,186 bytes). 저장 전
-백업: `<scratchpad>/SM_ElevCab_Panel_AD57.pre_gaugefill_backup.blend`.
+**LIGHT 포함 재export(§7)**: `gauge_e_reexport_with_light.py`(UV 스왑 → **최종
+export**(`object_types`에 `LIGHT` 추가) → UV 복원 — 저장은 다시 안 함, 게이지
+정점이 이미 저장돼 있어 순변화 없음) · `gauge_g_final_verify_patched.py`
+(§7.3~7.4 — `blen_read_light` 인메모리 패치로 재import 우회, UV·게이지·라이트
+전부 재확인). `gauge_f_final_verify.py`는 패치 전 시도로, 블렌더 임포터 버그
+트레이스백을 그대로 기록해 뒀다(§7.3의 증거).
+
+**최종 산출물**: `<scratchpad>/ELV_Cabin_AD47_fixed.fbx`(**4,196,428 bytes**, LIGHT
+포함) — UV 수정 + 게이지 연장 + LIGHT가 **전부 함께** 실려 있다. `.blend`도
+저장됐다(23,189,186 bytes, 게이지 정점 연장분만 반영 — UV는 원래대로 복원되므로
+저장 내용에 없다). 저장 전 백업:
+`<scratchpad>/SM_ElevCab_Panel_AD57.pre_gaugefill_backup.blend`.

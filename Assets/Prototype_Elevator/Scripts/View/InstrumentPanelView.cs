@@ -95,8 +95,16 @@ namespace Ascend.Prototype.View
 
         [Header("전력 게이지")]
         [SerializeField] private Transform _barPivot;
-        [Tooltip("게이지 전체 폭(미터). 0%~이 폭이 MaxRatio에 대응한다.")]
-        [SerializeField] private float _barWidth = 1.72f;
+        // **1.0 이다.** 2026-08-09 이전에는 1.72 였는데, 그건 폭이 아니라 **보정값**이었다 —
+        // 블렌더의 `SM_Gauge_Fill` 이 0%~67% 만 덮게 모델링돼 있어서 짧은 메시를 억지로
+        // 늘리던 배수다. 모델을 0%~100% 로 연장했으므로(정점 이동, 오차 0.0mm)
+        // 이제 보정이 필요 없고, 1.72 를 그대로 두면 **두 번 곱해진다.**
+        //
+        // 즉 이 값이 1.0 이라는 것은 「모델과 코드가 같은 말을 한다」는 뜻이다.
+        // 다시 1 이 아닌 값이 필요해졌다면 그건 스케일 문제가 아니라 **모델이 다시
+        // 어긋났다는 신호**이므로, 여기를 만지기 전에 블렌더 쪽 폭부터 재라.
+        [Tooltip("게이지 전체 폭 배수. 모델이 0%~100% 를 온전히 덮으므로 1.0 이다.")]
+        [SerializeField] private float _barWidth = 1.0f;
         [Tooltip("게이지가 표시하는 최대 비율. 임계점 표(300%)에 맞춘다.")]
         [SerializeField] private float _maxRatio = 3f;
         [SerializeField] private Renderer _barFill;
