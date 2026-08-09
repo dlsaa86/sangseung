@@ -55,8 +55,8 @@ namespace Ascend.Prototype.Build.Tests
             // ── 과수확 해금 게이트 (2026-08-09, 사용자 지시: 「과수확은 기본 옵션이
             //    아니게, 아이템이나 승객 조건으로, 아니면 계약으로」) ──
             Run("열쇠 없이는 전력을 채워도 과수확이 잠긴다", TestOverharvestLockedWithoutKey, ref passed, ref failed, report);
-            Run("과수확 변압기가 과수확을 해금한다", TestOverharvestTransformerUnlocks, ref passed, ref failed, report);
-            Run("짐꾼도 과수확을 해금한다 (둘째 갈래)", TestPorterAlsoUnlocksOverharvest, ref passed, ref failed, report);
+            Run("과수확 변압기가 과수확을 해금한다", Shelved(TestOverharvestTransformerUnlocks), ref passed, ref failed, report);
+            Run("짐꾼도 과수확을 해금한다 (둘째 갈래)", Shelved(TestPorterAlsoUnlocksOverharvest), ref passed, ref failed, report);
             Run("열쇠가 있어도 전력 미달이면 과수확은 잠긴다", TestOverharvestKeyAloneIsNotEnough, ref passed, ref failed, report);
 
             // ── 승하차 ──
@@ -95,6 +95,18 @@ namespace Ascend.Prototype.Build.Tests
             report.Insert(0, "[상승] === Build Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
+        }
+
+        /// <summary>
+        /// 보류된 과수확(<see cref="PrototypeFeatures.Overharvest"/>)을 검증하는 검사를 감싼다.
+        /// 열쇠 두 갈래는 **되살렸을 때 여전히 둘 다 열려야** 하므로 계속 검증한다.
+        /// </summary>
+        private static Func<string> Shelved(Func<string> test)
+        {
+            return () =>
+            {
+                using (PrototypeFeatures.EnableOverharvest()) return test();
+            };
         }
 
         private static void Run(string name, Func<string> test,

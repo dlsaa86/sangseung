@@ -33,6 +33,18 @@ namespace Ascend.Prototype.Run
         public const float DefaultPowerPerExtraFloor = 60f;
         public const int DefaultMaxExtraFloors = 3;
 
+        /// <summary>
+        /// 건너뛴 층 하나당 나오는 돈 (2026-08-09 사용자 결정: 「층당 4골드로 하자 우선은」).
+        ///
+        /// ⚠ **이것은 전력을 돈으로 바꾼 것이 아니다.** 층에 쓴 전력
+        /// (<see cref="PowerPerExtraFloor"/> × 층수)은 그대로 소모되고, 그와 **별개로**
+        /// 건너뛴 층수에 비례한 보상이 나온다. 그래서 「추가 층 전력이 돈으로 중복
+        /// 지급되지 않는다」는 기존 규칙이 그대로 성립한다 — 지급 근거가 전력이 아니라
+        /// **층수**이기 때문이다. 둘을 헷갈리면 초과 전력을 넣을수록 돈이 선형으로
+        /// 늘어나 「층을 건너뛴다」가 아니라 「전력을 환전한다」가 된다.
+        /// </summary>
+        public const float DefaultGoldPerSkippedFloor = 4f;
+
         public PowerBand Band { get; }
         public PowerBand ReachedBand => Band;
         public float FinalPower { get; }
@@ -106,7 +118,7 @@ namespace Ascend.Prototype.Run
         /// unit per extra floor; any unspent power remains bankable.
         /// </summary>
         public SurplusAllocation AllocateSurplus(SurplusUse use, int requestedExtraFloors = 0,
-            float moneyPerPower = 1f)
+            float moneyPerPower = 1f, float goldPerSkippedFloor = DefaultGoldPerSkippedFloor)
         {
             float available = ExcessPower;
             if (use == SurplusUse.Bank)
@@ -132,19 +144,25 @@ namespace Ascend.Prototype.Run
             floors = Math.Max(0, Math.Min(floors, MaxExtraFloors));
             floors = Math.Min(floors, (int)Math.Floor(available / PowerPerExtraFloor));
             float spent = floors * PowerPerExtraFloor;
+
+            // 🔴 2026-08-09 — **층 상승과 돈은 더 이상 택일이 아니다.** 사용자 지시:
+            // 「초과하는 전력을 넣는 경우 한 번에 더 많은 층을 올라갈 수 있게 된다.
+            //   이때 스킵된 층수만큼 돈이 추가로 나온다」.
+            // 직전 판본은 `SurplusUse` 셋 중 하나만 골라야 해서, 층을 오르면 돈이 0 이었다.
             return new SurplusAllocation
             {
                 Use = use,
                 PowerSpent = spent,
                 PowerBanked = available - spent,
                 AdditionalFloors = floors,
+                MoneyGained = floors * Math.Max(0f, goldPerSkippedFloor),
             };
         }
 
         public SurplusAllocation Allocate(SurplusUse use, int requestedExtraFloors = 0,
-            float moneyPerPower = 1f)
+            float moneyPerPower = 1f, float goldPerSkippedFloor = DefaultGoldPerSkippedFloor)
         {
-            return AllocateSurplus(use, requestedExtraFloors, moneyPerPower);
+            return AllocateSurplus(use, requestedExtraFloors, moneyPerPower, goldPerSkippedFloor);
         }
     }
 }

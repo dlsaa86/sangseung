@@ -68,6 +68,9 @@ public static class PrototypeSelfTest
         // "검증했다"는 기록이 거짓이 되므로 여기에 편입한다.
         FoldInSuite("자동 룰렛 판정", Ascend.Prototype.Spin.Tests.SpinEngineTests.RunAll());
         FoldInSuite("층 진행·계약·앤티", Ascend.Prototype.Run.Tests.RunTests.RunAll());
+        // 2026-08-09 코어 루프 재설계 — 층 이동(오르내림 대칭)과 라운드 목표.
+        FoldInSuite("층 이동·라운드 목표", Ascend.Prototype.Run.Tests.ElevatorTravelTests.RunAll());
+        FoldInSuite("라운드 상태 기계", Ascend.Prototype.Run.Tests.RoundSessionTests.RunAll());
         // 같은 이유로 위험·빌드도 편입한다. 여기 없던 동안 커밋 게이트가 지키던 것은
         // 45건이었고 `BuildTests` 34건 · `RiskEvaluatorTests` 11건은 깨져도 커밋이 통과했다 —
         // 10층 진행·적재·과적·다층 상승 클램프가 전부 그 34건 안에 있다.

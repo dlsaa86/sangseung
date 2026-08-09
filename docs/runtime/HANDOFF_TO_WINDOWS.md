@@ -121,9 +121,24 @@ AttributeError: 'CyclesLightSettings' object has no attribute 'cast_shadow'
 ```bash
 strings <FBX> | grep -c '^Light$'            #  2
 strings <FBX> | grep -c 'SOCKET_ElevPanel'   #  2
-strings <FBX> | grep -c 'UVBake'             # 57
+strings <FBX> | grep -c 'UVBake'             # 64   ← 2026-08-09 갱신 (이전 57)
 strings <FBX> | grep -c 'SM_SpinGauge'       #  6
 ```
+
+> ⚠ **`UVBake` 기대값이 57 → 64 로 바뀌었다.** 회귀가 아니라 `AD59_LEDPANEL` 의 결과다.
+> 숫자가 안 맞으면 여기부터 대조하라 — 증감이 전부 설명된다.
+>
+> ```
+> 57  이전 기준선
+> +3  SM_Gauge_Screen · SM_Gauge_Glass · SM_Coin            (신규)
+> +6  SM_SpinGauge_Housing + Cell_0..4                       (재건하며 UV 추가)
+> -2  SM_Gauge_Fill · SM_Gauge_Labels                        (퍼센트 게이지 제거)
+> ─────
+> 64
+> ```
+>
+> `UVBake` 가 **없는** 메시는 6개다 — `Blob_0/1/2` · `SM_Sym_{Absorber,NormalSoul,Proliferator}`.
+> 이들은 슬롯0 이 교체되지 않고 그대로 나가므로 **슬롯0 자체가 0~1 이어야 한다**(확인함).
 
 그리고 **새 격리 씬에 재import 해서** 표본 메시(`SM_Cab_Ceiling` · `SM_Cab_FloorTrim` ·
 `SM_Cab_Wall_Back`)의 **슬롯 0 UV 범위가 0~1 인지** 재라.

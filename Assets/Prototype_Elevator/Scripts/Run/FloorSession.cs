@@ -469,9 +469,19 @@ namespace Ascend.Prototype.Run
         /// <see cref="Data.Profiles.OverharvestSnapshot.UnlockThreshold"/> 는 건드리지
         /// 않았다 — 그건 다른 축이고, 같이 움직이면 무엇이 게이트를 걸었는지 분리할 수 없다
         /// (팀 지시). 자세한 설계 근거는 `docs/runtime/OVERHARVEST_GATE_NOTES.md`.
+        ///
+        /// 🔴 **2026-08-09 오후 — 과수확 자체가 보류됐다.** 사용자 지시: 「일단 과수확
+        /// 컨셉은 제거하자 이건 보류해야 할 것 같으니까」. <see cref="PrototypeFeatures.Overharvest"/>
+        /// 가 꺼져 있으면 아래 두 조건을 **보지도 않고** 거짓이다.
+        ///
+        /// 스위치를 여기 하나에만 건 이유: 이 프로퍼티가 과수확 전체의 **단일 관문**이다.
+        /// 추가 스핀 · 레버 · 해금 이벤트 · 단계 타임라인 · 접근 정적 · 승객 응시가 전부
+        /// <see cref="CanTakeExtraSpin"/> 을 통해 여기 매달려 있다. 104개 파일 1,300곳을
+        /// 지우는 대신 한 곳을 막았다 — 되살리는 비용도 같은 한 곳이다.
         /// </summary>
         public bool IsOverharvestUnlocked =>
-            _overharvest.IsUnlocked(Power, RequiredPower) && HasOverharvestKey;
+            PrototypeFeatures.Overharvest
+            && _overharvest.IsUnlocked(Power, RequiredPower) && HasOverharvestKey;
 
         /// <summary>
         /// 과수확 레버를 쓸 「열쇠」가 적재에 있는가.

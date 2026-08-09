@@ -48,7 +48,7 @@ namespace Ascend.Prototype.Run.Tests
             Run("같은 프레임 안에서 오르내린 봉우리가 살아남는다 (결정론적 경로)",
                 TestSameFrameSpikeSurvives, ref passed, ref failed, report);
             Run("앤티 지불의 봉우리가 같은 프레임 스핀 뒤에도 남는다 (실제 과수확 경로)",
-                TestAntePeakSurvivesFrameSampling, ref passed, ref failed, report);
+                Shelved(TestAntePeakSurvivesFrameSampling), ref passed, ref failed, report);
             Run("재판정은 멱등이다 (판정이 프레임 수의 함수가 아니다)",
                 TestEvaluateRiskIsIdempotent, ref passed, ref failed, report);
             Run("임계값 주입이 판정기까지 닿고 출처가 남는다",
@@ -468,6 +468,18 @@ namespace Ascend.Prototype.Run.Tests
         private static void Assert(bool condition, string message)
         {
             if (!condition) throw new Exception(message);
+        }
+
+        /// <summary>
+        /// 보류된 과수확(<see cref="PrototypeFeatures.Overharvest"/>) 검사를 범위 안에서만 켠다.
+        /// 여기는 <c>Action</c> 을 받는다 — 이 파일의 검사는 예외로 실패를 알린다.
+        /// </summary>
+        private static Action Shelved(Action test)
+        {
+            return () =>
+            {
+                using (PrototypeFeatures.EnableOverharvest()) test();
+            };
         }
 
         private static void Run(string name, Action test, ref int passed, ref int failed, StringBuilder report)

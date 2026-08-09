@@ -87,6 +87,11 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: M_Elev_CoinBrass
+    second: {fileID: 2100000, guid: 7a6950d956bc34081bf62808d41a266e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: M_Elev_DarkIron
     second: {fileID: 2100000, guid: e568eeffb7e19144c8375a48848e4d79, type: 2}
   - first:
@@ -117,6 +122,16 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: M_Elev_LEDCell
+    second: {fileID: 2100000, guid: f5dfa213d38734b9a81e362b2e01104a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_Elev_LEDCellOff
+    second: {fileID: 2100000, guid: d0ea0de5800984f31b7f2adcadf55a77, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: M_Elev_LampEmissive
     second: {fileID: 2100000, guid: a509bbb5c94b66f49994b26bda30d9a0, type: 2}
   - first:
@@ -129,6 +144,11 @@ ModelImporter:
       assembly: UnityEngine.CoreModule
       name: M_Elev_LeverPlate
     second: {fileID: 2100000, guid: 5db4da4d441b417418192dad8411f657, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_Elev_ScreenLED
+    second: {fileID: 2100000, guid: 2a6be183cc345460e89cfd4fbbde4c7f, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule

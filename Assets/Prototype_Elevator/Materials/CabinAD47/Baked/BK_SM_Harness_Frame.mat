@@ -16,7 +16,6 @@ Material:
   - _BANDSOFT_ON
   - _MINFILL_ON
   - _SHADEGAMMA_ON
-  - _SPECULAR_ON
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -77,7 +76,7 @@ Material:
     - _SpecSteps: 2
     - _SpecStrength: 0.12
     - _SpecThreshold: 0.45
-    - _SpecularEnabled: 1
+    - _SpecularEnabled: 0
     - _Steps: 8
     - _TriplanarBlend: 4
     - _TriplanarEnabled: 0

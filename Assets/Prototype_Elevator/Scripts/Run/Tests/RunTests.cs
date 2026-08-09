@@ -25,19 +25,19 @@ namespace Ascend.Prototype.Run.Tests
             Run("흡수체 잔류가 같은 스핀 순전력에서 차감", TestResidualDeductedFromNet, ref passed, ref failed, report);
             Run("증식체 잔류가 다음 스핀으로 넘어간다", TestResidualFeedsNextSpin, ref passed, ref failed, report);
             Run("요구 전력이 올라도 층이 교착되지 않는다", TestRequirementRiseDoesNotDeadlock, ref passed, ref failed, report);
-            Run("추가 스핀 선택 시 앤티 즉시 차감", TestAnteImmediateCharge, ref passed, ref failed, report);
-            Run("연속 추가 스핀 앤티 비율 상승", TestAnteEscalation, ref passed, ref failed, report);
-            Run("앤티로 요구 전력 아래 하락 가능", TestAnteCanLose, ref passed, ref failed, report);
-            Run("PendingAnte와 실제 차감액 일치", TestPendingAnteMatchesCharge, ref passed, ref failed, report);
+            Run("추가 스핀 선택 시 앤티 즉시 차감", Shelved(TestAnteImmediateCharge), ref passed, ref failed, report);
+            Run("연속 추가 스핀 앤티 비율 상승", Shelved(TestAnteEscalation), ref passed, ref failed, report);
+            Run("앤티로 요구 전력 아래 하락 가능", Shelved(TestAnteCanLose), ref passed, ref failed, report);
+            Run("PendingAnte와 실제 차감액 일치", Shelved(TestPendingAnteMatchesCharge), ref passed, ref failed, report);
             Run("무게 증가가 RequiredPower 증가", TestWeightRaisesRequirement, ref passed, ref failed, report);
             Run("동일 시드·선택 결정론", TestDeterminism, ref passed, ref failed, report);
 
             // ── UP-POWER-07: 프로파일 값이 **게임을 실제로 바꾸는가** ──
             // 「읽는다」가 아니라 「바꾸면 결과가 달라진다」를 묻는다. 값을 망가뜨렸을 때
             // 실패하지 않는 검사는 그 값이 죽어 있다는 사실을 통과로 기록한다.
-            Run("과수확 상한이 추가 스핀을 실제로 막는다", TestProfileExtraSpinCap, ref passed, ref failed, report);
+            Run("과수확 상한이 추가 스핀을 실제로 막는다", Shelved(TestProfileExtraSpinCap), ref passed, ref failed, report);
             Run("해금 임계가 CanBank와 독립으로 작동", TestProfileUnlockThreshold, ref passed, ref failed, report);
-            Run("판돈 비율이 프로파일에서 온다", TestProfileAnteRatio, ref passed, ref failed, report);
+            Run("판돈 비율이 프로파일에서 온다", Shelved(TestProfileAnteRatio), ref passed, ref failed, report);
 
             // ── T-05: 남은 스핀 정산이 **주입되고 소멸하는가** ──
             // `SettlementTests` 는 스냅샷의 산수만 검사한다 — 그 산수가 옳아도
@@ -46,9 +46,15 @@ namespace Ascend.Prototype.Run.Tests
             // 프로파일을 만들어 배선해도 한 자리도 바뀌지 않았다. 열 개의 통과한
             // 검사가 그 사실을 하나도 잡지 못했다.
             Run("정산 수치가 층에 실제로 주입된다", TestSettlementInjected, ref passed, ref failed, report);
-            Run("과수확을 고르면 정산 권리가 소멸한다", TestSettlementForfeited, ref passed, ref failed, report);
+            Run("과수확을 고르면 정산 권리가 소멸한다", Shelved(TestSettlementForfeited), ref passed, ref failed, report);
             Run("정산 소멸은 스핀 결과가 아니라 선택 시점에 일어난다",
-                TestSettlementForfeitedAtChoice, ref passed, ref failed, report);
+                Shelved(TestSettlementForfeitedAtChoice), ref passed, ref failed, report);
+
+            // 보류가 **실제로 걸렸는지**를 묻는 회귀 검사. 위의 `Shelved` 들은 스위치를
+            // 켜고 도는 것이라, 이 한 줄이 없으면 「기본 설정에서 과수확이 안 열린다」를
+            // 증명하는 검사가 하나도 없게 된다 — 스위치를 되돌려 놓고도 전부 통과한다.
+            Run("보류된 과수확은 기본 설정에서 열리지 않는다", TestOverharvestShelvedByDefault,
+                ref passed, ref failed, report);
 
             // ── Hero Slice (CURRENT_PHASE.md) ──
             Run("Hero Slice 1층에 계약 3종·저항 2종", TestHeroSliceShape, ref passed, ref failed, report);
@@ -60,6 +66,59 @@ namespace Ascend.Prototype.Run.Tests
             report.Insert(0, "[상승] === Run Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
+        }
+
+        /// <summary>
+        /// **보류된** 과수확 하위 시스템을 검증하는 검사를 감싼다
+        /// (<see cref="PrototypeFeatures.Overharvest"/>, 2026-08-09 사용자 결정).
+        ///
+        /// 기능을 껐다고 그 검사를 지우거나 스킵하지 않는다 — `CLAUDE.md` 가 금지한다.
+        /// 대신 **범위 안에서만** 켜서 예전과 똑같이 돌린다. 그래야 되살릴 때
+        /// 밸런스가 그대로라는 것이 지금도 계속 증명된다.
+        ///
+        /// 스코프를 쓰는 이유: 직접 대입하면 예외가 났을 때 켜진 채로 남아
+        /// **그 뒤의 검사들이 조용히 통과한다.** `Run` 이 예외를 잡아 계속 진행하므로
+        /// 그 사고는 실제로 일어날 수 있다.
+        /// </summary>
+        private static Func<string> Shelved(Func<string> test)
+        {
+            return () =>
+            {
+                using (PrototypeFeatures.EnableOverharvest()) return test();
+            };
+        }
+
+        /// <summary>
+        /// 보류가 실제로 걸렸는가. 전력·열쇠 조건을 **둘 다 만족시킨 뒤에도** 잠겨 있어야 한다 —
+        /// 조건 미달로 잠긴 것과 보류로 잠긴 것을 구분하지 못하면 이 검사는 아무것도 지키지 못한다.
+        /// </summary>
+        private static string TestOverharvestShelvedByDefault()
+        {
+            if (PrototypeFeatures.Overharvest)
+                return "기본값이 켜져 있다 — 앞선 검사가 스코프를 되돌리지 않았거나 보류가 풀렸다";
+
+            FloorSession session = NewNormalOnlySession(11, 70f, 5);
+            session.Spin();
+
+            if (!session.HasOverharvestKey)
+                return "열쇠 조건이 이미 거짓이라 보류 때문에 잠긴 것인지 구분할 수 없다";
+            if (session.IsOverharvestUnlocked)
+                return "보류 상태인데 과수확이 열려 있다";
+            if (session.CanTakeExtraSpin)
+                return "보류 상태인데 추가 스핀을 고를 수 있다";
+            if (session.PendingAnte != 0f)
+                return $"보류 상태인데 공개 앤티가 {session.PendingAnte}";
+            if (session.PushYourLuck())
+                return "보류 상태인데 PushYourLuck 이 받아들여졌다";
+
+            // 같은 세션을 스위치만 켜서 다시 보면 열려야 한다. 이 대조가 없으면
+            // 「보류 때문에 잠겼다」와 「원래 조건이 안 맞아 잠겼다」가 구분되지 않는다.
+            using (PrototypeFeatures.EnableOverharvest())
+            {
+                if (!session.IsOverharvestUnlocked)
+                    return "스위치를 켜도 잠겨 있다 — 이 검사가 보류를 검증하지 못한다";
+            }
+            return null;
         }
 
         private static void Run(string name, Func<string> test,

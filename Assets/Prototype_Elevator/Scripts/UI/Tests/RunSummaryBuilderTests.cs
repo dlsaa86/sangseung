@@ -37,7 +37,7 @@ namespace Ascend.Prototype.UI.Tests
             Case("빈 줄도 「기록 없음」도 남지 않는다", TestNoPlaceholderInRealRun, ref passed, ref failed, report);
             Case("최고 캐스케이드가 기록의 최댓값과 같다", TestPeakCascadeMatchesRecords, ref passed, ref failed, report);
             Case("최고 층이 기록의 최댓값 아래로 내려가지 않는다", TestHighestFloorNotUnderRecords, ref passed, ref failed, report);
-            Case("과수확한 런은 비율과 마지막 선택을 남긴다", TestOverharvestReported, ref passed, ref failed, report);
+            Case("과수확한 런은 비율과 마지막 선택을 남긴다", Shelved(TestOverharvestReported), ref passed, ref failed, report);
             Case("과수확 없는 런은 0% 와 「과수확 없음」이다", TestNoOverharvestReported, ref passed, ref failed, report);
             Case("실패 원인이 한국어로 나온다", TestFailureLocalized, ref passed, ref failed, report);
             Case("완주한 런의 종료 원인은 완주다", TestCompleteRunEndCause, ref passed, ref failed, report);
@@ -56,6 +56,19 @@ namespace Ascend.Prototype.UI.Tests
         }
 
         /// <summary>이 클래스에 `Run` 이라는 이름을 쓰지 않는다 — `Ascend.Prototype.Run` 과 겹친다.</summary>
+        /// <summary>
+        /// 보류된 과수확(<see cref="PrototypeFeatures.Overharvest"/>) 검사를 범위 안에서만 켠다.
+        /// 짝인 「과수확 없는 런은 0% 와 「과수확 없음」이다」는 **감싸지 않는다** —
+        /// 그쪽은 보류 상태에서도 그대로 성립해야 하는 검사다.
+        /// </summary>
+        private static Func<string> Shelved(Func<string> test)
+        {
+            return () =>
+            {
+                using (PrototypeFeatures.EnableOverharvest()) return test();
+            };
+        }
+
         private static void Case(string name, Func<string> test,
                                  ref int passed, ref int failed, StringBuilder report)
         {

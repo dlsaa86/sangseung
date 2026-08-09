@@ -58,7 +58,7 @@ namespace Ascend.Prototype.Telemetry.Tests
             Run("같은 시드 두 번 — 레코드 열이 완전히 같다", TestDeterminism, ref passed, ref failed, report);
             Run("다른 시드는 다른 기록을 낸다", TestSeedActuallyUsed, ref passed, ref failed, report);
             Run("netPower 누적이 층 전력과 맞는다", TestPowerLedger, ref passed, ref failed, report);
-            Run("과수확으로 산 스핀이 추가 스핀으로 표시된다", TestExtraSpinIsMarked, ref passed, ref failed, report);
+            Run("과수확으로 산 스핀이 추가 스핀으로 표시된다", Shelved(TestExtraSpinIsMarked), ref passed, ref failed, report);
             Run("과적 런이 무게와 과적을 기록한다", TestOverloadIsRecorded, ref passed, ref failed, report);
             Run("런 종료가 Flush 를 부른다", TestFlushOnRunEnd, ref passed, ref failed, report);
             Run("Detach 후에는 기록되지 않는다", TestDetach, ref passed, ref failed, report);
@@ -70,6 +70,15 @@ namespace Ascend.Prototype.Telemetry.Tests
             report.Insert(0, "[상승] === Telemetry Tests ===\n");
             report.Append($"결과: {passed} PASS / {failed} FAIL");
             return (passed, failed, report.ToString());
+        }
+
+        /// <summary>보류된 과수확(<see cref="PrototypeFeatures.Overharvest"/>) 검사를 범위 안에서만 켠다.</summary>
+        private static Func<string> Shelved(Func<string> test)
+        {
+            return () =>
+            {
+                using (PrototypeFeatures.EnableOverharvest()) return test();
+            };
         }
 
         private static void Run(string name, Func<string> test,
