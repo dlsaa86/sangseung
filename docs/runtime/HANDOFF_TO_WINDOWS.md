@@ -102,6 +102,20 @@ windows  iCloudDrive\02_Resources\ElevPanel_v10\SM_ElevCab_Panel_AD57.blend
 | `EMPTY` | `SOCKET_ElevPanel` 이 사라지고 **그 아래 오버라이드 138개가 통째로 날아간다** |
 | `LIGHT` | `LT_CabBulb` · `LT_SoulSpill` 이 껍데기만 남는다 — **게임의 조명 전부다** |
 
+### ⚠ 맥 블렌더 5.2.0 LTS 에는 라이트 포함 FBX 를 **재import 할 때** 터지는 버그가 있다
+
+```
+io_scene_fbx/import_fbx.py:2255
+AttributeError: 'CyclesLightSettings' object has no attribute 'cast_shadow'
+```
+
+`hasattr(lamp, "cycles")` 로 `.cycles` 존재만 확인하고 그 안의 `.cast_shadow` 는
+확인 없이 쓴다. 이 빌드의 Cycles 애드온에 그 속성이 없어서 **import 가 통째로 취소**된다.
+
+**export 에는 영향이 없다** — 이 코드를 안 거친다. 검증하려고 재import 할 때만 걸린다.
+윈도우 블렌더 버전이 다르면 안 날 수도 있다. 나면 검증 스크립트 안에서만
+`blen_read_light` 를 인메모리 패치해 우회한다(디스크의 블렌더 설치는 건드리지 않는다).
+
 ### export 후 검증 — **이름·개수가 아니라 값을 봐야 한다**
 
 ```bash
