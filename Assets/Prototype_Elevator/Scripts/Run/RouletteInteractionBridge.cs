@@ -51,6 +51,22 @@ namespace Ascend.Prototype.Run
         [RequiredReference("전력 탱크가 없으면 전력을 저장할 수 없다")]
         [SerializeField] private InteractablePowerTank _powerTank;
 
+        /// <summary>
+        /// 층 콘솔의 확정 버튼 (2026-08-09 사용자 결정).
+        ///
+        /// 전력 탱크를 「선택 안 되게」 만들면서 <c>run.Bank()</c> / <c>ForceResolve()</c>
+        /// 로 가는 **유일한 경로가 사라졌다.** 스핀을 다 쓰고 요구 전력을 못 넘긴
+        /// 상태에서 빠져나오는 `mustResolve` 도 같이 사라져 진행 불가가 된다.
+        ///
+        /// ⚠ 새 클래스를 만들지 않고 <see cref="InteractablePowerTank"/> 를 그대로 쓴다 —
+        ///   그 컴포넌트는 「탱크」가 아니라 **확정이라는 행위**를 나르는 얇은 껍데기다.
+        ///   그리고 아래 `UpdatePowerTank` 한 곳이 둘 다 갱신하므로 **두 입구의 상태가
+        ///   갈라질 수 없다.** 실행 레버가 `onPulled`/`onHeld` 두 입구를 같은 함수로
+        ///   모으는 것과 같은 이유다.
+        /// </summary>
+        [Tooltip("층 콘솔의 확정 버튼. 비어 있어도 되지만, 그러면 확정 입력은 전력 탱크뿐이다.")]
+        [SerializeField] private InteractablePowerTank _bankButton;
+
         [RequiredReference("과수확 레버가 없으면 추가 스핀 경로가 사라진다")]
         [SerializeField] private InteractableOverharvestLever _overharvestLever;
 
@@ -109,6 +125,7 @@ namespace Ascend.Prototype.Run
             if (_lever != null) _lever.onHeld.AddListener(OnOverharvestPulled);
             if (_contractPanel != null) _contractPanel.onOpened.AddListener(OnContractPanelPressed);
             if (_powerTank != null) _powerTank.onBanked.AddListener(OnPowerTankPressed);
+            if (_bankButton != null) _bankButton.onBanked.AddListener(OnPowerTankPressed);
             if (_overharvestLever != null) _overharvestLever.onPulled.AddListener(OnOverharvestPulled);
 
             if (_run != null) _run.RunStarted += OnRunStarted;
@@ -120,6 +137,7 @@ namespace Ascend.Prototype.Run
             if (_lever != null) _lever.onHeld.RemoveListener(OnOverharvestPulled);
             if (_contractPanel != null) _contractPanel.onOpened.RemoveListener(OnContractPanelPressed);
             if (_powerTank != null) _powerTank.onBanked.RemoveListener(OnPowerTankPressed);
+            if (_bankButton != null) _bankButton.onBanked.RemoveListener(OnPowerTankPressed);
             if (_overharvestLever != null) _overharvestLever.onPulled.RemoveListener(OnOverharvestPulled);
             if (_run != null) _run.RunStarted -= OnRunStarted;
         }
@@ -206,7 +224,7 @@ namespace Ascend.Prototype.Run
 
         private void UpdatePowerTank(FloorSession f, bool alive)
         {
-            if (_powerTank == null) return;
+            if (_powerTank == null && _bankButton == null) return;
 
             bool canBank = alive && f.Phase == FloorPhase.Decision && f.CanBank;
             // 스핀을 다 쓰고도 요구 전력을 못 넘긴 경우에도 층을 끝낼 방법이 있어야 한다.
@@ -214,15 +232,22 @@ namespace Ascend.Prototype.Run
             bool mustResolve = alive && f.Phase == FloorPhase.Decision &&
                                !f.CanBank && f.SpinsRemaining == 0;
 
-            _powerTank.SetCanInteract(canBank || mustResolve);
+            bool on = canBank || mustResolve;
+            if (_powerTank != null) _powerTank.SetCanInteract(on);
+            if (_bankButton != null) _bankButton.SetCanInteract(on);
 
             int key = canBank ? 100 + (int)f.CurrentBand : mustResolve ? 1 : 0;
             if (key != _tankPromptKey)
             {
                 _tankPromptKey = key;
-                _powerTank.SetPrompt(canBank
+                string prompt = canBank
                     ? $"전력 확정 — {f.CurrentBand.DisplayName()}"
-                    : mustResolve ? "결과 확인 — 요구 전력 미달" : "전력 탱크");
+                    : mustResolve ? "결과 확인 — 요구 전력 미달" : "전력 탱크";
+                if (_powerTank != null) _powerTank.SetPrompt(prompt);
+                if (_bankButton != null)
+                    _bankButton.SetPrompt(canBank
+                        ? $"전력 확정 — {f.CurrentBand.DisplayName()}"
+                        : mustResolve ? "결과 확인 — 요구 전력 미달" : "확정 버튼");
             }
         }
 

@@ -443,10 +443,34 @@ namespace Ascend.Prototype.EditorTools
             so.FindProperty("_overharvestLabel").objectReferenceValue =
                 FindTmp("GrayboxWorld/Car/OverharvestLever/OverharvestLabel");
 
+            // 🔴 **남은 횟수 표시는 이 빌더의 `SpinPip_*` 가 아니라 캐빈 패널의
+            //    `SM_SpinGauge_Cell_0..4` 가 맡는다** (2026-08-09 사용자 지시).
+            //
+            //    두 줄이 같은 값을 그리고 있었다. `SpinPip_*`(DataPlate, y=2.44,
+            //    사이렌 **위**, 6칸)와 `SM_SpinGauge_Cell_*`(ElevPanel, y=1.77,
+            //    레버 **위**, 5칸)이다. 화면에서 보이는 것은 후자이고, 사용자가 말한
+            //    「5개부터 시작」도 5칸인 후자를 가리킨다. 전자를 살렸더니
+            //    「사이렌 위에 이상한 인디케이터를 만들었다」가 됐다.
+            //
+            //    ⚠ 그래서 여기서 **덮어쓰지 않는다.** 이미 무언가 배선돼 있으면
+            //      그대로 둔다 — 이 빌더를 다시 돌렸다고 해서 씬의 배선이 조용히
+            //      옛 줄로 되돌아가면, 같은 증상을 처음부터 다시 쫓게 된다.
+            //      비어 있을 때만 자기 것을 채운다(신규 씬 조립 경로 보존).
             SerializedProperty arr = so.FindProperty("_spinPips");
-            arr.arraySize = pips.Count;
+            bool alreadyWired = false;
+            for (int i = 0; i < arr.arraySize; i++)
+                if (arr.GetArrayElementAtIndex(i).objectReferenceValue != null) { alreadyWired = true; break; }
+
+            if (!alreadyWired)
+            {
+                arr.arraySize = pips.Count;
+                for (int i = 0; i < pips.Count; i++)
+                    arr.GetArrayElementAtIndex(i).objectReferenceValue = pips[i];
+            }
+
+            // 이 빌더가 만든 슬러그는 **기본적으로 꺼 둔다.** 중복 표시가 되기 때문이다.
             for (int i = 0; i < pips.Count; i++)
-                arr.GetArrayElementAtIndex(i).objectReferenceValue = pips[i];
+                if (pips[i] != null) pips[i].enabled = alreadyWired ? false : true;
 
             // ── ⑦ 전력 반복기 — 기계 벽을 등진 두 화각 (UP-FIX-92) ──────────
             var rPivots = new List<Transform>();
