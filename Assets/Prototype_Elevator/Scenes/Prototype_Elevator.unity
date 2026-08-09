@@ -4323,7 +4323,9 @@ MonoBehaviour:
   _interactor: {fileID: 98471718}
   _focus: {fileID: 1021280227}
   _frameBounds: {fileID: 1021280228}
-  _alsoFrame: []
+  _alsoFrame:
+  - {fileID: 1048821590}
+  - {fileID: 296123120}
   _focusAnchor: {fileID: 0}
   _enterDuration: 0.35
   _exitDuration: 0.28
@@ -9099,6 +9101,7 @@ GameObject:
   - component: {fileID: 204682021}
   - component: {fileID: 204682020}
   - component: {fileID: 204682019}
+  - component: {fileID: 204682023}
   m_Layer: 0
   m_Name: GB_Btn_Resolve
   m_TagString: Untagged
@@ -9214,6 +9217,23 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 204682017}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &204682023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 204682017}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e836489bf861e578d6ff87e4e985b10f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ascend.Prototype.Player.InteractablePowerTank
+  _canInteract: 0
+  onBanked:
+    m_PersistentCalls:
+      m_Calls: []
+  _prompt: "\uC804\uB825 \uD655\uC815"
 --- !u!1 &205267898
 GameObject:
   m_ObjectHideFlags: 0
@@ -10760,6 +10780,14 @@ PrefabInstance:
     - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_Intensity
       value: 1.41
+      objectReference: {fileID: 0}
+    - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Shadows.m_Bias
+      value: 0.35
+      objectReference: {fileID: 0}
+    - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
+      propertyPath: m_Shadows.m_NormalBias
+      value: 1.2
       objectReference: {fileID: 0}
     - target: {fileID: 4506321046957707841, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_CastShadows
@@ -40775,6 +40803,7 @@ MonoBehaviour:
   _lever: {fileID: 1482202552}
   _contractPanel: {fileID: 688822293}
   _powerTank: {fileID: 1161398049}
+  _bankButton: {fileID: 204682023}
   _overharvestLever: {fileID: 75036024}
   _presentationSource: {fileID: 998528531}
 --- !u!114 &998528530
