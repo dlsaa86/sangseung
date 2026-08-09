@@ -9841,7 +9841,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4183263829884253728, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_Intensity
-      value: 0.35
+      value: 1.41
       objectReference: {fileID: 0}
     - target: {fileID: 4506321046957707841, guid: 158731348fecaf045acdbe10d6cb3977, type: 3}
       propertyPath: m_CastShadows
