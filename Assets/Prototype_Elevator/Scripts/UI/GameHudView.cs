@@ -272,38 +272,23 @@ namespace Ascend.Prototype.UI
             //
             //    그리고 요구 전력은 위로 끝이 없다. 분모가 계속 커지면 같은 100% 가
             //    매번 다른 양을 뜻하므로, 비율은 언젠가 반드시 거짓말을 한다.
+            // 🔴 **가진 전력 하나만 남긴다** (2026-08-09 사용자 지시:
+            //    「다른 거 다 빼고 현재 가지고 있는 전력량만 표기해」).
+            //
+            //    이 패널은 퍼센트 → `저장/필요` → 지금까지 세 번 줄었다. 매번 「여기에
+            //    무엇이 더 필요한가」가 아니라 **「무엇이 없어도 되는가」**가 답이었다.
+            //    요구 전력은 기계 계기판이 쓰고, 위험 단계는 소리와 화면 연출이 말한다.
+            //    등을 돌려도 읽혀야 하는 것은 하나뿐이다 — 지금 얼마 있는가.
             int power = Mathf.RoundToInt(floor.Power);
-            int required = Mathf.RoundToInt(floor.RequiredPower);
-            int risk = _risk != null ? (int)_risk.Level : 0;
-            int phase = (int)floor.Phase;
-
-            // ⚠ 자릿수가 커져 int 조합으로는 넘친다. 더티 검사는 값이 하나라도 바뀌면
-            //   반드시 걸려야 하므로 충돌 가능한 해시를 쓰지 않고 자리를 나눠 담는다.
-            long key = ((long)power << 40) | ((long)required << 16) | ((long)risk << 8) | (uint)phase;
-            if (key == _auxKey) return;
-            _auxKey = key;
+            if (power == _auxKey) return;
+            _auxKey = power;
 
             _text.Clear();
-            _text.Append(power).Append(" / ").Append(required);
+            _text.Append(power);
             Apply(_auxRatioText, _text);
 
-            _text.Clear();
-            _text.Append("요구 전력 ").Append(floor.CanBank ? "달성" : "미달");
-            _text.Append("   ·   ");
-            _text.Append(_risk != null ? _risk.Level.DisplayName() : "안정");
-            Apply(_auxStateText, _text);
-
-            // 색이 아니라 **개수**가 단계를 말한다. 회색조 캡처에서 Strain 과 Critical 이
-            // 같아지는 결함(`UP-FIX-18`)을 여기서는 처음부터 만들지 않는다.
-            if (_auxRiskLamps != null)
-            {
-                for (int i = 0; i < _auxRiskLamps.Length; i++)
-                {
-                    Image lamp = _auxRiskLamps[i];
-                    if (lamp == null) continue;
-                    lamp.color = i <= risk ? LampOn(risk) : LampOff;
-                }
-            }
+            // 위험 램프 갱신부는 지웠다 — 램프 자체가 없어졌으므로 죽은 코드다.
+            // (`_auxRiskLamps` 는 항상 null 이다. 필드는 씬 직렬화 호환을 위해 남긴다.)
         }
 
         private static readonly Color LampOff = new Color(0.20f, 0.21f, 0.24f, 0.85f);
@@ -402,10 +387,10 @@ namespace Ascend.Prototype.UI
                 return;
             }
 
-            const float width = 300f;
-            // 위험 램프 4칸(20px 띠 + 여백)을 걷어낸 만큼 줄인다.
-            // 남겨 두면 빈 띠가 생기고, 빈 띠는 「무언가 사라졌다」로 읽힌다.
-            const float height = 132f;
+            // 숫자 하나만 남았다. 판을 그 하나에 맞춰 줄인다 —
+            // 빈 자리를 남기면 「무언가 사라졌다」로 읽힌다.
+            const float width = 200f;
+            const float height = 92f;
 
             var panel = new GameObject("AuxReadout", typeof(RectTransform), typeof(CanvasGroup));
             panel.transform.SetParent(canvas.transform, false);
@@ -429,15 +414,12 @@ namespace Ascend.Prototype.UI
 
             TMP_FontAsset font = _hintText != null ? _hintText.font : null;
 
-            // 위 68px — 저장/필요 두 숫자. 화면에 올리는 유일한 수치다.
-            //
-            // ⚠ y 를 `height` 상대(`height - 100`)로 두었더니, 램프를 걷어내며 높이가
-            //   176 → 132 로 줄자 아래 상태줄과 **겹쳤다.** 두 줄의 경계는 높이에
-            //   딸려 움직이면 안 된다 — 상태줄 위끝이 46 이므로 52 로 고정한다.
+            // 가진 전력 하나. 판 전체를 쓴다 — 아래에 아무것도 오지 않으므로
+            // 높이 상대로 잡아도 겹칠 상대가 없다.
             _auxRatioText = AuxLabel(panel.transform, "RatioText", 58f,
                                      TextAlignmentOptions.Left,
                                      new Color(0.97f, 0.94f, 0.84f),
-                                     new Vector2(18f, 52f), new Vector2(-18f, -12f), font);
+                                     new Vector2(18f, 12f), new Vector2(-18f, -10f), font);
             // 상한을 999 에서 푼 대신 자릿수가 늘면 스스로 줄어든다. 잘리지 않는 것이 먼저다.
             // 「510 / 215」는 「48%」보다 글자가 기니 최소 크기를 조금 더 내린다.
             _auxRatioText.enableAutoSizing = true;
@@ -457,11 +439,10 @@ namespace Ascend.Prototype.UI
             //    글자는 오독되지 않는다.
             _auxRiskLamps = null;
 
-            // 아래 34px — 낱말 둘. 숫자를 더 늘리지 않는다.
-            _auxStateText = AuxLabel(panel.transform, "StateText", 22f,
-                                     TextAlignmentOptions.Left,
-                                     new Color(0.88f, 0.90f, 0.94f),
-                                     new Vector2(18f, 12f), new Vector2(-18f, -(height - 46f)), font);
+            // 🔴 상태줄(「요구 전력 미달 · 응력」)도 걷어냈다 — 같은 지시의 「다른 거
+            //    다 빼고」에 이것도 든다. 요구 전력은 기계 계기판이 쓰고, 위험 단계는
+            //    소리와 연출이 말한다. 여기 남는 것은 숫자 하나뿐이다.
+            _auxStateText = null;
         }
 
         private static TextMeshProUGUI AuxLabel(Transform parent, string name, float size,

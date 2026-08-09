@@ -325,7 +325,16 @@ namespace Ascend.Prototype.Run
                     case ButtonAction.Resolve: return "라운드 종료";
                     case ButtonAction.Restart: return "다시 시작";
                     case ButtonAction.Select:
-                        return $"{(_floorDelta > 0 ? "올라가기" : "내려가기")}  →  {_sandbox.SelectedFloor + _floorDelta}층";
+                    {
+                        // 사용자 지시: 「위 또는 아래를 누를 때마다 **이동하려는 층수**가
+                        // 표기되고 **요구되는 전력량**을 보여주면 된다」.
+                        // 그래서 다음에 선택될 층과, 현재 층에서 거기까지의 비용을 함께 쓴다 —
+                        // 한 칸 값이 아니라 **총액**이어야 「지금 갈 수 있나」가 바로 읽힌다.
+                        int next = _sandbox.SelectedFloor + _floorDelta;
+                        int cost = Mathf.RoundToInt(
+                            _sandbox.Round.Travel.CostFor(next - _sandbox.Round.CurrentFloor));
+                        return $"{(_floorDelta > 0 ? "올라가기" : "내려가기")}  →  {next}층   전력 {cost}";
+                    }
                     case ButtonAction.Confirm:
                     {
                         int d = _sandbox.SelectedFloor - _sandbox.Round.CurrentFloor;
