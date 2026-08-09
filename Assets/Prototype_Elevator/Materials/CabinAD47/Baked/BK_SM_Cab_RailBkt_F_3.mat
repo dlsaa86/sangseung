@@ -73,7 +73,7 @@ Material:
     - _ShadeGammaEnabled: 1
     - _ShadowLift: 0.18
     - _SpecPower: 64
-    - _SpecSoftness: 0.05
+    - _SpecSoftness: 0.55
     - _SpecSteps: 2
     - _SpecStrength: 0.12
     - _SpecThreshold: 0.45
