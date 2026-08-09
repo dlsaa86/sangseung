@@ -45,7 +45,15 @@ namespace Ascend.Prototype.View
 
         [Header("흐름")]
         [Tooltip("구슬이 창 안에서 오르내리는 폭(m). 창 유리 지름보다 커야 한 바퀴 도는 것으로 읽힌다.")]
-        [SerializeField, Range(0.05f, 0.6f)] private float _travel = 0.34f;
+        // 🔴 0.34 → 0.15 (2026-08-09 사용자 지시: 「슬롯 돌아갈 때 직사각형 가로로
+        //    두 개 뜨는 게 어색하다」).
+        //
+        //    개구부 지름이 0.20m 인데 0.34m 를 흘렸다. 심볼이 **자기 창을 완전히
+        //    벗어나** 위아래 창에 걸쳐 보였고, 원형 개구부에 잘린 두 조각이
+        //    가로로 늘어선 직사각형처럼 읽혔다. 「릴처럼 보이지 않게」 하려고
+        //    창 안에서만 흐르게 설계해 놓고, 흐르는 거리가 창보다 컸다.
+        //    창 지름의 4분의 3 으로 줄인다 — 움직임은 남고 이탈은 사라진다.
+        [SerializeField, Range(0.05f, 0.6f)] private float _travel = 0.15f;
 
         [Tooltip("초당 몇 바퀴 도는가. 너무 느리면 '떨어진다', 너무 빠르면 '깜빡인다'로 보인다.")]
         [SerializeField, Range(2f, 40f)] private float _spinRate = 13f;

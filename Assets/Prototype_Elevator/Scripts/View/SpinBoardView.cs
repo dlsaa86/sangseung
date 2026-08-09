@@ -201,10 +201,23 @@ namespace Ascend.Prototype.View
 
             if (spins == 0) { ClearAll(); return; }
 
-            // 캐스케이드까지 끝난 뒤의 판을 보여준다. 비워진 칸은 "정화됐다"는 뜻이고,
-            // 남아 있는 저항체가 곧 다음 스핀으로 넘어갈 위험이다.
+            // 🔴 **`FinalBoard` 에서 `InitialBoard` 로 바꿨다** (2026-08-09 사용자 지시:
+            //    「슬롯 돌아가고 나서 바로 사라져서 어색하다. 다음 슬롯 돌리기 전까지는
+            //    계속 남아 있어야 할 것 같다」).
+            //
+            //    사라지는 것은 결함이 아니라 **설계였다.** 캐스케이드는 맞은 심볼을
+            //    지우는 것이고, `FinalBoard` 는 그 뒤의 판이라 잘 맞을수록 판이 비었다.
+            //    「크게 이겼다」와 「아무것도 없다」가 같은 그림이 되는 것이 문제다 —
+            //    성과가 클수록 화면이 허전해지는 표시는 거꾸로 된 피드백이다.
+            //
+            //    그래서 쉬는 동안에는 **떨어진 판**을 그대로 둔다. 무엇이 나왔는지가
+            //    다음 레버를 당길 때까지 남는다.
+            //
+            // ⚠ 대신 **캐스케이드로 무엇이 사라졌는지가 화면에서 빠진다.** 그 정보는
+            //   모듈이 밝아지는 연출(사용자 요청)이 대신 져야 한다 — 그것이 붙기
+            //   전까지는 「어느 칸이 전력이 됐는가」를 판에서 읽을 수 없다.
             _cleared = false;   // 판을 그렸으니 다음엔 다시 비울 수 있어야 한다
-            ShowBoard(floor.History[spins - 1].FinalBoard);
+            ShowBoard(floor.History[spins - 1].InitialBoard);
         }
 
         /// <summary>
@@ -217,8 +230,47 @@ namespace Ascend.Prototype.View
         /// </summary>
         public void ShowBoard(SpinBoard board)
         {
+            int salt = BoardSalt(board);
             for (int i = 0; i < SpinBoard.Cells && i < _cells.Length; i++)
-                SetCell(i, board[i]);
+                SetCell(i, board[i], VariantOf(salt, i));
+        }
+
+        /// <summary>
+        /// 같은 종에 얼굴이 여럿일 때 어느 것을 켤지 정하는 값. **판 전체에서 유도한다.**
+        ///
+        /// ⚠ `Random` 을 쓰지 않는다. 이 저장소는 고정 시드로 같은 그림이 다시 나오는 것을
+        ///   회귀 판정의 근거로 쓴다(`Captures/baseline.txt`). 뷰가 프레임마다 다른 얼굴을
+        ///   고르면 같은 판을 두 번 그려도 캡처가 달라져 그 근거가 사라진다.
+        ///   판이 같으면 얼굴도 같고, 판이 바뀌면 얼굴도 바뀐다.
+        /// </summary>
+        private static int BoardSalt(SpinBoard board)
+        {
+            unchecked
+            {
+                int h = 17;
+                for (int i = 0; i < SpinBoard.Cells; i++) h = h * 31 + (int)board[i];
+                return h;
+            }
+        }
+
+        /// <summary>
+        /// ⚠ 혼합이 약하면 한 판에서 같은 얼굴이 몰린다 — 첫 판본(`salt ^ index*φ` +
+        ///   1단 시프트)은 아홉 칸 중 넷이 같은 얼굴로 나왔고 사과는 한 번도 안 나왔다.
+        ///   칸 아홉은 표본이 작아서 눈사태 성질이 나쁘면 그대로 보인다.
+        ///   murmur3 의 최종 혼합(finalizer)을 쓴다.
+        /// </summary>
+        private static int VariantOf(int salt, int index)
+        {
+            unchecked
+            {
+                uint h = (uint)salt + 0x9E3779B9u * (uint)(index + 1);
+                h ^= h >> 16;
+                h *= 0x85EBCA6Bu;
+                h ^= h >> 13;
+                h *= 0xC2B2AE35u;
+                h ^= h >> 16;
+                return (int)(h & 0x7FFFFFFF);
+            }
         }
 
         /// <summary>칸 하나의 하이라이트 세기(0~1). 연출자가 맥동을 만든다.</summary>
@@ -435,13 +487,37 @@ namespace Ascend.Prototype.View
         /// `KindOf`)은 실제로 판이 바뀔 때만 부른다 — 이 메서드 자체가 `Update`에서
         /// 매 프레임이 아니라 스핀/층이 바뀐 순간에만 호출된다(호출부인 `Update` 참고).
         /// </summary>
-        private void SetCell(int index, SymbolKind kind)
+        private void SetCell(int index, SymbolKind kind) => SetCell(index, kind, 0);
+
+        /// <summary>
+        /// <paramref name="variant"/> — 한 종에 **얼굴이 여럿일 때** 어느 것을 켤지.
+        ///
+        /// 🔴 2026-08-09, 사용자 지시 「만든 오브젝트 전부 룰렛에 돌아가게」로 칸마다
+        ///    자식이 3개에서 **9개**가 됐다(정상 영혼의 얼굴이 사과 포함 일곱).
+        ///    예전 코드는 「종이 같으면 켠다」였는데 그대로 두면 **한 칸에 일곱이 겹쳐**
+        ///    뜬다. 같은 종의 자식 중 하나만 골라야 한다.
+        ///
+        /// ⚠ 고르는 값은 판에서 유도한다(<see cref="BoardSalt"/>). 난수를 쓰면 같은 판을
+        ///   두 번 그릴 때 얼굴이 달라져 고정 캡처 회귀 판정의 근거가 사라진다.
+        /// </summary>
+        private void SetCell(int index, SymbolKind kind, int variant)
         {
             EnsureSlots();
             if (_slots == null || index < 0 || index >= _slots.Length) return;
 
             bool animate = Application.isPlaying && Time.captureDeltaTime <= 0f;
             SymbolSlot[] slots = _slots[index];
+
+            // 이 종의 얼굴이 몇 개인지 먼저 센다. 하나뿐이면(저항체 둘) 예전과 같다.
+            int faces = 0;
+            if (kind != SymbolKind.Empty)
+            {
+                for (int s = 0; s < slots.Length; s++)
+                    if (slots[s].Child != null && KindOf(slots[s].Child.name) == kind) faces++;
+            }
+            int pick = faces > 1 ? variant % faces : 0;
+            int seen = 0;
+
             for (int s = 0; s < slots.Length; s++)
             {
                 SymbolSlot slot = slots[s];
@@ -449,6 +525,11 @@ namespace Ascend.Prototype.View
 
                 SymbolKind childKind = KindOf(slot.Child.name);
                 bool on = childKind != SymbolKind.Empty && childKind == kind;
+                if (on)
+                {
+                    on = seen == pick;
+                    seen++;
+                }
                 // 이미 그 목표를 향해 있다 — 다시 만지면(예: 연출자가 같은 판을 반복
                 // 밀어 넣을 때) 진행 중이던 전환이 처음부터 다시 시작돼 버린다.
                 if (slot.TargetOn == on) continue;
@@ -492,7 +573,13 @@ namespace Ascend.Prototype.View
                 case "Sym_NormalSoul":   return SymbolKind.NormalSoul;
                 case "Sym_Absorber":     return SymbolKind.Absorber;
                 case "Sym_Proliferator": return SymbolKind.Proliferator;
-                default:                 return SymbolKind.Empty;
+                // 정상 영혼의 **다른 얼굴들** (뼈·심장·어금니·새싹·뇌·손뼈).
+                // 판정은 늘어나지 않는다 — 화면에만 아홉이 돈다.
+                // 접두사 규약은 `AscendSlotSymbolSwap.SoulVariants` 와 한 쌍이다.
+                default:
+                    return childName != null && childName.StartsWith("Sym_Soul_")
+                        ? SymbolKind.NormalSoul
+                        : SymbolKind.Empty;
             }
         }
     }
