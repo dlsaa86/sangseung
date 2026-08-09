@@ -433,14 +433,19 @@ namespace Ascend.Prototype.EditorTools
                 Mix(new Color(0.058f, 0.072f, 0.024f), new Color(0.030f, 0.028f, 0.012f), 0.25f), 0.42f) },
 
             // ② 눈알 — 더러운 흰자 · 어두운 청록 홍채 · 순흑 동공 · 투명 각막
-            { "Sclera", new Recipe(
-                Mix(new Color(0.176f, 0.162f, 0.140f), new Color(0.086f, 0.034f, 0.028f), 0.25f), 0.67f) },
-            { "Vein", new Recipe(
-                Mix(new Color(0.105f, 0.014f, 0.012f), new Color(0.050f, 0.008f, 0.007f), 0.25f), 0.58f) },
+            //
+            // 흰자·실핏줄·홍채 셋은 `build_orbs.py` 값이 아니라 **독립 시각 평가가
+            // 저해상도 혼동 시험 뒤 내려 준 개정값**이다 (2026-08-09). 셋 다 어두워졌다.
+            // 나머지(사과·잎·동공·버섯)는 개정 없이 원본과 같아 그대로 둔다.
+            // ⚠ 흰자에 실핏줄 색을 섞지 **않는다.** 다른 심볼의 「변화」색은 노이즈로만
+            // 존재해 재현할 수 없어 25% 섞지만, 실핏줄은 `SYM_Eye` 의 **서브메시 1** 로
+            // 실제 지오메트리가 있다(`SYM_Vein`). 섞으면 같은 붉은기를 두 번 세게 되고
+            // 안구 전체가 분홍으로 뜬다.
+            { "Sclera", new Recipe(new Color(0.150f, 0.138f, 0.118f), 0.67f) },
+            { "Vein", new Recipe(new Color(0.098f, 0.013f, 0.011f), 0.58f) },
             { "Nerve", new Recipe(
                 Mix(new Color(0.082f, 0.056f, 0.052f), new Color(0.038f, 0.022f, 0.021f), 0.25f), 0.30f) },
-            { "Iris", new Recipe(
-                Mix(new Color(0.020f, 0.046f, 0.049f), new Color(0.006f, 0.014f, 0.017f), 0.25f), 0.78f) },
+            { "Iris", new Recipe(new Color(0.017f, 0.040f, 0.043f), 0.78f) },
             { "Pupil", new Recipe(new Color(0.0018f, 0.0018f, 0.0021f), 0.70f) },
             { "Cornea", new Recipe(new Color(0.030f, 0.033f, 0.034f), 0.96f, 0.22f) },
 
