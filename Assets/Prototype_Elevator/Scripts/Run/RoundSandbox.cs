@@ -409,6 +409,62 @@ namespace Ascend.Prototype.Run
                 case ButtonAction.Confirm: _sandbox.Confirm(); break;
                 default:                   _sandbox.Move(_floorDelta); break;
             }
+            Press();
         }
+
+        // ── 누름 연출 ────────────────────────────────────────────────────────
+        //
+        // 캡이 실제로 **들어갔다 나온다.** 없으면 「눌렀다」는 사실이 화면 어디에도
+        // 남지 않는다 — 판독창의 숫자가 바뀌긴 하지만 그건 결과지 입력 확인이 아니고,
+        // 값이 안 바뀌는 경우(끝 층에서 ▲)에는 아무 반응도 없어 **버튼이 죽은 것처럼
+        // 보인다.** 실행 레버가 `_handleAmount` 로 같은 일을 하는 이유와 같다.
+        //
+        // 코루틴을 쓰지 않는다. 이 저장소는 GC 를 134KB → 3.8KB 로 끌어내린 적이 있고
+        // 버튼마다 코루틴을 돌리면 누를 때마다 힙이 붙는다. 상태 하나와 `Update` 로 족하다.
+
+        [Tooltip("캡이 들어가는 깊이(m). 모델 캡 두께가 38mm 라 6mm 면 눈에 보이고 안 뚫린다.")]
+        [SerializeField, Range(0f, 0.02f)] private float _pressDepth = 0.006f;
+
+        [Tooltip("들어갔다 돌아오는 데 걸리는 시간(초).")]
+        [SerializeField, Range(0.02f, 0.6f)] private float _pressReturn = 0.14f;
+
+        /// <summary>1 = 완전히 눌림, 0 = 원위치. `Update` 가 0 으로 되돌린다.</summary>
+        private float _press;
+
+        /// <summary>원위치. **`Awake` 에서 잡는다** — 눌린 순간에 잡으면 눌린 자리가 원점이 된다.</summary>
+        private Vector3 _restLocal;
+        private bool _restCaptured;
+
+        /// <summary>캡이 들어가는 방향(로컬). 셀·패널이 회전해 있어 월드 −Z 를 로컬로 바꿔 둔다.</summary>
+        private Vector3 _pressAxisLocal = Vector3.forward;
+
+        private void Awake()
+        {
+            _restLocal = transform.localPosition;
+            _restCaptured = true;
+            // 「누르는 방향」은 **패널 안쪽**이다. 부모가 돌아 있을 수 있으므로
+            // 월드 +Z(캐빈 안쪽에서 벽 쪽)를 로컬로 환산한다 — 감으로 축을 고르면
+            // 캡이 옆으로 미끄러진다(이 저장소가 발광판에서 이미 한 번 겪었다).
+            Transform p = transform.parent;
+            Vector3 worldIn = Vector3.forward;
+            _pressAxisLocal = p != null
+                ? p.InverseTransformDirection(worldIn).normalized
+                : worldIn;
+        }
+
+        /// <summary>검증용. 지금 눌린 정도 0~1.</summary>
+        public float PressAmount => _press;
+
+        private void Press() => _press = 1f;
+
+        private void Update()
+        {
+            if (!_restCaptured || _press <= 0f) return;
+            _press = Mathf.Max(0f, _press - Time.deltaTime / Mathf.Max(0.02f, _pressReturn));
+            transform.localPosition = _restLocal + _pressAxisLocal * (_pressDepth * Smooth(_press));
+            if (_press <= 0f) transform.localPosition = _restLocal;
+        }
+
+        private static float Smooth(float t) => t * t * (3f - 2f * t);
     }
 }
