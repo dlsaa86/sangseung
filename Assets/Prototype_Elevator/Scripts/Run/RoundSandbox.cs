@@ -285,10 +285,14 @@ namespace Ascend.Prototype.Run
             string sel = moved == 0
                 ? "선택 —"
                 : $"선택 {SelectedFloor}층  {DeltaToken(moved)} 이동 (필요 {need})";
-            return $"{head}   최대 {r.Travel.MaxFloor}층\n"
-                 + $"현재 {r.CurrentFloor}층   전력 {r.Power:0}\n"
-                 + $"{sel}   갈 수 있는 곳 {LowestReachable}~{HighestReachable}층\n"
-                 + $"목표까지 {r.PowerToGoal:0}   스핀 {r.SpinsRemaining}/{r.Goal.Spins}\n"
+            // **선택 줄이 맨 위다.** 직전 판본은 세 번째 줄이었는데, ▲▼ 를 연타하는
+            // 동안 눈이 가장 먼저 닿는 자리에 「목표 10층 최대 10층」이라는 **안 바뀌는
+            // 값**이 앉아 있었다. 바뀌는 것이 위로 온다.
+            // 다섯 줄에서 네 줄로 줄였다. 콘솔 판은 0.36m 폭이라 다섯 줄이 들어가려면
+            // 글자가 판독 한계 아래로 내려간다 — 정보를 다 띄우려다 하나도 못 읽는 판이 된다.
+            return $"{sel}\n"
+                 + $"현재 {r.CurrentFloor}층 · 전력 {r.Power:0}   갈 수 있는 곳 {LowestReachable}~{HighestReachable}층\n"
+                 + $"{head} · 목표까지 {r.PowerToGoal:0} · 스핀 {r.SpinsRemaining}/{r.Goal.Spins}\n"
                  + $"{_lastEvent}";
         }
     }
