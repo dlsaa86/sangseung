@@ -362,7 +362,97 @@ AttributeError: 'CyclesLightSettings' object has no attribute 'cast_shadow'
 
 ---
 
-## 8. 부록 — 스크립트 (감사용)
+## 9. 게이지 홈이 짧아 보이던 진짜 원인 — 정점이 아니라 낡은 굽기 텍스처였다
+
+사용자가 "100 눈금까지 홈이 안 파여 있다"고 지적했다. §6에서 정점을 이미 0~100%로
+정확히 맞췄는데도(오차 0) 재발했다 — team-lead가 다시 재봐도 팔각 창은 정확했다.
+
+### 9.1 원인
+
+`SM_Gauge_Housing`(`M_Elev_ChamberBezel`)의 재질은 단색이 아니라 **`NG_Elev_Aged60`**
+라는 절차형 노드 그룹이다 — 녹·때·모서리 마모(`T_Elev_Edge.png` 등)를 레이어링해
+"낡음"을 만든다. FBX는 이런 노드 그래프를 못 담으므로, `.blend` 안 텍스트 블록
+`AD53_BAKEALL`이 Cycles DIFFUSE로 이 절차형 결과를 **평면 PNG로 구워서**
+`Assets/.../BakedAD47/BK_<이름>.png`로 저장하고, 그게 실제로 Unity가 보는 표면
+디테일의 유일한 출처다.
+
+**타임스탬프가 답이었다**:
+
+```
+BK_SM_Gauge_Housing.png / Fill.png / Labels.png   전부 Aug 8 18:47
+그루브(팔각 창) 정점 수정                          Aug 9 02:17
+SM_Gauge_Fill 100% 연장                            Aug 9 03:47
+```
+
+세 굽기 파일 전부 **두 지오메트리 수정보다 먼저** 만들어졌다 — 즉 Unity가 쓰던
+텍스처는 그루브를 넓히기 전의 옛 모양을 그대로 담은 정적 이미지였다. **3D 정점은
+옳았지만 그 위에 입힌 그림이 옛 그림이었다.** 이 파일에는 같은 계열의 선례가 있다
+(`AD46_LOCALUV` — 문이 열릴 때 낡음 텍스처가 문을 안 따라가던 버그).
+
+### 9.2 조치 — `Assets/` 한시적 쓰기 허용 하에 재굽기
+
+team-lead가 이 세 파일에 한해 `Assets/` 쓰기를 명시적으로 허용했다(그 외
+`Assets/`·git·Unity MCP는 계속 금지). `AD53_BAKEALL`의 `setup()`/`bake_one()`을
+**인자 변경 없이** 그대로 실행했다 — 바꾼 것은 `DST` 경로(원문은 이 파일을 마지막
+저장한 윈도우 머신의 `B:\...` 경로라 이 macOS 기기에서 못 씀; 실제
+`Assets/Prototype_Elevator/Art/Textures/BakedAD47/`로 교체)뿐이다.
+
+| 파일 | 이전 (Aug 8 18:47) | 이후 (Aug 9 16:08) |
+|---|---|---|
+| `BK_SM_Gauge_Housing.png` | 242,567 bytes | 105,206 bytes |
+| `BK_SM_Gauge_Labels.png` | 108,046 bytes | 62,558 bytes |
+| `BK_SM_Gauge_Fill.png` | 13,474 bytes | 13,474 bytes (크기 우연히 동일, mtime은 갱신) |
+
+굽기 전 세 파일을 `<scratchpad>/pre_rebake_backup/`에 백업했다. `scene.render.engine`을
+`setup()`이 `CYCLES`로 바꾸는데, 굽기 후 원래 값(`BLENDER_WORKBENCH`)으로 되돌렸고
+코드 확인 + 독립 재조회 둘 다로 확인했다. `.blend`는 **저장하지 않았다**
+(`is_dirty=False`, 파일 크기·시각이 직전 저장 그대로) — 지시대로 굽기만 하고 파일에는
+아무 흔적도 안 남겼다.
+
+### 9.3 픽셀 증거 — 2차 시도에서 정밀하게 확보
+
+1차 시도(그루브 16정점 전체의 UV bbox를 크롭)는 여러 UV 아일랜드가 섞여 실패했다
+— 위 문단은 그 기록으로 남겨 뒀었다(아래로 대체). **2차 시도에서 면 단위로
+좁혀서 성공했다**: 그루브의 "바닥면"(정면에서 창을 통해 실제로 보이는 8각형
+면 하나, `me.polygons[208]`, 뒤 루프 8정점 전체 사용)만 정확히 골라 그 UV
+좌표 8개를 loop 단위로 뽑았다.
+
+**뜻밖의 사실**: 이 면은 world_X가 UV의 U(가로)가 아니라 **V(세로)**에 대응한다
+(면 법선이 Y축이라 UVBox 투영이 world (x,z)를 쓰는데, 이 면에서는 x→V, z→U로
+매핑됨). 그래서 실제로는 "가로로 좁고 세로로 긴" UV 아일랜드다
+(U 13px · V 204px, 512×512 기준). 가로 13px를 평균 내 세로 204줄 전체(0%→100%)의
+밝기를 쟀다:
+
+```
+100%(row 0)   밝기 10.33      80%   밝기 9.77       40%    밝기 10.15
+ 95%          밝기 10.72      60%   밝기 9.92       20%    밝기 10.72
+              …                                      1.5%(row 200) 밝기 10.54
+
+전체 204줄: min 9.62 · max 11.44 · mean 10.24 · std 0.40
+(255 만점 기준 — 무조명 알베도 굽기라 전체가 어둡다, 이미지 전체 최댓값도 28)
+```
+
+**0%부터 100%까지 밝기 변동폭이 노이즈 수준(std 0.4)이고 어디에도 전환점이
+없다 — 바닥면 전체가 끝까지 균일하게 어둡다.** 100%(10.33)와 1.5%(10.54) 밝기가
+거의 같다는 것이 "100 눈금까지 갔는가"의 직접 증거다.
+
+⚠ 단서: 이 UV 아일랜드가 가로 13px로 좁아 `margin=8`의 이음새 방지 블리드가
+폭 상당 부분에 영향을 줬을 수 있다. 다만 블리드는 원본 가장자리 픽셀의 경향을
+스미어링해서 늘리는 것이라, 중간에 뚜렷한 명암 전환이 실제로 있었다면 이
+측정에서도 흔적이 보였을 것이다 — 이렇게 평평한 프로파일이 우연히 나오긴
+어렵다고 판단한다. **최종 확인은 그래도 Unity 실측이 가장 확실하다**
+(지오메트리는 이미 검증됨, 오차 0).
+
+**부수 발견**: 이전 `BK_SM_Gauge_Housing.png`는 1024×1024였는데 현재
+`AD53_BAKEALL`의 `SIZES` 딕셔너리는 512로 지정돼 있다. 지시받은 대로 스크립트
+그대로(512) 따랐다 — 해상도가 의도적으로 낮아진 것인지는 확인이 필요할 수 있어
+기록만 한다.
+
+FBX는 다시 export하지 않았다 — 지오메트리가 바뀌지 않았으므로(지시대로).
+
+---
+
+## 10. 부록 — 스크립트 (감사용)
 
 **UV**: `uv_a_investigate.py`(§1 전수 조사, `AD48_EXPORT`/`AD43_DOOR2PANEL` 텍스트
 블록 원문 확인) · `uv_b_swap_export_revert.py`(§2 1차 스왑→export→복원 검증,
@@ -381,8 +471,21 @@ export**(`object_types`에 `LIGHT` 추가) → UV 복원 — 저장은 다시 �
 전부 재확인). `gauge_f_final_verify.py`는 패치 전 시도로, 블렌더 임포터 버그
 트레이스백을 그대로 기록해 뒀다(§7.3의 증거).
 
-**최종 산출물**: `<scratchpad>/ELV_Cabin_AD47_fixed.fbx`(**4,196,428 bytes**, LIGHT
+**최종 산출물(FBX)**: `<scratchpad>/ELV_Cabin_AD47_fixed.fbx`(**4,196,428 bytes**, LIGHT
 포함) — UV 수정 + 게이지 연장 + LIGHT가 **전부 함께** 실려 있다. `.blend`도
 저장됐다(23,189,186 bytes, 게이지 정점 연장분만 반영 — UV는 원래대로 복원되므로
 저장 내용에 없다). 저장 전 백업:
 `<scratchpad>/SM_ElevCab_Panel_AD57.pre_gaugefill_backup.blend`.
+
+**재굽기(§9)**: `groove_a_investigate.py`(§9 이전 단계 — 하우징 19개 컴포넌트 전수,
+게이지 근처 스윕, 60% 지점 정점 검색, 전부 "없음"으로 결론) · `groove_f_deep_335.py`
+(root-335 Y-깊이·Y/Z밴드 세분 프로파일, 60% 특징 없음 확인) ·
+`rebake_a_execute.py`(`AD53_BAKEALL`을 exec, `DST`만 macOS 경로로 교체, 3파일
+재굽기 + `render.engine` 저장/복원, **이 세션에서 `Assets/`에 실제로 쓴 유일한
+스크립트** — team-lead가 이 3파일에 한해 명시적으로 허용). 픽셀 대조용:
+`housing_bake_stretched.png`/`groove_uv_crop_stretched.png`(PIL 대비 스트레치,
+Bash에서 직접 실행, Blender 밖) — §9.3에서 한계를 그대로 적었다.
+
+**최종 산출물(텍스처)**:
+`Assets/Prototype_Elevator/Art/Textures/BakedAD47/BK_SM_Gauge_{Housing,Fill,Labels}.png`
+3개, 재굽기 완료. FBX는 재export하지 않았다(지오메트리 불변).
