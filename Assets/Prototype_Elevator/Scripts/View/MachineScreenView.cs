@@ -38,6 +38,10 @@ namespace Ascend.Prototype.View
         [Tooltip("보조 줄 — 연쇄 깊이와 누적.")]
         [SerializeField] private TextMeshPro _detailText;
 
+        /// <summary>층 이동이 깎는 쪽. 「누적」은 이 잔액이어야 한다 —
+        /// 쓰지 않는 지갑의 잔액을 보여주면 이동해도 안 줄어든다.</summary>
+        [SerializeField] private Ascend.Prototype.Run.RoundSandbox _round;
+
         private GameEventBus _bus;
         private readonly StringBuilder _text = new StringBuilder(48);
         private bool _hasSpin;
@@ -45,6 +49,7 @@ namespace Ascend.Prototype.View
         private void Awake()
         {
             if (_run == null) _run = FindFirstObjectByType<RunSessionBehaviour>();
+            if (_round == null) _round = FindFirstObjectByType<Ascend.Prototype.Run.RoundSandbox>();
         }
 
         private void OnEnable()
@@ -110,7 +115,9 @@ namespace Ascend.Prototype.View
 
             _text.Clear();
             _text.Append("연쇄 ").Append(chain);
-            if (_run != null && _run.Session != null && _run.Session.Current != null)
+            if (_round != null)
+                _text.Append("   누적 ").AppendFormat("{0:F0}", _round.Round.Power);
+            else if (_run != null && _run.Session != null && _run.Session.Current != null)
                 _text.Append("   누적 ").AppendFormat("{0:F0}", _run.Session.Current.Power);
             Apply(_detailText, _text.ToString());
         }

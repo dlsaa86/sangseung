@@ -90,6 +90,12 @@ namespace Ascend.Prototype.UI
         private string _lastCause;
         private bool _resultShown;
         private int _resultKey = int.MinValue;
+        /// <summary>
+        /// 층 이동이 전력을 깎는 쪽. 꽂혀 있으면 **이쪽 잔액**을 그린다.
+        /// 비어 있으면 예전처럼 `FloorSession.Power` 로 떨어진다.
+        /// </summary>
+        [SerializeField] private Ascend.Prototype.Run.RoundSandbox _round;
+
         private long _auxKey = long.MinValue;
         private bool _resultBodyFitted;
 
@@ -120,6 +126,7 @@ namespace Ascend.Prototype.UI
             if (_presenter == null) _presenter = FindAnyObjectByType<SpinPresenter>();
             if (_recorder == null) _recorder = FindAnyObjectByType<AccidentRecorder>();
             if (_risk == null) _risk = FindAnyObjectByType<RiskStateView>();
+            if (_round == null) _round = FindAnyObjectByType<Ascend.Prototype.Run.RoundSandbox>();
 
             EnsureAuxReadout();
 
@@ -279,7 +286,20 @@ namespace Ascend.Prototype.UI
             //    무엇이 더 필요한가」가 아니라 **「무엇이 없어도 되는가」**가 답이었다.
             //    요구 전력은 기계 계기판이 쓰고, 위험 단계는 소리와 화면 연출이 말한다.
             //    등을 돌려도 읽혀야 하는 것은 하나뿐이다 — 지금 얼마 있는가.
-            int power = Mathf.RoundToInt(floor.Power);
+            // 🔴 **실제로 지불하는 전력을 보여준다** (2026-08-09 사용자 보고:
+            //    「전력을 써서 층은 올라가는데 전력 소모가 안 되네」).
+            //
+            //    소모가 안 된 것이 아니라 **다른 전력을 보고 있었다.** 지금 전력이
+            //    둘이다 — `FloorSession.Power`(RunSession 이 쌓기만 하고 쓰지 않는다)와
+            //    `RoundSession.Power`(층 이동이 실제로 깎는다). 화면이 전자를 그리고
+            //    있었으니 아무리 움직여도 숫자가 안 줄었다.
+            //
+            //    **쓰는 쪽을 그린다.** 지갑을 두 개 놓고 안 쓰는 쪽 잔액을 보여주면
+            //    그건 틀린 숫자다. 두 모델이 하나로 합쳐질 때까지의 임시 배선이고,
+            //    합쳐지면 이 분기는 사라진다.
+            int power = _round != null
+                ? Mathf.RoundToInt(_round.Round.Power)
+                : Mathf.RoundToInt(floor.Power);
             if (power == _auxKey) return;
             _auxKey = power;
 

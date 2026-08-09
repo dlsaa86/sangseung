@@ -125,6 +125,13 @@ namespace Ascend.Prototype.View
         [Header("1순위 보조 — 전력 수치와 달성률")]
         [SerializeField] private TextMeshPro _powerLine;
 
+        /// <summary>
+        /// 층 이동이 전력을 깎는 쪽. 꽂혀 있으면 「저장」을 **이쪽 잔액**으로 쓴다 —
+        /// 화면이 쓰지 않는 지갑의 잔액을 보여주면 그건 틀린 숫자다
+        /// (2026-08-09 「전력을 써서 층은 올라가는데 전력 소모가 안 되네」).
+        /// </summary>
+        [SerializeField] private Ascend.Prototype.Run.RoundSandbox _round;
+
         [Header("2순위 — PRD §4.4 가 요구하는 나머지 둘의 자리")]
         [Tooltip("유지 배수 · 추가 스핀 손실 조건. 값이 없으면 `—` 로 자리를 지킨다.")]
         [SerializeField] private TextMeshPro _reserveLine;
@@ -360,7 +367,10 @@ namespace Ascend.Prototype.View
 
         private void ApplyNumbers(FloorSession floor, float ratio)
         {
-            int power = Mathf.RoundToInt(floor.Power);
+            // 실제로 지불하는 잔액을 쓴다. 없으면 예전 값으로 떨어진다.
+            int power = _round != null
+                ? Mathf.RoundToInt(_round.Round.Power)
+                : Mathf.RoundToInt(floor.Power);
             int required = Mathf.RoundToInt(floor.RequiredPower);
             if (power != _shownPower || required != _shownRequired)
             {
@@ -394,7 +404,7 @@ namespace Ascend.Prototype.View
                 //   `AscendResult` 가 프레임마다 하나씩 쌓인다.
                 int perFloor = Mathf.RoundToInt(floor.PreviewAscent().PowerPerExtraFloor);
                 _text.Clear();
-                _text.Append("저장 ").AppendFormat("{0:F0}", floor.Power)
+                _text.Append("저장 ").Append(power)
                      .Append("   필요 ").AppendFormat("{0:F0}", floor.RequiredPower)
                      .Append("   이동 ").Append(perFloor);
                 SetPowerLine(_text.ToString());
