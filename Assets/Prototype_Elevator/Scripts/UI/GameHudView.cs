@@ -90,7 +90,7 @@ namespace Ascend.Prototype.UI
         private string _lastCause;
         private bool _resultShown;
         private int _resultKey = int.MinValue;
-        private int _auxKey = int.MinValue;
+        private long _auxKey = long.MinValue;
         private bool _resultBodyFitted;
 
         /// <summary>검증 하네스용 — 각 구역이 실제로 보이는가.</summary>
@@ -143,7 +143,7 @@ namespace Ascend.Prototype.UI
             _lastCause = null;
             _resultShown = false;
             _resultKey = int.MinValue;
-            _auxKey = int.MinValue;
+            _auxKey = long.MinValue;
         }
 
         private void LateUpdate()
@@ -263,17 +263,28 @@ namespace Ascend.Prototype.UI
             // 상한이 필요했던 이유는 자릿수가 늘면 글자상자를 넘기 때문이다. 그건 상한이
             // 아니라 **글자 크기**로 풀 문제다. 화면이 자기 자신과 모순되는 것보다
             // 숫자가 조금 작아지는 편이 낫다.
-            int percent = Mathf.Clamp(
-                Mathf.RoundToInt(floor.Power / Mathf.Max(1f, floor.RequiredPower) * 100f), 0, 99999);
+            // 🔴 **퍼센트를 걷어냈다** (2026-08-09 사용자 지시: 「퍼센트가 아니라 숫자로」).
+            //
+            //    기계 계기판이 이미 `저장 N   필요 M` 을 숫자로 쓴다. 화면 위만 비율이면
+            //    플레이어가 두 체계를 머릿속에서 환산해야 하고, 같은 순간의 같은 값이
+            //    두 표기로 나뉜다 — 이 계기판이 `999%↔1,415%` 로 이미 한 번 겪은 종류의
+            //    분열이다. 표기를 하나로 모으면 그 분열이 원리적으로 안 생긴다.
+            //
+            //    그리고 요구 전력은 위로 끝이 없다. 분모가 계속 커지면 같은 100% 가
+            //    매번 다른 양을 뜻하므로, 비율은 언젠가 반드시 거짓말을 한다.
+            int power = Mathf.RoundToInt(floor.Power);
+            int required = Mathf.RoundToInt(floor.RequiredPower);
             int risk = _risk != null ? (int)_risk.Level : 0;
             int phase = (int)floor.Phase;
 
-            int key = percent * 64 + risk * 8 + phase;
+            // ⚠ 자릿수가 커져 int 조합으로는 넘친다. 더티 검사는 값이 하나라도 바뀌면
+            //   반드시 걸려야 하므로 충돌 가능한 해시를 쓰지 않고 자리를 나눠 담는다.
+            long key = ((long)power << 40) | ((long)required << 16) | ((long)risk << 8) | (uint)phase;
             if (key == _auxKey) return;
             _auxKey = key;
 
             _text.Clear();
-            _text.Append(percent).Append('%');
+            _text.Append(power).Append(" / ").Append(required);
             Apply(_auxRatioText, _text);
 
             _text.Clear();
@@ -392,7 +403,9 @@ namespace Ascend.Prototype.UI
             }
 
             const float width = 300f;
-            const float height = 176f;
+            // 위험 램프 4칸(20px 띠 + 여백)을 걷어낸 만큼 줄인다.
+            // 남겨 두면 빈 띠가 생기고, 빈 띠는 「무언가 사라졌다」로 읽힌다.
+            const float height = 132f;
 
             var panel = new GameObject("AuxReadout", typeof(RectTransform), typeof(CanvasGroup));
             panel.transform.SetParent(canvas.transform, false);
@@ -416,43 +429,33 @@ namespace Ascend.Prototype.UI
 
             TMP_FontAsset font = _hintText != null ? _hintText.font : null;
 
-            // 위 88px — 비율 하나. 화면에 올리는 유일한 숫자다.
-            _auxRatioText = AuxLabel(panel.transform, "RatioText", 62f,
+            // 위 68px — 저장/필요 두 숫자. 화면에 올리는 유일한 수치다.
+            //
+            // ⚠ y 를 `height` 상대(`height - 100`)로 두었더니, 램프를 걷어내며 높이가
+            //   176 → 132 로 줄자 아래 상태줄과 **겹쳤다.** 두 줄의 경계는 높이에
+            //   딸려 움직이면 안 된다 — 상태줄 위끝이 46 이므로 52 로 고정한다.
+            _auxRatioText = AuxLabel(panel.transform, "RatioText", 58f,
                                      TextAlignmentOptions.Left,
                                      new Color(0.97f, 0.94f, 0.84f),
-                                     new Vector2(18f, height - 100f), new Vector2(-18f, -12f), font);
+                                     new Vector2(18f, 52f), new Vector2(-18f, -12f), font);
             // 상한을 999 에서 푼 대신 자릿수가 늘면 스스로 줄어든다. 잘리지 않는 것이 먼저다.
+            // 「510 / 215」는 「48%」보다 글자가 기니 최소 크기를 조금 더 내린다.
             _auxRatioText.enableAutoSizing = true;
-            _auxRatioText.fontSizeMax = 62f;
-            _auxRatioText.fontSizeMin = 34f;
+            _auxRatioText.fontSizeMax = 58f;
+            _auxRatioText.fontSizeMin = 26f;
 
-            // 가운데 20px — 위험 점등 4칸.
-            var lamps = new GameObject("RiskLamps", typeof(RectTransform));
-            lamps.transform.SetParent(panel.transform, false);
-            var lampRect = lamps.GetComponent<RectTransform>();
-            lampRect.anchorMin = Vector2.zero;
-            lampRect.anchorMax = Vector2.one;
-            lampRect.offsetMin = new Vector2(18f, height - 126f);
-            lampRect.offsetMax = new Vector2(-18f, -106f);
-
-            // **막대로 오독됐다.** 9차 독립 평가자가 이 넷을 「전력 미니 바」로 읽고,
-            // 0%·0%·0%·1,415% 네 장에서 픽셀까지 같다며 결함으로 적었다. 배선은 옳다 —
-            // 이건 전력이 아니라 위험 단계고, 위험이 같으면 같아야 한다.
+            // 🔴 **위험 점등 4칸을 걷어냈다** (2026-08-09 사용자 지시: 「아래 게이지는 제거」).
             //
-            // 그래도 이건 **판독 결함이다.** 보는 사람이 무엇을 보는지 틀렸다면 틀린 것은
-            // 보는 사람이 아니라 화면이다. 붙어 있는 네 칸은 연속된 막대로 읽힌다.
-            // 간격을 벌려 **세는 것**으로 만들고, 무엇을 세는지 옆에 적는다.
-            _auxRiskLamps = new Image[RiskLampCount];
-            for (int i = 0; i < RiskLampCount; i++)
-            {
-                float step = 1f / RiskLampCount;
-                _auxRiskLamps[i] = AuxImage(lamps.transform, "Lamp" + i,
-                                            new Vector2(i * step, 0f), new Vector2((i + 1) * step, 1f),
-                                            new Vector2(10f, 0f), new Vector2(-10f, 0f), LampOff);
-            }
-            // 이름표는 새로 만들지 않는다 — 바로 아래 `_auxStateText` 가 이미
-            // 「요구 전력 미달 · 과부하」처럼 단계 이름을 글자로 적는다. 라벨을 하나 더
-            // 올리면 같은 정보가 두 번 나오고, 그게 이 계기판이 반복해 온 실패다.
+            //    이 넷은 전력이 아니라 **위험 단계**였다. 그런데 두 사람이 독립적으로
+            //    「전력 미니 바」로 읽었다 — 9차 독립 평가자가 한 번, 사용자가 한 번.
+            //    직전 판본의 주석이 이미 그것을 「판독 결함」으로 인정하고 간격을 벌려
+            //    고쳐 보려 했지만, 같은 오독이 다시 났다. **두 번 실패한 표현이다.**
+            //
+            //    지워도 잃는 정보가 없다는 것이 결정적이다 — 바로 아래 `_auxStateText`
+            //    가 「요구 전력 미달 · 응력」처럼 **같은 위험 단계를 이미 글자로 적는다.**
+            //    램프는 처음부터 그 글자의 중복이었고, 중복인 쪽이 오독을 만들고 있었다.
+            //    글자는 오독되지 않는다.
+            _auxRiskLamps = null;
 
             // 아래 34px — 낱말 둘. 숫자를 더 늘리지 않는다.
             _auxStateText = AuxLabel(panel.transform, "StateText", 22f,
