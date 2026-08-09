@@ -351,7 +351,11 @@ namespace Ascend.Prototype.Build
             // `object[]` 배열 + enum 박싱 + `ToString()` 문자열을 낳아 바로 위 주석이
             // 경계한 일을 캐시 키가 저지르고 있었다. 독립 감사가 지목했다.
             // `RouletteInteractionBridge`와 `GameHudView`가 이미 정수 키를 쓴다 — 그 규약을 따른다.
-            int loadCount = run.Loadout != null ? run.Loadout.Count : 0;
+            // `run` 은 바로 위에서 null 일 수 있게 뽑아 놓고 여기서 무방비로 역참조하고
+            // 있었다 — 런이 시작되기 전 프레임마다 `NullReferenceException` 이 났고,
+            // 던지는 순간 아래 서명 비교와 `Rebuild()` 가 통째로 건너뛰어져 **승객 조형이
+            // 영영 세워지지 않는다.** 실측 로그 `BuildFigureView.cs:354`.
+            int loadCount = run != null && run.Loadout != null ? run.Loadout.Count : 0;
             int signature = floor == null
                 ? -1
                 : (floor.Plan.Floor << 12) | ((int)floor.Phase << 8) |

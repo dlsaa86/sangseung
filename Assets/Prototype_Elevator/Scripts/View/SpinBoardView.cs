@@ -109,6 +109,10 @@ namespace Ascend.Prototype.View
 
         private void Awake()
         {
+            // ⚠ 여기서만 만들면 **도메인 리로드 뒤 null 로 남는다** — 이 필드는
+            //   직렬화되지 않는데 컴포넌트는 이미 Awake 를 지났기 때문이다.
+            //   `SetPropertyBlock(null)` 은 예외를 던지진 않지만 **블록을 지운다**
+            //   (정화 점등이 조용히 사라진다). 쓰는 자리에서도 확인한다.
             _block = new MaterialPropertyBlock();
             if (_run == null) _run = FindAnyObjectByType<RunSessionBehaviour>();
             EnsureSlots();
@@ -445,6 +449,7 @@ namespace Ascend.Prototype.View
                     // 이 슬롯에 블록을 쓰는 곳은 여기뿐이고 우리가 쓰는 프로퍼티도
                     // `_EmissionColor` 하나다. 기존 값을 읽어 올 이유가 없다 —
                     // 읽어 오는 그 호출이 매번 새 저장소를 만든다.
+                    if (_block == null) _block = new MaterialPropertyBlock();
                     _block.SetColor(EmissionColorId, _purifyEmission * (_purifyEmissionStrength * amount));
                     Renderer[] rs = slot.Renderers;
                     for (int k = 0; k < rs.Length; k++)

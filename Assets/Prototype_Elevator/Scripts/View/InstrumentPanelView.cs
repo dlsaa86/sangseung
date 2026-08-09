@@ -660,6 +660,7 @@ namespace Ascend.Prototype.View
             color = ApplyRiskUrgency(color);
 
             if (_barFill == null) return;
+            if (_block == null) _block = new MaterialPropertyBlock();   // 도메인 리로드 뒤 null
             _barFill.GetPropertyBlock(_block);
             _block.SetColor(BaseColorId, color);
             _block.SetColor(EmissionColorId, color * 1.6f);
@@ -709,6 +710,7 @@ namespace Ascend.Prototype.View
                 }
                 else if (exists && selecting) { color = Color.Lerp(_plaqueIdle, Color.white, 0.25f); }
 
+                if (_block == null) _block = new MaterialPropertyBlock();   // 도메인 리로드 뒤 null
                 plaque.GetPropertyBlock(_block);
                 _block.SetColor(BaseColorId, color);
                 _block.SetColor(EmissionColorId, color * emission);

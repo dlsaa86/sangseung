@@ -199,6 +199,20 @@ namespace Ascend.Prototype.Player
         private void ApplyLockLight()
         {
             if (_lockLight == null) return;
+
+            // 🔴 **널 가드.** `_block` 은 직렬화되지 않는 필드라 **도메인 리로드 뒤
+            //    null 이 된다** — 컴포넌트는 이미 `Awake` 를 지났으므로 다시 만들
+            //    기회가 없고, `Update` 는 계속 돈다. 그래서 `GetPropertyBlock(null)` 이
+            //    매 프레임 던졌다.
+            //
+            //    실측: 에디터 로그가 25,000 → 712,000 줄로 불어 있었고 그중
+            //    **`ArgumentNullException` 이 6,732 건**이었다. 예외가 여기서 던져지니
+            //    그 아래 두 줄(`SetColor` · `SetPropertyBlock`)이 실행되지 않아
+            //    **잠금등이 옛 색에 얼어붙는다** — 사용자가 「레버에 예전에 고쳤던 빛
+            //    표현이 여전히 남아 있다」고 본 것이 이것이다. 고친 값이 안 먹은 게
+            //    아니라 **적용하는 줄에 닿지 못하고 있었다.**
+            if (_block == null) _block = new MaterialPropertyBlock();
+
             // 잠김/해제를 색만으로 구분하지 않는다 — 발광 여부가 함께 바뀐다.
             // 회색조로 봐도 켜짐/꺼짐이 남아야 한다(visual-criteria B-2.5의 정신).
             Color tint = Color.Lerp(_lockedColor, _armedColor, _coverAmount);

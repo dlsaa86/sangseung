@@ -172,6 +172,7 @@ namespace Ascend.Prototype.View
         private void ApplySlotColor(Renderer slot, Color color, float emission)
         {
             if (slot == null) return;
+            if (_block == null) _block = new MaterialPropertyBlock();   // 도메인 리로드 뒤 null
             slot.GetPropertyBlock(_block);
             _block.SetColor(BaseColorId, color);
             _block.SetColor(EmissionColorId, color * emission);

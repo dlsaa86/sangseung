@@ -124,6 +124,52 @@ namespace Ascend.Prototype.EditorTools
             new Part("Mush_Body", "SYM_Mushroom", "MushCap", "MushStem"),
         };
 
+        /// <summary>
+        /// 정상 영혼의 **다른 얼굴들** (2026-08-09, 사용자 지시 「만든 오브젝트 전부
+        /// 룰렛에 돌아가게」).
+        ///
+        /// ⚠ **이들은 새로운 판정 종이 아니다.** `SymbolKind` 는 그대로 셋이고, 이 여섯은
+        ///   전부 <see cref="SymbolKind.NormalSoul"/> 로 판정된다. 이유는 밸런스다 —
+        ///   매칭이 `SymbolKind` 로 이뤄지므로 여섯을 독립 종으로 쪼개면 3연결 확률이
+        ///   급락한다. `SpinRuleSet.NormalSoulValue` 의 주석이 기록한 20시드 완주율
+        ///   튜닝(13/20)이 통째로 무효가 된다.
+        ///
+        ///   그래서 **화면에는 아홉이 전부 돌고, 규칙은 건드리지 않는다.**
+        ///   역할이 정해지면(뼈=전달 · 심장=폭발 · 어금니=고정 · 새싹=정화 · 뇌=예지 ·
+        ///   손뼈=강탈) 하나씩 `SymbolKind` 로 승격하고 그 규칙을 구현하면 된다 —
+        ///   이 배열에서 한 줄을 빼는 것이 그 시작점이다.
+        ///
+        /// 이름 규약: `Sym_Soul_*` 는 <see cref="Prototype.View.SpinBoardView.KindOf"/> 가
+        /// 접두사로 인식해 NormalSoul 로 판정한다. 접두사를 바꾸면 그쪽도 같이 바꿔야 한다.
+        /// </summary>
+        private static readonly (string Name, Part[] Parts)[] SoulVariants =
+        {
+            ("Sym_Soul_Bone", new[]
+            {
+                new Part("Bone_Body", "SYM_Bone", "Bone"),
+            }),
+            ("Sym_Soul_Heart", new[]
+            {
+                new Part("Heart_Body", "SYM_Heart", "Heart", "Fat", "Vessel"),
+            }),
+            ("Sym_Soul_Tooth", new[]
+            {
+                new Part("Tooth_Body", "SYM_Tooth", "Enamel", "Enamel"),
+            }),
+            ("Sym_Soul_Sprout", new[]
+            {
+                new Part("Sprout_Body", "SYM_Sprout", "SproutStem", "SproutLeaf"),
+            }),
+            ("Sym_Soul_Brain", new[]
+            {
+                new Part("Brain_Body", "SYM_Brain", "Cortex", "BrainStem"),
+            }),
+            ("Sym_Soul_Hand", new[]
+            {
+                new Part("Hand_Body", "SYM_HandBone", "HandBone"),
+            }),
+        };
+
         [MenuItem("Ascend/Cabin/4. 결과판 심볼을 SM_SlotSymbols 로 교체")]
         public static void SwapAll()
         {
@@ -173,6 +219,8 @@ namespace Ascend.Prototype.EditorTools
             BuildSymbol(cell, NormalSoulName, NormalSoulParts, meshes, scale);
             BuildSymbol(cell, AbsorberName, AbsorberParts, meshes, scale);
             BuildSymbol(cell, ProliferatorName, ProliferatorParts, meshes, scale);
+            for (int v = 0; v < SoulVariants.Length; v++)
+                BuildSymbol(cell, SoulVariants[v].Name, SoulVariants[v].Parts, meshes, scale);
         }
 
         /// <summary>
@@ -454,6 +502,36 @@ namespace Ascend.Prototype.EditorTools
                 Mix(new Color(0.044f, 0.078f, 0.112f), new Color(0.014f, 0.026f, 0.046f), 0.25f), 0.56f) },
             { "MushStem", new Recipe(
                 Mix(new Color(0.104f, 0.122f, 0.148f), new Color(0.044f, 0.056f, 0.074f), 0.25f), 0.39f) },
+
+            // ④~⑨ 정상 영혼의 다른 얼굴들 — 값은 `build_orbs.py` AD12 의 base·blotch 를
+            // 25% 섞고, 매끄러움은 rough_lo·hi 중간값의 여수(1−mid)로 옮긴 것이다.
+            // ⑤ 뼈 — 마른 골질
+            { "Bone", new Recipe(
+                Mix(new Color(0.132f, 0.121f, 0.094f), new Color(0.048f, 0.034f, 0.017f), 0.25f), 0.37f) },
+            // ⑥ 심장 — 어두운 심근 · 노란 관상지방 · 조금 밝은 대혈관
+            { "Heart", new Recipe(
+                Mix(new Color(0.068f, 0.012f, 0.011f), new Color(0.030f, 0.006f, 0.005f), 0.25f), 0.64f) },
+            { "Fat", new Recipe(
+                Mix(new Color(0.132f, 0.098f, 0.042f), new Color(0.070f, 0.046f, 0.018f), 0.25f), 0.51f) },
+            { "Vessel", new Recipe(
+                Mix(new Color(0.086f, 0.058f, 0.052f), new Color(0.040f, 0.022f, 0.020f), 0.25f), 0.55f) },
+            // ⑦ 어금니 — 누렇게 삭은 상아. FBX 슬롯이 둘이지만 둘 다 같은 법랑질이다
+            //    (원본이 `mat_rule=lambda c: 0` 으로 전 면을 슬롯 0 에 몰아넣었다)
+            { "Enamel", new Recipe(
+                Mix(new Color(0.316f, 0.256f, 0.116f), new Color(0.128f, 0.080f, 0.022f), 0.25f), 0.76f) },
+            // ⑧ 새싹 — 창백한 황록 하배축 · 병든 청록 떡잎
+            { "SproutStem", new Recipe(
+                Mix(new Color(0.060f, 0.108f, 0.044f), new Color(0.030f, 0.040f, 0.016f), 0.25f), 0.51f) },
+            { "SproutLeaf", new Recipe(
+                Mix(new Color(0.060f, 0.112f, 0.057f), new Color(0.044f, 0.026f, 0.009f), 0.25f), 0.48f) },
+            // ⑨ 뇌 — 분홍 살. 뇌간은 조금 창백하되 **차이를 좁혔다**(크면 부품으로 보인다)
+            { "Cortex", new Recipe(
+                Mix(new Color(0.150f, 0.094f, 0.092f), new Color(0.086f, 0.040f, 0.038f), 0.25f), 0.58f) },
+            { "BrainStem", new Recipe(
+                Mix(new Color(0.158f, 0.112f, 0.106f), new Color(0.072f, 0.042f, 0.038f), 0.25f), 0.50f) },
+            // ⑩ 손뼈 — 대퇴골보다 덜 바랜 잔뼈
+            { "HandBone", new Recipe(
+                Mix(new Color(0.296f, 0.269f, 0.206f), new Color(0.130f, 0.100f, 0.057f), 0.25f), 0.49f) },
         };
 
         /// <summary>

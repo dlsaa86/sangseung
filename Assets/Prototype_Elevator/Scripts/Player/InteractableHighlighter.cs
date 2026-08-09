@@ -304,6 +304,7 @@ namespace Ascend.Prototype.Player
             {
                 var r = _shells[i];
                 if (r == null) continue;
+                if (_block == null) _block = new MaterialPropertyBlock();   // 도메인 리로드 뒤 null
                 r.GetPropertyBlock(_block);
                 _block.SetColor(ColorId, c);
                 _block.SetFloat(WidthId, outer);

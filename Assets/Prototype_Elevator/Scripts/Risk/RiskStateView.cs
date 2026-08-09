@@ -754,6 +754,13 @@ namespace Ascend.Prototype.Risk
 
         private void ApplyLighting()
         {
+            // 🔴 `_block` 은 직렬화되지 않아 **도메인 리로드 뒤 null 이 된다.** `Awake` 는
+            //    이미 지났고 `LateUpdate` 는 계속 도니 매 프레임 던진다. 던지는 순간
+            //    아래의 색·발광 대입이 통째로 건너뛰어져 **등이 옛 값에 얼어붙는다.**
+            //    가드가 `PreviewPowerAmbience`(659) 에만 있어 여기가 뚫려 있었다 —
+            //    실측 로그에서 이 스택이 `InteractableOverharvestLever` 와 함께 나왔다.
+            if (_block == null) _block = new MaterialPropertyBlock();
+
             // 접근성이 섬광을 끄거나 주파수를 낮춘다. **광과민성 발작은 되돌릴 수 없는
             // 피해**라 이 분기는 연출보다 앞선다 (`UP-RISK-08`, PRD §8.5).
             float rate = _accessibilitySnapshot.ClampFlickerRate(_blended.FlickerRate);
@@ -914,6 +921,7 @@ namespace Ascend.Prototype.Risk
         private void ApplyWarningLight()
         {
             if (_warningLight == null) return;
+            if (_block == null) _block = new MaterialPropertyBlock();   // 도메인 리로드 뒤 null
 
             float pulse = _blended.WarningPulseRate > 0f
                 ? Mathf.Abs(Mathf.Sin(_phase * _blended.WarningPulseRate * Mathf.PI))
