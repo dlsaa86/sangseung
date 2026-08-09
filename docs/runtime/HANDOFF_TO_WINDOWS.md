@@ -5,8 +5,10 @@
 > 아래 본문은 **오늘 낮 작업 기준**이고 그 뒤로 게임의 코어 루프가 바뀌었다.
 > 먼저 이 절을 읽고, 본문은 블렌더 export 절차(§3)를 볼 때만 참고한다.
 >
-> **브랜치** `agent/autonomous-polish-20260809` · `main` 대비 **37 커밋 앞**
-> **마지막 커밋** `1387d5e` 챔버 유리가 불투명했다 — URP 「Preserve Specular Lighting」
+> **브랜치** `agent/autonomous-polish-20260809` · `main` 대비 **36 커밋 앞**
+> **마지막 커밋** `3bddc4d` 챔버 유리가 불투명했다 — URP 「Preserve Specular Lighting」
+>
+> 되돌릴 지점 — `eb8ff84` 새 척추까지(배선 전) · `42ac057` 그레이박스까지
 >
 > ### 시작하는 법
 >
