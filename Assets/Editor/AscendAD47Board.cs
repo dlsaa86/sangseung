@@ -28,17 +28,20 @@ namespace Ascend.CaptureHarness.EditorTools
     /// 아래인지를 판정한 뒤, 같은 규칙을 AD47 챔버에 적용한다. 규약이 바뀌면
     /// 이 스크립트도 따라 바뀐다 — 손으로 맞춘 상수가 아니라 유도된 값이기 때문이다.
     ///
-    /// ## 구슬은 그레이박스다
+    /// ## 구슬은 더 이상 그레이박스가 아니다 (2026-08-09)
     ///
-    /// 2026-08-08 사용자 지시 — 구슬 디자인은 아직 미결정이므로 그레이박스로 둔다.
-    /// 다만 무드보드 §8 이 요구하는 **「색 없이 외곽선만으로 구분」** 은 지금 지킨다.
-    /// 정상=매끈한 구 · 흡수체=중심이 함몰된 구 · 증식체=마디가 붙은 뭉치.
-    /// 최종 디자인이 오면 이 세 프리미티브만 갈아 끼우면 된다.
+    /// 2026-08-08 판본은 프리미티브 셋(구 / 구+구 / 구 넷)을 여기서 직접 만들었다 —
+    /// 「최종 디자인이 오면 이 세 프리미티브만 갈아 끼우면 된다」고 적어 둔 채로.
+    /// 그 디자인이 <c>SYM_SlotSymbols.fbx</c> 로 도착했고, 조립은
+    /// <see cref="Ascend.Prototype.EditorTools.AscendSlotSymbolSwap"/> 한 곳으로 옮겼다.
+    ///
+    /// **여기서 부르는 것이 핵심이다.** 조립을 저쪽에만 두고 이 함수가 옛 프리미티브를
+    /// 계속 만들면, 재배선을 한 번 돌리는 순간 그레이박스가 조용히 되돌아온다 —
+    /// 이 스크립트는 <c>BoardCells</c> 를 통째로 부수고 다시 만들기 때문이다.
     /// </summary>
     internal static class AscendAD47Board
     {
         private const string CellRoot = "BoardCells";
-        private const string MatDir = "Assets/Prototype_Elevator/Materials/CabinAD47";
 
         [MenuItem("Ascend/Cabin/3. AD47 3×3 재배선")]
         public static void Rewire()
@@ -210,10 +213,6 @@ namespace Ascend.CaptureHarness.EditorTools
             var root = new GameObject(CellRoot);
             root.transform.SetParent(cab.transform, false);
 
-            var matNormal = MakeOrbMaterial("GB_Orb_Normal", new Color(0.62f, 0.60f, 0.52f), new Color(0.85f, 0.80f, 0.62f));
-            var matAbsorb = MakeOrbMaterial("GB_Orb_Absorber", new Color(0.07f, 0.07f, 0.08f), new Color(0.06f, 0.16f, 0.20f));
-            var matProlif = MakeOrbMaterial("GB_Orb_Proliferator", new Color(0.46f, 0.40f, 0.24f), new Color(0.72f, 0.52f, 0.20f));
-
             for (int i = 0; i < 9; i++)
             {
                 var cell = new GameObject("Cell_" + i);
@@ -221,9 +220,7 @@ namespace Ascend.CaptureHarness.EditorTools
                 cell.transform.position = pos[slot[i]];      // 트랜스폼이 아니라 실제 격자 위치
                 cell.transform.rotation = slot[i].rotation;
 
-                BuildNormal(cell.transform, matNormal);
-                BuildAbsorber(cell.transform, matAbsorb);
-                BuildProliferator(cell.transform, matProlif);
+                Ascend.Prototype.EditorTools.AscendSlotSymbolSwap.BuildCell(cell.transform);
 
                 // ⚠ **여기서 `slot[i]` 를 끄지 않는다.** 앵커가 챔버 유리로 바뀌었으므로
                 // 예전처럼 `slot[i].gameObject.SetActive(false)` 를 하면 **유리 9장을 끈다.**
@@ -264,83 +261,9 @@ namespace Ascend.CaptureHarness.EditorTools
             Debug.Log(log.ToString());
         }
 
-        // ── 그레이박스 세 형태 ────────────────────────────────────────────
-        // 무드보드 §8: 색이 아니라 **외곽선**으로 갈려야 한다. 실루엣만 다르게 만든다.
-
-        private const float R = 0.052f;   // 구슬 반지름 — 챔버 안에 들어가는 크기
-
-        /// <summary>정상 영혼 — 매끈한 달걀형.</summary>
-        private static void BuildNormal(Transform parent, Material mat)
-        {
-            var go = Prim(parent, "Sym_NormalSoul", PrimitiveType.Sphere, mat);
-            go.transform.localScale = new Vector3(R * 2f, R * 2.25f, R * 2f);
-        }
-
-        /// <summary>흡수체 — 중심이 깊게 함몰됐다. 구 안에 검은 구를 박아 실루엣에 홈을 만든다.</summary>
-        private static void BuildAbsorber(Transform parent, Material mat)
-        {
-            var go = new GameObject("Sym_Absorber");
-            go.transform.SetParent(parent, false);
-            var shell = Prim(go.transform, "Shell", PrimitiveType.Sphere, mat);
-            shell.transform.localScale = Vector3.one * R * 2f;
-            var pit = Prim(go.transform, "Pit", PrimitiveType.Sphere, mat);
-            pit.transform.localScale = Vector3.one * R * 1.45f;
-            pit.transform.localPosition = new Vector3(0f, 0f, -R * 0.95f);   // 보는 쪽으로 파인다
-        }
-
-        /// <summary>증식체 — 비대칭 마디. 위성 구슬이 밀려 나오는 실루엣.</summary>
-        private static void BuildProliferator(Transform parent, Material mat)
-        {
-            var go = new GameObject("Sym_Proliferator");
-            go.transform.SetParent(parent, false);
-            var offs = new[]
-            {
-                new Vector3( 0.00f,  0.00f, 0f),
-                new Vector3( 0.62f,  0.34f, 0f),
-                new Vector3(-0.48f,  0.55f, 0f),
-                new Vector3(-0.30f, -0.58f, 0f),
-            };
-            var scales = new[] { 1.00f, 0.66f, 0.54f, 0.46f };
-            for (int i = 0; i < offs.Length; i++)
-            {
-                var b = Prim(go.transform, "Bud_" + i, PrimitiveType.Sphere, mat);
-                b.transform.localScale = Vector3.one * R * 2f * scales[i];
-                b.transform.localPosition = offs[i] * R;
-            }
-        }
-
-        private static GameObject Prim(Transform parent, string name, PrimitiveType type, Material mat)
-        {
-            var go = GameObject.CreatePrimitive(type);
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            var col = go.GetComponent<Collider>();
-            if (col != null) Object.DestroyImmediate(col);   // 구슬은 물리에 참여하지 않는다
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            return go;
-        }
-
-        private static Material MakeOrbMaterial(string name, Color baseColor, Color emission)
-        {
-            string path = MatDir + "/" + name + ".mat";
-            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-            var template = AssetDatabase.LoadAssetAtPath<Material>(
-                "Assets/Prototype_Elevator/Materials/Cabin/ELV_LampGlass.mat");
-            if (mat == null)
-            {
-                mat = new Material(template) { name = name };
-                AssetDatabase.CreateAsset(mat, path);
-            }
-            mat.shader = template.shader;
-            mat.CopyPropertiesFromMaterial(template);
-            mat.SetColor("_BaseColor", baseColor);
-            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", null);
-            mat.SetColor("_EmissionColor", emission);
-            mat.EnableKeyword("_EMISSION");
-            mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            EditorUtility.SetDirty(mat);
-            AssetDatabase.SaveAssets();
-            return mat;
-        }
+        // 그레이박스 세 형태(구 / 구+구 / 구 넷)와 `GB_Orb_*` 발광 재질을 만들던 코드는
+        // 2026-08-09 에 지웠다. 조립은 `AscendSlotSymbolSwap` 하나가 한다 —
+        // 두 곳에 두면 어느 쪽이 마지막에 돌았느냐로 화면이 달라진다.
+        // `GB_Orb_*.mat` 은 디스크에 남아 있지만 이제 아무도 참조하지 않는다.
     }
 }
