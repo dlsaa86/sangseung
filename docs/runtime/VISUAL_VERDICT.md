@@ -2065,7 +2065,7 @@ R<G, G>B — **회녹색은 맞다.** 그러나 `11` 에서 밝은 면과 어두
 # 13차 독립 시각 평가 — 2026-08-02
 
 대상: `Captures/TenFloor/` PNG **24장 전부** (샘플링 없이 Read 로 직접 열었다) + `manifest.txt` +
-`docs/VISUAL_CRITERIA.md` 루브릭. 커밋 `f86c8bf` (「림이 계단을 메우고 있었다」).
+`.claude/visual-criteria.md` 루브릭. 커밋 `f86c8bf` (「림이 계단을 메우고 있었다」).
 
 ## VERDICT: REJECT
 
@@ -2446,7 +2446,7 @@ R<G, G>B — **회녹색은 맞다.** 그러나 `11` 에서 밝은 면과 어두
 # 14차 독립 시각 평가 — 2026-08-02
 
 대상: `Captures/TenFloor/` PNG **24장 전부** (샘플링 없이 Read 로 직접 열었다) + 독립 픽셀 계측 +
-`docs/VISUAL_CRITERIA.md` 루브릭. 커밋 `4fae922` (「13 패널 조사 중간」).
+`.claude/visual-criteria.md` 루브릭. 커밋 `4fae922` (「13 패널 조사 중간」).
 13차 지시대로 **판정은 PNG 픽셀에서만 냈다.** 매니페스트는 판정 근거가 아니라 §7 의 조사 대상으로만 열었다.
 
 ## VERDICT: REJECT
@@ -3523,7 +3523,7 @@ VERDICT: REJECT
 같은 −42° 라도 원거리(`02_oblique45`)에서는 0.22% 다. 각도만의 문제가 아니라
 **예각 + 근거리에서 유리의 프레넬 스페큘러가 판을 통째로 덮는다.**
 
-- `docs/VISUAL_CRITERIA.md` **`B-5 #15`「핵심 결과가 특정 위치에서만 보이는가」** 위반 —
+- `.claude/visual-criteria.md` **`B-5 #15`「핵심 결과가 특정 위치에서만 보이는가」** 위반 —
   금지 항목이고 「있으면 그 자체로 감점」이다
 - 구조적으로 더 나쁘다: **레버를 당겨 판을 해결하는 게임인데, 레버 앞이 판이 안 보이는
   유일한 자리다.** 핵심 루프의 피드백이 끊긴다
@@ -4259,7 +4259,7 @@ A·D·H 행은 이미지와 일치. **판정에는 이미지를 채택했다.**
 ## 2026-08-05 — Captures/symbols_v6_20260805 (8장)
 - 평가자: 독립 시각 평가자 (구현 세션과 분리)
 - 대상: Captures/symbols_v6_20260805/manifest.txt  (machineFingerprint: Windows|Direct3D12|NVIDIA GeForce RTX 3070|6000.5.5f1)
-- 방식: 루브릭 채점 (docs/VISUAL_CRITERIA.md · 단일 세트 절대 판정 · UP-VIS-12 개선/동일/악화 축)
+- 방식: 루브릭 채점 (.claude/visual-criteria.md · 단일 세트 절대 판정 · UP-VIS-12 개선/동일/악화 축)
 VERDICT: REJECT
 - 근거: `UP-FIX-88`(계기판 판 밖 넘침)과 `UP-FIX-101`(탑 전력줄 「전」 결손)은 화면에서
   실제로 사라졌다 — `G_gauge_face` 일곱 줄이 전부 판(x 675~1440) 안에 왼쪽 단으로 정렬돼 있고,

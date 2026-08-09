@@ -66,8 +66,3 @@ production/session-logs/
 
 # Python 바이트코드
 __pycache__/
-
-# prime-agent — 세션·데몬 상태는 기기 종속. 설정(.prime/agent/settings.json)만 추적한다
-.prime/agent/sessions/
-.prime/agent/state/
-.prime/agent/*.log

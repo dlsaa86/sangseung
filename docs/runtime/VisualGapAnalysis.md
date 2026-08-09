@@ -1,7 +1,7 @@
 # Visual Gap Analysis — Phase 2
 
 > 작성: 2026-07-31 / 브랜치 `agent/phase2-full-prototype`
-> 기준: `AUTONOMOUS_PROTOTYPE_GOAL.md` §4·§6, `VISUAL_SPEC.md`, `docs/VISUAL_CRITERIA.md`
+> 기준: `AUTONOMOUS_PROTOTYPE_GOAL.md` §4·§6, `VISUAL_SPEC.md`, `.claude/visual-criteria.md`
 > 근거 캡처: `Captures/_before/` (비례 재조정 전) · `Captures/eyelevel/` (현재)
 > 측정 기기: Windows 11 Pro — `A-20260731-01`. 직전 세션(macOS/M5) 캡처는 비교 기준으로 쓸 수 없다.
 
@@ -236,7 +236,7 @@ URP Lit + Smoothness 0.03으로 반사를 죽여 플랫에 가깝게 만들었�
 | 레버가 하나뿐이고 그것이 OVERHARVEST | `D-20260730-08`이 실행 레버와 과수확 레버를 분리했다. 하나면 "확정 vs 과수확"이 같은 물체의 다른 타이밍이 된다 |
 | 전력이 평면 수치 패널 | 현재의 전력 탱크 + 임계점 눈금이 `visual-criteria` B-3.9("경계가 게이지 위에 표시")를 더 잘 만족한다 |
 
-`docs/VISUAL_CRITERIA.md` §C의 원칙 그대로다 — **레퍼런스보다 높은 점수를 목표로 삼지
+`.claude/visual-criteria.md` §C의 원칙 그대로다 — **레퍼런스보다 높은 점수를 목표로 삼지
 않고**, 프로젝트 고유 방향을 유지하며 격차가 큰 항목부터 줄인다. 여기서 격차가 가장 큰 것은
 **조명**이다.
 

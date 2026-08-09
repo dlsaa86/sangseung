@@ -123,7 +123,7 @@
 - 상태: **Superseded** (← Accepted, 2026-08-05 정정) · 대체: `D-20260802-10`
 - 결정일: 2026-07-30
 - 결정자: 구현 에이전트 (`agent/phase1-hero-slice`)
-- 관련 문서/파일: `MASTER_PRD.md` §7, `VISUAL_SPEC.md` §7, `docs/VISUAL_CRITERIA.md` B-4.12
+- 관련 문서/파일: `MASTER_PRD.md` §7, `VISUAL_SPEC.md` §7, `.claude/visual-criteria.md` B-4.12
 - 결정: 물체 하나가 뜻 하나를 갖는다. 실행 레버 = 계약 확정·일반 스핀, 전력 탱크 = 확정,
   과수확 레버(보호 덮개·잠금등) = 추가 스핀. Decision 단계에서 실행 레버는 비활성이 된다.
 - 이유: 기존 구현은 Decision 단계에서 **같은 실행 레버**를 당기면 판돈을 물고 추가 스핀했다.
@@ -558,7 +558,7 @@ AAA 수준으로 만들어라.」
 
 사용자: 「엘리베이터 디자인은 이런 식으로 생각 중이다. **이런 느낌으로 반영해 달라.**」
 
-분석 전문은 `docs/VISUAL_REFERENCE.md` 에 있고, `docs/VISUAL_CRITERIA.md` §C 의
+분석 전문은 `docs/VISUAL_REFERENCE.md` 에 있고, `.claude/visual-criteria.md` §C 의
 「레퍼런스: **미지정**」이 이것으로 채워졌다.
 
 **무엇이 바뀌나**: 방향이 아니라 **구체성**이다. `VISUAL_SPEC` §1 의 「낡은 1960년대 산업용

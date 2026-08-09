@@ -1,7 +1,7 @@
 # Visual Specification — 상승
 
 > 상태: 프로토타입 비주얼 기준  
-> 상세 평가 루브릭: `docs/VISUAL_CRITERIA.md`
+> 상세 평가 루브릭: `.claude/visual-criteria.md`
 
 # 1. 핵심 방향
 
