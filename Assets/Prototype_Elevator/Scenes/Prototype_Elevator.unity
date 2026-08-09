@@ -4323,6 +4323,7 @@ MonoBehaviour:
   _interactor: {fileID: 98471718}
   _focus: {fileID: 1021280227}
   _frameBounds: {fileID: 1021280228}
+  _alsoFrame: []
   _focusAnchor: {fileID: 0}
   _enterDuration: 0.35
   _exitDuration: 0.28
@@ -45663,7 +45664,9 @@ MonoBehaviour:
   _overharvested: {r: 0.88, g: 0.2, b: 0.11, a: 1}
   _bandLocked: {r: 0.34, g: 0.11, b: 0.09, a: 1}
   _bandUnlocked: {r: 0.86, g: 0.22, b: 0.14, a: 1}
-  _pipLeft: {r: 0.74, g: 0.26, b: 0.17, a: 1}
+  _pipSafe: {r: 0.28, g: 0.7, b: 0.3, a: 1}
+  _pipWarn: {r: 0.9, g: 0.48, b: 0.1, a: 1}
+  _pipLast: {r: 0.88, g: 0.16, b: 0.11, a: 1}
   _pipSpent: {r: 0.1, g: 0.095, b: 0.088, a: 1}
   _emission: 0.55
 --- !u!1 &1102495807

@@ -378,9 +378,25 @@ namespace Ascend.Prototype.View
                 // 계기판의 `요구 0 0%` 가 세 토큰 간격이 균등해져 「요구값과 달성률을
                 // 가를 수 없다」는 회귀를 만들었다. 여기서는 토큰이 둘뿐이고
                 // 사이를 세 칸 띄운다 — 좁은 판이 아니라 넓은 판이라 여유가 있다.
+                // 「이동시 소비되는 전력」 = **다음 한 층 비용** (2026-08-09 사용자 결정).
+                //
+                // 처음 후보는 `AscendResult.PowerSpent`(= 추가층 × 층당비용)였는데,
+                // 자체 검증이 「40개 시드에서 다층 상승이 **한 번도** 발생하지 않았다」고
+                // 보고했다. 그대로 붙이면 영원히 0 만 찍히는 칸이 하나 느는 것이라
+                // — 사용자가 「더미로 보인다」고 지적한 바로 그 물건이 된다 —
+                // 항상 값이 있는 「한 층 더 가는 데 드는 전력」으로 정의를 바꿨다.
+                //
+                // ⚠ **식을 복제하지 않는다.** `PreviewAscent()` 는 `Resolve()` 가 부르는
+                //   것과 같은 한 줄이다(`FloorSession` 주석). 여기서 60 을 직접 쓰면
+                //   프로파일이 배선되는 날 화면과 실제 상승이 갈라진다 — 이 저장소가
+                //   가장 두려워하는 결함이다.
+                // ⚠ 할당이 있으므로 **더티 검사 안에서만** 부른다. 매 프레임 부르면
+                //   `AscendResult` 가 프레임마다 하나씩 쌓인다.
+                int perFloor = Mathf.RoundToInt(floor.PreviewAscent().PowerPerExtraFloor);
                 _text.Clear();
                 _text.Append("저장 ").AppendFormat("{0:F0}", floor.Power)
-                     .Append("   필요 ").AppendFormat("{0:F0}", floor.RequiredPower);
+                     .Append("   필요 ").AppendFormat("{0:F0}", floor.RequiredPower)
+                     .Append("   이동 ").Append(perFloor);
                 SetPowerLine(_text.ToString());
             }
 
@@ -438,7 +454,10 @@ namespace Ascend.Prototype.View
 
             if (_spinNumeral != null) _spinNumeral.SetText("0");
             if (_ascentNumeral != null) _ascentNumeral.SetText(run.IsFailed ? "0" : "—");
-            SetPowerLine($"저장 {last.FinalPower:F0}   필요 {last.RequiredPower:F0}");
+            // 종료 화면도 같은 세 값. 여기서는 이미 확정된 결과가 있으므로
+            // `last.Ascent` 를 그대로 읽는다 — 다시 계산하지 않는다.
+            SetPowerLine($"저장 {last.FinalPower:F0}   필요 {last.RequiredPower:F0}" +
+                         $"   이동 {last.Ascent.PowerPerExtraFloor:F0}");
             if (_reserveLine != null)
                 _reserveLine.SetText(run.IsFailed ? "배수 0.00배   손실 —" : "확정 완료");
         }
