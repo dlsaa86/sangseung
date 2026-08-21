@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>상승 — 모바일 테스트</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;
+    -webkit-text-size-adjust:100%;overscroll-behavior:none;touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;}
+  #stage{position:fixed;top:0;left:0;right:0;bottom:0;overflow:hidden;background:#000;}
+  #fit{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;}
+  #g{border:0;display:block;background:#000;}
+  #rotBtn{position:fixed;z-index:50;left:calc(env(safe-area-inset-left,0px) + 6px);
+    top:calc(env(safe-area-inset-top,0px) + 6px);
+    width:30px;height:30px;border-radius:15px;border:1px solid #3a4a55;
+    background:rgba(10,14,18,.55);color:#8fb6cc;font:600 14px/28px -apple-system,sans-serif;
+    text-align:center;padding:0;opacity:.35;}
+  #rotBtn:active{opacity:.9;}
+  #boot{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+    background:#07090b;color:#7f9fb2;font:600 14px -apple-system,'Apple SD Gothic Neo',sans-serif;
+    transition:opacity .35s;}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="fit"><iframe id="g" src="sangseung_proto.html" scrolling="no"></iframe></div>
+</div>
+<button id="rotBtn" title="화면 회전 전환">⟳</button>
+<div id="boot">불러오는 중…</div>
+<script>
+(function(){
+  var CANVAS_W = 1800, CANVAS_H = 1150;    // 게임 레이아웃보다 넉넉한 캔버스
+  var FALLBACK = { x:(CANVAS_W-1180)/2, y:(CANVAS_H-760)/2, w:1180, h:760 };
+  var g = document.getElementById('g');
+  var fit = document.getElementById('fit');
+  var stage = document.getElementById('stage');
+  var rotBtn = document.getElementById('rotBtn');
+  var boot = document.getElementById('boot');
+
+  g.style.width  = CANVAS_W + 'px';
+  g.style.height = CANVAS_H + 'px';
+
+  // 게임 본체(#cabin) 실제 크기를 매번 측정 → 빌드가 바뀌어도 자동으로 맞음
+  function box(){
+    try{
+      var d = g.contentDocument;
+      var el = d.querySelector('#cabin') || d.body.firstElementChild;
+      if(!el) return FALLBACK;
+      var r = el.getBoundingClientRect();
+      if(!(r.width > 40 && r.height > 40)) return FALLBACK;
+      return { x:r.left, y:r.top, w:r.width, h:r.height };
+    }catch(e){ return FALLBACK; }
+  }
+
+  // auto = 세로일 때만 회전. 사용자가 버튼으로 강제 on/off 가능.
+  var rotMode = 'auto';   // 'auto' | 'on' | 'off'
+
+  function vp(){
+    var v = window.visualViewport;
+    return { w: Math.round((v && v.width)  || window.innerWidth),
+             h: Math.round((v && v.height) || window.innerHeight) };
+  }
+
+  function layout(){
+    var d = vp(), vw = d.w, vh = d.h;
+    var b = box();
+    var portrait = vh > vw;
+    var rot = (rotMode === 'on') || (rotMode === 'auto' && portrait);
+    var s, t;
+    if (rot){
+      s = Math.min(vw / b.h, vh / b.w);
+      var tx = (vw - s*b.h)/2 + s*(b.y + b.h);
+      var ty = (vh - s*b.w)/2 - s*b.x;
+      t = 'translate(' + tx + 'px,' + ty + 'px) rotate(90deg) scale(' + s + ')';
+    } else {
+      s = Math.min(vw / b.w, vh / b.h);
+      var px = (vw - s*b.w)/2 - s*b.x;
+      var py = (vh - s*b.h)/2 - s*b.y;
+      t = 'translate(' + px + 'px,' + py + 'px) scale(' + s + ')';
+    }
+    fit.style.transform = t;
+    stage.dataset.scale = s.toFixed(3);
+    stage.dataset.rot = rot ? '1' : '0';
+    stage.dataset.box = Math.round(b.w)+'x'+Math.round(b.h);
+  }
+
+  rotBtn.addEventListener('click', function(){
+    var d = vp(), portrait = d.h > d.w;
+    var cur = (rotMode === 'on') || (rotMode === 'auto' && portrait);
+    rotMode = cur ? 'off' : 'on';
+    layout();
+  });
+
+  // iOS 더블탭 확대/탭 하이라이트 억제 (동일 출처라 주입 가능, 원본 파일은 그대로)
+  g.addEventListener('load', function(){
+    try{
+      var doc = g.contentDocument;
+      var st = doc.createElement('style');
+      st.textContent = '*{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}' +
+                       'html,body{overscroll-behavior:none;-webkit-text-size-adjust:100%;}';
+      doc.head.appendChild(st);
+    }catch(e){}
+    boot.style.opacity = '0';
+    setTimeout(function(){ boot.style.display = 'none'; }, 400);
+    layout();
+  });
+
+  window.addEventListener('resize', layout);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function(){
+    setTimeout(layout, 120); setTimeout(layout, 400); setTimeout(layout, 800);
+  });
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+
+  setInterval(layout, 1500);
+  layout();
+})();
+</script>
+</body>
+</html>
