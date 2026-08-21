@@ -610,7 +610,7 @@ label.dl{display:flex; justify-content:space-between; align-items:center; gap:12
         <div class="gcap">다 쓰기 전에 문턱을 넘어야 한다 · 남기면 동전이 된다</div></div>
 </div>
 <div class="ggroup"><div class="gglab">내가 쌓은 것</div>
-      <div class="g" title="앞으로 버는 모든 전력에 곱하는 값이다. ×2면 전력이 2배, ×5면 5배로 들어온다. 한 번 오르면 이 런이 끝날 때까지 내려가지 않는다.&#10;&#10;&quot;출력배수 +1&quot;은 이 숫자에 1을 더한다는 뜻이다. 지금 ×1이면 ×2가 되어 전력이 2배(+100%), 지금 ×5면 ×6이 되어 1.2배(+20%). 같은 &quot;+1&quot;이라도 낮을 때 받을수록 훨씬 크다.&#10;&#10;올리는 법 — 부품(구리 계열), 승객, 인터폰 거래, 그리고 층에 도착할 때마다 그 층에서 세운 줄 수만큼 조금씩."><div class="t"><span>출력배수</span><span>영구</span></div><div class="gv" id="outMultV">×1.00</div>
+      <div class="g" title="앞으로 버는 모든 전력에 곱하는 값이다. ×2면 전력이 2배, ×5면 5배로 들어온다. 한 번 오르면 이 런이 끝날 때까지 내려가지 않는다.&#10;&#10;&quot;전력 배수 +1&quot;은 이 숫자에 1을 더한다는 뜻이다. 지금 ×1이면 ×2가 되어 전력이 2배(+100%), 지금 ×5면 ×6이 되어 1.2배(+20%). 같은 &quot;+1&quot;이라도 낮을 때 받을수록 훨씬 크다.&#10;&#10;올리는 법 — 부품(구리 계열), 승객, 인터폰 거래, 그리고 층에 도착할 때마다 그 층에서 세운 줄 수만큼 조금씩."><div class="t"><span>전력 배수</span><span>영구</span></div><div class="gv" id="outMultV">×1.00</div>
         <div class="gcap">버는 전력에 곱한다 — ×2면 전력이 2배 (한번 오르면 안 내려감)</div></div>
       <div class="g" title="눈은 기본적으로 손해다. 두 가지로 당신을 막는다:&#10;① 눈이 앉은 칸에는 줄이 서지 않는다 (칸을 하나 잡아먹는다)&#10;② 눈 하나당 이 층의 문턱이 ×1.45씩 올라간다 (최대 ×3배까지)&#10;&#10;그런데 눈 배수를 올려주는 부품(유리 계열)이나 승객(순례자·인장 관리인 등)을 실으면, 그때부터는 눈이 많을수록 전력이 커진다. 그게 눈 빌드다. 아무것도 없으면 배수는 ×1 — 즉 순수 손해다.&#10;&#10;지우는 법 — 줄이 하나 설 때마다 가장 오래된 눈이 하나 사라진다. 1~6층에서는 출발할 때 남긴 레버 수만큼 더 닦인다. 7층부터는 닦이지 않고 계속 쌓인다.&#10;&#10;★ 단, 눈 배수 ×1.5 이상인 빌드에게는 줄이 눈을 갈지 않는다 — 눈을 쓰는 자에게 눈은 남는다. 그래서 눈 빌드는 눈이 쌓이고, 문턱 상한도 ×3에서 ×9로 풀린다. 눈은 공짜가 아니다.&#10;&#10;방금 뜬 눈은 다음 레버부터 문턱을 올린다."><div class="t"><span>눈</span><span>배수</span></div><div id="flip">눈 0 · ×1</div>
         <div id="eyeLedger"></div>
@@ -760,7 +760,7 @@ let W34R=[2.69,1.23,0.79,0.5,0,0.25];  /* 3×3+뇌 캘리브 확정: 61.7%/1.07�
 let W55=[3.14,2.18,1.39,0.58,1.73,0.98];  /* 3×5 5심볼 k0.65: 신선판 등가 */
 let W56=[3.18,1.97,1.10,0.70,1.46,0.70,0.89,0];   /* 3×5 6심볼 균형형 (k0.85·눈7%): 성립 62.1%·잭팟 32.6%·차단 42% */
 let W57=[2.55,1.77,1.13,0.70,1.40,0.80,0.96,0.69]; /* 3×5 7심볼 하드코어 (k0.65·눈7%): 성립 48.6%·차단 50.8% */
-let W55E=[3.14,2.18,1.39,0.78,1.73,0.98];   /* 대안 레버: 5심볼 + 눈 유입 증가 */
+let W55E=[3.14,2.18,1.39,0.78,1.73,0.98];   /* 대안 레버: 5심볼 + 눈 출현 증가 */
 /* v8 ⑤-bis 클래스 분리 가중치 — 저배율 65% · 고배율 22% · 눈 7% · 벨 6% (합 10.0)
    클래스 안에서도 값↑ = 가중치↓ (희소성 사다리 유지). 끊기는 건 클래스 경계뿐이다. */
 let W6C=[3.31,1.92,0.91,0.70,1.11,0.80,0.65,0,0.60];    /* c6: 저4 + 고2(심장·뇌) */
@@ -798,7 +798,7 @@ const PATTERNS5=[
  {nm:'화살촉 위',cells:[2,6,8,11,13],mul:15},
  {nm:'화살촉 아래',cells:[12,6,8,1,3],mul:15},
 ];
-/* 3×5 리밸런스 가중치 — 목표: 신선판 성립률 ~61% · 줄/레버 ~1.0 · 눈 유입 ~0.86개/레버 (캐논 공포 숫자 등가) */
+/* 3×5 리밸런스 가중치 — 목표: 신선판 성립률 ~61% · 줄/레버 ~1.0 · 눈 출현 ~0.86개/레버 (캐논 공포 숫자 등가) */
 let W5=[2.86,2.42,2.17,0.58,1.97];
 const ROSTER=[
  /* v11 이원화 — 퀘스트형(kind q): "N층까지 가주세요" 소수. 목적지·명시 보상. 타는 동안 효과는 강하고 단기.
@@ -808,27 +808,27 @@ const ROSTER=[
  {id:'quar',nm:'검역관',kind:'q',w:2,dest:8,pay:6,gen:1,fx:'검역 통과 — 무게가 문턱을 덜 올린다 (−35%)',why:'격리 병동이 8층이다',m:{wcMul:0.65}},
  {id:'mine',nm:'폐광의 광부',kind:'q',w:3,dest:12,pay:8,gen:1,fx:'갱도를 안다 — 눈이 덜 뜬다 (가중치 −0.2)',why:'갱도 입구가 12층 뒤에 있다',m:{eyeW:-0.2}},
  {id:'mort',nm:'장의사',kind:'q',w:4,dest:20,pay:12,gen:1,fx:'모든 심볼값 2배',why:'안치실이 20층이다'},
- {id:'metr',nm:'전력 검침원',kind:'q',w:3,dest:16,pay:10,gen:1,fx:'출력배수 영구 +1.5',why:'16층에 미검침 세대가 남았다'},
- {id:'swep',nm:'굴뚝 청소부',kind:'q',w:2,dest:444,pay:20,gen:2,fx:'연도를 쓸어낸다 — 출력배수 +0.5',why:'굴뚝은 444층을 지난다',m:{outAdd:0.5}},
+ {id:'metr',nm:'전력 검침원',kind:'q',w:3,dest:16,pay:10,gen:1,fx:'전력 배수 영구 +1.5',why:'16층에 미검침 세대가 남았다'},
+ {id:'swep',nm:'굴뚝 청소부',kind:'q',w:2,dest:444,pay:20,gen:2,fx:'연도를 쓸어낸다 — 전력 배수 +0.5',why:'굴뚝은 444층을 지난다',m:{outAdd:0.5}},
  {id:'clrk',nm:'명부 서기',kind:'q',w:1,dest:4444,pay:30,gen:2,prov:1,fx:'승객을 인도할 때마다 동전 +2',why:'4444층 명부가 아직 안 닫혔다',m:{onDeliverTick:2}},
  /* ── 능력형 18 (영구 탑승) ── */
- {id:'plum',nm:'배관공',kind:'a',w:2,dest:0,gen:1,fx:'세로 다섯 줄 각각 +3 · 대각 줄은 −1 (배관은 수직으로 흐른다) · 출발 시 이 층에서 세운 줄 1개당 출력배수 +1.2% (곱셈)',why:'주 배관을 따라 끝까지 간다',m:{lv:{h:0,v:3,d:-1},confirmMul:{src:'lines',v:0.012}},fuse:{f:'밧줄',fx:'배관 결속 — 세로 다섯 줄 +4 추가',m:{lv:{v:4}}}},
+ {id:'plum',nm:'배관공',kind:'a',w:2,dest:0,gen:1,fx:'세로 다섯 줄 각각 +3 · 대각 줄은 −1 (배관은 수직으로 흐른다) · 출발 시 이 층에서 세운 줄 1개당 전력 배수 +1.2%',why:'주 배관을 따라 끝까지 간다',m:{lv:{h:0,v:3,d:-1},confirmMul:{src:'lines',v:0.012}},fuse:{f:'밧줄',fx:'배관 결속 — 세로 다섯 줄 +4 추가',m:{lv:{v:4}}}},
  {id:'bee', nm:'검은 벌의 양봉업자',kind:'a',w:2,dest:0,gen:1,fx:'값이 가장 낮은 성립 줄 1회 재발동',why:'벌은 위로만 난다',fuse:{f:'벨',fx:'벌떼 — 벨 뱃지 확률 +10%p',m:{badgeAdd:.10}}},
  {id:'gamb',nm:'손가락 없는 도박사',kind:'a',w:3,dest:0,gen:1,fx:'운 +2 · 눈 배수 +0.5 · 줄이 안 선 레버마다 동전 1닢 · 무겁다 (무게 3)',why:'빚쟁이는 어느 층에나 있다',/* v13.6: 무게 1이라 태우지 않을 이유가 없었다(완주런 50% 탑승). 점등원과 같은 처방 — 기회비용을 만든다. 무게는 문턱을 올린다. */fuse:{f:'표',fx:'판돈 — 꽝마다 동전 +2 추가',m:{onBlankTick:2}}},
- {id:'endr',nm:'7734행 수금원',kind:'a',w:3,dest:0,gen:1,prov:1,fx:'모든 줄값 +1 · 출발 시 인도한 이름 1명당 출력배수 +9% (곱셈)',why:'끝 층의 빚은 끝 층에서 받는다',m:{lv:{h:1,v:1,d:1},confirmMul:{src:'deliv',v:0.09}},fuse:{f:'상아',fx:'이자 — 모든 줄값 +1 추가',m:{lv:{h:1,v:1,d:1}}}},
- {id:'pilg',nm:'눈먼 순례자',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'눈 배수 +0.75 · 연쇄 — 눈이 뜨면 이번 판 전력 +12% · 출발 시 뜬 눈 1개당 출력배수 +7% (곱셈)',why:'끝까지 보아야 눈을 돌려받는다',m:{eyeMult:.75,confirmMul:{src:'eyes',v:0.07}},ch:{on:'eyeBorn',fx:'pow',v:.12},fuse:{f:'유리',fx:'개안 — 눈 배수 +1.25 추가',m:{eyeMult:1.25}}},
- {id:'lamp',nm:'점등원',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'출발 시 이 층에서 쓴 레버 1회당 출력배수 +2.2% (곱셈) · 등이 켜진 만큼 눈이 뜬다 (유입 +0.15)',why:'꺼진 등이 위층에도 있다',/* v13.5: 조건 없는 유일 복리라 완주런 62%에 탑승했다 — "쓴 레버"는 모든 빌드가 하는 일이므로 기회비용이 없었다. 대가(눈 유입)를 붙여 거래로 만든다. */m:{eyeW:0.15},fuse:{f:'기름',fx:'점화 — 쓴 레버 한 번당 +6%로',m:{}}},
+ {id:'endr',nm:'7734행 수금원',kind:'a',w:3,dest:0,gen:1,prov:1,fx:'모든 줄값 +1 · 출발 시 인도한 이름 1명당 전력 배수 +9%',why:'끝 층의 빚은 끝 층에서 받는다',m:{lv:{h:1,v:1,d:1},confirmMul:{src:'deliv',v:0.09}},fuse:{f:'상아',fx:'이자 — 모든 줄값 +1 추가',m:{lv:{h:1,v:1,d:1}}}},
+ {id:'pilg',nm:'눈먼 순례자',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'눈 배수 +0.75 · 연쇄 — 눈이 뜨면 이번 판 전력 +12% · 출발 시 뜬 눈 1개당 전력 배수 +7%',why:'끝까지 보아야 눈을 돌려받는다',m:{eyeMult:.75,confirmMul:{src:'eyes',v:0.07}},ch:{on:'eyeBorn',fx:'pow',v:.12},fuse:{f:'유리',fx:'개안 — 눈 배수 +1.25 추가',m:{eyeMult:1.25}}},
+ {id:'lamp',nm:'점등원',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'출발 시 이 층에서 쓴 레버 1회당 전력 배수 +2.2% · 등이 켜진 만큼 눈이 뜬다 (눈 출현 +0.15)',why:'꺼진 등이 위층에도 있다',/* v13.5: 조건 없는 유일 복리라 완주런 62%에 탑승했다 — "쓴 레버"는 모든 빌드가 하는 일이므로 기회비용이 없었다. 대가(눈 출현)를 붙여 거래로 만든다. */m:{eyeW:0.15},fuse:{f:'기름',fx:'점화 — 쓴 레버 한 번당 +6%로',m:{}}},
  {id:'mend',nm:'수선공',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'손이 빠르다 — 운 +1',why:'터진 곳은 위로 이어진다',m:{luck:1},fuse:{f:'톱니',fx:'땜질 — 운 +2 추가',m:{luck:2}}},
  {id:'tail',nm:'재단사',kind:'a',w:1,dest:0,gen:1,prov:1,fx:'운이 만든 줄에도 새김눈이 남는다 (+1)',why:'치수는 오르며 잰다',fuse:{f:'밧줄',fx:'재봉 — 운 +1',m:{luck:1}}},
- {id:'wnch',nm:'권양기 기사',kind:'a',w:4,dest:0,gen:1,prov:1,fx:'심장 심볼값 +2 · 점프 상한 +12층',why:'권양기는 그가 돌린다',m:{jumpCap:12},fuse:{f:'밧줄',fx:'이중 감속기 — 점프 상한 ×1.6',m:{jumpCapMul:1.6}}},
- {id:'glaz',nm:'유리공',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'눈이 사라질 때마다 출력배수 +0.1 (영구) · 연쇄 — 줄이 서면 눈 하나를 지운다',why:'금 간 유리는 끝이 없다',ch:{on:'line',fx:'purge'},fuse:{f:'유리',fx:'재용융 — 눈 소멸마다 +0.2 추가',m:{onEyeGoneOut:.2}}},
+ {id:'wnch',nm:'권양기 기사',kind:'a',w:4,dest:0,gen:1,prov:1,fx:'심장 심볼값 +2 · 상승 한계 +12층',why:'권양기는 그가 돌린다',m:{jumpCap:12},fuse:{f:'밧줄',fx:'이중 감속기 — 상승 한계 ×1.6',m:{jumpCapMul:1.6}}},
+ {id:'glaz',nm:'유리공',kind:'a',w:2,dest:0,gen:1,prov:1,fx:'눈이 사라질 때마다 전력 배수 +0.1 (영구) · 연쇄 — 줄이 서면 눈 하나를 지운다',why:'금 간 유리는 끝이 없다',ch:{on:'line',fx:'purge'},fuse:{f:'유리',fx:'재용융 — 눈 소멸마다 +0.2 추가',m:{onEyeGoneOut:.2}}},
  {id:'scri',nm:'필경사',kind:'a',w:1,dest:0,gen:1,prov:1,fx:'줄이 안 선 레버마다 다음 레버 운 +1 (줄이 서면 초기화)',why:'장부는 끝까지 쓴다',fuse:{f:'상아',fx:'정서 — 운 +1',m:{luck:1}}},
- {id:'insp',nm:'승강기 검사원',kind:'a',w:3,dest:0,gen:2,prov:1,fx:'탑승 시 출력배수 +2 · 점프 상한 +60층',why:'검사는 끝나지 않는다',m:{jumpCap:60},fuse:{f:'기름',fx:'합격 도장 — 출력배수 ×1.5',m:{outMulX:1.5}}},
+ {id:'insp',nm:'승강기 검사원',kind:'a',w:3,dest:0,gen:2,prov:1,fx:'탑승 시 전력 배수 +2 · 상승 한계 +60층',why:'검사는 끝나지 않는다',m:{jumpCap:60},fuse:{f:'기름',fx:'합격 도장 — 전력 배수 ×1.5',m:{outMulX:1.5}}},
  {id:'line',nm:'고압선 전공',kind:'a',w:2,dest:0,gen:2,prov:1,fx:'가로 아홉 줄 각각 +3',why:'간선은 꼭대기까지 오른다',fuse:{f:'밧줄',fx:'복선화 — 가로 아홉 줄 +3 추가',m:{lv:{h:3}}}},
- {id:'seal',nm:'인장 관리인',kind:'a',w:2,dest:0,gen:2,prov:1,fx:'눈 배수 +0.5 · 점프 상한 +40층',why:'인장은 문 앞에서 찍는다',m:{jumpCap:40},fuse:{f:'납',fx:'납인 — 점프 상한 ×1.4',m:{jumpCapMul:1.4}}},
- {id:'ngwd',nm:'야간 경비',kind:'a',w:2,dest:0,gen:2,prov:1,fx:'야간 순찰 — 눈이 덜 뜬다 (가중치 −0.2)',why:'교대자가 오지 않는다',m:{eyeW:-0.2},fuse:{f:'톱니',fx:'철야 — 눈 가중치 −0.2 추가',m:{eyeW:-0.2}}},
- {id:'stok',nm:'소각로 화부',kind:'a',w:3,dest:0,gen:2,prov:1,fx:'도착마다 눈 하나를 태운다 · 출력배수 −0.5',why:'불은 위로 번진다',m:{purgeOnArrive:1,outAdd:-0.5},fuse:{f:'기름',fx:'급유 — 출력배수 +1.5',m:{outAdd:1.5}}},
- {id:'wrck',nm:'해체공',kind:'a',w:4,dest:0,gen:2,prov:1,fx:'고배율 심볼값 2배 (심장·뇌·폐) · 출발 시 무게 1당 출력배수 +3.2% (곱셈)',why:'뜯어낼 것은 위에 있다',m:{svHiX:2,confirmMul:{src:'weight',v:0.032}},fuse:{f:'연장',fx:'중장비 — 고배율 ×1.5 추가',m:{svHiX:1.5}}},
+ {id:'seal',nm:'인장 관리인',kind:'a',w:2,dest:0,gen:2,prov:1,fx:'눈 배수 +0.5 · 상승 한계 +40층',why:'인장은 문 앞에서 찍는다',m:{jumpCap:40},fuse:{f:'납',fx:'납인 — 상승 한계 ×1.4',m:{jumpCapMul:1.4}}},
+ {id:'ngwd',nm:'야간 경비',kind:'a',w:2,dest:0,gen:2,prov:1,fx:'야간 순찰 — 눈이 덜 뜬다 (가중치 −0.2)',why:'교대자가 오지 않는다',m:{eyeW:-0.2},fuse:{f:'톱니',fx:'철야 — 눈 위협도 −0.2 추가',m:{eyeW:-0.2}}},
+ {id:'stok',nm:'소각로 화부',kind:'a',w:3,dest:0,gen:2,prov:1,fx:'도착마다 눈 하나를 태운다 · 전력 배수 −0.5',why:'불은 위로 번진다',m:{purgeOnArrive:1,outAdd:-0.5},fuse:{f:'기름',fx:'급유 — 전력 배수 +1.5',m:{outAdd:1.5}}},
+ {id:'wrck',nm:'해체공',kind:'a',w:4,dest:0,gen:2,prov:1,fx:'큰 심볼값 2배 (심장·뇌·폐) · 출발 시 무게 1당 전력 배수 +3.2%',why:'뜯어낼 것은 위에 있다',m:{svHiX:2,confirmMul:{src:'weight',v:0.032}},fuse:{f:'연장',fx:'중장비 — 큰 심볼값 ×1.5 더',m:{svHiX:1.5}}},
 ];
 /* 부품 — 1차 정제 풀 121종 (로드맵 목표 200종). 검열 기준: ①빌드 축 하나 ②대가/세트 역할 ③기존 시스템 2+ 상호작용 ④배율 복제 금지.
    패밀리 16계열 · cost=등급(1고물/2상용/3정품/4봉인품) · 캐논 8종 원형 유지 · act=발동형(사전 획득 충전의 활용) */
@@ -837,7 +837,7 @@ const PARTS=[
  {id:'iron',nm:'낙인 인두',cost:4,f:'연장',w:2,fx:'각인 층당 1회 · 무게 +2 · 문턱 +30%',m:{brand:1,reqMul:1.30}},
  {id:'probe',nm:'균열 탐침',cost:2,f:'연장',fx:'재추첨 +1회',m:{pick:1}},
  {id:'head',nm:'예비 헤드',cost:3,prov:1,f:'연장',c:'iron',fx:'각인 +1회 (낙인 인두 필요)',m:{brand:1}},
- {id:'t201',nm:'녹슨 곡괭이 날',cost:2,prov:1,f:'연장',fx:'재추첨 +1회 · 눈 가중치 +0.2',m:{pick:1,eyeW:.2}},
+ {id:'t201',nm:'녹슨 곡괭이 날',cost:2,prov:1,f:'연장',fx:'재추첨 +1회 · 눈 위협도 +0.2',m:{pick:1,eyeW:.2}},
  {id:'t202',nm:'봉인 딱지 뭉치',cost:2,prov:1,f:'연장',fx:'봉인 딱지 층당 +2',m:{seal:2}},
  {id:'sgun',nm:'산탄총',cost:4,prov:1,f:'연장',act:{n:2,ef:'shot'},fx:'발동: 명부의 이름 하나를 지운다 — 인도 없이, 무게가 빈다. 건물이 총성을 듣는다: 눈 하나가 뜨고, 문턱이 영구히 +8% — 명부는 지워진 이름을 기억한다'},
  {id:'t204',nm:'이중 자루',cost:3,prov:1,f:'연장',w:1,fx:'재추첨 +1회 · 무게 +1',m:{pick:1}},
@@ -848,20 +848,20 @@ const PARTS=[
  {id:'p02',nm:'금박 인그레이빙',cost:4,prov:1,f:'무늬',fx:'무늬 배수 +70% · 문턱 +12%',m:{patMul:.70,reqMul:1.12}},
  {id:'p03',nm:'견본 천',cost:2,prov:1,f:'무늬',fx:'무늬 배수 +15% · 저배율 심볼값 각각 +3',m:{patMul:.15,svLo:3}},
  {id:'p04',nm:'닳은 모눈자',cost:1,prov:1,f:'무늬',fx:'무늬 수만 채운다 — 그 자체 효과는 없다',m:{}},
-/* v13.1: 권양 계열 폐지 (설계자 확정) — 층 기준 문턱으로 바뀌면서 "점프 상한"은 축이 될 수 없었다.
+/* v13.1: 권양 계열 폐지 (설계자 확정) — 층 기준 문턱으로 바뀌면서 "상승 한계"은 축이 될 수 없었다.
    측정: 권양 단독 완주율 0% · 강빌드에 얹으면 8.72%→0.68%. 세 차례 재정의 시도 후 접는다.
-   점프 상한은 이제 층에 비례해 자동으로 자란다(부품 없이). reqPowD mod는 코드에 남겨둔다. */
+   상승 한계는 이제 층에 비례해 자동으로 자란다(부품 없이). reqPowD mod는 코드에 남겨둔다. */
 /* 잿가루 보강 — 2막 눈 경제의 부품 경로 */
- {id:'a90',nm:'재 여과기',cost:3,prov:1,f:'잿가루',fx:'도착마다 눈 하나가 사라진다 · 출력배수 +0.3',m:{purgeOnArrive:1,outAdd:.3}},
-/* 구리 8 — 출력배수 축 */
- {id:'batt',nm:'소형 축전지',cost:3,f:'구리',fx:'출력배수 +0.6',m:{outAdd:.6}},
- {id:'valve',nm:'압력 밸브',cost:3,f:'구리',fx:'3줄 이상 성립 시 출력배수 +0.5 (누적 +3.0)',m:{onLines3:{add:.4,cap:3}}},
- {id:'c03',nm:'대형 축전지',cost:4,prov:1,f:'구리',w:2,fx:'출력배수 +1.1 · 무게 +2',m:{outAdd:1.1}},
- {id:'c06',nm:'병렬 배선',cost:3,prov:1,f:'구리',fx:'구리 1개당 출력배수 +0.1 (최대 6개)',m:{famPer:{outAdd:.1}}},
+ {id:'a90',nm:'재 여과기',cost:3,prov:1,f:'잿가루',fx:'도착마다 눈 하나가 사라진다 · 전력 배수 +0.3',m:{purgeOnArrive:1,outAdd:.3}},
+/* 구리 8 — 전력 배수 축 */
+ {id:'batt',nm:'소형 축전지',cost:3,f:'구리',fx:'전력 배수 +0.6',m:{outAdd:.6}},
+ {id:'valve',nm:'압력 밸브',cost:3,f:'구리',fx:'3줄 이상 성립 시 전력 배수 +0.5 (누적 +3.0)',m:{onLines3:{add:.4,cap:3}}},
+ {id:'c03',nm:'대형 축전지',cost:4,prov:1,f:'구리',w:2,fx:'전력 배수 +1.1 · 무게 +2',m:{outAdd:1.1}},
+ {id:'c06',nm:'병렬 배선',cost:3,prov:1,f:'구리',fx:'구리 1개당 전력 배수 +0.1 (최대 6개)',m:{famPer:{outAdd:.1}}},
  {id:'c07',nm:'과열 변압기',cost:4,prov:1,f:'구리',fx:'전력 ×1.5 · 문턱 +25%',m:{outMulX:1.5,reqMul:1.25}},
- {id:'c08',nm:'검침 봉인',cost:3,prov:1,f:'구리',fx:'동전 5닢 이상이면 출력배수 +2',m:{tickThreshOut:2}},
+ {id:'c08',nm:'검침 봉인',cost:3,prov:1,f:'구리',fx:'동전 5닢 이상이면 전력 배수 +2',m:{tickThreshOut:2}},
  {id:'c09',nm:'예비 퓨즈',cost:1,prov:1,f:'구리',fx:'구리 수만 채운다 — 그 자체 효과는 없다',m:{}},
- {id:'c10',nm:'이온 응축기',cost:4,prov:1,f:'구리',c:'f7',fx:'7층부터 출력배수 +3',m:{outAdd:3}},
+ {id:'c10',nm:'이온 응축기',cost:4,prov:1,f:'구리',c:'f7',fx:'7층부터 전력 배수 +3',m:{outAdd:3}},
 /* 밧줄 10 — 줄값 축 (방향 특화) */
  {id:'diag',nm:'사선 결속선',cost:3,f:'밧줄',fx:'대각 여섯 줄 각각 +2',m:{lv:{d:2}}},
 /* v11.6 새김 축 — 기본 새김이 3회 누적으로 바뀌면서 생긴 자리. 새김을 되사오는 경로다. */
@@ -869,7 +869,7 @@ const PARTS=[
 /* ══ v13 연쇄 부품 — 각자 "무엇을 듣고 무엇을 낳는가"로 사슬의 고리가 된다 ══
    지우개(purge)와 심는 것(plant)이 서로를 먹여, 잘 짜면 한 판에 여러 겹이 터진다. */
  {id:'ch01',nm:'연동 캠',cost:3,prov:1,f:'톱니',fx:'연쇄 — 줄이 서면 눈 하나를 지운다',ch:{on:'line',fx:'purge'}},
- {id:'ch02',nm:'재점화 코일',cost:3,prov:1,f:'구리',fx:'연쇄 — 눈이 사라지면 출력배수 +0.15',ch:{on:'eyeGone',fx:'out',v:.15}},
+ {id:'ch02',nm:'재점화 코일',cost:3,prov:1,f:'구리',fx:'연쇄 — 눈이 사라지면 전력 배수 +0.15',ch:{on:'eyeGone',fx:'out',v:.15}},
  {id:'ch03',nm:'되울림 종',cost:3,prov:1,f:'벨',fx:'연쇄 — 눈이 사라지면 벨 +1',ch:{on:'eyeGone',fx:'bellg',v:1}},
  {id:'ch04',nm:'유리 파편함',cost:3,prov:1,f:'유리',fx:'연쇄 — 벨이 울리면 눈 하나를 심는다',ch:{on:'bell',fx:'plant'}},
  {id:'ch05',nm:'응시 발전기',cost:4,prov:1,f:'유리',fx:'연쇄 — 눈이 뜨면 이번 판 전력 +18%',ch:{on:'eyeBorn',fx:'pow',v:.18}},
@@ -896,7 +896,7 @@ const PARTS=[
  {id:'i03',nm:'방부 심장',cost:3,prov:1,f:'상아',fx:'심장 +2',m:{sv:[0,0,2]}},
  {id:'i04',nm:'어금니 세공',cost:3,prov:1,f:'상아',fx:'어금니 +1',m:{sv:[1,0,0]}},
  {id:'i05',nm:'골분 광택제',cost:3,prov:1,f:'상아',fx:'뼈 +1',m:{sv:[0,1,0]}},
- {id:'i06',nm:'심장 촉진제',cost:4,prov:1,f:'상아',fx:'심장 +9 · 심장이 자주 뜬다 · 눈 유입 +0.03',m:{sv:[0,0,9],sw:[0,0,1.0],eyeW:.03}},
+ {id:'i06',nm:'심장 촉진제',cost:4,prov:1,f:'상아',fx:'심장 +9 · 심장이 자주 뜬다 · 눈 출현 +0.03',m:{sv:[0,0,9],sw:[0,0,1.0],eyeW:.03}},
  {id:'i07',nm:'만능 연마제',cost:3,prov:1,f:'상아',fx:'모든 심볼 +4',m:{svLo:4,svHi:4}},
  {id:'i10',nm:'상아 저울',cost:3,prov:1,f:'상아',fx:'상아 1개당 모든 심볼 +0.2 (최대 6개)',m:{famPer:{sv:[.2,.2,.2]}}},
  {id:'i11',nm:'젖니 상자',cost:1,prov:1,f:'상아',fx:'이름을 인도하면 — 동전 +3',m:{},ch:{on:'deliv',fx:'tick',v:3}},
@@ -909,26 +909,26 @@ const PARTS=[
  {id:'i14',nm:'헐값 의치',cost:1,prov:1,f:'상아',fx:'어금니 +1 · 뼈 −1',m:{sv:[1,-1,0]}},
 /* 유리 16 — 눈 축 (품기·소각·억제 세 갈래) */
  {id:'shroud',nm:'검은 회수포',cost:3,prov:1,f:'유리',fx:'눈 배수 +0.2 (상한 ×3)',m:{eyeMult:.2}},
- {id:'lure',nm:'홍채 유인구',cost:3,prov:1,f:'유리',fx:'눈 가중치 +0.5 · 눈 배수 +0.5',m:{eyeW:.5,eyeMult:.5}},
+ {id:'lure',nm:'홍채 유인구',cost:3,prov:1,f:'유리',fx:'눈 위협도 +0.5 · 눈 배수 +0.5',m:{eyeW:.5,eyeMult:.5}},
  {id:'soot',nm:'검댕 유리',cost:3,prov:1,f:'유리',fx:'눈이 있는 채 출발하면 눈 1개당 동전 1닢',m:{onConfirmPerEyeTick:1}},
- {id:'g02',nm:'이중 렌즈',cost:4,prov:1,f:'유리',fx:'눈 배수 +0.35 · 눈 가중치 +0.3',m:{eyeMult:.35,eyeW:.3}},
- {id:'g03',nm:'눈꺼풀 집게',cost:3,prov:1,f:'유리',fx:'눈 가중치 −0.3 · 출력배수 +0.6',m:{eyeW:-.3,outAdd:.6}},
- {id:'g05',nm:'의안 케이스',cost:4,prov:1,f:'유리',fx:'도착마다 눈 하나를 심는다 · 출력배수 +1.2',m:{plantOnArrive:1,outAdd:1.2}},
+ {id:'g02',nm:'이중 렌즈',cost:4,prov:1,f:'유리',fx:'눈 배수 +0.35 · 눈 위협도 +0.3',m:{eyeMult:.35,eyeW:.3}},
+ {id:'g03',nm:'눈꺼풀 집게',cost:3,prov:1,f:'유리',fx:'눈 위협도 −0.3 · 전력 배수 +0.6',m:{eyeW:-.3,outAdd:.6}},
+ {id:'g05',nm:'의안 케이스',cost:4,prov:1,f:'유리',fx:'도착마다 눈 하나를 심는다 · 전력 배수 +1.2',m:{plantOnArrive:1,outAdd:1.2}},
  {id:'g06',nm:'응시 거울',cost:4,prov:1,f:'유리',fx:'목격 잭팟마다 동전 1닢',m:{onJackTick:1}},
  {id:'g07',nm:'유리 눈물',cost:1,prov:1,f:'유리',fx:'무늬가 완성되면 — 가장 큰 줄 하나를 한 번 더 계산한다',m:{},ch:{on:'pat',fx:'redo',v:1}},
- {id:'g08',nm:'실핏줄 염료',cost:3,prov:1,f:'유리',fx:'눈이 사라질 때마다 출력배수 +0.1',m:{onEyeGoneOut:.1}},
+ {id:'g08',nm:'실핏줄 염료',cost:3,prov:1,f:'유리',fx:'눈이 사라질 때마다 전력 배수 +0.1',m:{onEyeGoneOut:.1}},
  {id:'g09',nm:'각막 표본',cost:4,prov:1,f:'유리',fx:'유리 1개당 눈 배수 +0.02 (최대 6개)',m:{famPer:{eyeMult:.02}}},
  {id:'g10',nm:'초점 프리즘',cost:4,prov:1,f:'유리',fx:'눈 배수 +0.75 · 문턱 +20%',m:{eyeMult:.75,reqMul:1.2}},
- {id:'g11',nm:'뿌연 안개 유리',cost:2,prov:1,f:'유리',fx:'눈 가중치 +0.3',m:{eyeW:.3}},
+ {id:'g11',nm:'뿌연 안개 유리',cost:2,prov:1,f:'유리',fx:'눈 위협도 +0.3',m:{eyeW:.3}},
  {id:'g12',nm:'채집용 유리병',cost:3,prov:1,f:'유리',fx:'도착마다 눈 하나 · 눈이 사라질 때 출력 +0.1',m:{plantOnArrive:1,onEyeGoneOut:.1}},
  {id:'g14',nm:'볼록 확대경',cost:4,prov:1,f:'유리',fx:'눈 셋 이상일 때 전력 ×1.45',m:{eyeGE:{n:3,mul:1.45}}},
  {id:'g15',nm:'겹눈 표본',cost:4,prov:1,f:'유리',fx:'눈 다섯 이상일 때 전력 ×4',m:{eyeGE:{n:5,mul:4}}},
- {id:'g19',nm:'수은 방울',cost:4,prov:1,f:'유리',fx:'눈 배수 +0.35 · 눈 가중치 −0.2',m:{eyeMult:.35,eyeW:-.2}},
+ {id:'g19',nm:'수은 방울',cost:4,prov:1,f:'유리',fx:'눈 배수 +0.35 · 눈 위협도 −0.2',m:{eyeMult:.35,eyeW:-.2}},
 /* 잿가루 7 — 운·꽝 축 */
  {id:'a01',nm:'마른 재',cost:1,prov:1,f:'잿가루',fx:'잿가루 수만 채운다 — 그 자체 효과는 없다',m:{}},
  {id:'a02',nm:'부적 태운 재',cost:3,prov:1,f:'잿가루',fx:'뒤처졌을 때만 운 +1 — 죽은 것은 절박할 때만 듣는다',m:{luckLow:1}},
  {id:'a05',nm:'불씨 남은 재',cost:3,prov:1,f:'잿가루',fx:'잿가루 5개당 운 +1 (최대 6개)',m:{famPer:{luck:.2}}},
- {id:'a06',nm:'뼛가루 소금',cost:2,prov:1,f:'잿가루',fx:'뒤처졌을 때만 운 +1 · 눈 가중치 +0.2',m:{luckLow:1,eyeW:.2}},
+ {id:'a06',nm:'뼛가루 소금',cost:2,prov:1,f:'잿가루',fx:'뒤처졌을 때만 운 +1 · 눈 위협도 +0.2',m:{luckLow:1,eyeW:.2}},
  {id:'a07',nm:'검은 분필',cost:2,prov:1,f:'잿가루',fx:'운이 만든 줄에도 새김눈 +1',m:{notchLuck:1}},
  {id:'a09',nm:'도박장 재떨이',cost:3,prov:1,f:'잿가루',fx:'줄이 안 선 레버마다 동전 2닢',m:{onBlankTick:2}},
  {id:'a10',nm:'유골 단지',cost:4,prov:1,f:'잿가루',w:2,fx:'뒤처졌을 때만 운 +1 · 무게 +2',m:{luckLow:1}},
@@ -936,30 +936,30 @@ const PARTS=[
  {id:'o04',nm:'낡은 태엽',cost:1,prov:1,f:'기름',fx:'융합이 일어나면 — 레버 +1',m:{},ch:{on:'fuse',fx:'spin',v:1}},
  {id:'relay',nm:'태엽 계전기',cost:3,prov:1,f:'기름',fx:'다섯 번째 레버의 전력 2배',m:{spinIdxMul:{5:2}}},
  {id:'o01',nm:'가압 급유기',cost:4,prov:1,f:'기름',fx:'레버 횟수 +1',m:{spinCapD:1}},
- {id:'o02',nm:'조속기',cost:2,prov:1,f:'기름',fx:'레버 횟수 −1 · 출력배수 +2',m:{spinCapD:-1,outAdd:2}},
+ {id:'o02',nm:'조속기',cost:2,prov:1,f:'기름',fx:'레버 횟수 −1 · 전력 배수 +2',m:{spinCapD:-1,outAdd:2}},
  {id:'o05',nm:'순간 점화유',cost:3,prov:1,f:'기름',fx:'첫 번째 레버 ×2.5 · 문턱 +10%',m:{spinIdxMul:{1:2.5},reqMul:1.1}},
- {id:'o06',nm:'그을린 피스톤',cost:3,prov:1,f:'기름',fx:'다섯째 레버 ×1.5 · 기름 1개당 출력배수 +0.05 (최대 6개)',m:{spinIdxMul:{5:1.5},famPer:{outAdd:.05}}},
+ {id:'o06',nm:'그을린 피스톤',cost:3,prov:1,f:'기름',fx:'다섯째 레버 ×1.5 · 기름 1개당 전력 배수 +0.05 (최대 6개)',m:{spinIdxMul:{5:1.5},famPer:{outAdd:.05}}},
 /* 표 4 — 동전 경제 축 */
  {id:'k01',nm:'회수된 표 뭉치',cost:2,prov:1,f:'표',fx:'살 때 동전 +3',m:{buyTick:3}},
  {id:'k02',nm:'위조표',cost:1,prov:1,f:'표',fx:'살 때 동전 +2 · 문턱 +5%',m:{buyTick:2,reqMul:1.05}},
  {id:'k03',nm:'정기권',cost:3,prov:1,f:'표',fx:'인도마다 동전 +1',m:{onDeliverTick:1}},
- {id:'k07',nm:'봉인된 금고표',cost:2,prov:1,f:'표',w:2,fx:'살 때 동전 +6 · 출력배수 +0.5 · 무게 +1',m:{buyTick:6,outAdd:.5}},
+ {id:'k07',nm:'봉인된 금고표',cost:2,prov:1,f:'표',w:2,fx:'살 때 동전 +6 · 전력 배수 +0.5 · 무게 +1',m:{buyTick:6,outAdd:.5}},
 /* v9.5° 부자 빌드 축 — 동전 영구 수입 엔진. "룰렛이 약해도 돈으로 찍어누른다" */
  {id:'k10',nm:'구리 저금통',cost:2,prov:1,f:'표',fx:'정차에 도착할 때마다 동전 +1',m:{arriveTick:1}},
  {id:'k11',nm:'이자 장부',cost:4,prov:1,f:'표',fx:'출발할 때 보유 동전의 35% 이자(올림)',m:{interest:.35}},
- {id:'k12',nm:'동전 프레스',cost:5,prov:1,f:'표',fx:'출발 보상 동전 2배 · 동전 5닢 이상이면 출력배수 +1.5',m:{confirmTickX:2,tickThreshOut:1.5}},
+ {id:'k12',nm:'동전 프레스',cost:5,prov:1,f:'표',fx:'출발 보상 동전 2배 · 동전 5닢 이상이면 전력 배수 +1.5',m:{confirmTickX:2,tickThreshOut:1.5}},
  {id:'k13',nm:'수금 가방',cost:3,prov:1,f:'표',fx:'인도마다 동전 +2 · 출발마다 동전 +2',m:{onDeliverTick:2,arriveTick:2}},
 /* 납 7 — 무게 역설 축 (무게를 연료로) */
  {id:'scale',nm:'놋쇠 저울추',cost:2,prov:1,f:'납',fx:'무게가 올리는 문턱 절반',m:{wcMul:.5}},
  {id:'n01',nm:'납 벽돌',cost:1,prov:1,f:'납',w:2,fx:'납 수만 채운다 · 무게 +2 — 그 자체 효과는 없다',m:{}},
  {id:'n03',nm:'모래주머니',cost:1,prov:1,f:'납',w:3,fx:'납 수만 채운다 · 무게 +3 — 그 자체 효과는 없다',m:{}},
- {id:'n04',nm:'균형추',cost:3,prov:1,f:'납',fx:'무게 1당 출력배수 +0.2',m:{outPerW:.2}},
+ {id:'n04',nm:'균형추',cost:3,prov:1,f:'납',fx:'무게 1당 전력 배수 +0.2',m:{outPerW:.2}},
  {id:'n06',nm:'수하물 저울',cost:2,prov:1,f:'납',fx:'납 1개당 모든 심볼 +0.2 (최대 6개)',m:{famPer:{sv:[.2,.2,.2]}}},
  {id:'n10',nm:'굽은 저울바늘',cost:2,prov:1,f:'납',w:1,fx:'무게 +1 · 문턱 −10%',m:{reqMul:.9}},
  {id:'n13',nm:'평형수 탱크',cost:4,prov:1,f:'납',w:5,fx:'무게 +5 · 무게 문턱 증가 절반',m:{wcMul:.5}},
 /* 톱니 9 — 세트 엔진 축 (개별 약함 · 모이면 강함) */
  {id:'w01',nm:'작은 톱니',cost:1,prov:1,f:'톱니',fx:'한 계열이 셋째를 채우면 — 줄 하나에 새김 +2',m:{},ch:{on:'famN',fx:'notch',v:2}},
- {id:'w04',nm:'주축 톱니',cost:3,prov:1,f:'톱니',fx:'톱니 1개당 출력배수 +0.15 (최대 6개)',m:{famPer:{outAdd:.15}}},
+ {id:'w04',nm:'주축 톱니',cost:3,prov:1,f:'톱니',fx:'톱니 1개당 전력 배수 +0.15 (최대 6개)',m:{famPer:{outAdd:.15}}},
  {id:'w05',nm:'피니언 기어',cost:2,prov:1,f:'톱니',fx:'톱니 1개당 모든 심볼 +0.1 (최대 6개)',m:{famPer:{sv:[.1,.1,.1]}}},
  {id:'w06',nm:'래치 톱니',cost:3,prov:1,f:'톱니',fx:'톱니 1개당 모든 줄 +0.15 (최대 6개)',m:{famPer:{lvAll:.15}}},
  {id:'w07',nm:'웜 기어',cost:3,prov:1,f:'톱니',fx:'톱니 1개당 눈 배수 +0.015 (최대 6개)',m:{famPer:{eyeMult:.015}}},
@@ -968,14 +968,14 @@ const PARTS=[
  {id:'w11',nm:'이 빠진 톱니',cost:1,prov:1,f:'톱니',fx:'톱니다 · 어금니 +0.5',m:{sv:[.5,0,0]}},
  {id:'w12',nm:'맞물림 검사표',cost:2,prov:1,f:'톱니',fx:'톱니다 · 살 때 동전 +1',m:{buyTick:1}},
 /* 벨 4 — 인터폰·2막 축 */
- {id:'b01',nm:'끊긴 수화기',cost:2,prov:1,f:'벨',fx:'붉은 벨을 거절할 때마다 출력배수 +0.5',m:{onRedRefuseOut:.5}},
+ {id:'b01',nm:'끊긴 수화기',cost:2,prov:1,f:'벨',fx:'붉은 벨을 거절할 때마다 전력 배수 +0.5',m:{onRedRefuseOut:.5}},
  {id:'b02',nm:'뇌물 봉투',cost:3,prov:1,f:'벨',fx:'붉은 벨을 수락할 때마다 동전 +4 · 인터폰을 받을 때마다 동전 +2',m:{onRedAcceptTick:4,onAnswerTick:2}},
- {id:'b04',nm:'놋쇠 종',cost:3,prov:1,f:'벨',fx:'출력배수 +0.8 (다섯 번째 정차부터 +2.8)',m:{outAdd:.8},c2:'act2',m2:{outAdd:2}},
+ {id:'b04',nm:'놋쇠 종',cost:3,prov:1,f:'벨',fx:'전력 배수 +0.8 (다섯 번째 정차부터 +2.8)',m:{outAdd:.8},c2:'act2',m2:{outAdd:2}},
  {id:'b06',nm:'교환수의 핀',cost:4,prov:1,f:'벨',fx:'전력 ×1.2 (다섯 번째 정차부터 ×1.5)',m:{outMulX:1.2},c2:'act2',m2:{outMulX:1.25}},
 /* v9.5° 벨 빌드 축 — 게이지를 빨리 채워 전화 찬스로 오른다 */
  {id:'b07',nm:'뱃지 도장',cost:2,prov:1,f:'벨',fx:'벨 뱃지가 더 자주 붙는다 (+6%p)',m:{badgeAdd:.06}},
  {id:'b08',nm:'놋쇠 추',cost:2,prov:1,f:'벨',fx:'벨 뱃지가 더 자주 붙는다 (+5%p)',m:{badgeAdd:.05}},
- {id:'b09',nm:'단축 번호',cost:5,prov:1,f:'벨',fx:'인터폰까지 벨 2개면 된다 · 인터폰을 받을 때마다 출력배수 +0.3',m:{gaugeNeedD:-1,onAnswerOut:.3}},
+ {id:'b09',nm:'단축 번호',cost:5,prov:1,f:'벨',fx:'인터폰까지 벨 2개면 된다 · 인터폰을 받을 때마다 전력 배수 +0.3',m:{gaugeNeedD:-1,onAnswerOut:.3}},
  {id:'b10',nm:'수신자 부담',cost:3,prov:1,f:'벨',fx:'인터폰을 받을 때마다 동전 +1',m:{onAnswerTick:1}},
 /* 문 4 — 확정 타이밍 축 */
  /* ══ v12.6 재발동 계열 (설계자 선택 1·2·3·8) ══
@@ -988,8 +988,8 @@ const PARTS=[
  {id:'whis',nm:'검표원 호각',cost:4,prov:1,f:'벨',fx:'벨이 울리면 다음 판에서 값이 큰 줄 둘을 한 번 더 계산한다',ch:{on:'bell',fx:'redo',v:2}},
  {id:'rscr',nm:'역방향 나사',cost:5,prov:1,f:'톱니',fx:'마지막 레버에서만 — 모든 배수가 제곱된다 (못 넘기면 추락)',m:{lastSpinSq:1}},
  {id:'lift',nm:'만원 승강기',cost:5,prov:1,f:'문',fx:'태운 승객 넷이 전원 융합됐다면 줄값·무늬값을 두 번 계산한다',m:{redoAllFused:1}},
- {id:'d02',nm:'황동 문손잡이',cost:5,prov:1,f:'문',fx:'출발 시 이 층에서 쓴 레버 1회당 출력배수 +4%',m:{onConfirmRemOutMul:.04}},
- {id:'d03',nm:'마지막 못',cost:3,prov:1,f:'문',fx:'남은 레버 0으로 출발하면 출력배수 +0.5',m:{onConfirmZeroOut:.5}},
+ {id:'d02',nm:'황동 문손잡이',cost:5,prov:1,f:'문',fx:'출발 시 이 층에서 쓴 레버 1회당 전력 배수 +4%',m:{onConfirmRemOutMul:.04}},
+ {id:'d03',nm:'마지막 못',cost:3,prov:1,f:'문',fx:'남은 레버 0으로 출발하면 전력 배수 +0.5',m:{onConfirmZeroOut:.5}},
  {id:'d05',nm:'잠금 걸쇠',cost:4,prov:1,f:'문',fx:'문턱 −15%',m:{reqMul:.85}},
  {id:'d07',nm:'육중한 철문',cost:4,prov:1,f:'문',w:3,fx:'무게 +3 · 문턱 −20%',m:{reqMul:.8}},
 /* 심연 4 — 하강 전용 (회송 준비) */
@@ -1007,17 +1007,17 @@ const PARTS=[
 
  {id:'f04',nm:'초석 가루',cost:2,prov:1,f:'초',fx:'운 +1 (축제층에서는 +4)',m:{luck:1},c2:'fest',m2:{luck:3}},
 
- {id:'f06',nm:'제례용 촛대',cost:4,prov:1,f:'초',w:2,fx:'출력배수 +1.2 · 무게 +2 (축제층에서는 전력 ×6 추가)',m:{outAdd:1.2},c2:'fest',m2:{outMulX:6}},
+ {id:'f06',nm:'제례용 촛대',cost:4,prov:1,f:'초',w:2,fx:'전력 배수 +1.2 · 무게 +2 (축제층에서는 전력 ×6 추가)',m:{outAdd:1.2},c2:'fest',m2:{outMulX:6}},
 
 /* 고물 9 — 의도된 저품질 (세트 연료·저주 섞임) */
  {id:'jk01',nm:'먼지 낀 병뚜껑',cost:1,prov:1,f:'고물',fx:'고물 수만 채운다 — 그 자체 효과는 없다',m:{}},
- {id:'jk04',nm:'고물상의 저울',cost:3,prov:1,f:'고물',fx:'고물 1개당 출력배수 +0.2 (최대 6개)',m:{famPer:{outAdd:.2}}},
+ {id:'jk04',nm:'고물상의 저울',cost:3,prov:1,f:'고물',fx:'고물 1개당 전력 배수 +0.2 (최대 6개)',m:{famPer:{outAdd:.2}}},
  {id:'jk05',nm:'고물 수레',cost:3,prov:1,f:'고물',fx:'고물 1개당 모든 심볼 +0.2 (최대 6개)',m:{famPer:{sv:[.2,.2,.2]}}},
  {id:'j06',nm:'넝마주이 갈고리',cost:3,prov:1,f:'고물',fx:'고물 6개당 운 +1 (최대 6개)',m:{famPer:{luck:.16}}},
  {id:'j07',nm:'깨진 시계',cost:1,prov:1,f:'고물',fx:'고물 수만 채운다 — 그 자체 효과는 없다',m:{}},
  {id:'j09',nm:'녹슨 열쇠 꾸러미',cost:1,prov:1,f:'고물',w:1,fx:'고물 수만 채운다 · 무게 +1 — 그 자체 효과는 없다',m:{}},
- {id:'j11',nm:'다 쓴 건전지',cost:1,prov:1,f:'고물',fx:'고물이다 · 출력배수 +0.1',m:{outAdd:.1}},
- {id:'j12',nm:'깨진 거울 조각',cost:1,prov:1,f:'고물',fx:'고물이다 · 눈 가중치 +0.1',m:{eyeW:.1}},
+ {id:'j11',nm:'다 쓴 건전지',cost:1,prov:1,f:'고물',fx:'고물이다 · 전력 배수 +0.1',m:{outAdd:.1}},
+ {id:'j12',nm:'깨진 거울 조각',cost:1,prov:1,f:'고물',fx:'고물이다 · 눈 위협도 +0.1',m:{eyeW:.1}},
  {id:'j14',nm:'정체불명의 부품',cost:1,prov:1,f:'고물',fx:'고물 수만 채운다 — 그 자체 효과는 없다',m:{}},
 /* 태엽 12 — 발동형 (사전 획득 충전의 활용 · FUN_PRINCIPLES §3 단서) */
  {id:'v01',nm:'태엽 집게',cost:2,prov:1,f:'태엽',fx:'발동: 가장 오래된 눈 하나 소멸 · 충전 2 (문이 열릴 때마다 +1)',act:{n:2,ef:'break'}},
@@ -1026,11 +1026,11 @@ const PARTS=[
  {id:'v06',nm:'여분의 스프링',cost:3,prov:1,f:'태엽',fx:'발동: 이번 정차 레버 +1 · 충전 2 (문이 열릴 때마다 +1)',act:{n:2,ef:'spin1'}},
  {id:'v08',nm:'완충 고무',cost:2,prov:1,f:'태엽',fx:'발동: 이번 정차 문턱 −10% · 충전 2 (문이 열릴 때마다 +1)',act:{n:2,ef:'req10'}},
  {id:'v10',nm:'재추첨 크랭크',cost:4,prov:1,f:'태엽',fx:'발동: 눈이 아닌 모든 칸 재추첨(판 정지 후) · 충전 1 (문이 열릴 때마다 +1)',act:{n:1,ef:'rerollAll'}},
- {id:'v12',nm:'영구 코일 감개',cost:4,prov:1,f:'태엽',fx:'발동: 출력배수 +1 영구 · 런 1회 (충전되지 않는다)',act:{n:1,ef:'out1'}},
- {id:'v13',nm:'진정제 분무기',cost:2,prov:1,f:'태엽',fx:'발동: 이번 정차 눈 유입 −0.3 · 충전 2 (문이 열릴 때마다 +1)',act:{n:2,ef:'calm'}},
- {id:'v14',nm:'각성제 분무기',cost:2,prov:1,f:'태엽',fx:'발동: 이번 정차 눈 유입 +0.3 · 충전 3 (문이 열릴 때마다 +1)',act:{n:3,ef:'agit'}},
+ {id:'v12',nm:'영구 코일 감개',cost:4,prov:1,f:'태엽',fx:'발동: 전력 배수 +1 영구 · 런 1회 (충전되지 않는다)',act:{n:1,ef:'out1'}},
+ {id:'v13',nm:'진정제 분무기',cost:2,prov:1,f:'태엽',fx:'발동: 이번 정차 눈 출현 −0.3 · 충전 2 (문이 열릴 때마다 +1)',act:{n:2,ef:'calm'}},
+ {id:'v14',nm:'각성제 분무기',cost:2,prov:1,f:'태엽',fx:'발동: 이번 정차 눈 출현 +0.3 · 충전 3 (문이 열릴 때마다 +1)',act:{n:3,ef:'agit'}},
  {id:'v18',nm:'곡괭이 자판기',cost:3,prov:1,f:'태엽',fx:'발동: 재추첨 +1회 (런 3회)',act:{n:3,ef:'pick1'}},
- {id:'v19',nm:'붉은 태엽',cost:4,prov:1,f:'태엽',fx:'발동: 눈 셋을 심고 출력배수 +1 영구 · 런 1회 (충전되지 않는다)',act:{n:1,ef:'red3'}},
+ {id:'v19',nm:'붉은 태엽',cost:4,prov:1,f:'태엽',fx:'발동: 눈 셋을 심고 전력 배수 +1 영구 · 런 1회 (충전되지 않는다)',act:{n:1,ef:'red3'}},
  {id:'v20',nm:'마지막 태엽',cost:4,prov:1,f:'태엽',fx:'발동: 멈춘 판의 전력 ×2 · 충전 1 (문이 열릴 때마다 +1)',act:{n:1,ef:'dbl'}},
 ];
 /* D-12: 도구 부품 8종 폐기 — 랙 삭제로 효과가 사라진 물건은 진열에서도 사라진다 */
@@ -1155,7 +1155,7 @@ const DIAL_TUNED={/* v12.7: applyGrade(0)이 DIAL에 직접 박는 값을 DIAL_T
  baseSpins:8,eyeBase:1.0,eyeFromFloor:3,jumpPow:2.4,act2Base:380,act2Grow:1.01,act2Cut:40,act2Grow2:1.20,carryRate:0.5,carryCap:0.6,wasteCoinPct:0.25,wasteCoinCap:8,jumpCapBase:5,
  /* ══ v12 층 기준 문턱 (설계자 확정 08-17) ══
     문턱 = reqFloorBase × 층^reqFloorPow × 스케일인플레(1.2^정차).
-    점프 상한 = jumpCapBase + 층×jumpCapRel — 절대 천장이 아니라 높이에 비례해 자란다.
+    상승 한계 = jumpCapBase + 층×jumpCapRel — 절대 천장이 아니라 높이에 비례해 자란다.
     capRatio=0 : 상한 걸쇠 폐지(상한이 비례하므로 불필요).
     솔브: n=15000×3세트 이분탐색 → 완주율 1.70%±0.12%(계약 1.6~2%), 무뇌 44층 돌파 0/3000. */
  reqMode:'floor',reqFloorBase:20,reqFloorPow:0.535,jumpCapRel:0.15,capRatio:0,reqStopGrow:1.233,famPerCap:6,famPerScale:1,reqPowDCap:0.01,act2From:5,eyeTaxCap:3,nearStage:0,bellW:0,badgeRate:0.08,gaugeNeed:3,gaugeGrow:1,gaugeNeedMax:7,gaugeTierEvery:2,scaleGrow:1.2,startSeal:1,startPick:1,rackFrom:1,settleRate:0,descFrac:0.05,finalF:7734,patFree:0,
@@ -1210,7 +1210,7 @@ function chainQueue(S,evt){ (S._chQ=S._chQ||[]).push(evt); }
 function chainApply(S,ch,d){
  const v=ch.v||1;
  switch(ch.fx){
-  case 'out':   S.outMult+=v; return {txt:'출력배수 +'+fmt2(v)};
+  case 'out':   S.outMult+=v; return {txt:'전력 배수 +'+fmt2(v)};
   case 'tick':  S.tickets+=Math.round(v); return {txt:'동전 +'+Math.round(v)};
   case 'luck':  S.tempLuck=(S.tempLuck||0)+v; return {txt:'운 +'+v};
   /* v13.12: 보너스 레버 상한 — 벨→레버→줄→벨 폐루프가 측정에서 확인됐다.
@@ -1266,7 +1266,7 @@ function reqFloorOf(k,f,pd){
  const R0=(DIAL.reqFloorBase===undefined?17:DIAL.reqFloorBase);
  const p=Math.max(0.05,(DIAL.reqFloorPow===undefined?1:DIAL.reqFloorPow)-(pd||0));
  /* v13.3: 문턱에만 걸리는 추가 정차 성장(reqStopGrow).
-    스케일 인플레(1.2^정차)는 심볼값에도 똑같이 걸려 상쇄되지만, 줄값 새김·출력배수·부품은
+    스케일 인플레(1.2^정차)는 심볼값에도 똑같이 걸려 상쇄되지만, 줄값 새김·전력 배수·부품은
     정차가 쌓일수록 일방적으로 커진다. 그래서 런을 길게 만들면 완주율이 같이 폭등했다
     (실측: 완주 40정차로 늘리자 완주율 28.6%). 문턱 쪽에만 얹어 그 편향을 상쇄한다. */
  const g=(DIAL.reqStopGrow===undefined?1:DIAL.reqStopGrow);
@@ -1399,7 +1399,7 @@ function gaugeNeedOf(S){const b0=((DIAL.gaugeNeed===undefined?3:DIAL.gaugeNeed))
 function killReqMul(S){return Math.pow(1+(DIAL.killReqPct===undefined?0.08:DIAL.killReqPct),S.killedN||0);}
 function effReq(S){const st=curStop(S);const wc=0.05*mods(S).wcMul;return Math.round(st.req*((DIAL.reqScale===undefined?1:DIAL.reqScale))*(1+wc*totalW(S))*S.dn.reqMul*mods(S).reqMul*eyeReqMul(S)*killReqMul(S));}
 function symWeights(S){
- /* 머무를수록 본다° — 같은 층에서 당길수록 눈 유입률이 오른다. 첫 당김(들)은 조용하다.
+ /* 머무를수록 본다° — 같은 층에서 당길수록 눈 출현률이 오른다. 첫 당김(들)은 조용하다.
     유입률 = 기본 + stayEyeW × max(0, 이 층 레버 수 − stayEyeFree). 누적이 아니라 유입률 자체의 인과. */
  let eyeAdd=mods(S).eyeW+(S.stopEyeW||0)+(DIAL.stopEyeWG||0)
    +((DIAL.stayEyeW||0)*Math.max(0,(S.spinsUsed||0)-(DIAL.stayEyeFree||0)));
@@ -1421,7 +1421,7 @@ function symWeights(S){
  return w;
 }
 function drawSym(S){const ws=symWeights(S);const t=ws.reduce((a,b)=>a+b,0);let r=S.rng()*t;for(let i=0;i<ws.length;i++){if(r<ws[i])return i;r-=ws[i]}return 0;}
-/* 칸별 뽑기 — 그 칸이 지나는 줄 수에 따라 눈 가중치만 조정한다(총 유입은 보존) */
+/* 칸별 뽑기 — 그 칸이 지나는 줄 수에 따라 눈 위협도만 조정한다(총 유입은 보존) */
 function drawSymAt(S,cell){const ws=symWeights(S);const b=(EYE_BIAS&&EYE_BIAS[cell]!=null)?EYE_BIAS[cell]:1;
  if(b===1)return drawSym(S);
  const w3=ws[3]*b;let t=0;for(let i=0;i<ws.length;i++)t+=(i===3?w3:ws[i]);
@@ -1860,7 +1860,7 @@ function arriveNext(S){
  else{S.stopIdx++;S.floorNow=Math.min(FINAL_F(),_from+(S.lastJump||1));
   /* ══ v12.2 권양 재정의 (P3) ══
      층 기준 문턱을 도입하면서 "멀리 뛰기"는 벌칙이 됐다(뛴 만큼 다음 문턱이 오른다).
-     그 결과 점프 상한만 올리던 권양은 순손해가 됐다 — 실측: 구리3 8.72% → 구리3+권양3 0.68%.
+     그 결과 상승 한계만 올리던 권양은 순손해가 됐다 — 실측: 구리3 8.72% → 구리3+권양3 0.68%.
      권양을 "멀리 뛴 만큼 보상받는" 축으로 다시 세운다. 그래야 빨리 오르기와 천천히 쌓기가 실제 선택이 된다. */
   {const _jd=Math.max(0,S.floorNow-_from);
    const _M=mods(S);
@@ -1898,7 +1898,7 @@ function arriveNext(S){
  /* v11.8: 액티브 재충전 — 문이 열릴 때마다 발동형이 한 칸씩 돌아온다.
     이전엔 런당 총 n회라 "한 번 쓰고 파는 물건"이었고, 하네스조차 사지 않았다(구매 정책에서 명시적으로 배제).
     상시 도구가 되어야 패시브와 번갈아 쓰는 운용이 생긴다. 산탄총은 제외 — 사살은 되돌릴 수 없다. */
- /* v13.2: 영구 효과를 주는 발동형은 재충전 제외 — out1(출력배수 +1 영구)이 정차마다 돌아오면
+ /* v13.2: 영구 효과를 주는 발동형은 재충전 제외 — out1(전력 배수 +1 영구)이 정차마다 돌아오면
     20정차에 +20이 되어 즉시 지배 전략이 된다(실측: 태엽 계열 완주율 24%). 되돌릴 수 없는 것은 1회성으로. */
  {const _rc=(DIAL.actRecharge===undefined?1:DIAL.actRecharge);
   const _noRe={sgun:1,v12:1,v19:1};
@@ -2013,7 +2013,7 @@ function buyPart(S,id){
  return true;
 }
 /* v9.23: 중고 판매 — 보유 부품을 상점에 되판다. 중고값 = cost × partSellPct(내림).
-   권양(설비)도 팔 수 있다 — 점프 상한이 즉시 내려간다(전략적 다운그레이드 허용).
+   권양(설비)도 팔 수 있다 — 상승 한계가 즉시 내려간다(전략적 다운그레이드 허용).
    판 부품은 진열 풀로 돌아가고, 발동 충전은 초기화된다(다시 사면 새 물건 = 재장전 루프). */
 function sellValueOf(pt){return Math.max(0,Math.floor(pt.cost*(DIAL.partSellPct===undefined?0.5:DIAL.partSellPct)));}
 function sellPart(S,id){
@@ -2048,7 +2048,7 @@ function fusePassenger(S,pid,partId){
 function cargoTargetOf(S){return Math.min(FINAL_F()-1,Math.max(50,Math.ceil((S.floorNow+30)/10)*10));}
 function cargoPayOf(S,tf){return 8+Math.floor(tf/60);}
 const DEALS=[
- {id:'d1',tx:'출력배수 +1을 지금 준다. 대가: 다음 정차에서 판에 눈 +2가 심긴다.',can:S=>true,ap:S=>{S.outMult+=1;S.dx.plant+=2;}},
+ {id:'d1',tx:'전력 배수 +1을 지금 준다. 대가: 다음 정차에서 판에 눈 +2가 심긴다.',can:S=>true,ap:S=>{S.outMult+=1;S.dx.plant+=2;}},
  {id:'d2',tx:'승객 하나를 지금 내려라 — 목적지가 아니어도, 인도가 아니라 동전도 없다. 대신 다음 정차 문턱 −30%.',can:S=>S.aboard.length>0,ap:'choose'},
  {id:'d3',tx:S=>{const tf=cargoTargetOf(S);return '무게 3짜리 화물을 실어라. 내용은 묻지 마라. '+tf+'층을 지나면 회수하며 동전 +'+cargoPayOf(S,tf)+'.';},
   can:S=>totalW(S)+3<=8&&S.floorNow+30<FINAL_F()&&!S.cargo.some(c=>c.pickAt),
@@ -2056,7 +2056,7 @@ const DEALS=[
  {id:'d4',prov:1,tx:'동전 −2, 지금 낸다. 대신 다음 정차 문턱 −20%.',can:S=>S.tickets>=2,ap:S=>{S.tickets-=2;S.dx.reqMul*=0.8;}},
  {id:'d5',prov:1,tx:'동전 +2를 지금 준다. 대가: 다음 정차의 레버 횟수 5→4.',can:S=>true,ap:S=>{S.tickets+=2;S.dx.spinCap=4;}},
  {id:'d6',prov:1,tx:'다음 정차 동안 운 +2 — 운은 뽑힌 것들을 줄이 서는 자리에 앉혀 준다. 대가: 지금 판에 눈 +1.',can:S=>true,ap:S=>{S.dx.luck+=2;plantEye(S);}},
- {id:'d7',prov:1,tx:'출력배수 +0.5를 지금 준다. 대가: 다음 정차에서 판에 눈 +1이 심긴다.',can:S=>true,ap:S=>{S.outMult+=.5;S.dx.plant+=1;}},
+ {id:'d7',prov:1,tx:'전력 배수 +0.5를 지금 준다. 대가: 다음 정차에서 판에 눈 +1이 심긴다.',can:S=>true,ap:S=>{S.outMult+=.5;S.dx.plant+=1;}},
  {id:'d8',prov:1,tx:'명부에 없는 자를 태워라. 무게 2. 다음 정차에서 알아서 내리며 동전 +2를 놓고 간다.',can:S=>totalW(S)+2<=8,ap:S=>{S.cargo.push({w:2,nm:'명부에 없는 자',dropNext:1,pay:2});}},
  {id:'d9',prov:1,tx:'네가 아끼는 줄이 어느 건지 안다 — 가장 깊이 새겨진 줄에 두 눈금 더 새겨 주지. 대가: 지금 판에 눈 +1.',can:S=>S.lineVals.some(v=>v>1),ap:S=>{const mi=S.lineVals.indexOf(Math.max(...S.lineVals));S.lineVals[mi]+=2;plantEye(S);}},
  {id:'d10',prov:1,tx:S=>'가진 동전 전부('+S.tickets+'닢)를 걸어라. 다음 레버에 줄이 셋 이상 서면 두 배로 돌려준다. 아니면 삼킨다.',can:S=>S.tickets>=4,ap:S=>{S.betCoins={n:S.tickets,need:3};S.tickets=0;}},
@@ -2064,26 +2064,26 @@ const DEALS=[
 /* v9.17° 겹울림 거래 — 게이지를 넘치게 채운 링은 조건이 좋다 (설계자: "3개보다 더 많이 찼다면 더 좋은 아이템").
    1등급(+1 초과): 무대가 중형. 2등급(+2 이상): 무대가 대형. 벨 빌드의 화력 축. */
 const WELL_DEALS=[
- {id:'w1',prov:1,tx:'종이 맑게 겹쳤다. 출력배수 +1 — 대가 없음.',can:S=>true,ap:S=>{S.outMult+=1;}},
+ {id:'w1',prov:1,tx:'종이 맑게 겹쳤다. 전력 배수 +1 — 대가 없음.',can:S=>true,ap:S=>{S.outMult+=1;}},
  {id:'w2',prov:1,tx:'종이 맑게 겹쳤다. 동전 +6 — 대가 없음.',can:S=>true,ap:S=>{S.tickets+=6;}},
  {id:'w3',prov:1,tx:'종이 맑게 겹쳤다. 손끝이 밝아진다 — 이번 정차 동안 운 +2, 대가 없음.',can:S=>true,ap:S=>{S.dx.luck+=2;}},
  {id:'w4',prov:1,tx:'종이 맑게 겹쳤다. 다음 정차 동안 운 +3 — 대가 없음.',can:S=>true,ap:S=>{S.dx.luck+=3;}},
 ];
 const GRAND_DEALS=[
- {id:'x1',prov:1,tx:'종루가 통째로 울렸다. 출력배수 ×1.4 — 대가 없음.',can:S=>true,ap:S=>{S.outMult*=1.4;}},
+ {id:'x1',prov:1,tx:'종루가 통째로 울렸다. 전력 배수 ×1.4 — 대가 없음.',can:S=>true,ap:S=>{S.outMult*=1.4;}},
  {id:'x2',prov:1,tx:'종루가 통째로 울렸다. 판이 통째로 새겨진다 — 모든 스무 줄 새김 +1, 영구. 대가 없음.',can:S=>true,ap:S=>{for(let i=0;i<S.lineVals.length;i++)S.lineVals[i]+=1;}},
  {id:'x3',prov:1,tx:'종루가 통째로 울렸다. 동전 +12 — 대가 없음.',can:S=>true,ap:S=>{S.tickets+=12;}},
- {id:'x4',prov:1,tx:'종루가 통째로 울렸다. 점프 상한 +15층, 영구 — 대가 없음.',can:S=>true,ap:S=>{S.jumpCapX=(S.jumpCapX||0)+15;}},
+ {id:'x4',prov:1,tx:'종루가 통째로 울렸다. 상승 한계 +15층, 영구 — 대가 없음.',can:S=>true,ap:S=>{S.jumpCapX=(S.jumpCapX||0)+15;}},
 ];
 const RED_DEALS=[
- {id:'r1',tx:'출력배수 ×1.5. 대가: 지금 판에 눈 +3.',can:S=>true,ap:S=>{S.outMult*=1.5;plantEye(S);plantEye(S);plantEye(S);}},
+ {id:'r1',tx:'전력 배수 ×1.5. 대가: 지금 판에 눈 +3.',can:S=>true,ap:S=>{S.outMult*=1.5;plantEye(S);plantEye(S);plantEye(S);}},
  {id:'r2',tx:'다음 정차 문턱 −50%. 대가: 지금 판에 눈 +4.',can:S=>true,ap:S=>{S.dx.reqMul*=0.5;plantEye(S);plantEye(S);plantEye(S);plantEye(S);}},
  {id:'r3',tx:'동전 +4. 대가: 지금 판에 눈 +2.',can:S=>true,ap:S=>{S.tickets+=4;plantEye(S);plantEye(S);}},
- {id:'r4',tx:'출력배수 ×1.3, 영구. 대가: 이번 층과 다음 층, 레버를 한 번씩 덜 준다.',can:S=>true,ap:S=>{S.outMult*=1.3;S.bonusSpins=(S.bonusSpins||0)-1;S.dx.spinCap=4;}},
+ {id:'r4',tx:'전력 배수 ×1.3, 영구. 대가: 이번 층과 다음 층, 레버를 한 번씩 덜 준다.',can:S=>true,ap:S=>{S.outMult*=1.3;S.bonusSpins=(S.bonusSpins||0)-1;S.dx.spinCap=4;}},
 ];
 const DESC_DEALS=[
  {id:'u1',prov:1,tx:'판의 눈 −2, 지금 거둬 간다. 대가: 다음 층 문턱 +40%.',can:S=>S.eyes.length>=2,ap:S=>{for(let k=0;k<2;k++){const c=S.eyes.shift();if(S.board[c]===3)S.board[c]=null;}S.dx.reqMul*=1.4;}},
- {id:'u2',prov:1,tx:'출력배수 +1. 대가: 지금 판에 눈 +2.',can:S=>true,ap:S=>{S.outMult+=1;plantEye(S);plantEye(S);}},
+ {id:'u2',prov:1,tx:'전력 배수 +1. 대가: 지금 판에 눈 +2.',can:S=>true,ap:S=>{S.outMult+=1;plantEye(S);plantEye(S);}},
 ];
 function pickDeal(S,red,tier){
  const src=S.mode==='descent'?DESC_DEALS:(red?RED_DEALS:(tier>=2?GRAND_DEALS:(tier>=1?WELL_DEALS:DEALS)));
@@ -2145,7 +2145,7 @@ function useActive(S,id){
   const keep={luckUsed:S.pend.luckUsed,ovLuck:S.pend.ovLuck,sealedCells:S.pend.sealedCells};
   S.pend=Object.assign(judge(S,S.board,[],S.pend.toolCells),keep);
   msg='판이 다시 돌았다';
- }else if(ef==='out1'){S.outMult+=1;msg='출력배수 +1 영구';}
+ }else if(ef==='out1'){S.outMult+=1;msg='전력 배수 +1 영구';}
  else if(ef==='calm'){S.stopEyeW=(S.stopEyeW||0)-0.3;msg='이번 정차 눈이 덜 온다';}
  else if(ef==='agit'){S.stopEyeW=(S.stopEyeW||0)+0.3;msg='이번 정차 눈이 더 온다';}
  else if(ef==='pick1'){S.pickLeft+=1;msg='재추첨 +1회';}
@@ -2182,8 +2182,8 @@ function bestBrand(S){
 }
 /* ---------------- 하네스 (DEV PLAN §11 검증용 헤드리스 시뮬레이터) ---------------- */
 /* ══ v14: 인터폰 시뮬 이식 ══
-   이전까지 simRun 은 인터폰이 없는 게임을 돌렸다(§16). 거래 22종 — 출력배수 +1/×1.4/×1.5/×1.3,
-   전 줄 새김 +1 영구, 점프 상한 +15, 문턱 −20~50%, 동전, 운 — 이 전부 측정에서 빠져 있었다.
+   이전까지 simRun 은 인터폰이 없는 게임을 돌렸다(§16). 거래 22종 — 전력 배수 +1/×1.4/×1.5/×1.3,
+   전 줄 새김 +1 영구, 상승 한계 +15, 문턱 −20~50%, 동전, 운 — 이 전부 측정에서 빠져 있었다.
    UI(3700행 이동 / 3347행 벨링)의 발동 조건과 AUTO 수락 정책(4013행)을 그대로 옮긴다.
    ⚠ S.bellRing 은 시뮬에서 꺼지지 않으므로 레벨 트리거로 쓰면 안 된다.
       진짜 엣지는 S.gaugeRings 증분이다(1579행에서 링 1회당 정확히 +1). */
@@ -2822,7 +2822,7 @@ function updateConfirmGauge(S,req,tot){
    렌더마다 스탯을 스냅해 직전과 비교한다 — 부품·승객·융합·거래·발동·정산 어디서 온 변화든 자동으로 잡힌다.
    읽기 전용: 어떤 수치도 바꾸지 않는다. */
 const STAT_DEFS=[
- {k:'out',  nm:'출력배수',  f:v=>'×'+fmt2(v),            why:'버는 전력 전부에 곱한다'},
+ {k:'out',  nm:'전력 배수',  f:v=>'×'+fmt2(v),            why:'버는 전력 전부에 곱한다'},
  {k:'eye',  nm:'눈 배수',   f:v=>'×'+fmt2(v),            why:'눈 1개당 전력이 이만큼 곱해진다'},
  {k:'luck', nm:'운',        f:v=>'+'+v,                  why:'높을수록 줄이 잘 선다'},
  {k:'lever',nm:'레버 횟수', f:v=>v+'회',                 why:'한 층에서 당길 수 있는 수'},
@@ -2830,8 +2830,8 @@ const STAT_DEFS=[
  {k:'line', nm:'줄값 평균', f:v=>fmt2(v),                why:'줄 하나가 곱하는 값'},
  {k:'req',  nm:'문턱 배율', f:v=>'×'+fmt2(v),            why:'낮을수록 좋다 — 무게·부품이 올린다', low:1},
  {k:'wt',   nm:'무게',      f:v=>v+' / 8',               why:'1당 문턱 +5% (영구)', low:1},
- {k:'jump', nm:'점프 상한', f:v=>'+'+v+'층',             why:'한 번에 오를 수 있는 최대 층수'},
- {k:'eyeW', nm:'눈 유입',   f:v=>(v>=0?'+':'')+fmt2(v),  why:'눈이 뜨는 빈도 — 낮을수록 좋다', low:1},
+ {k:'jump', nm:'상승 한계', f:v=>'+'+v+'층',             why:'한 번에 오를 수 있는 최대 층수'},
+ {k:'eyeW', nm:'눈 출현',   f:v=>(v>=0?'+':'')+fmt2(v),  why:'눈이 뜨는 빈도 — 낮을수록 좋다', low:1},
  {k:'badge',nm:'벨 뱃지율', f:v=>Math.round(v*1000)/10+'%', why:'전화가 오는 빈도'},
 ];
 function statSnap(S){
@@ -3160,7 +3160,7 @@ function render(){
   const lpHtml=_ord.map((i,k)=>{
    const sep=(k>0&&SYM_CLS[i]==='hi'&&SYM_CLS[_ord[k-1]]!=='hi')?'<span style="color:#39424d;margin:0 3px">│</span>':'';
    return sep+'<span class="sym" title="'+(_ws[i]/_tot*100).toFixed(1)+'%">'+SYM_G[i]+' <b'+(SYM_CLS[i]==='hi'?' style="color:#e08b6a"':'')+'>'+symVal(S,i)+'</b>'+_bar(_ws[i])+'</span>';}).join('')
-   +((_ws[3]||0)>0?'<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="눈 유입 '+(_ws[3]/_tot*100).toFixed(1)+'% — 머무를수록 오른다"><b style="color:#c96a5f">눈</b>'+_bar(_ws[3],'eye')+'</span>':'')
+   +((_ws[3]||0)>0?'<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="눈 출현 '+(_ws[3]/_tot*100).toFixed(1)+'% — 머무를수록 오른다"><b style="color:#c96a5f">눈</b>'+_bar(_ws[3],'eye')+'</span>':'')
    +((_ws[8]||0)>0?'<span class="sym" title="벨 '+(_ws[8]/_tot*100).toFixed(1)+'%">🔔'+_bar(_ws[8],'bell')+'</span>':'')
    +('<span class="sym" title="벨 뱃지 — 매 레버 각 심볼 칸에 붙을 확률. 터지면 게이지 +1(레버 한 번당 1)">🔔<span class="wpct bell">뱃지 '+Math.round(Math.max(0,((DIAL.badgeRate===undefined?0.08:DIAL.badgeRate)+(mods(S).badgeAdd||0)))*100)+'%</span></span>');
  const lp=$('labelPlate');if(lp.__h!==lpHtml){lp.innerHTML=lpHtml;lp.__h=lpHtml;}}
@@ -3665,7 +3665,7 @@ async function revealJudge(p,preEyes){
   /* v13.11: 페이스는 bank()에서 계산되는데 revealJudge는 그보다 먼저 돈다 — 여기서 같은 식으로 직접 구한다.
      bank 기준: _before=S.power(아직 미가산) · _rem=spinLimit-(spinsUsed-1) */
   p.pace=Math.max(0,effReq(S)-S.power)/Math.max(1,spinLimit(S)-(S.spinsUsed-1));
-  cl.innerHTML='['+brk+'] 줄합 <b>'+fmt(p.sum)+'</b> × 출력 <b>×'+fmt2(p.outX!==undefined?p.outX:S.outMult)+'</b> × 눈 <b>×'+fmt2(p.mult)+'</b>'+((p.fifth&&p.fifth!==1)?' × 계전기 <b>×'+fmt2(p.fifth)+'</b>':'')+((p.geMul&&p.geMul!==1)?' × 고배율 <b>×'+fmt2(p.geMul)+'</b>':'')+' = <b>'+fmt(p.power)+'</b>'+(p.power<p.pace?' · 필요 페이스 <b style="color:#f0883e">'+fmt(Math.round(p.pace))+'</b> — 이번 레버는 못 따라갔다':'');cl.classList.remove('flash');void cl.offsetWidth;cl.classList.add('flash');}
+  cl.innerHTML='['+brk+'] 줄합 <b>'+fmt(p.sum)+'</b> × 출력 <b>×'+fmt2(p.outX!==undefined?p.outX:S.outMult)+'</b> × 눈 <b>×'+fmt2(p.mult)+'</b>'+((p.fifth&&p.fifth!==1)?' × 계전기 <b>×'+fmt2(p.fifth)+'</b>':'')+((p.geMul&&p.geMul!==1)?' × 눈 조건 <b>×'+fmt2(p.geMul)+'</b>':'')+' = <b>'+fmt(p.power)+'</b>'+(p.power<p.pace?' · 필요 페이스 <b style="color:#f0883e">'+fmt(Math.round(p.pace))+'</b> — 이번 레버는 못 따라갔다':'');cl.classList.remove('flash');void cl.offsetWidth;cl.classList.add('flash');}
  else cl.innerHTML='줄 없음 — 전력 0 · 눈 전원 잔류'+(p.eyeN?' ('+p.eyeN+'개)':'');
  /* v8.7 값 충족 비트 — "유일한 결정"을 결정의 순간에 무대에 올린다.
     문턱을 처음 넘긴 순간(층당 1회): 종 한 음 + 남은 레버의 동전 환산을 즉석에서 말한다.
@@ -3782,7 +3782,7 @@ async function transitSequence(){
  if(jumpN>=10){const cab=$('cabin');cab.classList.remove('shake');void cab.offsetWidth;cab.classList.add('shake');}
  /* 정산 토스트 */
  const gained=S.lastStopLines;
- if(gained>0&&(DIAL.settleRate===undefined?0.04:DIAL.settleRate)>0)toast('층 정산 — 선 줄 '+gained+' → 출력배수 ×'+fmt2(1+(DIAL.settleRate===undefined?0.04:DIAL.settleRate)*gained)+' → ×'+fmt2(S.outMult),'amber');
+ if(gained>0&&(DIAL.settleRate===undefined?0.04:DIAL.settleRate)>0)toast('층 정산 — 선 줄 '+gained+' → 전력 배수 ×'+fmt2(1+(DIAL.settleRate===undefined?0.04:DIAL.settleRate)*gained)+' → ×'+fmt2(S.outMult),'amber');
  /* 인터폰 (장거리 구간) */
  let phoneP=null;
  if(longSeg){
@@ -4312,76 +4312,75 @@ const GLOSS_HTML=`<h2>용어 — 이 기계가 쓰는 말</h2>
 
 <h3>값과 돈</h3>
 <dl class="gloss">
-<dt>전력</dt><dd>이 층에서 모아야 하는 값. 레버를 당겨 줄을 세우면 쌓인다. <em>층을 오르는 연료이자 이 층의 통행료</em>다.</dd>
-<dt>문턱</dt><dd>출발에 필요한 최소 전력. 이걸 못 넘으면 문이 안 열린다. <em>지금 몇 층에 있느냐로 정해진다</em> — 높이 올라올수록 건물이 더 부른다. 그래서 한 번에 멀리 뛰면 다음 문턱도 그만큼 뛴다.</dd>
-<dt>초과</dt><dd>문턱보다 더 모은 몫. 버려지지 않고 <em>층 → 다음 층 선불 → 동전</em> 순서로 쓰인다.</dd>
-<dt>선불</dt><dd>초과 중 일부가 다음 층 전력으로 미리 실린 것. 다음 층을 0이 아니라 그만큼 갖고 시작한다.</dd>
-<dt>환전</dt><dd>층으로도 선불로도 다 못 쓴 초과가 동전으로 바뀌는 것. 출발 한 번에 최대 8닢.</dd>
-<dt>동전</dt><dd>물건 사는 돈. 상점 구매 · 되팔기(산 값의 절반) · 인터폰 거래에 쓴다. <em>레버를 남기고 출발하면 남은 수만큼 생긴다.</em></dd>
+<dt>전력</dt><dd>이 층에서 모아야 할 값. 레버를 당겨 줄을 세우면 쌓인다. <em>층을 오르는 연료이자 통행료</em>다.</dd>
+<dt>문턱</dt><dd>출발에 필요한 최소 전력. 못 넘으면 문이 안 열린다. <em>높이 올라갈수록 건물이 더 큰 값을 요구한다.</em></dd>
+<dt>초과</dt><dd>문턱을 넘기고 남은 전력. 버려지지 않고 <em>층 이동 → 다음 층 선불 → 동전</em> 순서로 처리된다.</dd>
+<dt>선불</dt><dd>초과분 중 다음 층 시작 전력으로 미리 실린 값. 다음 층을 0이 아니라 그만큼 갖고 시작한다.</dd>
+<dt>환전</dt><dd>층 이동과 선불로 다 쓰지 못한 초과분이 동전으로 바뀌는 것. 출발 한 번에 최대 <b>8닢</b>까지만 환전된다.</dd>
+<dt>동전</dt><dd>상점과 인터폰 거래에 쓰는 돈. 물건을 되팔면 반값을 받는다. <em>레버를 남기고 출발하면 남은 횟수만큼 생긴다.</em></dd>
 </dl>
 
 <h3>판 — 레버를 당기면 생기는 일</h3>
 <dl class="gloss">
-<dt>레버</dt><dd>한 번 당기면 판이 새로 뽑힌다. 층마다 당길 수 있는 횟수가 정해져 있다(기본 5회). <s>예전 표기: 스핀</s></dd>
-<dt>줄</dt><dd>같은 심볼이 셋 나란히 맞물린 선. 가로 · 세로 · 대각 합쳐 여러 개가 동시에 설 수 있다.</dd>
-<dt>심볼값</dt><dd>심볼 하나의 값. 작은 것이 말초(어금니 · 뼈 · 귀 · 혀), 큰 것이 장기(심장 · 뇌 · 폐). 라벨판에서 지금 값을 볼 수 있다.</dd>
-<dt>줄값 / 새김</dt><dd>줄마다 따로 붙은 배수. <em>같은 줄을 2번 세워야 +1 오른다</em>(영구). 딱지로 세운 줄은 한 번에 +2. 새김 계열 부품을 사면 필요 횟수가 줄어든다 — 그냥 레버만 돌려서는 잘 안 자란다.</dd>
-<dt>운</dt><dd>0~9. 높을수록 뽑힌 심볼이 "줄이 되는 자리"로 끌려와 앉는다. 부품 · 승객 · 전화가 올려준다.</dd>
-<dt>과부하</dt><dd>연속으로 허탕만 칠 때 기계가 알아서 얹어주는 임시 운. 연달아 망하는 것만 막아주는 구제 장치다.</dd>
-<dt>무늬</dt><dd>줄이 아닌 배치 보너스. <em>무늬 계열 부품을 사야 비로소 판에 보이기 시작한다.</em></dd>
+<dt>레버</dt><dd>한 번 당기면 판이 새로 뽑힌다. 층마다 당길 수 있는 횟수가 정해져 있다(기본 <b>8회</b>).</dd>
+<dt>줄</dt><dd>같은 심볼이 셋 나란히 맞물린 선. 가로, 세로, 대각선 합쳐 여러 개가 동시에 설 수 있다.</dd>
+<dt>심볼값</dt><dd>심볼 하나의 값. 작은 것이 말초(어금니·뼈·귀·혀), 큰 것이 장기(심장·뇌·폐). 라벨판에서 지금 값을 볼 수 있다.</dd>
+<dt>줄값 / 새김</dt><dd>줄마다 따로 붙은 추가 전력. <em>같은 줄을 <b>2번</b> 세워야 <b>+1</b> 오른다(영구).</em> 딱지로 세운 줄은 한 번에 <b>+2</b>가 된다. 새김 계열 부품이 있어야 수월하다.</dd>
+<dt>운</dt><dd><b>0~9</b> 범위. 높을수록 뽑힌 심볼이 줄이 되는 자리로 끌려와 앉는다. 부품, 승객, 전화를 통해 올린다.</dd>
+<dt>과부하</dt><dd>연속으로 허탕만 칠 때 기계가 알아서 얹어주는 임시 운. 연달아 실패하는 것만 막아주는 장치다.</dd>
+<dt>무늬</dt><dd>줄이 아닌 배치 보너스. <em>무늬 계열 부품을 사야 비로소 판에 적용된다.</em></dd>
 </dl>
 
 <h3>곱하기 — 전력이 커지는 두 축</h3>
 <dl class="gloss">
-<dt>출력배수</dt><dd>앞으로 버는 <em>모든</em> 전력에 곱하는 값. ×2면 전력 2배. 한 번 오르면 런이 끝날 때까지 안 내려간다.<br><s>"출력배수 +1" = 이 숫자에 1을 더한다. ×1→×2면 전력 2배(+100%)지만, ×5→×6이면 1.2배(+20%)뿐 — 낮을 때 받을수록 크다.</s></dd>
-<dt>눈 배수</dt><dd>판에 있는 눈 개수만큼 거듭제곱으로 곱해지는 값. <em>기본은 ×1이라 아무 이득이 없다</em> — 눈 계열 부품이나 승객을 실어야 비로소 배수가 된다.</dd>
+<dt>전력 배수</dt><dd>앞으로 버는 <em>모든</em> 전력에 곱하는 값(시작 ×1). <b>"+1"은 이 숫자에 1을 더한다는 뜻이다.</b> ×1에서 ×2가 되면 전력이 2배(+100%)지만, ×5에서 ×6이 되면 1.2배(+20%)뿐이다. 낮을 때 받을수록 크다.</dd>
+<dt>눈 배수</dt><dd>판에 뜬 눈 개수만큼 거듭제곱으로 곱해지는 값. <em>눈 관련 부품이나 승객이 없으면 ×1이라 아무 이득이 없다.</em></dd>
 </dl>
 
 <h3>눈</h3>
 <dl class="gloss">
-<dt>눈</dt><dd>판에 뜨는 감시자. 기본적으로 <em>손해</em>다 — ① 그 칸엔 줄이 안 선다 ② 눈 하나당 이 층 문턱이 ×1.45씩 오른다(최대 ×3).</dd>
+<dt>눈</dt><dd>판에 뜨는 감시자. 기본적으로 <em>손해</em>다. 그 칸엔 줄이 안 서고, 눈 하나당 이 층 문턱이 <b>×1.45</b>씩 오른다(보통 상한 <b>×3</b>).</dd>
 <dt>시선</dt><dd>눈 때문에 오른 문턱 배율. 전력 칸에 "시선 ×2.1"처럼 뜬다.</dd>
-<dt>눈 지우기</dt><dd>줄이 하나 설 때마다 가장 오래된 눈이 하나 사라진다. 1~6층에서는 출발할 때 남긴 레버 수만큼 더 닦인다. <em>7층부터는 닦이지 않고 계속 쌓인다.</em><br><b>★ 눈 배수 ×1.5 이상인 빌드는 예외 — 줄이 서도 눈이 갈리지 않는다.</b> 눈을 쓰는 자에게 눈은 남는다. <b>대신 문턱 상한이 풀린다</b> — 보통은 눈이 아무리 많아도 문턱 ×3에서 멈추지만, 눈 빌드에게는 ×9까지 오른다. 눈은 공짜가 아니다.</dd>
+<dt>눈 지우기</dt><dd>줄이 하나 설 때마다 가장 오래된 눈 하나가 사라진다. <b>1~6층</b>에서는 출발할 때 남긴 레버 수만큼 더 닦이나, <em><b>7층부터는 닦이지 않고 계속 쌓인다.</b></em><br><b>★ 예외: 눈 배수 ×1.5 이상</b>인 빌드는 줄이 서도 눈이 갈리지 않는다. 대신 문턱 상한이 ×3에서 <b>×9</b>로 풀린다.</dd>
 </dl>
 
 <h3>벨과 전화</h3>
 <dl class="gloss">
-<dt>뱃지 🔔</dt><dd>심볼에 낮은 확률로 붙는 표식. 그 심볼이 줄로 터지면 벨 게이지 +1.</dd>
-<dt>벨 게이지</dt><dd>차면 인터폰이 울리고 전량 소모된다. 울릴 때마다 다음에 필요한 벨 수가 +1씩 오른다.</dd>
-<dt>인터폰</dt><dd>건물이 거는 전화. <em>이득과 대가를 한 쌍으로 제안</em>한다. 받아야 레버가 돌아온다.</dd>
-<dt>붉은 벨</dt><dd>나쁜 조건의 강제 전화. 직전 층에서 줄을 하나도 못 세웠거나 눈이 4개 이상일 때 온다.</dd>
-<dt>겹울림 / 종루</dt><dd>필요한 수보다 넘치게 채워서 울린 전화. 넘긴 만큼 거래 조건이 좋아진다(+1 넘김 = 겹울림, +2 이상 = 종루).</dd>
+<dt>뱃지 🔔</dt><dd>심볼에 낮은 확률로 붙는 표식. 그 심볼이 줄로 터지면 벨 게이지가 1 찬다.</dd>
+<dt>벨 게이지</dt><dd>끝까지 차면 인터폰이 울리고 비워진다. 울릴 때마다 다음에 필요한 벨 수가 <b>+1</b>씩 오른다.</dd>
+<dt>인터폰</dt><dd>건물이 거는 전화. <em>이득과 대가를 한 쌍으로 제안한다.</em> 받아야 레버를 다시 당길 수 있다.</dd>
+<dt>붉은 벨</dt><dd>거절할 수 없는 강제 전화. 직전 층에서 줄을 하나도 못 세웠거나 눈이 4개 이상일 때 온다.</dd>
+<dt>겹울림 / 종루</dt><dd>필요한 수보다 넘치게 채워서 울린 전화. <b>+1 넘김 = 겹울림, +2 이상 = 종루.</b> 넘긴 만큼 거래 조건이 좋아진다.</dd>
 </dl>
 
 <h3>태우는 것</h3>
 <dl class="gloss">
-<dt>명부</dt><dd>지금 태우고 있는 승객 목록. 화면 맨 아래.</dd>
+<dt>명부</dt><dd>지금 태우고 있는 승객 목록. 화면 맨 아래에 표시된다.</dd>
 <dt>승객 — 배달</dt><dd>목적지 층이 적혀 있다. 그 층을 지나가면 내리면서 동전을 크게 준다.</dd>
 <dt>승객 — 동행</dt><dd>내리지 않고 끝까지 탄다. 능력을 계속 걸어준다.</dd>
-<dt>부품 — 패시브</dt><dd>상점에서 산다. 항상 켜져 있는 숫자 효과. 반값에 되팔 수 있다.</dd>
-<dt>부품 — 액티브</dt><dd>「발동」이라 적힌 물건. 직접 눌러 쓰고 충전을 하나 소모한다. <em>문이 열릴 때마다 충전이 하나씩 돌아온다</em> — 정차마다 다시 쓸 수 있다. 레버 +1 · 문턱 −10% 같은 것은 매 층 쓰면 누적 효과가 크다.</dd>
-<dt>계열</dt><dd>부품의 가족(구리 · 밧줄 · 유리 · 벨 · 톱니 …). <em>"○○ 1개당 +X"</em> 부품은 같은 계열을 몇 개 들고 있느냐로 세진다 — <b>최대 6개까지</b> 센다. 그래서 효과가 없는 싸구려 부품도 계열 수를 채우는 값어치가 있다.</dd>
-<dt>융합</dt><dd>동행 승객에게 지정된 계열의 부품을 건네면 능력이 폭발한다. 부품은 사라진다. <em>끝까지 가려면 필요하다.</em></dd>
-<dt>무게</dt><dd>태운 것의 총량(상한 8). 무게 1당 문턱이 +5%씩 영구히 오른다.</dd>
+<dt>부품 — 패시브</dt><dd>상점에서 산다. 들고 있는 동안 항상 켜져 있는 효과. 반값에 되팔 수 있다.</dd>
+<dt>부품 — 액티브</dt><dd>직접 눌러 쓰는 물건. 발동 시 충전을 소모하며, <em>정차하여 문이 열릴 때마다 충전이 <b>+1</b> 돌아온다.</em></dd>
+<dt>계열</dt><dd>부품의 분류. <em>같은 계열을 몇 개 들고 있느냐에 따라 효과가 정해진다(<b>최대 6개</b>까지 센다).</em> 효과가 없는 부품도 머릿수를 채우는 용도로 쓰인다.</dd>
+<dt>융합</dt><dd>동행 승객에게 지정된 계열의 부품을 건네어 능력을 얻는다. 부품은 사라진다. <em>끝까지 가려면 필요하다.</em></dd>
+<dt>무게</dt><dd>태운 것의 총량(상한 <b>8</b>). 무게 <b>1당 문턱이 +5%씩 영구히 오른다.</b></dd>
 <dt>화물</dt><dd>인터폰이 맡기는 짐. 목표 층을 지나가면 동전을 받는다.</dd>
 </dl>
 
 <h3>층과 이동</h3>
 <dl class="gloss">
-<dt>정차</dt><dd>문이 한 번 열리는 것. 7734까지 대략 열대여섯 번 선다.</dd>
-<dt>점프 상한</dt><dd>한 번에 뛸 수 있는 층수의 한계. <em>지금 높이에 비례해서 자란다</em> — 1층에선 +5층이 한계지만 1000층에선 +400층까지 간다. 케이블이 그만큼 풀려 있으니까. 따로 살 필요는 없다.</dd>
-<dt>특수층</dt><dd>44 · 444 · 777 · 4444. 지나쳤다면 「내려간다」로 되돌아갈 수 있다(비용은 전력).</dd>
-<dt>추락</dt><dd><em>레버를 다 쓰고도 문턱을 못 넘은 상태.</em> 런이 끝난다. 위험해지면 화면이 붉어지고 흔들린다.</dd>
-</dl>
-`;
+<dt>정차</dt><dd>문이 한 번 열리는 것. 7734층 꼭대기까지 <b>스무 번 안팎</b>으로 선다.</dd>
+<dt>상승 한계</dt><dd>한 번에 뛸 수 있는 층수의 한계. <em>지금 층에 비례해서 자란다.</em> 1층에선 <b>+5층</b>이 한계지만 1000층에선 <b>+155층</b>까지 뛴다.</dd>
+<dt>특수층</dt><dd><b>44 · 444 · 777 · 4444</b>층. 지나쳤다면 전력을 지불하고 「내려간다」를 눌러 되돌아갈 수 있다.</dd>
+<dt>추락</dt><dd><em>레버를 다 쓰고도 문턱을 못 넘은 상태.</em> 그 즉시 운행이 끝난다.</dd>
+</dl>`;
 const HELP_HTML=`<h2>도움 — 한 장 요약</h2>
 <p><b>왜 오르는가</b> — 당신은 기사다. 명부의 이름들을 태워 목적지마다 인도한다. 마지막 인도는 <b>7734</b>. 건물은 문이 열릴 때마다 값(전력)을 부르고, 못 낸 채 출발하면 케이블이 놓는다. 전력은 레버가 벽 뒤의 살을 갈아 만든다 — 간 만큼 건물이 <b>본다</b>.</p>
 <p><b>한 문장 규칙 (v9)</b> — 한 줄에 같은 것 셋이면 전력이 된다. 줄은 스무 개(가로9 · 세로5 · 대각6). 무늬(무늬북 19종 · 8가족, 전 방향 대칭)는 <b>무늬 계열 부품(도안집 등)을 읽어야 판에서 보인다</b>. 출발값은 1~13 — 작은 것이 말초(어금니1·뼈2·귀3·혀4), 큰 것이 장기(심장6·뇌9·폐13)다. <b>위로 갈수록 벽 뒤의 살이 두꺼워진다</b> — 갈리는 값도, 건물이 부르는 값도 정차마다 ×1.2로 함께 자라, 끝에서는 수만에 이른다. <b>눈은 3층부터 온다.</b> 눈 자체는 아무것도 주지 않는다(기본 배수 ×1) — 눈 계열(유리·인장·순례자·도박사)을 실어야 배수가 된다. <b>벨은 심볼이 아니다 — 🔔뱃지에서만 온다.</b> 눈을 제외한 심볼에 낮은 확률(기본 8%)로 뱃지가 붙고, 그 심볼이 줄로 터지면 게이지 +1(<b>뱃지당</b> — 두 뱃지가 같은 판에 터지면 +2). 게이지가 차면(기본 3) 인터폰이 울고 <b>전량 소모</b>된다. 울릴 때마다 다음 문턱이 +1씩 오른다(상한 7) — <b>갈수록 벨은 귀해지고, 귀한 종일수록 좋은 조건을 문다</b>(3번째 종부터 겹울림급, 5번째부터 종루급. 넘치게 채우면 그 위에 가산). <b>3을 넘겨 채운 링은 조건이 좋다</b>: +1 초과=겹울림(무대가 중형 혜택) · +2 이상=종루(무대가 대형 혜택). 넘치게 채워 울리는 게 벨 빌드의 기술이다. 대신 <b>첫 눈부터 문턱이 개당 ×1.45로 오른다(상한 ×3)</b>, 눈이 앉은 칸엔 줄이 서지 않는다. 줄이 서면 줄 하나당 눈 하나가 사라진다(오래된 것부터). 꽝이면 전력 0, 눈 전원 잔류.</p>
-<p><b>레버 전력</b> = (성립 줄: 심볼값×줄값 합) × 출력배수 × 눈배수^눈개수. 득점 줄에 새김눈(줄값+1, 도구로 만들면 +2, 운이면 0).</p>
-<p><b>유일한 결정 — 더 갈 것인가, 출발할 것인가.</b> 출발하면 남은 레버가 동전이 되고 — <b>누진 환산 0·1·2·3·5·8</b> — 남은 레버 횟수만큼 <b>다음 층 선불</b>도 감긴다(레버 한 번당 다음 문턱의 15%). 한 번 더 당기는 건 그 마진을 깎는 거래다. 1–6층에선 눈 1개씩 닦이고 시선이 끊긴다. 더 돌리면 줄이 새겨지고 초과가 커진다 — <b>초과만큼 층을 뛰고, 초과가 2.5배에 닿으면 케이블이 버티는 한계(상한)까지 쭉 감아올린다</b>. 상한은 <b>승강 제한기</b>가 문다: 기본 +3층, 권양 계열(도르래·케이블·권양탑)을 달아야 커진다. <b>상한 너머의 전력은 절반이 다음 층 선불로 실리고(다음 문턱의 60%까지), 선불까지 차면 동전으로 환전된다(문턱의 25%당 1닢, 최대 8닢)</b> — 초과는 층·선불·동전 순서로 끝까지 값을 한다. 같은 층에 머무를수록 눈이 빨리 온다(첫 당김은 조용하다). 7층부터 눈은 영구 누적.</p>
+<p><b>레버 전력</b> = (성립 줄: 심볼값×줄값 합) × 전력 배수 × 눈배수^눈개수. 득점 줄에 새김눈(줄값+1, 도구로 만들면 +2, 운이면 0).</p>
+<p><b>유일한 결정 — 더 갈 것인가, 출발할 것인가.</b> 출발하면 남은 레버가 동전이 되고 — <b>누진 환산 0·1·2·3·5·8</b> — 남은 레버 횟수만큼 <b>다음 층 선불</b>도 감긴다(레버 한 번당 다음 문턱의 15%). 한 번 더 당기는 건 그 마진을 깎는 거래다. 1–6층에선 눈 1개씩 닦이고 시선이 끊긴다. 더 돌리면 줄이 새겨지고 전력이 커진다 — <b>전력이 문턱을 한 번 넘길 때마다 게이지가 한 겹씩 쌓이고(최대 4겹), 오르는 층수는 한 겹당 케이블 한계만큼이다</b>. 케이블 한계는 지금 높이에 비례해 자란다 — 1층에선 +5층, 1000층에선 +155층. <b>층으로 다 못 쓴 전력은 절반이 다음 층 선불로 실리고(다음 문턱의 60%까지), 선불까지 차면 동전으로 환전된다(문턱의 25%당 1닢, 최대 8닢)</b> — 초과는 층·선불·동전 순서로 끝까지 값을 한다. 같은 층에 머무를수록 눈이 빨리 온다(첫 당김은 조용하다). 7층부터 눈은 영구 누적.</p>
 <p><b>조작</b> — 레버: 클릭/Space (돌아가는 중 재당김 = 즉시 정지) · 출발: Enter. 판에 직접 손대는 수단은 없다 — <b>눈은 줄이 서면 갈리고, 6층까지는 출발할 때 남은 레버 횟수만큼 닦인다. 단 눈 배수 ×1.5 이상인 빌드에게는 갈리지 않는다 — 눈이 쌓여 배수가 되고, 문턱 상한도 ×3에서 ×9로 풀린다.</b> 7층부터는 눈이 영구히 남는다.</p>
 <p><b>승객</b> — 드물게 문 앞에 선다. 놓치면 언제 다시 올지 모른다 — 한 명 한 명이 결정이다. <b>배달(층 표기)</b>은 소수: 적힌 층에서 내리며 동전을 크게 준다. <b>동행(영구)</b>은 다수: 내리지 않고 능력을 계속 건다 — 부품이 항상 켜진 숫자라면, 승객은 조건과 확장이다. 무게는 문턱을 영구히 올린다(+5%/무게). 물리는 수단은 상점의 <b>산탄총</b>뿐(사살 = 눈 +1 · 문턱 +8% 영구). <b>융합°</b>: 동행 승객에게 지정 가족 부품을 건네면(명부에서 이름 클릭) 능력이 폭발한다 — 부품은 소모되고, 이름이 지워지면 융합도 사라진다. <b>7734는 융합 없이는 산술적으로 멀다</b> — 부품만으로 2막까지는 간다, 끝은 조합이 연다.</p>
-<p><b>층과 이동 (v12)</b> — 층은 1부터 <b>7734</b>까지 이어져 있다. <b>문턱은 지금 서 있는 층이 정한다</b> — 높이 올라올수록 건물이 더 부르고, 한 번에 멀리 뛰면 다음 문턱도 그만큼 뛴다. 값을 넘겨 낸 <b>초과만큼</b> 층을 뛰며, 한 번에 뛸 수 있는 한계(케이블)는 <b>지금 높이에 비례해 자란다</b> — 1층에선 +5층이지만 1000층에선 +400층까지. 권양 계열이 그 위에 더 얹는다. 7734까지 대략 <b>열대여섯 번</b> 선다. 특수층 <b>44 · 444 · 777(축제) · 4444</b>는 지나칠 수 있다 — 지나쳤다면 <b>내려간다</b> 버튼으로 되돌아갈 수 있고, 비용은 전력뿐이다. 경유하는 층의 승객은 그 문에서 자동으로 내린다. 인터폰은 장거리 이동에서 울고, <b>판에 벨이 셋 뜨면 정차 중에도 운다</b>(넷이면 붉은 벨). 벨은 건물의 청음구다 — 🔔뱃지가 터질 때마다 게이지로 쌓인다. <b>상점은 원할 때 연다</b>(4층부터, 「상점」 버튼) — 진열이 마음에 안 들면 재진열(동전 2닢부터, 정차마다 초기화). 보유 부품은 반값에 되판다 — 권양 설비를 팔면 점프 상한도 함께 내려간다. 인터폰 거래는 값을 받고 조건을 판다 — <b>층을 공짜로 올려주는 거래는 없다</b>. 벨을 빨리 모으는 빌드는 전화의 조건으로 오른다.</p>
+<p><b>층과 이동 (v12)</b> — 층은 1부터 <b>7734</b>까지 이어져 있다. <b>문턱은 지금 서 있는 층이 정한다</b> — 높이 올라올수록 건물이 더 부르고, 한 번에 멀리 뛰면 다음 문턱도 그만큼 뛴다. 값을 넘겨 낸 <b>초과만큼</b> 층을 뛰며, 한 번에 뛸 수 있는 한계(케이블)는 <b>지금 높이에 비례해 자란다</b> — 1층에선 +5층이지만 1000층에선 +155층까지. 7734까지 대략 <b>스무 번</b> 선다. 특수층 <b>44 · 444 · 777(축제) · 4444</b>는 지나칠 수 있다 — 지나쳤다면 <b>내려간다</b> 버튼으로 되돌아갈 수 있고, 비용은 전력뿐이다. 경유하는 층의 승객은 그 문에서 자동으로 내린다. 인터폰은 장거리 이동에서 울고, <b>판에 벨이 셋 뜨면 정차 중에도 운다</b>(넷이면 붉은 벨). 벨은 건물의 청음구다 — 🔔뱃지가 터질 때마다 게이지로 쌓인다. <b>상점은 원할 때 연다</b>(4층부터, 「상점」 버튼) — 진열이 마음에 안 들면 재진열(동전 2닢부터, 정차마다 초기화). 보유 부품은 반값에 되판다 — 권양 설비를 팔면 상승 한계도 함께 내려간다. 인터폰 거래는 값을 받고 조건을 판다 — <b>층을 공짜로 올려주는 거래는 없다</b>. 벨을 빨리 모으는 빌드는 전화의 조건으로 오른다.</p>
 <h3>검증 기준 14 (DEV PLAN §10) — 플레이하며 체크</h3>
 <p style="font-size:11.5px">① 설명 없이 규칙을 말한다 ② 줄 설 때 시원하다 ③ 눈 쌓일 때 불안하다 ④ 새김눈 성장 인지 ⑤ 도구→3초 내 칸 선택 ⑥ 출발 앞 3초 망설임 ⑦ 눈3+ 재추첨률 유지 ⑧ 운 발동 흥분 ⑨ "한 판 더" ⑩ 7734 첫 인지 반응 ⑪ 정차층 문턱 3초 이해 ⑫ 첫 벨에 수화기를 든다 ⑬ hELL 자력 발견 ⑭ 최종 정산이 런 최고 피크</p>`;
 const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목록</h2>
@@ -4415,7 +4414,7 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 ④ 도움말 "위로 갈수록 벽 뒤의 살이 두꺼워진다" 반영. 헌장 원칙 2는 "작은 수 = 초반 텍스처"로 한정 재해석(타임라인 08-16).<br></p>
 <p style="font-size:11.5px"><b>v11.5 — 설계자 개입 반영: 전화 점감 + 전력 무대화</b><br>
 ① <b>벨 게이지 점증</b>(설계자 지시 "가면갈수록 전화가 귀해지게"): 게이지가 울 때마다 다음 요구 +1 (기본 3 → 상한 7, 다이얼 gaugeGrow·gaugeNeedMax). 실측(무빌드): 정차당 링 0.082→0.042, 후반(k6+) 0.049→0.003. 미터·툴팁·도움말 동기화. 붉은 벨(판 벨 4)은 불변.<br>
-② <b>기록 스핀 무대화</b>(설계자 질문 "숫자 올라가는 재미" 선행 조치): 런 최고 한 스핀 갱신 시 토스트+로그 "기계가 기록을 새긴다" (초반 5스핀 제외). ③ 출력배수 성장 펄스(초록 브라이트닝).<br>
+② <b>기록 스핀 무대화</b>(설계자 질문 "숫자 올라가는 재미" 선행 조치): 런 최고 한 스핀 갱신 시 토스트+로그 "기계가 기록을 새긴다" (초반 5스핀 제외). ③ 전력 배수 성장 펄스(초록 브라이트닝).<br>
 ④ 스케일 자체의 인플레형 전환(전력량 강조 vs v10 작은 수 철학)은 D-11로 설계자 결정 대기.<br></p>
 <p style="font-size:11.5px"><b>v11.4 — 감독관 루프 R2 전반부: 표기 앵커·융합 접근성·재솔브</b><br>
 ① <b>전력 입금 가시화</b>: 연출이 끝나면(idle) 큰 숫자가 보유+판 합산으로 — "내 5는 어디 갔지"(첫 손님) 해소. 연출 중엔 기존 표기(연쇄 드라마 보존).<br>
@@ -4437,22 +4436,22 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 ⑥ 시뮬 정책 갱신: 희소 제안 탑승·융합 수요 가족 구매·최저가 융합. 다이얼: paxRate·paxCd·paxGuar·rrBase·polFuse.<br>
 ⑦ <b>인터폰 거래 재설계(설계자: "층수 그냥 올려주는 건 재미없다")</b>: 감아올림 5종(d9·d10·w3·x2·r4) 전폐 → 새김 집중(최심 줄 +2/눈1) · <b>전량 내기</b>(동전 전부, 다음 스핀 줄 3+ = 2배) · 도구 3종 충전 +2(겹울림) · <b>전 줄 새김 +1 영구</b>(종루) · 출력 ×1.3/레버 −1×2층(붉은 벨). 건물은 공짜로 올려주지 않는다. liftFloors는 코드만 잔존(미사용).<br></p>
 <p style="font-size:11.5px"><b>v10 — 코어 재미 수술: 스케일 리셋 · 연쇄 수학 · 걸쇠 점프 (설계자 반려 4건 전면 대응)</b><br>
-설계자: "전력이 왜 차는지 이해 안 됨 / 연쇄로 차는 재미 없음 / 눈 너무 많음 / 머리 쓸 일 없는데 121층." 실측: 한방률(스핀1회≥요구) 스톱1 51% · 눈 유입 41.7%/스핀 · 실런 스톱6=121층. 설계서 V10_CORE_REDESIGN.md.<br>
+설계자: "전력이 왜 차는지 이해 안 됨 / 연쇄로 차는 재미 없음 / 눈 너무 많음 / 머리 쓸 일 없는데 121층." 실측: 한방률(스핀1회≥요구) 스톱1 51% · 눈 출현 41.7%/스핀 · 실런 스톱6=121층. 설계서 V10_CORE_REDESIGN.md.<br>
 ① <b>스케일 리셋</b>: 심볼값 저 1/2/3/4 · 고 6/9/13(구 10~300). 부품 sv 16종 재환산. 요구 = 스핀 3.5~4개 분량 → 한방률 0~6%(ILS 스핀 제외 0~3%), 스핀/스톱 3~4.4회.<br>
 ② <b>연쇄 = 수학의 재생 순서</b>: judge가 무늬 소거(큰 무늬가 포함 줄을 잡아먹음·클로버핏 규칙) 후 배수를 단계 분리(outX·눈·스핀·문턱). buildChain이 부품·승객 기여를 텔레스코핑 차분으로 정확 귀속 — 연출: 줄 하나씩 카운트업 → 부품 이름 팝업 → 무늬 → ×배수 스텝, 러닝 토탈. 클릭 스킵.<br>
 ③ <b>눈 희소화</b>: 유입 41.7→8.6%/스핀(기본 가중 .5→.035, 하한 .1→.02, 램프 ÷10) + 동시 상한 8개(eyeMaxN, v14에서 3→8) + 첫 눈부터 과세(면세 0). 뜨면 사건이다.<br>
 ④ <b>운 재설계</b>: 상시 과부하 보정 폐지 → ILS(첫 두 스톱, 3·5번째 스핀 보장 — 클로버핏 실구조) + 연민(요구 10% 미만 스핀 2연속부터). 운은 부품·승객·전화가 준다.<br>
-⑤ <b>settle 영구 복리 폐지</b>(출력배수 배경 성장 ×4.91 사태) — 성장축 = 줄 새김(성립마다 +1 영구)과 소유물(부품·승객)만.<br>
+⑤ <b>settle 영구 복리 폐지</b>(전력 배수 배경 성장 ×4.91 사태) — 성장축 = 줄 새김(성립마다 +1 영구)과 소유물(부품·승객)만.<br>
 ⑥ <b>걸쇠 점프</b>: 초과 2.5배(capRatio)에 닿으면 케이블 상한까지 쭉, 그 너머 전력은 층이 안 됨(선불·환전으로) — 진행 엔진 = 지수 곡선이 아니라 권양 사다리. 잔류의 초과 보상 소거로 출발/잔류 동률 복원. + 남은 스핀 선불(스핀당 다음 요구 15%) = 출발의 저울추.<br>
 ⑦ <b>긴 줄</b>(설계자 지적 즉수정): 가로 4연·5연이 겹친 3연 두세 개로 두 번 터져 보이던 것 → 하나의 「N연」 사건으로 통합(클로버핏 HOR-L/XL 소거 규칙 — 긴 것이 서면 짧은 것은 점수화되지 않는다). 값 = 구성 구간 합 그대로(밸런스 불변) · 새김도 구간별 보존.<br>
 ⑧ <b>재솔브</b>: REQ_BASE [18,20,9,13,17,24,29,47,70,103] · 2막 110×1.01(평평 = 스노볼 보상) · 데드라인 40/1.20 유지. 검증: e0 1.88%[1.63~2.13] / e1 2.50%[2.50~3.25] — 잔류 소폭 우위 교차(-3.3 계약형), 완주 25~38정차, 타임아웃 0, 스톱8≈14층.<br></p>
 <p style="font-size:11.5px"><b>v9.23 — 정리 세션: 중고 판매 · 사살 패널티 · coinPay 제거 (설계자 지시 ①~③)</b><br>
-① <b>부품 중고 판매</b>: 상점의 보유 부품 카드에 「판다」 버튼 — 중고값 = 정가의 반(내림, 다이얼 partSellPct). 권양 설비도 팔린다(점프 상한 즉시 하락 = 전략적 다운그레이드). 발동형은 팔면 충전 초기화 — 산탄총은 팔고 다시 사면 재장전이 된다(순비용 2닢/2발).<br>
+① <b>부품 중고 판매</b>: 상점의 보유 부품 카드에 「판다」 버튼 — 중고값 = 정가의 반(내림, 다이얼 partSellPct). 권양 설비도 팔린다(상승 한계 즉시 하락 = 전략적 다운그레이드). 발동형은 팔면 충전 초기화 — 산탄총은 팔고 다시 사면 재장전이 된다(순비용 2닢/2발).<br>
 ② <b>사살 일원화 + 패널티</b>: 승객은 목적지 전 자진 하차 없음(인터폰 하차만 예외 — 무패널티, 이미 인도 처리돼 재드래프트도 안 됨). 산탄총 첫 상점 진열 보장. 사살 = 즉시 눈 +1(건물이 총성을 들었다) + 요구 ×1.08^n 영구 낙인(「명부는 지워진 이름을 기억한다」의 규칙 승격, 다이얼 killEyeN·killReqPct). 사살된 이름이 드래프트에 재등장하던 결함 수정.<br>
 ③ <b>coinPay 제거</b>: 「동전으로 값을 낸다」 전면 삭제(컨셉 불일치 — 건물은 값을 살로만 받는다). 동전 용도 = 상점 구매 · 중고 판매 · 인터폰 거래. 부자 빌드 = 부품 독식 + 되팔기 회전 + 전화 거래로 재정의. 전력→동전 환전(v9.21)은 유지.<br>
 ④ <b>재밸런스(클린 경제 재솔브)</b>: REQ_BASE k6~9 [98,158,192,293]→[120,210,250,400] · 권양 보장 스케줄 [0,8,12,16,20]→[0,6,10,14,18] · act2 543/1.12 유지. 판매 정책 반영 하네스, n=4000 풀링: 즉시출발 1.63% [시드별 1.38~1.75] / +1스핀 1.53% [1.19~2.13] — 밴드 안 교차(시드별 우위 교대) 복원. 타임아웃 0 · 완주 p50 23~30정차.<br>
 ⑤ <b>결함 2건 수정</b>: (a) 사살된 이름이 드래프트에 재등장 — 풀 필터 누락. (b) 고물 3종(병뚜껑·저울·수레)이 권양 j01/j04/j05와 id 충돌 — 진열에 구르면 사다리가 스케줄보다 일찍 열리는 뒷문이었고, 기존 밸런스가 그 위에 서 있었다. jk01/jk04/jk05로 분리(④가 그 보상 재조정).<br>
-⑥ <b>욕심 가중° 신설(기본 0)</b>: 값이 찬 뒤 당기는 스핀에만 눈 유입 +overEyeW — 즉시출발엔 영향 0, +1스핀만 조준하는 딜레마 전용 다이얼(0.10 = +1스핀 완주 −0.5pp). nearStage처럼 A/B용 잔존.<br></p>
+⑥ <b>욕심 가중° 신설(기본 0)</b>: 값이 찬 뒤 당기는 스핀에만 눈 출현 +overEyeW — 즉시출발엔 영향 0, +1스핀만 조준하는 딜레마 전용 다이얼(0.10 = +1스핀 완주 −0.5pp). nearStage처럼 A/B용 잔존.<br></p>
 <p style="font-size:11.5px"><b>v9.22 — 선불 개명·행선지 표시·연쇄 정리 (설계자 피드백 3건)</b><br>
 ① "이월 6/6이 뭐냐" → 용어를 <b>「다음 층 선불」</b>로 전면 개명(수지줄·카드 툴팁·도움말·도착 로그) — 상한 넘은 전력의 절반이 다음 층 시작 전력으로 실린다는 뜻이 이름에서 읽히게.<br>
 ② "출발이 매번 이득처럼 보인다" → <b>측정상 사실 아님</b>(즉시출발 1.75~1.88% vs +1스핀 2.13~2.38%, 잔류 소폭 우위). 체감 원인 = 잔류 보상의 지연·비가시 → 포크에 <b>다음 스핀 전력의 행선지</b> 상시 표시: 「층 연료 — 더 높이 뛴다」/「다음 층 선불을 채운다」/「환전 동전이 된다」+ 새김 +6%/줄 명기.<br>
@@ -4471,12 +4470,12 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 ③ <b>통합 인디케이터</b>(상단 전폭): 1..7734 로그 트랙 — 현재 위치 ▲, 특수층 눈금, <b>도달 가능 구간(초록)</b>, <b>제한기 절단 지점(빨간 틱)</b> + 텍스트 요약(현재층·전력·도달층·원시 도달·잔여 층수). 레이아웃: #cabin 3행 그리드 침범 이슈 → main 내부 grid-column:1/-1 행으로 해결.<br></p>
 <p style="font-size:11.5px"><b>v9.17 — 뱃지당 팝 + 겹울림 링 등급 (설계자 지시)</b><br>
 ① 팝 제한 명확화: 스핀당 1회 → <b>뱃지당 1회</b>. 서로 다른 뱃지가 같은 판에 터지면 각각 +1(둘이면 +2). 같은 뱃지가 여러 줄에 걸려도 1회.<br>
-② <b>겹울림 등급</b>: 게이지가 3을 넘겨 찬 채 울리면 거래가 좋아진다 — +1 초과=겹울림(WELL_DEALS 4종: 무대가 중형 — 출력+1/동전+6/+8층/운+3), +2 이상=종루(GRAND_DEALS 4종: 무대가 대형 — 출력×1.4/+20층/동전+12/<b>점프 상한 +15 영구</b>). 링 시 게이지 <b>전량 소모</b>(잔량 이월 폐지 — 겹울림이 보상이므로). 넘치게 채워 울리는 게 벨 빌드의 기술이 됨: 게이지 2에서 더블팝 노리기 등.<br>
+② <b>겹울림 등급</b>: 게이지가 3을 넘겨 찬 채 울리면 거래가 좋아진다 — +1 초과=겹울림(WELL_DEALS 4종: 무대가 중형 — 출력+1/동전+6/+8층/운+3), +2 이상=종루(GRAND_DEALS 4종: 무대가 대형 — 출력×1.4/+20층/동전+12/<b>상승 한계 +15 영구</b>). 링 시 게이지 <b>전량 소모</b>(잔량 이월 폐지 — 겹울림이 보상이므로). 넘치게 채워 울리는 게 벨 빌드의 기술이 됨: 게이지 2에서 더블팝 노리기 등.<br>
 전화 풀은 시뮬 정책 밖 — 완주율 불변. 수화기/로그/툴팁/도움말 동기화.<br></p>
 <p style="font-size:11.5px"><b>v9.16 — 상한 상태 3부 표기 + 최소 동전 폐지 (설계자 검증 요청)</b><br>
 ① 상한 물림 표기 명시화: 「전력 N — 상한에 물려 M층까지만 오른다 · 남는 힘 +X(이월 가득)은 이월 — 다음 층을 그 전력으로 시작한다」. 전력 숫자 상시 강조(주황 볼드).<br>
 ② <b>설계자 검증 적중</b>: 빈손 출발 최소 1닢 보장(v7 잔재) 탓에 마지막 스핀의 동전 마진이 0 = "1스핀 남으면 무조건 돌림"이 정답이었음. 최소 보장 폐지(0·1·2·3·5·8) — 마지막 스핀에도 −1닢 마진 성립.<br>
-③ 상승 상한 존치 판단: 상한 제거 시 무빌드 1층 행운 한 방(초과 ×53 → 53^2.4 ≈ 1.4만층)이 즉시 완주 = "뻥은 빌딩으로만" 원칙 붕괴. 이월이 있어도 상한은 스파이크 방화벽으로 필요. A/B는 다이얼 「점프 상한 기본」=9999로 가능.<br>
+③ 상승 상한 존치 판단: 상한 제거 시 무빌드 1층 행운 한 방(초과 ×53 → 53^2.4 ≈ 1.4만층)이 즉시 완주 = "뻥은 빌딩으로만" 원칙 붕괴. 이월이 있어도 상한은 스파이크 방화벽으로 필요. A/B는 다이얼 「상승 한계 기본」=9999로 가능.<br>
 검증: 즉시출발 ~1.6%(3회 평균: 1.0/2.5/1.25) · +1스핀 2.13% — 밴드 유지, 시드 분산 ±0.75pp 기록.<br></p>
 <p style="font-size:11.5px"><b>v9.15 — 케이블 이월 (설계자: "상한 차면 더 돌릴 가치가 없다 — 구조적으로 해결 안 되나")</b><br>
 진단: 제한기 포화 순간 추가 전력의 한계가치가 0으로 절벽(점프 캡·동전은 감소·새김만 잔존) → "4층 조건 차면 무조건 출발". 해법: <b>상한이 버린 초과 전력의 절반이 다음 문턱으로 이월</b>(다음 표 문턱의 60% 상한 — 다음 층 무료 통과 불가 = 공포 유지, 거버너 그대로 = 무빌드 스파이크 없음). 상한에 물려도 레버 한 번 = 다음 층 예열. 표기: 게이지에 「이월 N/M」 실시간, 도착 로그 "문턱이 미리 데워져 있다". 다이얼 carryRate 0.5 / carryCap 0.6. 검증: 완주 즉시출발 1.88% / +1스핀 2.13%(n=800) 밴드 유지, UI 이월 6/6→도착 전력 6 확인.<br></p>
@@ -4492,7 +4491,7 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 ② <b>벨 심볼 폐지</b>: 벨은 릴에서 안 뜬다(bellW=0 다이얼, A/B 복원 가능). 벨 획득은 🔔뱃지 단일 경로 — 눈 제외 심볼에 8% 확률(다이얼 dl_badge)로 붙고, 그 심볼이 줄로 터지면 게이지 +1(스핀당 1). 놋쇠 추 부품도 뱃지 확률 +5%p로 재작업. 라벨판에 뱃지 확률 상시 표기. 게이지 요구도 다이얼(dl_gn). 실측: 5스핀에 게이지 2 적립 — 정차당 1회꼴 인터폰 페이스.<br></p>
 <p style="font-size:11.5px"><b>v9.8 — 층 프레임 (설계자: "요구 게이지가 '차면 바로 가야'를 만든다")</b><br>
 요구 게이지 바 제거. 전력 패널이 층 중심으로: 크게 <b>「→ N층」</b>(지금 전력으로 도달할 층 — 채울수록 커지는 걸 보는 게 욕심 동력), 작게 「문턱 N층 = 전력 X — 못 넘으면 추락」. 출발 버튼도 목적층 표기(「출발 → 51층」). 도착·시작 로그도 문턱 프레임. + 초과 점프 동전 거스름(8층당 1닢·최대 3). ⚠ 완주율 n=800 기준 5.9% — settle 0.06·동전 경제 반영한 곡선 전면 재솔브가 차기 최우선.<br></p>
-<p style="font-size:11.5px"><b>v9.7</b> — 계기판 직관화(설계자 요청): 운/눈배수/출력배수/줄/동전 게이지에 한 줄 캡션 상시 + 호버 상세 툴팁. 운 게이지에 수치 상시 표기("운 N · 과부하 +M"). 눈의 3중 역할(차단·세금·배수)을 플립 창 캡션·툴팁에 명기.<br></p>
+<p style="font-size:11.5px"><b>v9.7</b> — 계기판 직관화(설계자 요청): 운/눈배수/전력 배수/줄/동전 게이지에 한 줄 캡션 상시 + 호버 상세 툴팁. 운 게이지에 수치 상시 표기("운 N · 과부하 +M"). 눈의 3중 역할(차단·세금·배수)을 플립 창 캡션·툴팁에 명기.<br></p>
 <p style="font-size:11.5px"><b>v9.6 — 출발/잔류 딜레마 (설계자: "고민이 안 된다, 출발이 무조건 이득 같다")</b><br>
 실측으로 확인: 즉시출발 완주 4.0% vs +1스핀 0.8% — <b>5배 지배</b> (삼중 출발 보너스: 동전∝남은스핀 · 눈닦임∝남은스핀 · 램프 회피). 조치: ① 층 정산 계수 0.04→<b>0.06</b> (잔류의 영구 성장 강화, 격차 5배→2배) ② <b>갈림길 상시 표기</b>: 출발 미리보기 2줄 포크 — "출발: 동전+N·눈 M 닦임·새김 ×1.XX 확정 / 한 번 더: 다음 스핀 눈 N%"(12%+면 붉게). 남은 격차는 점프 연료 순간(상한 여유)에 뒤집히는 맥락 긴장. ⚠ 합리 정책 기준 완주 ~3.3%로 구 밴드(1.6~2) 상회 — 곡선 정밀 재솔브는 차기. + 확률 막대에 정수 % 병기(설계자 요청).<br></p>
 <p style="font-size:11.5px"><b>v9.5 — 빌드 아키타입 3종 (설계자 지시)</b><br>
@@ -4506,7 +4505,7 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 <p style="font-size:11.5px"><b>v9.1</b> — 니어미스 무대화(놓친 줄 초록/빨강 표식·"하나가 모자랐다") <b>기본 OFF</b> (설계자: "실패한 걸 왜 보여주나"). 다이얼 A/B로만 잔존. 눈이 줄을 막은 꽝의 이글거림은 유지(방해 증거). 다이얼 패널 ID 충돌 2건 수정(눈 편향/눈 세금 중복 필드).<br></p>
 <p style="font-size:11.5px"><b>v9 — 설계자 지시 대수술 (연속 층·거버너·눈 개편)</b><br>
 ① <b>연속 층 + 점프</b>: 층 1..7734 연속. 요구는 정차 횟수 기준("문마다 값을 부른다"). 초과^2.4 만큼 층을 뛴다 — 경유 승객 자동 인도, 특수층 지나침 허용, 지나친 층은 「내려간다」로 복귀(비용=전력만).<br>
-② <b>승강 제한기(거버너)</b>: 무빌드 점프 상한 +3층. 권양 계열(도르래+6/케이블+18/드럼+80/권양탑+300/척추+800, 가방 비점유·진열 사다리 보장)과 권양기 기사(+12)·검사원(+60)·인장(+40)으로만 오른다. <b>무빌드 400런 실측 최대 점프 3층</b> — 뻥은 빌딩해야 터진다(설계자 지시).<br>
+② <b>승강 제한기(거버너)</b>: 무빌드 상승 한계 +3층. 권양 계열(도르래+6/케이블+18/드럼+80/권양탑+300/척추+800, 가방 비점유·진열 사다리 보장)과 권양기 기사(+12)·검사원(+60)·인장(+40)으로만 오른다. <b>무빌드 400런 실측 최대 점프 3층</b> — 뻥은 빌딩해야 터진다(설계자 지시).<br>
 ③ <b>눈 개편</b>: 기본 배수 ×2→×1(눈 계열 부품·승객으로만 상승), 등장 3층부터, 세금 1.45→1.35에 상한 ×3 신설.<br>
 ④ <b>무늬 게이트</b>: 무늬 계열 부품 보유 시에만 판정(무빌드 공짜 스파이크 제거). 성립/차단률(공포 수치)은 판정식 불변.<br>
 ⑤ <b>승객 이원화</b> 배달 6종(층 배달·보상 6~30닢) / 동행 18종(영구·융합 지정) — 제거는 <b>산탄총</b>뿐, 사살 = 눈 +1 · 요구 +8% 영구.<br>
@@ -4536,7 +4535,7 @@ const NOTES_HTML=`<h2>구현 노트 — 문서 충실 범위와 가안(°) 목�
 발동형(⚡)은 §3 단서 준수: 사전 획득 충전의 활용, 런당 횟수 제한. 보유 한도 6(캐논 3, 다이얼 복원 가능) · 상점 진열 4칸(등급 가중 + 보유 패밀리 우대 1칸).</p>
 <h3>판형 A/B 테스트 — 등가 리밸런스 방법론 (재실험)</h3>
 <p style="font-size:12px">
-방법: 3×3 규칙 이식(불공정)이 아니라, v7 공포 정본 수치(신선판 성립률 61.4% · 줄/스핀 0.99 · 눈 유입 0.86/스핀 · 동일 압박)에 3×5를 리밸런스한 뒤 남는 차이만 기하 고유 효과로 판정.<br>
+방법: 3×3 규칙 이식(불공정)이 아니라, v7 공포 정본 수치(신선판 성립률 61.4% · 줄/스핀 0.99 · 눈 출현 0.86/스핀 · 동일 압박)에 3×5를 리밸런스한 뒤 남는 차이만 기하 고유 효과로 판정.<br>
 <b>발견 1 — 스케일 법칙:</b> 3심볼로는 3×5 등가가 수학적으로 불가능(15칸 20줄에서 최평탄 분포도 줄/스핀 1.86 하한). 4심볼(귀° 50)을 추가해야 65.5%/1.10까지 접근, 완전 등가에는 5심볼 필요. 즉 <b>판이 넓어질수록 심볼 종수가 늘어야 공포 수치가 보존된다</b> — 3심볼 미니멀리즘(에셋 0 원칙)은 3×3의 자산.<br>
 <b>발견 2 — 리밸런스 후에도 남는 기하 고유 효과</b> (등가 압박 250런: 3×3 실전 성립 63.3%/줄 1.26/잭팟 34.2% vs 3×5 73.5%/1.64/41.7%, 눈 피크 동일 4):<br>
 ① <b>눈 차단력 희석</b> — 같은 눈 수가 15칸에선 판을 덜 조임. 실전 성립률 격차 +10pp가 튜닝으로 안 지워짐. 시선의 포화 거리 7/9 vs 13/15 — 죽음의 나선의 물리력이 구조적으로 약함<br>
@@ -4554,7 +4553,7 @@ D 3×5 5심볼(k0.65 완전등가 — 신선판 59.2%/0.99줄 정확, 값∝희�
 <p style="font-size:12px">
 맞다 — 심볼 증가는 유효한 난이도 레버다. 단 두 레버는 고치는 게 다르다:<br>
 · <b>심볼 종수↑ = 성립률↓</b> (꽝 리듬 복원) — 6심볼 k0.95면 캐논 동률, 7심볼이면 46%까지 하락 가능<br>
-· <b>눈 유입↑ = 차단율↑</b> (조여오는 압박 복원) — 심볼로는 차단율이 안 돌아옴 (캐논 54.5% vs 심볼증가 37~43%)<br>
+· <b>눈 출현↑ = 차단율↑</b> (조여오는 압박 복원) — 심볼로는 차단율이 안 돌아옴 (캐논 54.5% vs 심볼증가 37~43%)<br>
 확정 레시피 2종 (값∝희소성 사다리 완전 단조):<br>
 ① <b>균형형 = 6심볼(어금니·뼈·귀·심장·혀·뇌, k0.85) + 눈 7%</b>: 성립 62.1%(캐논보다 약간 어려움) · 잭팟 32.6%(+5.6pp, 품기 보상 강화) · 차단 42% · 등가 압박 완주율 캐논 동급(4/200)<br>
 ② <b>하드코어 = 7심볼(+폐, k0.65) + 눈 7%</b>: 성립 48.6% · 차단 50.8%(캐논 −3.7pp까지 복원) — 죽음의 나선 세계<br>
@@ -4581,13 +4580,13 @@ D 3×5 5심볼(k0.65 완전등가 — 신선판 59.2%/0.99줄 정확, 값∝희�
 <p style="font-size:12px">
 ① <b>특례 삭제 여파는 1~2층에 국한되지 않는다.</b> 교습 운+1 삭제로 1층 5스핀 중앙값 470→약120, 그 복리로 10층 중앙값 237k→약112~147k. v7 요구 곡선(동결) 대비 8~10층 압박이 26~29%→46~60%로 상승. 1~10층 요구는 계획서 명시대로 동결 유지했으나 재측정 필요 (탈락 봉우리가 3층→2층·10층으로 이동).<br>
 ② <b>문서 원안 정차층 요구로는 완주율 0%</b> (200런, +1스핀). 2막 실성장은 정차당 ×1.3~1.5인데 원안 사다리는 ×1.7~2.9를 요구.<br>
-③ <b>빌드 게이트 세계의 2막 핵심 발견: 7층+ 무청소 × 스핀 5회 한도에서 2막 전력은 상승하지 않고 40k~170k 밴드에서 횡보한다.</b> 눈 유입(약 0.9/스핀)이 제거(줄+곡괭이)를 항상 이기기 때문. 스핀을 늘리면(7·9회 실험) 오히려 악화. 따라서 수십만~수백만 스케일의 원안 사다리는 이 룰셋과 양립 불가. v8 과제: 2막 눈 경제(청소부의 공급자화, 품기 보상 등) 설계.<br>
+③ <b>빌드 게이트 세계의 2막 핵심 발견: 7층+ 무청소 × 스핀 5회 한도에서 2막 전력은 상승하지 않고 40k~170k 밴드에서 횡보한다.</b> 눈 출현(약 0.9/스핀)이 제거(줄+곡괭이)를 항상 이기기 때문. 스핀을 늘리면(7·9회 실험) 오히려 악화. 따라서 수십만~수백만 스케일의 원안 사다리는 이 룰셋과 양립 불가. v8 과제: 2막 눈 경제(청소부의 공급자화, 품기 보상 등) 설계.<br>
 ④ 현재 기본 다이얼(16k/18k/21k/37k/44.4k)은 측정 밴드 안 상승 사다리. 정예 정책 완주율 1.5%, 압박 14→11→19→21→31%. 탈락은 1~10층(빌드 조립 구간)에 집중 — 빌드를 못 잡으면 거기서 죽는다.<br>
 ⑤ 죽음의 나선 실제 작동: 특례 삭제 후 2~3층 눈 잔류 연쇄 탈락이 최대 사인. 눈 제거 축 미확보 런은 완주 0%, 확보 런은 3.5%+로 갈림 (빌드가 판도를 바꾼다는 가설의 수치 증거).</p>`;
 function dialHTML(){
  return `<h2>다이얼 — 미검증 숫자 명단 (DEV PLAN §11)</h2>
  <label class="dl">점프 지수 (초과^n) <input type="number" id="dl_jpow" step="0.1" value="${DIAL.jumpPow}"></label>
- <label class="dl">점프 상한 기본 <input type="number" id="dl_jcap" value="${DIAL.jumpCapBase}"></label>
+ <label class="dl">상승 한계 기본 <input type="number" id="dl_jcap" value="${DIAL.jumpCapBase}"></label>
  <label class="dl">2막 문턱 기준 <input type="number" id="dl_a2b" value="${DIAL.act2Base}"></label>
  <label class="dl">2막 문턱 성장/정차 <input type="number" id="dl_a2g" step="0.005" value="${DIAL.act2Grow}"></label>
  <label class="dl">데드라인 정차 (성장 가속 시점) <input type="number" id="dl_a2c" value="${DIAL.act2Cut}"></label>
@@ -4739,7 +4738,7 @@ function dopaHTML(){
  +'<tr><th>사건</th><th>발생</th><th>비고</th></tr>'
  +'<tr><td>성립</td><td>'+pc(st.wins)+'</td><td>—</td></tr>'
  +'<tr><td>└ 그중 LDW</td><td>'+ldwShare+'</td><td>기계는 축하했지만 필요 페이스에 미달 (Dixon 2010)</td></tr>'
- +'<tr><td>근접 실패(고배율)</td><td>'+pc(st.nmHi)+'</td><td>줄에 고배율 둘 + 하나 모자람</td></tr>'
+ +'<tr><td>근접 실패(큰 심볼)</td><td>'+pc(st.nmHi)+'</td><td>줄에 큰 심볼 둘 + 하나 모자람</td></tr>'
  +'<tr><td>└ 그중 눈이 막은 것</td><td>'+pc(st.nmEye)+'</td><td>"눈이 그 자리에 서 있었다" — 공포축 교차점</td></tr>'
  +'<tr><td>벨 2개 (스캐터 근접)</td><td>'+pc(st.nmBell)+'</td><td>예고 레버 트리거</td></tr>'
  +'<tr><td>벨 3개+ (발동)</td><td>'+pc(st.bells)+'</td><td>그중 붉은 벨 '+pc(st.bellsRed)+'</td></tr>'
