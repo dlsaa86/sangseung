@@ -5192,7 +5192,7 @@ doSpin=function(S){
 '.cell.v2core{box-shadow:inset 0 0 0 2px rgba(170,120,255,.85)}'+
 '#v2read{margin:4px auto 6px;text-align:center;font-size:15px;color:#cfd8e3;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:5px 8px;max-width:560px}'+
 '#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}'+
-'.cell.cycling .v2v,.cell.cycling .v2l{display:none}';
+'.cell.cycling .v2v,.cell.cycling .v2l{display:none}'+'@keyframes v2shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-6px,3px)}40%{transform:translate(5px,-4px)}60%{transform:translate(-4px,-3px)}80%{transform:translate(4px,3px)}}'+'#cabin.v2shake{animation:v2shake .5s ease-out}'+'.v2banner{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) scale(.7);z-index:20;font-weight:900;text-shadow:0 2px 12px rgba(0,0,0,.9);pointer-events:none;white-space:nowrap;opacity:0;animation:v2bn 1.4s ease-out forwards}'+'@keyframes v2bn{10%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}25%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-55%) scale(1)}}';
 document.head.appendChild(st);})();
 var _rbV1=renderBoard;
 renderBoard=function(){
@@ -5259,7 +5259,15 @@ revealJudge=async function(p,preEyes){
  try{renderBoard();}catch(e){}
  var rd=document.getElementById('v2read');
  var acc=0;
+ /* 크레셴도: 작은 줄 → 큰 줄 → 완성형(잭팟)이 마지막 */
+ evs=evs.slice().sort(function(a,b){return ((a.zig?1:0)-(b.zig?1:0))||(a.val-b.val);});
+ var mkBanner=function(txt,color,size){if(!bzEl)return;
+  var bn=document.createElement('div');bn.className='v2banner';
+  bn.textContent=txt;bn.style.color=color;bn.style.fontSize=size+'px';
+  bzEl.appendChild(bn);setTimeout(function(){bn.remove();},1500);};
  for(var ei=0;ei<evs.length;ei++){var ev=evs[ei];
+  /* 완성형 직전의 침묵 — 결정적 릴 문법 */
+  if(ev.zig&&(ei===0||!evs[ei-1].zig))await wt(380);
   /* 페이라인 경로 */
   if(ev.path&&bzEl){
    var svg=document.getElementById('v2paySvg');
@@ -5283,14 +5291,28 @@ revealJudge=async function(p,preEyes){
   for(var ci2=0;ci2<ev.cells.length;ci2++){var cix=ev.cells[ci2];
    if(CELLS[cix]){CELLS[cix].classList.remove('v2burst');void CELLS[cix].offsetWidth;CELLS[cix].classList.add('v2burst');}}
   acc+=ev.val;
-  num(ev.cells[(ev.cells.length/2)|0],ev.nm+(ev.zig?'!':'')+' +'+Math.round(ev.val)+'W'+(!ev.zig&&ev.len>=4?' '+ev.len+'연속!':''),ev.zig?'#ffd76e':'#ffb37a');
+  var el2=CELLS[ev.cells[(ev.cells.length/2)|0]];
+  if(el2&&bzEl){var r9=el2.getBoundingClientRect(),z9=bzEl.getBoundingClientRect();
+   var d9=document.createElement('div');d9.className='dmgNum';
+   d9.style.color=ev.zig?'#ffd76e':'#ffb37a';
+   d9.style.fontSize=(14+Math.min(14,ei*3)+(ev.zig?8:0))+'px';
+   d9.textContent=ev.nm+(ev.zig?'!':'')+' +'+Math.round(ev.val)+'W'+(!ev.zig&&ev.len>=4?' '+ev.len+'연속!':'');
+   d9.style.left=(r9.left-z9.left+r9.width/2-20)+'px';d9.style.top=(r9.top-z9.top+2)+'px';
+   bzEl.appendChild(d9);setTimeout(function(){d9.remove();},1150);}
+  if(ev.zig){var cab=document.getElementById('cabin');
+   if(cab){cab.classList.remove('v2shake');void cab.offsetWidth;cab.classList.add('v2shake');}
+   mkBanner(ev.nm+'! ',' #ffd76e'.trim(),30);
+   try{sndEye();}catch(e){}}
   /* 뱃지 발동 팝 */
   for(var bi=0;bi<(ev.badges||[]).length;bi++){var b=ev.badges[bi];
    num(b.cell,SYMB[b.dev.k].g+' 발동!','#e3b341');}
-  try{sndStop(0);}catch(e){}
+  try{sndStop(Math.min(4,ei));}catch(e){}
   if(rd)rd.innerHTML='줄 '+(ei+1)+'개 — <b>'+acc.toFixed(0)+'W</b> …';
-  await wt(420);}
+  await wt(ev.zig?560:Math.max(260,380-ei*20));}
  if(evs.length>=2)log('동시 '+evs.length+'줄! 전체 ×'+(z.lineMulAll||1).toFixed(1),'hi');
+ var hasZig=evs.some(function(e3){return e3.zig;});
+ if(hasZig)mkBanner('완성 — 벽이 운다','#ffd76e',34);
+ else if(evs.length>=3)mkBanner('크게 섰다!','#ffb37a',26);
  try{renderBoard();}catch(e){}
  if(z.grinds>0)log('당첨 줄이 눈을 갈았다 — 눈 −'+z.grinds,'hi');
  if(evs.length>0)log('⚡ +'+p.power+'W — '+evs.map(function(e2){return e2.nm;}).join('·')+(z.m2>1?' · 코어 점화':''),(evs.length>=2||z.m2>1)?'hi':undefined);
