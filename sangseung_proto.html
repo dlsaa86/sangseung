@@ -5167,6 +5167,11 @@ doSpin=function(S){
   eyeN:S.eyes.length,badges:[],bellN:0,goneEyes:goneEyes,
   v2:{base:R.totalBase,m1:R.m1,m2:R.coreM,coreOn:R.coreOn,chain:0,bursts:R.bursts,
       eyePow:eyePow,events:R.events,badges:R.badges,lineMulAll:R.lineMulAll,grinds:R.grinds}};
+ /* 종의 내기 정산 — 옛 엔진에 있던 것을 새 판정(줄 수)으로 복원 */
+ if(S.betCoins){var _bw=R.bursts>=S.betCoins.need;
+  S.betResult={won:_bw,n:S.betCoins.n};
+  if(_bw)S.tickets+=S.betCoins.n*2;
+  S.betCoins=null;}
  S.missStreak=(power>=effReq(S)*((DIAL.missFrac===undefined?0.10:DIAL.missFrac)))?0:((S.missStreak||0)+1);
  if(S._v2stop!==S.stopIdx){S._v2stop=S.stopIdx;S._v2synSum=0;}
  S._v2synSum=(S._v2synSum||0)+R.bursts;
@@ -5248,6 +5253,9 @@ var _rjV1=revealJudge;
 revealJudge=async function(p,preEyes){
  if(!DIAL.coreV2)return _rjV1(p,preEyes);
  var z=p.v2||{};var evs=z.events||[];
+ if(S.betResult){var _br=S.betResult;S.betResult=null;
+  try{toast(_br.won?('내기 — 줄이 섰다. 동전 '+(_br.n*2)+'닢으로 돌아온다'):('내기 — 줄이 모자랐다. '+_br.n+'닢을 삼켰다'),_br.won?'amber':'red');}catch(e){}
+  log(_br.won?('인터폰 내기 승리 — 동전 +'+(_br.n*2)):'인터폰 내기 패배 — 건물이 판돈을 삼켰다',_br.won?'hi':'red');}
  var wt=function(ms){return new Promise(function(r){setTimeout(r,ms*spd());});};
  var bzEl=document.getElementById('boardZone');
  var num=function(i,txt,color){var el=CELLS[i];if(!el||!bzEl)return;
@@ -5396,6 +5404,8 @@ window.__v2={
  reroll:function(){if(S.tickets<1)return;S.tickets-=1;rollSymShop(S);renderV2Shop();},
  /* 측정 훅: 게임과 동일 함수로 몬테카를로 */
  _findLines:function(board){return findLines(board,{});},
+ _bet:function(n2,need){S.betCoins={n:n2,need:need};return S.tickets;},
+ _tk:function(){return S.tickets;},
  _cell:function(k){return{v2:1,k:k,lv:1};},
  simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec){
   var devs=[];if(devSpec)devSpec.split(',').forEach(function(kv){var pp=kv.trim().split(':');var kk=pp[0],lv=1;
