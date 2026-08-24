@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "ruleset_version": "1.0",
+  "source": "Google Sheets 「상승_밸런스_마스터」 → CSV export → this JSON",
+  "parse_rules": {
+    "tags": "파이프(|) 구분 배열",
+    "trigger_grammar": "PREFIX[:FUNC(ARG)][OP VALUE] — PREFIX∈{ALWAYS,PER,IF,UPGRADE,CHARGES,TURNEND}, FUNC∈{ADJ,COUNT,SUM,REMOVE_SNOW,CONSUME}, ARG∈{EMPTY,SNOW,BASE,TAG:*,ADJ_MIN_GEN,LV}, OP∈{>=,<=}",
+    "trigger_semantics": {
+      "ALWAYS": "무조건 적용 (BaseValue/MultValue 그대로)",
+      "PER:ADJ(X)[<=N]": "인접 X 1개당 AuxValue(기초) 또는 MultValue(배율) 가산. <=N은 개수 상한",
+      "IF:SUM(BASE)>=N": "보드 기초합 N 이상일 때만 발동",
+      "UPGRADE:COUNT(TAG:X)>=N": "조건 미달 시 MultValue, 충족 시 AuxValue 사용",
+      "CHARGES:N": "N회 발동 후 심볼 영구 소멸",
+      "TURNEND:FUNC(ARG)": "턴 종료 시 보드 조작 효과 (엔진 하드코드 케이스)"
+    },
+    "empty_number": 0,
+    "empty_string": "NONE",
+    "id_rule": "ID는 불변. 삭제 대신 Enabled=FALSE. 신규는 뒤에 추가"
+  },
+  "symbols": [
+    {
+      "id": "SYM_BASE_002",
+      "name": "태양광 패널",
+      "type": "Base",
+      "tags": [
+        "GEN",
+        "SOLAR"
+      ],
+      "base_value": 2,
+      "aux_value": 1,
+      "mult_value": 0,
+      "mult_type": "NONE",
+      "trigger": {
+        "prefix": "PER",
+        "func": "ADJ",
+        "arg": "EMPTY",
+        "cap": 2
+      },
+      "rarity": "Common",
+      "price": 4,
+      "max_copies": 6,
+      "level_scale": "MULT2",
+      "weights": {
+        "early": 20,
+        "mid": 15,
+        "late": 8
+      },
+      "enabled": true
+    },
+    {
+      "id": "SYM_MULT_004",
+      "name": "융합 코어",
+      "type": "Mult",
+      "tags": [
+        "CORE"
+      ],
+      "base_value": 0,
+      "aux_value": 0,
+      "mult_value": 2,
+      "mult_type": "Mul",
+      "trigger": {
+        "prefix": "IF",
+        "func": "SUM",
+        "arg": "BASE",
+        "op": ">=",
+        "value": 12
+      },
+      "rarity": "Rare",
+      "price": 12,
+      "max_copies": 4,
+      "level_scale": "ADD05",
+      "weights": {
+        "early": 2,
+        "mid": 2,
+        "late": 10
+      },
+      "enabled": true
+    }
+  ]
+}

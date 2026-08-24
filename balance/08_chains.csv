@@ -1,0 +1,22 @@
+Kind,Old_Key,New_Event,Desc
+LISTEN,line,SYNERGY,SYNERGY(코어 발동/변압기 기여≥1.0 턴)
+LISTEN,eyeGone,SNOW_REMOVED,SNOW_REMOVED
+LISTEN,eyeBorn,SNOWFALL,SNOWFALL
+LISTEN,bell,BELL_RING,BELL_RING
+LISTEN,blank,DUD,DUD(코어 미발동·M1<2 턴)
+LISTEN,jack,SNOW_SYNERGY,SNOW_SYNERGY(눈 존재+SYNERGY)
+LISTEN,full,PASSENGERS_FULL,PASSENGERS_FULL(동승 4)
+LISTEN,deliv,DELIVER,DELIVER
+LISTEN,pat,EMPTY_SET,EMPTY_SET(빈칸 3+ 턴)
+LISTEN,fuse,FUSE,FUSE
+LISTEN,famN,FAMILY_SET,FAMILY_SET
+EFFECT,purge,눈 -1,연쇄 산출 효과
+EFFECT,plant,눈 +1,연쇄 산출 효과
+EFFECT,out,M1 영구 +v,연쇄 산출 효과
+EFFECT,pow,이번 턴 전력 +v%,연쇄 산출 효과
+EFFECT,bellg,종 게이지 +v,연쇄 산출 효과
+EFFECT,spin,턴 +v,연쇄 산출 효과
+EFFECT,notch,각인 진행 +v,연쇄 산출 효과
+EFFECT,tick,골드 +v,연쇄 산출 효과
+EFFECT,luck,운 +v,연쇄 산출 효과
+EFFECT,redo,최저 기초 심볼 재발동,연쇄 산출 효과

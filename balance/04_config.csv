@@ -1,0 +1,44 @@
+Key,Value,Category,Desc
+RULESET_VERSION,1.0,meta,규칙 버전. 수치 변경 시 마이너 버전 증가
+GRID_W,5,board,그리드 가로
+GRID_H,3,board,그리드 세로
+ANCHOR_BASE_W,2,anchor,[동결] 기준 심볼(소형 배터리) 턴당 생산량. 모든 수치의 축
+BPI_FORMULA,Target/(Turn_Limit*(15-K)*2),anchor,[동결] 유효칸당 요구배율(Min_Expected_Mult) 산출식
+SNOW_BASE_PENALTY,1,snow,눈 인접 기초(GEN) 심볼 -1W 고정 (개수 무관·HEAT 태그 면역·하한 0)
+SNOW_MULT_FACTOR,0.5,snow,눈 인접 시 인접조건(PER:ADJ) 배율 기여 x0.5 (평면 배율 CAP/AMP는 면역)
+SNOW_BLOCK,TRUE,snow,눈 칸에는 심볼 배치 불가
+MERGE_COUNT,3,merge,같은 심볼·같은 레벨 3개 보유 시 즉시 자동 합성(Lv+1)
+MERGE_SCALE_DEFAULT,2.0,merge,합성 시 수치 배율 (LevelScale=MULT2)
+MERGE_SCALE_CORE,+0.5,merge,융합 코어 예외: 레벨당 곱연산 +0.5x (LevelScale=ADD05)
+MERGE_MAX_LEVEL,3,merge,최대 합성 레벨
+AMP_COUNT_RULE,레벨 합,merge,안테나 개수 판정은 보드 위 안테나의 레벨 합계
+DRAW_RULE,덱>유효슬롯이면 무작위 추출,board,매 턴 덱에서 유효 슬롯 수만큼 무작위 추출·무작위 배치
+START_DECK,SYM_BASE_001 x5 + SYM_MULT_001 x1,economy,시작 덱 (15W/턴)
+START_GOLD,10,economy,시작 골드
+GOLD_PER_TURN,4,economy,턴당 골드 수입
+CLEAR_BONUS,5+2*Stage_ID,economy,층 클리어 보너스
+INTEREST,보유 10G당 +1 (최대 +5),economy,층 클리어 시 이자
+SHOP_SLOTS,3,economy,상점 슬롯 수
+REROLL_COST,1,economy,상점 새로고침 비용
+REMOVE_COST,3,economy,심볼 제거 서비스 비용 (덱 압축 수단)
+SHOP_RATIO_EARLY_MID,기초70:배율30,economy,1~6층 등장 가중치 비율 (Weight 열 합계로 검증)
+COUNTER_GATE,다음 층 Snow_Count>0일 때만 등장,economy,카운터 심볼 등장 조건
+CALC_ORDER,기초합→1차합연산→2차곱연산,calc,[동결] 한 턴 전력 = ΣBase x (1+ΣAdd) x ΠMul
+CALC_SNOW_ORDER,보너스 적용 후 페널티 적용,calc,기초값+조건보너스 계산 후 눈 페널티 차감(하한 0)
+CORE_EVAL,페널티 반영된 최종 기초합 기준,calc,융합 코어 임계(12W) 판정 시점
+RULESET_VERSION_V2,2.0,meta,기존 게임 구조 전체 반영판 (승객·설비·종/거래·연쇄·강설·무게·이월·융합)
+SNOWFALL_BASE,0.08,snow_v2,4층부터 매 턴 강설 확률 (층당 +0.02·상한 0.6·보드 눈 상한 = 패턴 K+4)
+SNOWFALL_MOD,승객/설비 eyeW 환산 ±%p,snow_v2,예: 야간 경비 -20%p·점등원 +15%p
+WEIGHT_TAX,0.05,weight,무게 1당 층 목표 전력 +5% (검역관 wcMul 0.65 등으로 감면)
+GAUGE_NEED,3→링당+1→최대7,bell,종 게이지 문턱 (옛 gaugeNeed 3/gaugeGrow 1/gaugeNeedMax 7 직역)
+GAUGE_FILL,코어 발동 턴 +1 · 눈 제거 턴 +1 · 안테나 세트 턴 +1,bell,결정론 적립 (옛 뱃지 확률 대체)
+BELL_POOLS,일반10/우물4/그랜드4/붉은4/하강2,bell,같은 턴 2적립=우물(무대가) · 4링째부터 그랜드 · 3적립=붉은
+DEAL_PRICE_SNOW,눈 +N,bell,거래 대가의 핵심 통화 — 배율을 살수록 눈이 쌓인다 (옛 인터폰 직역)
+JUMP_RULE,초과전력 → 상승 층수 전환 (10_Progression 참조),progression,옛 상승한계 직역 복원 — 이월 환산 폐기
+FUSION,동승자 + 지정 계열 설비 소모 = 각성,fusion,승객별 Fuse_Family/Fuse_Effect 열 참조 (직역)
+LUCK,운 1 = 턴당 심볼 1개를 원하는 칸과 맞교환,luck,원작 "자리에 앉혀 준다" 직역 — C 10층 승률 +4.4%p·EV +18% 실측
+ENGRAVE,같은 심볼 3턴 연속 탑승 시 영구 +1W,engrave,옛 새김(3회 누적) 번역 — v2.1 예정·미시뮬
+DESCENT_MODE,10층 클리어 후 하강 2막 (예약),descent,옛 하강/문 계열·DESC_DEALS 슬롯 — 설계 보류
+BPI_NOTE,Min_Expected_Mult는 정적 눈 기준,anchor,강설·무게 인상분 제외 — 실효 목표는 시뮬로 검증
+GLAZ_CAP,유리공 연쇄 눈 제거 층당 2회,balance,결정 반영 (리프트 x2.35→x1.68)
+PROGRESSION,7734층 완주 구조 — 10_Progression 탭 참조,progression,10층 테이블은 정차 1~10 앵커
