@@ -4994,8 +4994,7 @@ const _effV1=effReq;
 effReq=function(S){if(!DIAL.coreV2)return _effV1(S);
  const st=curStop(S);const wc=0.05*mods(S).wcMul;
  const tut=S.stopIdx===0?0.6:S.stopIdx===1?0.8:1; /* 임시: 레버경제 재보정 전 튜토리얼 완화 */
- const cellScale=Math.min(1,CELLS_N/15); /* 판 크기 비례 — 앵커 공식의 유효칸 항 (3x3 구간 자동 완화) */
- return Math.round(st.req*tut*cellScale*(1+wc*totalW(S))*eyeReqMul(S));};
+ return Math.round(st.req*tut*(1+wc*totalW(S))*eyeReqMul(S));};
 const _slV1=spinLimit;
 spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
  let L=(S.stopIdx<10?V2TURNS[S.stopIdx]:8)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
