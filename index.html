@@ -28,7 +28,7 @@
 </head>
 <body>
 <div id="stage">
-  <div id="fit"><iframe id="g" src="sangseung_proto.html" scrolling="no"></iframe></div>
+  <div id="fit"><iframe id="g" scrolling="no"></iframe></div>
 </div>
 <button id="rotBtn" title="화면 회전 전환">⟳</button>
 <div id="boot">불러오는 중…</div>
@@ -44,6 +44,8 @@
 
   g.style.width  = CANVAS_W + 'px';
   g.style.height = CANVAS_H + 'px';
+  // 캐시 우회: 래퍼가 캐시돼 있어도 게임 본체는 항상 최신을 받는다 (Pages 캐시 ~10분 함정)
+  g.src = 'sangseung_proto.html?v=' + Date.now();
 
   // 게임 본체(#cabin) 실제 크기를 매번 측정 → 빌드가 바뀌어도 자동으로 맞음
   function box(){
