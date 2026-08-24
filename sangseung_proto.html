@@ -3307,6 +3307,7 @@ function paintCell(i){
  cell.classList.toggle('badged',!!(S.pendBadges&&S.pendBadges.includes(i)&&v!==null&&isLineSym(v)&&(!globalThis._spinRev||globalThis._spinRev.has(i%BCOLS))));
  if(v===null)g.innerHTML='';
  else if(v===3)g.innerHTML='<div class="eyeb"><div class="vein"></div><div class="iris"></div><div class="pup"></div></div>';
+ else if(v&&v.v2){g.textContent=(window.__v2G&&window.__v2G[v.k])||'▫';}
  else g.textContent=SYM_G[v];
 }
 /* 예고 레버 판정 — 이미 드러난 릴만 보고 "아직 살아있는 가능성"을 센다 */
@@ -5218,6 +5219,31 @@ window.__v2={
 };
 const _renderV1=render;
 render=function(){const r=_renderV1.apply(this,arguments);try{renderV2Shop();}catch(e){}return r;};
+window.__v2G={BATT:'🔋',SOLAR:'🔆',COAL:'🔥',CAP:'🧲',TRANS:'⚡',AMP:'📡',CORE:'💠',HEATER:'♨️',PLOW:'🚜',RECY:'♻️'};
+/* ── 판정 연출 v2: 줄 어휘 제거, 배치 결과·분해식·게이지 사유를 말한다 ── */
+const _rjV1=revealJudge;
+revealJudge=async function(p,preEyes){
+ if(!DIAL.coreV2)return _rjV1(p,preEyes);
+ /* 눈 탄생 연출 (기존 문법 유지) */
+ {let born=[];for(const c of S.eyes)if(!preEyes.has(c))born.push(c);
+  if(born.length){try{sndEye();}catch(e){}
+   const cab=document.getElementById('cabin');
+   if(cab){cab.classList.remove('dimflick');void cab.offsetWidth;cab.classList.add('dimflick');setTimeout(()=>cab.classList.remove('dimflick'),700);}
+   for(const c of born){const el=CELLS[c];if(el){el.classList.remove('eyeBorn');void el.offsetWidth;el.classList.add('eyeBorn');}}
+   setTimeout(()=>{for(const c of born){const el=CELLS[c];if(el)el.classList.remove('eyeBorn');}},1500);
+   log('눈이 떴다 — 칸 하나를 막는다 (열선은 눈 옆에서 강해진다)','warn');}}
+ try{renderBoard();}catch(e){}
+ /* 판정 한 줄: 분해식 */
+ const z=p.v2||{};
+ const bits=['기초 '+(z.base!==undefined?z.base.toFixed(1):'?')+'W','배율 ×'+(z.m1!==undefined?z.m1.toFixed(2):'?')];
+ if(z.m2>1)bits.push('코어 ×'+z.m2.toFixed(1));
+ if(z.eyePow>1.001)bits.push('눈 ×'+z.eyePow.toFixed(2));
+ if((S.outMult||1)>1.001)bits.push('전력배수 ×'+S.outMult.toFixed(2));
+ log('⚡ +'+p.power+'W — '+bits.join(' · '),(z.m2>1||p.power>=effReq(S)*0.3)?'hi':undefined);
+ if(p.gaugeAdd>0)log('벨 게이지 +'+p.gaugeAdd+' — '+[(z.coreOn>0?'코어 발동':''),(p.synergyN>1?'증폭 세트':''),'시너지'].filter(x=>x)[0]);
+ if(S._chainLinks&&S._chainLinks.length)log('연쇄 '+S._chainLinks.length+'건');
+ return p;
+};
 })();
 </script>
 
