@@ -7,7 +7,7 @@ BPI_FORMULA,Target/(Turn_Limit*(15-K)*2),anchor,[동결] 유효칸당 요구배�
 SNOW_BASE_PENALTY,1,snow,눈 인접 기초(GEN) 심볼 -1W 고정 (개수 무관·HEAT 태그 면역·하한 0)
 SNOW_MULT_FACTOR,0.5,snow,눈 인접 시 인접조건(PER:ADJ) 배율 기여 x0.5 (평면 배율 CAP/AMP는 면역)
 SNOW_BLOCK,TRUE,snow,눈 칸에는 심볼 배치 불가
-MERGE_COUNT,3,merge,같은 심볼·같은 레벨 3개 보유 시 즉시 자동 합성(Lv+1)
+MERGE_COUNT,3,merge,같은 심볼·같은 레벨 3개 보유 시 수동 합성 가능(Lv+1) — v0 플레이 확인으로 자동→수동 변경
 MERGE_SCALE_DEFAULT,2.0,merge,합성 시 수치 배율 (LevelScale=MULT2)
 MERGE_SCALE_CORE,+0.5,merge,융합 코어 예외: 레벨당 곱연산 +0.5x (LevelScale=ADD05)
 MERGE_MAX_LEVEL,3,merge,최대 합성 레벨

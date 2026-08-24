@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상승 — 신 코어 v0 (5x3 슬롯)</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--edge:#30363d;--tx:#e6edf3;--dim:#8b949e;--gold:#e3b341;--pow:#58a6ff;--snow:#a5d6ff;--bad:#f85149;--ok:#3fb950}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:14px/1.45 -apple-system,'Apple SD Gothic Neo',sans-serif;padding:10px;max-width:1100px;margin:0 auto}
+h1{font-size:16px;margin-bottom:6px}
+#top{display:flex;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:13px}
+#top b{color:var(--gold)}
+#main{display:grid;grid-template-columns:minmax(340px,1fr) minmax(280px,0.9fr);gap:8px}
+@media(max-width:760px){#main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:10px;margin-bottom:8px}
+.panel h2{font-size:13px;color:var(--dim);margin-bottom:6px}
+#board{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+.cell{aspect-ratio:1;border:1px solid var(--edge);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;padding:2px;background:#0a0e14;position:relative}
+.cell.snow{background:#12233a;border-color:#2a4a6d;color:var(--snow)}
+.cell .nm{font-weight:600}
+.cell .vv{color:var(--pow);font-size:10px}
+.cell .lv{position:absolute;top:2px;right:4px;color:var(--gold);font-size:10px}
+.cell.pen{box-shadow:inset 0 0 0 1px #6d3a3a}
+#powline{margin-top:8px;font-size:13px}
+#powline b{color:var(--pow)}
+#tgtbar{height:10px;background:#0a0e14;border:1px solid var(--edge);border-radius:5px;overflow:hidden;margin-top:4px}
+#tgtfill{height:100%;background:linear-gradient(90deg,#1f6feb,#58a6ff);width:0%}
+button{background:#21262d;color:var(--tx);border:1px solid var(--edge);border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+button:hover{background:#30363d}
+button.primary{background:#1f6feb;border-color:#1f6feb;font-weight:700}
+button:disabled{opacity:.4;cursor:default}
+.item{display:flex;justify-content:space-between;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:6px;padding:5px 8px;margin-bottom:4px;font-size:12px}
+.item .d{color:var(--dim);font-size:11px}
+.tag{font-size:10px;color:var(--dim)}
+#log{font-size:11px;color:var(--dim);max-height:130px;overflow-y:auto}
+#log .hi{color:var(--tx)}
+#gauge{display:flex;gap:3px;margin-top:3px}
+#gauge i{width:14px;height:14px;border:1px solid var(--edge);border-radius:3px;background:#0a0e14}
+#gauge i.on{background:var(--gold);border-color:var(--gold)}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:9}
+#modal .box{background:var(--panel);border:1px solid var(--gold);border-radius:10px;padding:18px;max-width:420px;margin:12px}
+#modal h3{color:var(--gold);margin-bottom:8px;font-size:15px}
+#modal .bt{display:flex;gap:8px;margin-top:14px}
+.help{font-size:11px;color:var(--dim);margin-top:6px}
+#deck .item{cursor:default}
+.buy{color:var(--gold)}
+</style>
+</head>
+<body>
+<h1>상승 — 신 코어 v0 <span class="tag">5x3 슬롯 · 수치 출처: balance/*.csv (RULESET 2.0)</span></h1>
+<div id="top">
+  <span>정차 <b id="uiStop">1</b></span>
+  <span>층 <b id="uiFloor">1</b> / 7734</span>
+  <span>동전 <b id="uiGold">10</b>닢</span>
+  <span>남은 레버 <b id="uiTurns">-</b></span>
+  <span>종 게이지 <span id="gauge"></span></span>
+</div>
+<div id="main">
+<div>
+  <div class="panel">
+    <h2>판 (5x3) — <span id="uiPattern"></span></h2>
+    <div id="board"></div>
+    <div id="powline">이번 레버: 기초 <b id="uiBase">0</b>W × 합연산 <b id="uiM1">1.0</b> × 곱연산 <b id="uiM2">1.0</b> = <b id="uiP">0</b>W</div>
+    <div>누적 <b id="uiCum">0</b> / 목표 <b id="uiTgt">100</b>W <span id="uiExcess" class="tag"></span></div>
+    <div id="tgtbar"><div id="tgtfill"></div></div>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button class="primary" id="btnSpin">레버를 당긴다</button>
+      <button id="btnSettle" style="display:none">정산한다</button>
+    </div>
+    <div class="help" id="uiRule"></div>
+  </div>
+  <div class="panel"><h2>기록</h2><div id="log"></div></div>
+</div>
+<div>
+  <div class="panel">
+    <h2>상점 <button id="btnReroll" style="float:right;font-size:11px;padding:2px 8px">새로고침 1닢</button></h2>
+    <div id="shop"></div>
+    <div class="help">같은 심볼·같은 레벨 3개 = 합성 가능(수동, Lv+1 = 성능 ×2 / 코어 +0.5×) — 초반엔 합치면 총량 손해, 칸이 모자랄 때 합쳐라</div>
+  </div>
+  <div class="panel">
+    <h2>내 덱 <span class="tag" id="uiDeckN"></span> <span class="tag">(제거 3닢)</span></h2>
+    <div id="deck"></div>
+  </div>
+</div>
+</div>
+<div id="modal"><div class="box"><h3 id="mTitle"></h3><div id="mBody"></div><div class="bt" id="mBtns"></div></div></div>
+<script>
+"use strict";
+// ═══ 데이터 로드: 저장소 balance/ CSV가 수치 정본 ═══
+const DATA={};
+function parseCsv(t,n){return t.trim().split('\n').map(l=>{const p=l.split(',');return p.length<=n?p:p.slice(0,n-1).concat([p.slice(n-1).join(',')]);});}
+async function loadData(){
+  const get=async(f,n)=>parseCsv(await (await fetch('./balance/'+f+'?v='+Date.now())).text(),n);
+  const sym=await get('01_symbols.csv',18), st=await get('02_stages.csv',9), pat=await get('03_snow_patterns.csv',4);
+  DATA.symbols={};
+  sym.slice(1).forEach(r=>{ if(r[16]!=='TRUE')return;
+    DATA.symbols[r[0]]={id:r[0],nm:r[1],type:r[2],tags:r[3].split('|'),base:+r[4],aux:+r[5],mult:+r[6],multType:r[7],trig:r[8],rarity:r[9],price:+r[10],lvScale:r[12],w:[+r[13],+r[14],+r[15]],desc:r[17]};});
+  DATA.patterns={};
+  pat.slice(1).forEach(r=>{DATA.patterns[r[0]]=(r[2]||'').split(';').filter(x=>x).map(c=>{const[a,b]=c.split('-');return +a*5+ +b;});});
+  DATA.stages=st.slice(1).map(r=>({id:+r[0],target:+r[1],turns:+r[2],K:+r[3],pattern:r[4],note:r[8]}));
+}
+// 심볼 키 축약 (내부용)
+const KEY={SYM_BASE_001:'BATT',SYM_BASE_002:'SOLAR',SYM_BASE_003:'COAL',SYM_MULT_001:'CAP',SYM_MULT_002:'TRANS',SYM_MULT_003:'AMP',SYM_MULT_004:'CORE',SYM_CNT_001:'HEATER',SYM_CNT_002:'PLOW',SYM_CNT_003:'RECY'};
+let SYM={}; // key -> def
+// ═══ 진행 규칙 (balance/10_progression.csv와 동일 — β=0.52, jump=1.6^(k-1), 완주 7734) ═══
+const PROG={final:7734,beta:0.52,jump:k=>Math.round(Math.pow(1.6,k-1)),excessCap:0.5};
+const SNOWFALL={from:4,base:0.08,per:0.02,cap:0.6,extra:4};
+const ECON={startGold:10,perTurn:4,clear:k=>5+2*k,reroll:1,remove:3,slots:3};
+const N=15,ADJ=[];for(let i=0;i<N;i++){const r=i/5|0,c=i%5,a=[];if(r>0)a.push(i-5);if(r<2)a.push(i+5);if(c>0)a.push(i-1);if(c<4)a.push(i+1);ADJ.push(a);}
+// ═══ 게임 상태 ═══
+let S=null;
+function newGame(){
+  S={stop:1,floor:1,gold:ECON.startGold,deck:[],gauge:0,rings:0,dealM1:0,dealM2:1,luckNext:0,dead:false,fin:false,
+     stage:null,shop:[],log:[]};
+  ['BATT','BATT','BATT','BATT','BATT','CAP'].forEach(k=>addSym(k,1,true));
+  startStop();
+}
+function mkInst(k,lv){return{k,lv,charges:k==='COAL'?parseInt((SYM[k].trig.match(/CHARGES:(\d+)/)||[0,3])[1]):-1,stacks:0};}
+function addSym(k,lv,silent){
+  S.deck.push(mkInst(k,lv));
+  if(!silent)log(`구매: ${SYM[k].nm}`);
+}
+function mergeSym(k,lv){
+  const same=S.deck.filter(x=>x.k===k&&x.lv===lv);
+  if(same.length<3||lv>=3)return;
+  for(let i=0;i<3;i++)S.deck.splice(S.deck.indexOf(same[i]),1);
+  S.deck.push(mkInst(k,lv+1));
+  log(`⚙ 합성! ${SYM[k].nm} Lv${lv+1} (x${SYM[k].lvScale==='ADD05'?'+0.5':'2'})`,1);
+  render();
+}
+function stageDef(k){
+  if(k<=10){const d=DATA.stages[k-1];return{target:d.target,turns:d.turns,snow:DATA.patterns[d.pattern].slice(),pattern:d.pattern,note:d.note};}
+  // 정차 11+: 절차 생성 (10_progression 규칙)
+  const pats=['P05_CROSS_5','P06_WALL_6','P07_FLOOD_7','P08_SIEGE_8'];
+  const p=pats[(k-11)%4];
+  const tgt=Math.round(DATA.stages[9].target*Math.pow(S.floor/Math.max(1,S.f10||186),PROG.beta));
+  return{target:tgt,turns:8,snow:DATA.patterns[p].slice(),pattern:p,note:'절차 생성 구간 (β=0.52)'};
+}
+function startStop(){
+  const d=stageDef(S.stop);
+  S.stage={...d,cum:0,turnsLeft:d.turns,snowNow:d.snow.slice(),lastSpin:null,luck:S.luckNext};
+  S.luckNext=0;
+  rollShop();
+  log(`— 정차 ${S.stop} (${S.floor}층) · 목표 ${d.target}W · 눈 ${d.snow.length} · ${d.note}`,1);
+  render();
+}
+// ═══ 상점 ═══
+function phase(){return S.stop<=4?0:S.stop<=7?1:2;}
+function rollShop(){
+  const pool=Object.keys(SYM).filter(k=>{
+    if(SYM[k].type==='Counter'){const nxt=S.stage?S.stage.snowNow.length:0;return nxt>0||stageDef(Math.min(S.stop+1,999)).snow.length>0;}
+    return true;});
+  S.shop=[];
+  for(let i=0;i<ECON.slots;i++){
+    let tot=0;const ws=pool.map(k=>{tot+=SYM[k].w[phase()];return tot;});
+    const r=Math.random()*tot;
+    S.shop.push(pool[ws.findIndex(w=>r<w)]);
+  }
+}
+// ═══ 한 레버 계산 (RULESET 2.0 — balance_sim_v2와 동일 규칙) ═══
+function computeBoard(board){
+  const isSnow=i=>board[i]==='S',isEmpty=i=>board[i]===null;
+  const inst=i=>(board[i]&&board[i]!=='S')?board[i]:null;
+  const adjC=(i,f)=>ADJ[i].reduce((n,j)=>n+(f(j)?1:0),0);
+  let base=0,ampN=0;
+  for(let i=0;i<N;i++){const s=inst(i);if(s&&s.k==='AMP')ampN+=s.lv;}
+  for(let i=0;i<N;i++){const s=inst(i);if(!s)continue;const d=SYM[s.k];
+    if(!(d.type==='Base'||d.tags.includes('GEN')||d.tags.includes('MACHINE')))continue;
+    const sc=Math.pow(2,s.lv-1);let v=0;
+    if(s.k==='BATT')v=d.base*sc;
+    else if(s.k==='SOLAR')v=d.base*sc+Math.min(2*sc,adjC(i,isEmpty)*d.aux*sc);
+    else if(s.k==='COAL')v=d.base*sc;
+    else if(s.k==='HEATER')v=d.base*sc+adjC(i,isSnow)*d.aux*sc;
+    else if(s.k==='PLOW')v=d.base*sc;
+    else if(s.k==='RECY')v=d.base*sc+s.stacks*d.aux*sc;
+    const sn=adjC(i,isSnow);s._pen=false;
+    if(sn>0&&!d.tags.includes('HEAT')){v=Math.max(0,v-1);s._pen=true;}
+    s._v=v;base+=v;}
+  let m1=1+S.dealM1;
+  for(let i=0;i<N;i++){const s=inst(i);if(!s)continue;const d=SYM[s.k];
+    if(d.type!=='Mult'||d.multType!=='Add')continue;
+    const sc=Math.pow(2,s.lv-1);let c=0;s._pen=false;
+    if(s.k==='CAP')c=d.mult*sc;
+    else if(s.k==='TRANS'){c=d.mult*sc*adjC(i,j=>{const o=inst(j);return o&&SYM[o.k].tags.includes('GEN');});
+      if(adjC(i,isSnow)>0){c*=0.5;s._pen=true;}}
+    else if(s.k==='AMP')c=(ampN>=3?d.aux:d.mult)*sc;
+    s._c=c;m1+=c;}
+  let m2=S.dealM2,coreOn=0,coreCnt=0;
+  const thresh=parseInt((SYM.CORE.trig.match(/>=(\d+)/)||[0,12])[1]);
+  for(let i=0;i<N;i++){const s=inst(i);if(!s||s.k!=='CORE')continue;coreCnt++;
+    const cm=SYM.CORE.mult+0.5*(s.lv-1);
+    if(base>=thresh){m2*=cm;coreOn++;s._on=true;}else s._on=false;}
+  return{base,m1,m2,p:base*m1*m2,coreOn,coreCnt,ampSet:ampN>=3};
+}
+function spin(){
+  const st=S.stage;if(st.turnsLeft<=0||S.dead)return;
+  // 강설 (턴 시작)
+  let snowfell=false;
+  if(S.stop>=SNOWFALL.from){
+    const p=Math.min(SNOWFALL.cap,SNOWFALL.base+SNOWFALL.per*(S.stop-SNOWFALL.from));
+    if(Math.random()<p&&st.snowNow.length<st.snow.length+SNOWFALL.extra){
+      const free=[];for(let i=0;i<N;i++)if(!st.snowNow.includes(i))free.push(i);
+      if(free.length>1){st.snowNow.push(free[Math.random()*free.length|0]);snowfell=true;log('❄ 눈이 내렸다',1);}}}
+  // 배치
+  const free=[];for(let i=0;i<N;i++)if(!st.snowNow.includes(i))free.push(i);
+  const pool=[...S.deck].sort(()=>Math.random()-.5).slice(0,free.length);
+  const cells=[...free].sort(()=>Math.random()-.5);
+  const board=Array(N).fill(null);
+  st.snowNow.forEach(i=>board[i]='S');
+  pool.forEach((s,j)=>board[cells[j]]=s);
+  // 운: 최저 기여 심볼 최적 맞교환
+  for(let L=0;L<st.luck;L++){
+    computeBoard(board);
+    let wi=-1,wv=1e9;for(let i=0;i<N;i++){const s=(board[i]&&board[i]!=='S')?board[i]:null;if(s&&s._v!==undefined&&s._v<wv){wv=s._v;wi=i;}}
+    if(wi<0)break;const sym=board[wi];let be=-1,bg=0;
+    for(let e=0;e<N;e++){if(e===wi||board[e]==='S')continue;
+      const sn=ADJ[e].reduce((n,j)=>n+(board[j]==='S'?1:0),0);
+      const he=ADJ[wi].reduce((n,j)=>n+(board[j]==='S'?1:0),0);
+      const g=sym.k==='HEATER'?(sn-he)*SYM.HEATER.aux:(he-sn);
+      if(g>bg){bg=g;be=e;}}
+    if(be>=0){const t=board[be];board[be]=board[wi];board[wi]=t;}}
+  const r=computeBoard(board);
+  st.cum+=r.p;st.lastSpin={board,r};st.turnsLeft--;
+  S.gold+=ECON.perTurn;
+  // 턴 종료 효과
+  let snowRemoved=0;
+  pool.forEach(s=>{if(s.k==='COAL'){s.charges--;if(s.charges<=0){S.deck.splice(S.deck.indexOf(s),1);log('석탄 발전기가 다 탔다');}}});
+  pool.forEach((s,j)=>{
+    if(s.k==='PLOW')for(let i=0;i<s.lv&&st.snowNow.length>0;i++){st.snowNow.splice(Math.random()*st.snowNow.length|0,1);snowRemoved++;}
+    if(s.k==='RECY'){const pos=cells[j];
+      const gens=S.deck.filter(x=>SYM[x.k].tags.includes('GEN'));
+      if(gens.length>3){let best=null,bv=1e9;
+        ADJ[pos].forEach(a=>{const o=board[a];if(o&&o!=='S'&&SYM[o.k].tags.includes('GEN')&&o._v<bv){bv=o._v;best=o;}});
+        if(best){S.deck.splice(S.deck.indexOf(best),1);s.stacks++;log(`재활용 압축기가 ${SYM[best.k].nm}을(를) 먹었다 (영구 +${SYM.RECY.aux*Math.pow(2,s.lv-1)}W)`);}}}});
+  if(snowRemoved)log(`제설 ${snowRemoved}`);
+  // 종 게이지 (결정론: 코어 발동/눈 제거/안테나 세트)
+  let add=0;if(r.coreOn>0)add++;if(snowRemoved>0)add++;if(r.ampSet)add++;
+  S.gauge+=add;
+  const need=Math.min(7,3+S.rings);
+  if(S.gauge>=need){S.gauge-=need;S.rings++;
+    const pool2=add>=3?'RED':add>=2?'WELL':(S.rings>=4?'GRAND':'NORMAL');
+    setTimeout(()=>offerDeal(pool2),350);}
+  if(st.turnsLeft<=0)document.getElementById('btnSettle').style.display='';
+  render();
+}
+// ═══ 인터폰 거래 (balance/07_deals.csv 기계 효과) ═══
+const DEALS={
+ NORMAL:[{id:'d1',tx:'배율 +1을 지금 준다. 대가: 이 판에 눈 +2.',m1:1,snow:2},
+  {id:'d4',tx:'동전 -2, 지금 낸다. 대신 다음 정차 목표 -20%.',gold:-2,tgt:.8},
+  {id:'d5',tx:'동전 +2를 준다. 대가: 다음 정차 레버 -1.',gold:2,turn:-1},
+  {id:'d6',tx:'다음 정차 동안 운 +2. 대가: 지금 눈 +1.',luck:2,snow:1},
+  {id:'d7',tx:'배율 +0.5를 준다. 대가: 이 판에 눈 +1.',m1:.5,snow:1},
+  {id:'d9',tx:'동전 +3을 놓고 간다. 대가: 지금 눈 +1.',gold:3,snow:1}],
+ WELL:[{id:'w1',tx:'종이 맑게 겹쳤다. 배율 +1 — 대가 없음.',m1:1},
+  {id:'w2',tx:'종이 맑게 겹쳤다. 동전 +6 — 대가 없음.',gold:6},
+  {id:'w4',tx:'종이 맑게 겹쳤다. 다음 정차 운 +3 — 대가 없음.',luck:3}],
+ GRAND:[{id:'x1',tx:'종루가 통째로 울렸다. 총 전력 ×1.4, 영구 — 대가 없음.',m2:1.4},
+  {id:'x3',tx:'종루가 통째로 울렸다. 동전 +12 — 대가 없음.',gold:12},
+  {id:'x4',tx:'종루가 통째로 울렸다. 이번 정차 상승 +15층 — 대가 없음.',jump:15}],
+ RED:[{id:'r1',tx:'총 전력 ×1.5, 영구. 대가: 지금 눈 +3.',m2:1.5,snow:3},
+  {id:'r2',tx:'다음 정차 목표 -50%. 대가: 지금 눈 +4.',tgt:.5,snow:4},
+  {id:'r3',tx:'동전 +4. 대가: 지금 눈 +2.',gold:4,snow:2}]};
+let pendTgt=1,pendTurn=0,pendJump=0;
+function offerDeal(pool){
+  const d=DEALS[pool][Math.random()*DEALS[pool].length|0];
+  const M=document.getElementById('modal');
+  document.getElementById('mTitle').textContent={NORMAL:'☎ 인터폰',WELL:'☎☎ 우물 — 겹울림',GRAND:'🔔 그랜드 — 종루',RED:'☎ 붉은 벨'}[pool];
+  document.getElementById('mBody').textContent=d.tx;
+  const bt=document.getElementById('mBtns');bt.innerHTML='';
+  const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>{M.style.display='none';f&&f();render();};bt.appendChild(b);};
+  mk('받는다',()=>{
+    if(d.m1)S.dealM1+=d.m1;if(d.m2)S.dealM2*=d.m2;if(d.gold)S.gold+=d.gold;
+    if(d.luck)S.luckNext+=d.luck;if(d.tgt)pendTgt*=d.tgt;if(d.turn)pendTurn+=d.turn;if(d.jump)pendJump+=d.jump;
+    if(d.snow){const st=S.stage;for(let i=0;i<d.snow;i++){const free=[];for(let q=0;q<N;q++)if(!st.snowNow.includes(q))free.push(q);
+      if(free.length>1)st.snowNow.push(free[Math.random()*free.length|0]);}}
+    log(`거래 수락: ${d.tx}`,1);});
+  mk('끊는다',()=>log('인터폰을 끊었다'));
+  M.style.display='flex';
+}
+// ═══ 정산 ═══
+function settle(){
+  const st=S.stage;
+  if(st.cum>=st.target){
+    const excess=Math.min(PROG.excessCap,st.cum/st.target-1);
+    const df=Math.round(PROG.jump(S.stop)*(1+excess))+pendJump;pendJump=0;
+    S.floor+=df;S.gold+=ECON.clear(S.stop)+Math.min(5,S.gold/10|0);
+    log(`✔ 정차 ${S.stop} 클리어 — ${df}층 상승 (초과 ${Math.round(excess*100)}%)`,1);
+    if(S.stop===10)S.f10=S.floor;
+    if(S.floor>=PROG.final){S.fin=true;render();return;}
+    S.stop++;startStop();
+    if(pendTgt!==1){S.stage.target=Math.round(S.stage.target*pendTgt);log(`거래 효과: 이번 목표 ${S.stage.target}W`,1);pendTgt=1;}
+    if(pendTurn){S.stage.turnsLeft+=pendTurn;pendTurn=0;}
+  }else{S.dead=true;render();}
+  document.getElementById('btnSettle').style.display='none';
+}
+// ═══ UI ═══
+function log(t,hi){S.log.unshift({t,hi});if(S.log.length>60)S.log.pop();
+  document.getElementById('log').innerHTML=S.log.map(l=>`<div class="${l.hi?'hi':''}">${l.t}</div>`).join('');}
+function render(){
+  const st=S.stage,g=id=>document.getElementById(id);
+  g('uiStop').textContent=S.stop;g('uiFloor').textContent=S.floor;g('uiGold').textContent=S.gold;
+  g('uiTurns').textContent=st.turnsLeft;g('uiTgt').textContent=st.target;g('uiCum').textContent=Math.round(st.cum);
+  g('uiPattern').textContent=`${st.pattern} · 눈 ${st.snowNow.length}`;
+  g('uiExcess').textContent=st.cum>st.target?`(초과 ${Math.round((st.cum/st.target-1)*100)}% → 상승 전환)`:'';
+  g('tgtfill').style.width=Math.min(100,st.cum/st.target*100)+'%';
+  const gz=g('gauge');gz.innerHTML='';const need=Math.min(7,3+S.rings);
+  for(let i=0;i<need;i++){const d=document.createElement('i');if(i<S.gauge)d.className='on';gz.appendChild(d);}
+  // 보드
+  const B=g('board');B.innerHTML='';
+  const last=st.lastSpin;
+  for(let i=0;i<N;i++){
+    const c=document.createElement('div');c.className='cell';
+    if(st.snowNow.includes(i)&&(!last||last.board[i]==='S'||!last.board[i])){c.classList.add('snow');c.innerHTML='❄';}
+    if(last&&last.board[i]&&last.board[i]!=='S'){const s=last.board[i];const d=SYM[s.k];
+      c.innerHTML=`<span class="nm">${d.nm.slice(0,4)}</span><span class="vv">${s._v!==undefined?s._v.toFixed(1)+'W':(s._c!==undefined?'+'+s._c.toFixed(2)+'×':'')}${s.k==='CORE'?(s._on?'×'+(d.mult+0.5*(s.lv-1)).toFixed(1):'꺼짐'):''}</span>${s.lv>1?`<span class="lv">Lv${s.lv}</span>`:''}`;
+      if(s._pen)c.classList.add('pen');}
+    else if(st.snowNow.includes(i)){c.classList.add('snow');c.innerHTML='❄';}
+    B.appendChild(c);}
+  if(last){g('uiBase').textContent=last.r.base.toFixed(1);g('uiM1').textContent=last.r.m1.toFixed(2);
+    g('uiM2').textContent=last.r.m2.toFixed(2);g('uiP').textContent=Math.round(last.r.p);}
+  g('uiRule').textContent='눈 인접: 발전 심볼 -1W(열선 면역) · 변압기 기여 ×0.5 · 커패시터/안테나는 무관';
+  // 상점
+  const sh=g('shop');sh.innerHTML='';
+  S.shop.forEach((k,i)=>{if(!k)return;const d=SYM[k];
+    const div=document.createElement('div');div.className='item';
+    div.innerHTML=`<span><b>${d.nm}</b> <span class="tag">${d.rarity[0]}</span><br><span class="d">${d.desc.slice(0,34)}</span></span>`;
+    const b=document.createElement('button');b.className='buy';b.textContent=d.price+'닢';
+    b.disabled=S.gold<d.price;b.onclick=()=>{S.gold-=d.price;addSym(k,1);S.shop[i]=null;render();};
+    div.appendChild(b);sh.appendChild(div);});
+  // 덱
+  const dk=g('deck');dk.innerHTML='';g('uiDeckN').textContent=S.deck.length+'개';
+  const grp={};S.deck.forEach(s=>{const key=s.k+'@'+s.lv;grp[key]=(grp[key]||[]);grp[key].push(s);});
+  Object.entries(grp).forEach(([key,arr])=>{const s=arr[0],d=SYM[s.k];
+    const div=document.createElement('div');div.className='item';
+    div.innerHTML=`<span>${d.nm}${s.lv>1?' <b style="color:var(--gold)">Lv'+s.lv+'</b>':''} ×${arr.length}${s.k==='COAL'?` <span class="tag">(${arr.map(x=>x.charges).join('/')}회)</span>`:''}${s.k==='RECY'&&s.stacks?` <span class="tag">+${s.stacks*d.aux}W</span>`:''}</span>`;
+    if(arr.length>=3&&s.lv<3){const mb=document.createElement('button');mb.textContent='⚙ 합성';mb.style.cssText='font-size:11px;color:var(--gold)';
+      mb.onclick=()=>mergeSym(s.k,s.lv);div.appendChild(mb);}
+    const b=document.createElement('button');b.textContent='제거 3닢';b.style.fontSize='11px';
+    b.disabled=S.gold<ECON.remove||S.deck.length<=3;
+    b.onclick=()=>{S.gold-=ECON.remove;S.deck.splice(S.deck.indexOf(arr[arr.length-1]),1);log(`제거: ${d.nm}`);render();};
+    div.appendChild(b);dk.appendChild(div);});
+  g('btnSpin').disabled=st.turnsLeft<=0||S.dead||S.fin;
+  g('btnReroll').disabled=S.gold<ECON.reroll;
+  if(S.dead)showEnd(false);if(S.fin)showEnd(true);
+}
+function showEnd(win){
+  const M=document.getElementById('modal');
+  document.getElementById('mTitle').textContent=win?'완주 — 7734층':'추락';
+  document.getElementById('mBody').textContent=win
+    ?`정차 ${S.stop}회 만에 7734층에 도달했다.`
+    :`정차 ${S.stop} (${S.floor}층)에서 목표 ${S.stage.target}W에 미달했다 (누적 ${Math.round(S.stage.cum)}W).`;
+  const bt=document.getElementById('mBtns');bt.innerHTML='';
+  const b=document.createElement('button');b.className='primary';b.textContent='다시 오른다';
+  b.onclick=()=>{document.getElementById('modal').style.display='none';newGame();};
+  bt.appendChild(b);M.style.display='flex';
+}
+document.getElementById('btnSpin').onclick=spin;
+document.getElementById('btnSettle').onclick=settle;
+document.getElementById('btnReroll').onclick=()=>{if(S.gold>=ECON.reroll){S.gold-=ECON.reroll;rollShop();render();}};
+loadData().then(()=>{
+  Object.entries(KEY).forEach(([id,k])=>SYM[k]=DATA.symbols[id]);
+  newGame();
+}).catch(e=>{document.body.innerHTML='<p style="padding:30px">balance/ CSV 로드 실패: '+e.message+'<br>저장소 루트에서 서버로 열어야 합니다 (예: python3 -m http.server)</p>';});
+</script>
+</body>
+</html>
