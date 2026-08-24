@@ -2047,6 +2047,8 @@ function fusePassenger(S,pid,partId){
    +30층(10단위 올림, 최소 50층), 보상은 거리 비례. 회수는 목표층을 "지나가면" 된다(정확 착지 불요). */
 function cargoTargetOf(S){return Math.min(FINAL_F()-1,Math.max(50,Math.ceil((S.floorNow+30)/10)*10));}
 function cargoPayOf(S,tf){return 8+Math.floor(tf/60);}
+const V2FLESHV={TOOTH:1,BONE:2,EAR:3,TONGUE:4,HEART:6,BRAIN:9,LUNG:13}; /* coreB 문양 기본값 (거래 d9 표적용) */
+function SYMB2V(e){return (V2FLESHV[e.k]||0)*Math.pow(2,(e.lv||1)-1)+(e.brandW||0);}
 const DEALS=[
  {id:'d1',tx:'전력 배수 +1을 지금 준다. 대가: 다음 정차에서 판에 눈 +2가 심긴다.',can:S=>true,ap:S=>{S.outMult+=1;S.dx.plant+=2;}},
  {id:'d2',tx:'승객 하나를 지금 내려라 — 목적지가 아니어도, 인도가 아니라 동전도 없다. 대신 다음 정차 문턱 −30%.',can:S=>S.aboard.length>0,ap:'choose'},
@@ -2058,7 +2060,11 @@ const DEALS=[
  {id:'d6',prov:1,tx:'다음 정차 동안 운 +2 — 운은 뽑힌 것들을 줄이 서는 자리에 앉혀 준다. 대가: 지금 판에 눈 +1.',can:S=>true,ap:S=>{S.dx.luck+=2;plantEye(S);}},
  {id:'d7',prov:1,tx:'전력 배수 +0.5를 지금 준다. 대가: 다음 정차에서 판에 눈 +1이 심긴다.',can:S=>true,ap:S=>{S.outMult+=.5;S.dx.plant+=1;}},
  {id:'d8',prov:1,tx:'명부에 없는 자를 태워라. 무게 2. 다음 정차에서 알아서 내리며 동전 +2를 놓고 간다.',can:S=>totalW(S)+2<=8,ap:S=>{S.cargo.push({w:2,nm:'명부에 없는 자',dropNext:1,pay:2});}},
- {id:'d9',prov:1,tx:'네가 아끼는 줄이 어느 건지 안다 — 가장 깊이 새겨진 줄에 두 눈금 더 새겨 주지. 대가: 지금 판에 눈 +1.',can:S=>S.lineVals.some(v=>v>1),ap:S=>{const mi=S.lineVals.indexOf(Math.max(...S.lineVals));S.lineVals[mi]+=2;plantEye(S);}},
+ {id:'d9',prov:1,tx:S=>DIAL.coreV2?'네가 아끼는 살이 어느 건지 안다 — 가장 깊이 새겨진 문양에 두 눈금 더 새겨 주지 (영구 +2W). 대가: 지금 판에 눈 +1.':'네가 아끼는 줄이 어느 건지 안다 — 가장 깊이 새겨진 줄에 두 눈금 더 새겨 주지. 대가: 지금 판에 눈 +1.',
+  can:S=>DIAL.coreV2?((S.symDeck||[]).length>0):S.lineVals.some(v=>v>1),
+  ap:S=>{if(DIAL.coreV2){let bb=null;for(const e of S.symDeck)if((e.brandW||0)>0&&(!bb||e.brandW>bb.brandW))bb=e;
+   if(!bb){for(const e of S.symDeck){if(!bb||(SYMB2V(e))>(SYMB2V(bb)))bb=e;}} /* 새김이 없으면 가장 값진 문양에 첫 새김 */
+   if(bb)bb.brandW=(bb.brandW||0)+2;}else{const mi=S.lineVals.indexOf(Math.max(...S.lineVals));S.lineVals[mi]+=2;}plantEye(S);}},
  {id:'d10',prov:1,tx:S=>'가진 동전 전부('+S.tickets+'닢)를 걸어라. 다음 레버에 줄이 셋 이상 서면 두 배로 돌려준다. 아니면 삼킨다.',can:S=>S.tickets>=4,ap:S=>{S.betCoins={n:S.tickets,need:3};S.tickets=0;}},
 ];
 /* v9.17° 겹울림 거래 — 게이지를 넘치게 채운 링은 조건이 좋다 (설계자: "3개보다 더 많이 찼다면 더 좋은 아이템").
@@ -2071,7 +2077,8 @@ const WELL_DEALS=[
 ];
 const GRAND_DEALS=[
  {id:'x1',prov:1,tx:'종루가 통째로 울렸다. 전력 배수 ×1.4 — 대가 없음.',can:S=>true,ap:S=>{S.outMult*=1.4;}},
- {id:'x2',prov:1,tx:'종루가 통째로 울렸다. 판이 통째로 새겨진다 — 모든 스무 줄 새김 +1, 영구. 대가 없음.',can:S=>true,ap:S=>{for(let i=0;i<S.lineVals.length;i++)S.lineVals[i]+=1;}},
+ {id:'x2',prov:1,tx:S=>DIAL.coreV2?'종루가 통째로 울렸다. 살이 통째로 새겨진다 — 릴 풀의 모든 문양 영구 +1W. 대가 없음.':'종루가 통째로 울렸다. 판이 통째로 새겨진다 — 모든 스무 줄 새김 +1, 영구. 대가 없음.',can:S=>true,
+  ap:S=>{if(DIAL.coreV2){for(const e of (S.symDeck||[]))e.brandW=(e.brandW||0)+1;}else{for(let i=0;i<S.lineVals.length;i++)S.lineVals[i]+=1;}}},
  {id:'x3',prov:1,tx:'종루가 통째로 울렸다. 동전 +12 — 대가 없음.',can:S=>true,ap:S=>{S.tickets+=12;}},
  {id:'x4',prov:1,tx:'종루가 통째로 울렸다. 상승 한계 +15층, 영구 — 대가 없음.',can:S=>true,ap:S=>{S.jumpCapX=(S.jumpCapX||0)+15;}},
 ];
@@ -4979,20 +4986,20 @@ var SYMB={
  BRAIN:{nm:'뇌',g:'🧠',fam:'flesh',val:9,price:8,rar:'R',w:[1,4,8],d:'장기. 더 크게 터진다'},
  LUNG:{nm:'폐',g:'🫁',fam:'flesh',val:13,price:10,rar:'R',w:[0,2,6],d:'장기. 가장 크게 터진다'},
  /* 장치(건물 설비) — 터지지 않고 증폭한다. 칸을 차지하는 것이 대가 */
- CAP:{nm:'축전지',g:'🧲',fam:'dev',price:4,rar:'C',w:[8,8,8],d:'판에 있으면 이번 레버 배율 +0.5×'},
- TRANS:{nm:'변압기',g:'⚡',fam:'dev',price:6,rar:'U',w:[4,6,8],d:'인접한 폭발을 ×1.3 (합성 시 강해짐)'},
- AMP:{nm:'안테나',g:'📡',fam:'dev',price:5,rar:'U',w:[3,5,7],d:'+0.2× · 판에 안테나 3개+면 +0.5×'},
+ CAP:{nm:'축전지',g:'🧲',fam:'dev',price:4,rar:'C',w:[8,8,8],d:'발동 시 이번 레버 배율 +0.5× (레버당 1회)'},
+ TRANS:{nm:'변압기',g:'⚡',fam:'dev',price:6,rar:'U',w:[4,6,8],d:'발동한 줄을 ×1.3 (합성 ×1.6→×2.2 · 줄마다 적용)'},
+ AMP:{nm:'안테나',g:'📡',fam:'dev',price:5,rar:'U',w:[3,5,7],d:'발동 시 +0.2×/레벨 · 발동 레벨합 2+면 +0.5×/레벨'},
  CORE:{nm:'융합 코어',g:'💠',fam:'dev',price:12,rar:'R',w:[1,2,5],d:'폭발 합 12W+ 이면 총 전력 ×2 (합성 +0.5)'},
  /* 카운터 — 눈(眼) 대응 */
- FURN:{nm:'소각로',g:'♨️',fam:'dev',price:7,rar:'U',w:[2,5,7],d:'판에 있으면 눈 1개당 폭발 합 +2.5W — 시선을 태운다'},
- LID:{nm:'눈꺼풀',g:'🫦',fam:'dev',price:6,rar:'U',w:[2,4,6],d:'뽑히면 레버 끝에 눈 하나를 감긴다'},
- GRIND:{nm:'분쇄기',g:'⚙️',fam:'dev',price:8,rar:'R',w:[1,3,5],d:'연쇄가 끝나면 풀의 최저 문양 하나를 먹고 영구 +2W'}
+ FURN:{nm:'소각로',g:'♨️',fam:'dev',price:7,rar:'U',w:[2,5,7],d:'발동 시 눈을 태워 +2.5W/개 (합성 1→2→4개) — 시선이 연료다'},
+ LID:{nm:'눈꺼풀',g:'🫦',fam:'dev',price:6,rar:'U',w:[2,4,6],d:'발동 시 눈을 레벨 수만큼 감긴다 (순수 제거)'},
+ GRIND:{nm:'분쇄기',g:'⚙️',fam:'dev',price:8,rar:'R',w:[1,3,5],d:'발동 시 풀의 최저 문양을 먹고 영구 +2W (문양 5개 미만이면 쉰다)'}
 };
 var V2T=[60,100,120,320,600,620,640,680,1100,1300]; /* 최종: 직선 기본+완성형 잭팟, 뱃지 1회 발동 수정 반영 — MC, 2026-08-24 */
 var V2TURNS=[5,5,5,6,6,6,7,7,8,8];
 function adjOf(i){var C=BCOLS,r=(i/C)|0,c=i%C,a=[];if(r>0)a.push(i-C);if(r<2)a.push(i+C);if(c>0)a.push(i-1);if(c<C-1)a.push(i+1);return a;}
 function sc2(lv){return Math.pow(2,(lv||1)-1);}
-function symValB(cell){var d=SYMB[cell.k];var v=(d.val||0)*sc2(cell.lv);if(cell.ref&&cell.ref.stacks)v+=2*cell.ref.stacks;return v;}
+function symValB(cell){var d=SYMB[cell.k];var v=(d.val||0)*sc2(cell.lv);if(cell.ref&&cell.ref.stacks)v+=2*cell.ref.stacks;if(cell.ref&&cell.ref.brandW)v+=cell.ref.brandW;return v;}
 function mkP(k,lv){return{k:k,lv:lv||1,stacks:0};}
 function ensurePool(S){if(!S.symDeck)S.symDeck=[mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('EAR'),mkP('EAR'),mkP('EAR')];if(!S.devList)S.devList=[mkP('CAP')];}
 /* ── 요구량/레버 수 (곡선은 측정 후 갱신) ── */
@@ -5002,9 +5009,9 @@ reqOfStop=function(k,f,pd){if(!DIAL.coreV2)return _reqV1(k,f,pd);
  return Math.round(V2T[9]*Math.pow(Math.max(1,f)/186,0.52));};
 var _effV1=effReq;
 effReq=function(S){if(!DIAL.coreV2)return _effV1(S);
- /* B: 눈 세금 제거 — 눈의 위협은 지형 파괴(매칭 차단·낙하 차단)가 대신한다. 무게 세금만 유지 */
+ /* B: 눈 세금 제거 — 눈의 위협은 지형 파괴가 대신한다. 무게세 + 거래/부품 문턱 파이프(dn.reqMul·mods.reqMul·killReqMul)는 복원(2026-08-24 §3-③) */
  var st=curStop(S);var wc=0.05*mods(S).wcMul;
- return Math.round(st.req*(1+wc*totalW(S)));};
+ return Math.round(st.req*(1+wc*totalW(S))*((S.dn&&S.dn.reqMul)||1)*(mods(S).reqMul||1)*killReqMul(S));};
 var _slV1=spinLimit;
 spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
  var L=(S.stopIdx<10?V2TURNS[S.stopIdx]:8)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
@@ -5070,6 +5077,22 @@ function resolveLever(pool,eyes,rng,opt){
  var eyeSet={},i;for(i=0;i<eyes.length;i++)eyeSet[eyes[i]]=1;
  var board=new Array(CELLS_N).fill(null);
  for(i=0;i<CELLS_N;i++)board[i]=eyeSet[i]?3:drawCell(pool,rng);
+ /* 운(0~9): 뽑힌 문양을 "줄이 되는 자리"로 끌어와 앉힌다 — 가로 2연속의 세 번째 칸에 판 위 같은 문양을 스왑 (운 1점당 1회, §3-③ 재배선) */
+ var LK=Math.min(9,Math.max(0,opt.luck||0));
+ for(var lk3=0;lk3<LK;lk3++){if(rng()>=(0.2))continue; /* 운 1점 = 20% 확률로 1회 앉힘 — "9면 거의 맞춰준다"(기대 1.8회), 확정 보정은 과강 */
+  var seated=false;
+  for(var lr=0;lr<3&&!seated;lr++){var PR=PAYLINES[lr];
+   for(var lc=0;lc<3&&!seated;lc++){
+    var aC=PR[lc],bC=PR[lc+1],tC=PR[lc+2];
+    var cA=board[aC];if(!cA||cA===3||!cA.v2||SYMB[cA.k].fam!=='flesh')continue;
+    var cB=board[bC];if(!cB||cB===3||!cB.v2||cB.k!==cA.k)continue;
+    var cT=board[tC];if(cT===3)continue;
+    if(cT&&cT.v2&&cT.k===cA.k)continue;
+    for(var dnr=0;dnr<CELLS_N&&!seated;dnr++){
+     if(dnr===aC||dnr===bC||dnr===tC)continue;
+     var cD=board[dnr];if(!cD||cD===3||!cD.v2||cD.k!==cA.k)continue;
+     board[tC]=cD;board[dnr]=cT;seated=true;}}}
+  if(!seated)break;}
  /* 뱃지 부착: 보유 장치마다 확률적으로 심볼 칸에 붙는다 */
  var devs=opt.devices||[],badges=[];
  for(var d=0;d<devs.length;d++){
@@ -5083,7 +5106,8 @@ function resolveLever(pool,eyes,rng,opt){
  for(var hi=0;hi<hits.length;hi++){var h=hits[hi];
   var v=0;
   for(var x2=0;x2<h.cells.length;x2++)v+=symValB(board[h.cells[x2]]);
-  if(M2.lv)v+=(M2.lv.h||0);
+  var LVv=opt.lvEff||M2.lv||null;
+  if(LVv)v+=(h.zig||h.nm==='대각줄')?(LVv.d||0):(h.nm==='세로줄'?(LVv.v||0):(LVv.h||0));
   v*=lenMul(h.len);
   var lineTr=1,lineB=[];
   for(var bi=0;bi<badges.length;bi++){var b=badges[bi];
@@ -5110,12 +5134,17 @@ function resolveLever(pool,eyes,rng,opt){
      delete eyeSet[j2];}}}}
  }
  if(ampTrig>=2)m1+=0.5*ampTrig;else if(ampTrig>0)m1+=0.2*ampTrig;
+ /* 소각로: 눈을 태워 전력으로 — 레벨당 1/2/4개, 태운 눈 1개당 +2.5W (제거+전환. 폭발합에 가산되어 코어 임계에도 든다) */
+ var burnEyes=0,burnW=0;
+ while(burnEyes<burnN&&eyes.length>0){var bE=eyes.shift();
+  if(board[bE]===3)board[bE]=null;delete eyeSet[bE];burnEyes++;}
+ if(burnEyes>0){burnW=2.5*burnEyes;totalBase+=burnW;}
  var lineMulAll=hits.length>=2?(1+0.2*(hits.length-1)):1;
  var coreM=1,coreOn=0;
  for(var cN=0;cN<coreTrig.length;cN++){
   if(totalBase>=12){coreM*=2+0.5*(coreTrig[cN].lv-1);coreOn++;}}
  return{board:board,script:[],events:events,badges:badges,totalBase:totalBase,m1:m1,coreM:coreM,
-  coreOn:coreOn,chain:0,bursts:hits.length,grinds:grinds,burnN:burnN,lidN:lidN,
+  coreOn:coreOn,chain:0,bursts:hits.length,grinds:grinds,burnN:burnN,burnEyes:burnEyes,burnW:burnW,lidN:lidN,
   grindDev:grindDev,lineMulAll:lineMulAll,initB:board};
 }
 /* ── 스핀 오버라이드 ── */
@@ -5134,7 +5163,12 @@ doSpin=function(S){
    if(free.length>1){var ec=free[(S.rng()*free.length)|0];S.eyes.push(ec);S._freshEyes.push(ec);}}}
  var eyeKeep=(DIAL.grindGate===undefined?1:DIAL.grindGate)&&eyeMultBase(S)>=(DIAL.grindGateAt===undefined?1.01:DIAL.grindGateAt);
  var eyesArr=S.eyes.slice();
- var R=resolveLever(S.symDeck,eyesArr,S.rng,{eyeKeep:eyeKeep,mods:mods(S),devices:S.devList||[]});
+ var _lk2=calcLuck(S);
+ var _M0=mods(S);
+ var _lvEff={h:((_M0.lv&&_M0.lv.h)||0)+(hasP(S,'line')?2:0),v:((_M0.lv&&_M0.lv.v)||0)+(hasP(S,'plum')?2:0),d:((_M0.lv&&_M0.lv.d)||0)}; /* 배관공(세로)·고압선 전공(가로) 재배선 §3-③ */
+ var R=resolveLever(S.symDeck,eyesArr,S.rng,{eyeKeep:eyeKeep,mods:_M0,devices:S.devList||[],luck:_lk2.total,lvEff:_lvEff});
+ if(_lk2.total>0&&_lk2.ov>0)log('운 보정 — 이번 레버 운 '+_lk2.total,'dim');
+ if(hasP(S,'scri'))S.scribeLuck=(R.bursts===0)?((S.scribeLuck||0)+1):0; /* 필경사: 꽝마다 다음 레버 운 +1, 줄 서면 초기화 */
  var goneEyes=S.eyes.filter(function(c){return eyesArr.indexOf(c)<0;});
  /* 갈린 눈 훅 (eyeGone) */
  for(var g2=0;g2<goneEyes.length;g2++){
@@ -5143,11 +5177,23 @@ doSpin=function(S){
   try{chainFire(S,'eyeGone');}catch(e){}}
  S.eyes=eyesArr;
  /* 눈꺼풀·소각로 뱃지 발동: 눈 감김/소각 */
- var lidTotal=(R.lidN||0)+(R.burnN?Math.min(1,R.burnN):0);
+ var lidTotal=(R.lidN||0); /* 눈꺼풀 = 순수 제거 (레벨당 1/2/3). 소각로는 resolve 안에서 태워 전력 전환 */
  for(var l2=0;l2<lidTotal&&S.eyes.length>0;l2++){var cell2=S.eyes.shift();
   if(R.board[cell2]===3)R.board[cell2]=null;
   try{chainFire(S,'eyeGone');}catch(e){}}
- if(R.burnN&&lidTotal>0)log('♨️ 소각로가 시선 하나를 태웠다','hi');
+ if(R.burnEyes>0){log('♨️ 소각로 — 눈 '+R.burnEyes+'개를 태워 +'+R.burnW.toFixed(1)+'W','hi');
+  for(var bf=0;bf<R.burnEyes;bf++){try{chainFire(S,'eyeGone');}catch(e){}}}
+ if(lidTotal>0&&R.lidN>0)log('🫦 눈꺼풀 — 눈 '+Math.min(lidTotal,R.lidN)+'개를 감겼다','hi');
+ /* 낙인(각인) 재배선: 옛 줄 새김 → 문양 영구 +1W. 층당 mods.brand회, 낙인은 터진 살에 찍힌다(가장 값진 당첨 문양) */
+ if(S._v2brandStop!==S.stopIdx){S._v2brandStop=S.stopIdx;S._v2brandLeft=(mods(S).brand||0);}
+ if(S._v2brandLeft>0&&R.events.length>0){
+  var _bBest=null,_bV=-1,_bNm='';
+  for(var _be=0;_be<R.events.length;_be++){var _bcs=R.events[_be].cells;
+   for(var _bc=0;_bc<_bcs.length;_bc++){var _cv=R.board[_bcs[_bc]];
+    if(_cv&&_cv.v2&&_cv.ref&&SYMB[_cv.k]&&SYMB[_cv.k].fam==='flesh'){var _vv=symValB(_cv);
+     if(_vv>_bV){_bV=_vv;_bBest=_cv.ref;_bNm=SYMB[_cv.k].nm;}}}}
+  if(_bBest){_bBest.brandW=(_bBest.brandW||0)+1;S._v2brandLeft--;
+   log('🔥 낙인 — 터진 '+_bNm+'에 새겼다 · 그 문양 영구 +1W ('+(S._v2brandLeft>0?'남은 낙인 '+S._v2brandLeft:'이번 정차 소진')+')','hi');}}
  /* 분쇄기: 풀 최저 문양 포식 */
  if(R.grindDev){var flesh=S.symDeck.filter(function(x){return SYMB[x.k].fam==='flesh';});
   if(flesh.length>4){var low=flesh[0];for(var f2=1;f2<flesh.length;f2++)if(SYMB[flesh[f2].k].val*sc2(flesh[f2].lv)<SYMB[low.k].val*sc2(low.lv))low=flesh[f2];
@@ -5161,7 +5207,10 @@ doSpin=function(S){
  S.board=R.board; /* 클래식: 판은 그대로 남는다 */
  S._v2badges=R.badges;
  S.sealed=[];S.branded=[];S.spinsUsed++;S.stat.spins++;S.tempLuck=0;
- S.tickets=(S.tickets||0)+1;
+ /* 경제 정밀화(§3-④): 무조건 +1 폐지 → 당첨 레버만 +1닢(줄이 서면 동전이 떨어진다). 출발 정산(남긴 레버 누진 1·2·3·5·8닢)은 원작 그대로 살아있다.
+    꽝 파이프 재배선: 도박사(꽝 +1닢)·onBlankTick — 당첨 파이프: onJackTick(눈 있을 때) */
+ if(R.bursts>0){S.tickets=(S.tickets||0)+1+(S.eyes.length>0?(mods(S).onJackTick||0):0);}
+ else{S.tickets=(S.tickets||0)+(hasP(S,'gamb')?1:0)+(mods(S).onBlankTick||0);}
  S.stat.eyesPeak=Math.max(S.stat.eyesPeak,S.eyes.length);
  S.pend={power:power,formed:[],toolCells:[],luckCells:[],sealedCells:[],pats:[],
   eyeN:S.eyes.length,badges:[],bellN:0,goneEyes:goneEyes,
@@ -5176,7 +5225,7 @@ doSpin=function(S){
  if(S._v2stop!==S.stopIdx){S._v2stop=S.stopIdx;S._v2synSum=0;}
  S._v2synSum=(S._v2synSum||0)+R.bursts;
  /* 종 게이지: 연쇄 2단+ / 코어 발동 / 눈 소멸 */
- var add=(R.bursts>=2?1:0)+(R.coreOn>0?1:0)+((R.grinds+lidTotal)>0?1:0);
+ var add=(R.bursts>=2?1:0)+(R.coreOn>0?1:0)+((R.grinds+lidTotal+(R.burnEyes||0))>0?1:0);
  S.pend.bellN=add;
  var need=gaugeNeedOf(S);S.pend.gaugeNeed=need;S.pend.gaugeAdd=add;
  S.bellGauge=(S.bellGauge||0)+add;
@@ -5219,10 +5268,10 @@ renderBoard=function(){
   if(d.fam==='flesh'){val.textContent=symValB(v)+'W';}
   else{cell.classList.add('v2dev');
    if(v.k==='CAP')val.textContent='+'+(0.5*sc2(v.lv))+'×';
-   else if(v.k==='TRANS')val.textContent='근접×'+(1+0.3*sc2(v.lv)).toFixed(1);
+   else if(v.k==='TRANS')val.textContent='줄×'+(1+0.3*sc2(v.lv)).toFixed(1);
    else if(v.k==='AMP')val.textContent='안테나';
    else if(v.k==='CORE'){val.textContent=v._on?('×'+(2+0.5*(v.lv-1)).toFixed(1)):'대기';if(v._on)cell.classList.add('v2core');}
-   else if(v.k==='FURN')val.textContent='+2.5/눈';
+   else if(v.k==='FURN')val.textContent='소각';
    else if(v.k==='LID')val.textContent='감김';
    else if(v.k==='GRIND')val.textContent=(v.ref&&v.ref.stacks?('+'+v.ref.stacks*2+'W'):'포식');
    val.style.color='#e3b341';}
@@ -5245,7 +5294,7 @@ renderBoard=function(){
    +(z.eyePow>1.001?' × <span class="e">눈 ×'+z.eyePow.toFixed(2)+'</span>':'')
    +' = <b class="tot">'+S.pend.power+'W</b>';
   var lc=document.getElementById('lineCountV');if(lc)lc.textContent=S._v2synSum||0;
- }else rd.textContent='레버 = 전 칸 추첨 → 붙은 문양 3개+ 폭발 → 낙하 → 연쇄';
+ }else rd.textContent='레버 = 전 칸 추첨 → 줄 지불 → 판은 그대로 (꽝은 정직한 꽝)';
  var bag=document.getElementById('btnBag');if(bag)bag.style.display='none';
 };
 /* ── 연쇄 리플레이 연출 ── */
@@ -5376,7 +5425,7 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px;margin-right:4px">'+dd.g+' '+dd.nm+(ds2.lv>1?' <b style="color:#e3b341">L'+ds2.lv+'</b>':'')+' ×'+darr.length
    +(darr.length>=3&&ds2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+ds2.k+'&#39;,'+ds2.lv+')">⚙합성</a>':'')
    +'</span>';}
- h+='</div><div style="color:#5d6875;margin-top:5px">릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 같은 줄의 하위 조각은 안 세고(5연속=1회), 다른 모양끼리는 겹쳐도 각각 지불 · 동시 여러 줄 = 전체 배율 ↑</div>';
+ h+='</div><div style="color:#5d6875;margin-top:5px">동전: 당첨 레버 +1닢 · 출발 때 남긴 레버 누진(1·2·3·5·8닢) — 일찍 떠날수록 두둑하다<br>릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 같은 줄의 하위 조각은 안 세고(5연속=1회), 다른 모양끼리는 겹쳐도 각각 지불 · 동시 여러 줄 = 전체 배율 ↑</div>';
  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
  for(var pli=0;pli<PAYLINES.length;pli++){
   var pw2='<svg width="46" height="30" style="background:#0d1218;border:1px solid #232c37;border-radius:4px">';
@@ -5406,8 +5455,10 @@ window.__v2={
  _findLines:function(board){return findLines(board,{});},
  _bet:function(n2,need){S.betCoins={n:n2,need:need};return S.tickets;},
  _tk:function(){return S.tickets;},
+ _S:function(){return S;},
+ _resolve:function(pool,eyes,rng,opt){return resolveLever(pool,eyes,rng,opt);},
  _cell:function(k){return{v2:1,k:k,lv:1};},
- simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec){
+ simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec,luckN){
   var devs=[];if(devSpec)devSpec.split(',').forEach(function(kv){var pp=kv.trim().split(':');var kk=pp[0],lv=1;
    if(kk.indexOf('@')>=0){var qq=kk.split('@');kk=qq[0];lv=parseInt(qq[1],10);}
    for(var m=0;m<parseInt(pp[1],10);m++)devs.push({k:kk,lv:lv,stacks:0});});
@@ -5420,7 +5471,7 @@ window.__v2={
   for(var t2=0;t2<n;t2++){var sum=0;
    var eyes=[];while(eyes.length<eyeN){var cnd=(rng()*CELLS_N)|0;if(eyes.indexOf(cnd)<0)eyes.push(cnd);}
    for(var kk2=0;kk2<sumK;kk2++){var ey=eyes.slice();
-    var R=resolveLever(pool,ey,rng,{eyeKeep:!!eyeKeepArg,devices:devs});
+    var R=resolveLever(pool,ey,rng,{eyeKeep:!!eyeKeepArg,devices:devs,luck:luckN||0});
     var pw=R.totalBase*(R.lineMulAll||1)*R.m1*R.coreM;
     levN++;var zh=0;for(var ze=0;ze<R.events.length;ze++)if(R.events[ze].zig){zh++;zigValSum+=R.events[ze].val;}
     if(zh>0)zigLev++;zigTot+=zh;
