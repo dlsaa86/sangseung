@@ -3394,7 +3394,7 @@ async function actionSpin(){
  /* ── 릴 순차 정지 ──
     카지노 문법의 뼈대. 첫 릴은 "가능성", 마지막 릴은 "아하". 15칸을 한 번에 열면 이 구조가 통째로 사라진다. */
  const t0=Date.now();
- const durBase=(820+S.rng()*380)*spd();
+ const durBase=(DIAL.coreV2?170:(820+S.rng()*380))*spd();
  while(Date.now()-t0<durBase&&!stopNow){
   for(const i of cycling){CELLS[i].querySelector('.gly').textContent=spinGlyph();}
   if(Math.random()<.5)sndReelWhir();
@@ -3410,14 +3410,14 @@ async function actionSpin(){
     const el=CELLS[r2*BCOLS+cc];if(el&&el.classList.contains('cycling'))el.classList.add('hot');}
    sndTease(c);
   }
-  const hold=(hot?(c===BCOLS-1?780:420):(c===0?0:140))*spd();
+  const hold=(DIAL.coreV2?55:(hot?(c===BCOLS-1?780:420):(c===0?0:140)))*spd();
   const tc=Date.now();
   while(Date.now()-tc<hold&&!stopNow){
    for(const i of cycling){if(i%BCOLS>=c)CELLS[i].querySelector('.gly').textContent=spinGlyph();}
    await new Promise(r=>setTimeout(r,70));
   }
   /* 결정적 릴 직전의 침묵 */
-  if(hot&&c===BCOLS-1&&!stopNow)await new Promise(r=>setTimeout(r,230*spd()));
+  if(hot&&c===BCOLS-1&&!stopNow&&!DIAL.coreV2)await new Promise(r=>setTimeout(r,230*spd()));
   revCols.add(c);globalThis._spinRev=revCols;
   for(let r2=0;r2<3;r2++){const i=r2*BCOLS+c;if(CELLS[i]){CELLS[i].classList.remove('cycling','hot');paintCell(i);}}
   if(!stopNow)sndStop(c);
@@ -5118,7 +5118,7 @@ function M0(S){try{return mods(S);}catch(e){return{};}}
 '.cell.v2heat{box-shadow:inset 0 0 0 2px rgba(240,110,80,.8)}'+
 '.cell.v2core{box-shadow:inset 0 0 0 2px rgba(170,120,255,.85)}'+
 '#v2read{margin:4px auto 6px;text-align:center;font-size:15px;color:#cfd8e3;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:5px 8px;max-width:520px}'+
-'#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}';
+'#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}'+'.cell.cycling .v2v,.cell.cycling .v2l{display:none}'+'.cell.v2pulse{animation:v2pu .55s ease-out}'+'@keyframes v2pu{0%{box-shadow:inset 0 0 0 3px rgba(212,175,55,.95)}100%{box-shadow:inset 0 0 0 2px rgba(212,175,55,0)}}';
 document.head.appendChild(st);})();
 const _rbV1=renderBoard;
 renderBoard=function(){
@@ -5233,14 +5233,41 @@ revealJudge=async function(p,preEyes){
    setTimeout(()=>{for(const c of born){const el=CELLS[c];if(el)el.classList.remove('eyeBorn');}},1500);
    log('눈이 떴다 — 칸 하나를 막는다 (열선은 눈 옆에서 강해진다)','warn');}}
  try{renderBoard();}catch(e){}
- /* 판정 한 줄: 분해식 */
+ /* ── 단계 정산: 기초 → 배율 → 코어 → 총합 (무슨 일이 일어났는지 순서대로 말한다) ── */
  const z=p.v2||{};
- const bits=['기초 '+(z.base!==undefined?z.base.toFixed(1):'?')+'W','배율 ×'+(z.m1!==undefined?z.m1.toFixed(2):'?')];
- if(z.m2>1)bits.push('코어 ×'+z.m2.toFixed(1));
- if(z.eyePow>1.001)bits.push('눈 ×'+z.eyePow.toFixed(2));
- if((S.outMult||1)>1.001)bits.push('전력배수 ×'+S.outMult.toFixed(2));
- log('⚡ +'+p.power+'W — '+bits.join(' · '),(z.m2>1||p.power>=effReq(S)*0.3)?'hi':undefined);
- if(p.gaugeAdd>0)log('벨 게이지 +'+p.gaugeAdd+' — '+[(z.coreOn>0?'코어 발동':''),(p.synergyN>1?'증폭 세트':''),'시너지'].filter(x=>x)[0]);
+ const rdEl=document.getElementById('v2read');
+ const wt=ms=>new Promise(r=>setTimeout(r,ms*spd()));
+ const bzEl=document.getElementById('boardZone');
+ const num=(i,txt,color)=>{const el=CELLS[i];if(!el||!bzEl)return;
+  const r0=el.getBoundingClientRect(),zr=bzEl.getBoundingClientRect();
+  const d=document.createElement('div');d.className='dmgNum';if(color)d.style.color=color;
+  d.textContent=txt;
+  d.style.left=(r0.left-zr.left+r0.width/2-16)+'px';d.style.top=(r0.top-zr.top+2)+'px';
+  bzEl.appendChild(d);setTimeout(()=>d.remove(),950);};
+ const inst2=i=>(S.board[i]&&S.board[i].v2)?S.board[i]:null;
+ let acc=0;
+ for(let i=0;i<CELLS_N;i++){const s=inst2(i);if(!s||s._v===undefined||s._v<=0)continue;
+  acc+=s._v;num(i,'+'+(s._v%1?s._v.toFixed(1):s._v)+'W','#9ecbff');
+  if(rdEl)rdEl.innerHTML='기초 <b>'+acc.toFixed(1)+'W</b> …';
+  await wt(60);}
+ let m1a=1;
+ for(let i=0;i<CELLS_N;i++){const s=inst2(i);if(!s||!s._c||s._c<=0)continue;
+  m1a+=s._c;num(i,'+'+s._c.toFixed(2)+'×','#e3b341');
+  if(s.k==='TRANS'){for(const j of adjOf(i)){const o=inst2(j);if(o&&GENK[o.k]&&CELLS[j]){CELLS[j].classList.remove('v2pulse');void CELLS[j].offsetWidth;CELLS[j].classList.add('v2pulse');}}}
+  if(rdEl)rdEl.innerHTML='기초 <b>'+z.base.toFixed(1)+'W</b> × 배율 <span class="m">'+m1a.toFixed(2)+'</span> …';
+  await wt(95);}
+ if(z.m2>1){for(let i=0;i<CELLS_N;i++){const s=inst2(i);if(s&&s.k==='CORE'&&s._on){num(i,'×'+(2+0.5*(s.lv-1)).toFixed(1),'#c9a6ff');
+   if(CELLS[i]){CELLS[i].classList.remove('v2pulse');void CELLS[i].offsetWidth;CELLS[i].classList.add('v2pulse');}}}
+  await wt(180);}
+ if(rdEl){const steps=6;for(let nn=1;nn<=steps;nn++){const vv=Math.round(p.power*nn/steps);
+  rdEl.innerHTML='기초 <b>'+z.base.toFixed(1)+'W</b> × 배율 <span class="m">'+z.m1.toFixed(2)+'</span>'
+   +(z.m2>1?' × 코어 <span class="c">×'+z.m2.toFixed(1)+'</span>':'')
+   +(z.eyePow>1.001?' × <span class="e">눈 ×'+z.eyePow.toFixed(2)+'</span>':'')
+   +((S.outMult||1)>1.001?' × <span class="m">배수 ×'+S.outMult.toFixed(2)+'</span>':'')
+   +' = <b class="tot">'+vv+'W</b>';
+  await wt(38);}}
+ log('⚡ +'+p.power+'W'+(z.m2>1?' — 코어 점화':''),(z.m2>1||p.power>=effReq(S)*0.3)?'hi':undefined);
+ if(p.gaugeAdd>0)log('벨 게이지 +'+p.gaugeAdd+' — '+((z.coreOn>0)?'코어 발동':(p.synergyN>1?'증폭 세트':'시너지')));
  if(S._chainLinks&&S._chainLinks.length)log('연쇄 '+S._chainLinks.length+'건');
  return p;
 };
