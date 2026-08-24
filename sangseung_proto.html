@@ -5346,7 +5346,7 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px;margin-right:4px">'+dd.g+' '+dd.nm+(ds2.lv>1?' <b style="color:#e3b341">L'+ds2.lv+'</b>':'')+' ×'+darr.length
    +(darr.length>=3&&ds2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+ds2.k+'&#39;,'+ds2.lv+')">⚙합성</a>':'')
    +'</span>';}
- h+='</div><div style="color:#5d6875;margin-top:5px">릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 동시 여러 줄 = 전체 배율 ↑</div>';
+ h+='</div><div style="color:#5d6875;margin-top:5px">릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 같은 줄의 하위 조각은 안 세고(5연속=1회), 다른 모양끼리는 겹쳐도 각각 지불 · 동시 여러 줄 = 전체 배율 ↑</div>';
  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
  for(var pli=0;pli<PAYLINES.length;pli++){
   var pw2='<svg width="46" height="30" style="background:#0d1218;border:1px solid #232c37;border-radius:4px">';
@@ -5373,6 +5373,8 @@ window.__v2={
   if(!tg.length||(L===S.symDeck&&S.symDeck.length<=6))return;S.tickets-=3;L.splice(L.indexOf(tg[tg.length-1]),1);log('제거 — '+SYMB[k].nm);renderV2Shop();},
  reroll:function(){if(S.tickets<1)return;S.tickets-=1;rollSymShop(S);renderV2Shop();},
  /* 측정 훅: 게임과 동일 함수로 몬테카를로 */
+ _findLines:function(board){return findLines(board,{});},
+ _cell:function(k){return{v2:1,k:k,lv:1};},
  simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec){
   var devs=[];if(devSpec)devSpec.split(',').forEach(function(kv){var pp=kv.trim().split(':');var kk=pp[0],lv=1;
    if(kk.indexOf('@')>=0){var qq=kk.split('@');kk=qq[0];lv=parseInt(qq[1],10);}
