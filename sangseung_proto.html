@@ -5048,7 +5048,8 @@ effReq=function(S){if(!DIAL.coreV2)return _effV1(S);
  return Math.round(st.req*(1+wc*totalW(S))*((S.dn&&S.dn.reqMul)||1)*(mods(S).reqMul||1)*killReqMul(S));};
 var _slV1=spinLimit;
 spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
- var L=(S.stopIdx<10?V2TURNS[S.stopIdx]:8)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
+ /* 설계자 지시(2026-08-24): 층수 자동 증가 폐지 — 기본 5 고정, 추가 레버는 예비 레버 구매(경제)로 */
+ var L=(DIAL.v2BaseSpins===undefined?5:DIAL.v2BaseSpins)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
  if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);return Math.max(2,L);};
 /* ── B 해석기: 순수 함수 — 게임과 측정이 같이 쓴다 ── */
 function drawCell(pool,rng){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
@@ -5259,8 +5260,19 @@ doSpin=function(S){
  S.missStreak=(power>=effReq(S)*((DIAL.missFrac===undefined?0.10:DIAL.missFrac)))?0:((S.missStreak||0)+1);
  if(S._v2stop!==S.stopIdx){S._v2stop=S.stopIdx;S._v2synSum=0;}
  S._v2synSum=(S._v2synSum||0)+R.bursts;
- /* 종 게이지: 연쇄 2단+ / 코어 발동 / 눈 소멸 */
- var add=(R.bursts>=2?1:0)+(R.coreOn>0?1:0)+((R.grinds+lidTotal+(R.burnEyes||0))>0?1:0);
+ /* 종 게이지 = 🔔 벨 뱃지 단일 경로 복원 (설계자 v9.9 확정 — coreB 임시 적립원(동시줄/코어/눈소멸) 폐지 2026-08-24)
+    부착: 눈·장치뱃지 없는 문양 칸에 8%+부품 보정 · 중복 금지(설계자 명시) · 당첨 줄에 들면 뱃지당 +1 */
+ var _br2=Math.max(0,(DIAL.badgeRate===undefined?0.08:DIAL.badgeRate)+(mods(S).badgeAdd||0));
+ var _devC={};for(var _dc=0;_dc<R.badges.length;_dc++)_devC[R.badges[_dc].cell]=1;
+ S._v2bell=[];
+ for(var _bc3=0;_bc3<CELLS_N;_bc3++){var _cv3=R.board[_bc3];
+  if(!_cv3||_cv3===3||!_cv3.v2)continue;
+  if(_devC[_bc3])continue;
+  if(S.rng()<_br2)S._v2bell.push(_bc3);}
+ var _winC={};for(var _we=0;_we<R.events.length;_we++)for(var _wc3=0;_wc3<R.events[_we].cells.length;_wc3++)_winC[R.events[_we].cells[_wc3]]=1;
+ var _bellPop=0;S._v2bellPop=[];
+ for(var _bp2=0;_bp2<S._v2bell.length;_bp2++)if(_winC[S._v2bell[_bp2]]){_bellPop++;S._v2bellPop.push(S._v2bell[_bp2]);}
+ var add=_bellPop;
  S.pend.bellN=add;
  var need=gaugeNeedOf(S);S.pend.gaugeNeed=need;S.pend.gaugeAdd=add;
  S.bellGauge=(S.bellGauge||0)+add;
@@ -5313,6 +5325,8 @@ renderBoard=function(){
   cell.appendChild(val);
   if(v.lv>1){var lb=document.createElement('span');lb.className='v2l';lb.textContent='L'+v.lv;cell.appendChild(lb);}
  }
+ /* 벨 뱃지 (기존 .badged CSS 재사용 — 우상단 🔔) */
+ for(var _bl=0;_bl<CELLS_N;_bl++){var _ce=CELLS[_bl];if(_ce)_ce.classList.toggle('badged',!!(S._v2bell&&S._v2bell.indexOf(_bl)>=0));}
  /* 장치 뱃지 오버레이 */
  var bs=S._v2badges||[];
  for(var b2i=0;b2i<bs.length;b2i++){var bb=bs[b2i];var bCell=CELLS[bb.cell];if(!bCell)continue;
@@ -5323,6 +5337,28 @@ renderBoard=function(){
  var rd=document.getElementById('v2read');
  if(!rd){rd=document.createElement('div');rd.id='v2read';
   var be=document.getElementById('board');be.parentNode.insertBefore(rd,be);}
+ /* 층수 미리보기 — 설계자 지시(2026-08-24): 항상 아래에, 숫자는 굴러 오른다 */
+ var jd=document.getElementById('v2jump');
+ if(!jd){jd=document.createElement('div');jd.id='v2jump';
+  jd.style.cssText='margin:2px auto 6px;text-align:center;font-size:14px;color:#a9b6c4;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:4px 8px;max-width:560px';
+  rd.parentNode.insertBefore(jd,rd.nextSibling);}
+ if(S.mode==='ascent'){
+  var _tt=S.power+((S.pend&&S.pend.power)||0);
+  var _rq=effReq(S);
+  var _jn=Math.max(1,Math.min(jumpEff(S,_tt,_rq),Math.max(1,FINAL_F()-S.floorNow)));
+  var _ds2=Math.min(FINAL_F(),S.floorNow+_jn);
+  var A2=window.__v2jumpA=window.__v2jumpA||{n:0,m:S.floorNow,t:null};
+  var _lack=_tt>=_rq?'':' · <span style="color:#c96a5f">문턱까지 '+Math.max(0,_rq-_tt)+'W</span>';
+  jd.__tpl=function(nv,mv){return '지금 출발하면 <b style="color:#e0a33c;font-size:16px">+'+nv+'층</b> → <b style="color:#9ecbff">'+mv+'층</b>'+_lack;};
+  if(A2.n!==_jn||A2.m!==_ds2){
+   var _f0={n:A2.n,m:A2.m},_steps=10,_si=0;
+   if(A2.t)clearInterval(A2.t);
+   A2.t=setInterval(function(){_si++;
+    var _cn=Math.round(_f0.n+(_jn-_f0.n)*_si/_steps),_cm=Math.round(_f0.m+(_ds2-_f0.m)*_si/_steps);
+    var _el=document.getElementById('v2jump');if(_el&&_el.__tpl)_el.innerHTML=_el.__tpl(_cn,_cm);
+    if(_si>=_steps){clearInterval(A2.t);A2.t=null;A2.n=_jn;A2.m=_ds2;}},45);
+  }else jd.innerHTML=jd.__tpl(_jn,_ds2);
+ }else jd.innerHTML='';
  if(S.pend&&S.pend.v2){var z=S.pend.v2;
   rd.innerHTML='줄 '+z.bursts+'개'+((z.lineMulAll||1)>1?' · 동시 ×'+z.lineMulAll.toFixed(1):'')+' — 기초 <b>'+z.base.toFixed(0)+'W</b> × 배율 <span class="m">'+z.m1.toFixed(2)+'</span>'
    +(z.m2>1?' × 코어 <span class="c">×'+z.m2.toFixed(1)+'</span>':'')
@@ -5409,7 +5445,7 @@ revealJudge=async function(p,preEyes){
  if(z.grinds>0)log('당첨 줄이 눈을 갈았다 — 눈 −'+z.grinds,'hi');
  if(evs.length>0)log('⚡ +'+p.power+'W — '+evs.map(function(e2){return e2.nm;}).join('·')+(z.m2>1?' · 코어 점화':''),(evs.length>=2||z.m2>1)?'hi':undefined);
  else log('꽝 — 줄이 서지 않았다');
- if(p.gaugeAdd>0)log('벨 게이지 +'+p.gaugeAdd);
+ if(p.gaugeAdd>0)log('🔔 뱃지가 울린다 — 벨 +'+p.gaugeAdd);
  return p;
 };
 /* ── 릴 풀 상점 ── */
@@ -5436,14 +5472,14 @@ function v2Panel(){
 function renderV2Shop(){
  if(!DIAL.coreV2||!S){var p0=document.getElementById('v2shop');if(p0)p0.style.display='none';return;}
  ensurePool(S);
- if(S._v2shopStop!==S.stopIdx){S._v2shopStop=S.stopIdx;rollSymShop(S);}
+ if(S._v2shopStop!==S.stopIdx){S._v2shopStop=S.stopIdx;S._levBuyN=0;rollSymShop(S);}
  var p=v2Panel();p.style.display='';
  var grp={};
  for(var gi=0;gi<S.symDeck.length;gi++){var s=S.symDeck[gi];var key=s.k+'@'+s.lv;(grp[key]=grp[key]||[]).push(s);}
  var dgrp={};
  for(var di=0;di<(S.devList||[]).length;di++){var ds=S.devList[di];var dkey=ds.k+'@'+ds.lv;(dgrp[dkey]=dgrp[dkey]||[]).push(ds);}
  var h='<b style="color:#e3b341">릴 풀</b> <span style="color:#6d7885">— 사면 릴에 들어가 자주 나온다 · 동전 '+S.tickets+'닢</span> ';
- h+='<button class="gbtn" style="font-size:11px;padding:2px 8px" onclick="window.__v2.reroll()">새로고침 1닢</button><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">';
+ h+='<button class="gbtn" style="font-size:11px;padding:2px 8px" onclick="window.__v2.reroll()">새로고침 1닢</button> <button class="gbtn" style="font-size:11px;padding:2px 8px;border-color:#7a5f2a" onclick="window.__v2.buySpin()" title="이번 정차 한정 레버 +1 — 정차 안에서 살수록 1닢씩 비싸진다">🕹 예비 레버 '+(2+(S._levBuyN||0))+'닢</button><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">';
  for(var si3=0;si3<(S.symShop||[]).length;si3++){var k2=S.symShop[si3];
   if(!k2){h+='<div style="width:150px"></div>';continue;}var d2=SYMB[k2];
   h+='<div style="flex:1;min-width:150px;border:1px solid #2a3542;border-radius:8px;padding:5px 7px">'+d2.g+' <b>'+d2.nm+'</b> <span style="color:#6d7885">'+d2.rar+'</span><br><span style="color:#8b98a8;font-size:11px">'+d2.d+'</span><br><button class="gbtn" style="font-size:11px;padding:2px 10px;margin-top:3px" '+(S.tickets<d2.price?'disabled':'')+' onclick="window.__v2.buy('+si3+')">'+d2.price+'닢</button></div>';}
@@ -5486,6 +5522,8 @@ window.__v2={
   var tg=L.filter(function(x){return x.k===k&&x.lv===lv;});
   if(!tg.length||(L===S.symDeck&&S.symDeck.length<=6))return;S.tickets-=3;L.splice(L.indexOf(tg[tg.length-1]),1);log('제거 — '+SYMB[k].nm);renderV2Shop();},
  reroll:function(){if(S.tickets<1)return;S.tickets-=1;rollSymShop(S);renderV2Shop();},
+ buySpin:function(){var c=2+(S._levBuyN||0);if(S.tickets<c)return;S.tickets-=c;S._levBuyN=(S._levBuyN||0)+1;S.bonusSpins=(S.bonusSpins||0)+1;
+  log('🕹 예비 레버 — 이번 정차 레버 +1 ('+c+'닢)');renderV2Shop();try{render();}catch(e){}},
  /* 측정 훅: 게임과 동일 함수로 몬테카를로 */
  _findLines:function(board){return findLines(board,{});},
  _bet:function(n2,need){S.betCoins={n:n2,need:need};return S.tickets;},
