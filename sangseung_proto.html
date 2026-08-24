@@ -4988,7 +4988,7 @@ var SYMB={
  LID:{nm:'눈꺼풀',g:'🫦',fam:'dev',price:6,rar:'U',w:[2,4,6],d:'뽑히면 레버 끝에 눈 하나를 감긴다'},
  GRIND:{nm:'분쇄기',g:'⚙️',fam:'dev',price:8,rar:'R',w:[1,3,5],d:'연쇄가 끝나면 풀의 최저 문양 하나를 먹고 영구 +2W'}
 };
-var V2T=[300,400,450,600,800,1100,1400,1500,1800,2200]; /* B 확정 — 엔진 내 몬테카를로(순도 픽스처 p30) 기준, 2026-08-24 */
+var V2T=[550,700,800,1200,1400,2400,3200,3600,4200,5500]; /* B+와일드(레버당1회) 확정 — 엔진 내 MC·순도 픽스처 p30 기준, 2026-08-24 */
 var V2TURNS=[5,5,5,6,6,6,7,7,8,8];
 function adjOf(i){var C=BCOLS,r=(i/C)|0,c=i%C,a=[];if(r>0)a.push(i-C);if(r<2)a.push(i+C);if(c>0)a.push(i-1);if(c<C-1)a.push(i+1);return a;}
 function sc2(lv){return Math.pow(2,(lv||1)-1);}
@@ -5011,15 +5011,24 @@ spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
  if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);return Math.max(2,L);};
 /* ── B 해석기: 순수 함수 — 게임과 측정이 같이 쓴다 ── */
 function drawCell(pool,rng){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
-function findClusters(board){
- var seen=new Array(CELLS_N).fill(false),out=[];
+function findClusters(board,usedWild){
+ usedWild=usedWild||{};
+ /* 장치 = 와일드: 문양 묶음에 합류해 개수로 세어지고, 다리가 되며, 터지지 않는다.
+    성립 = 실제 문양 2개 이상 그리고 (문양+장치) 3개 이상 */
+ var claimed=new Array(CELLS_N).fill(false),out=[];
  for(var i=0;i<CELLS_N;i++){
-  var c=board[i];if(seen[i]||!c||c===3||!c.v2||SYMB[c.k].fam!=='flesh')continue;
-  var q=[i],cells=[];seen[i]=true;
-  while(q.length){var x=q.pop();cells.push(x);
+  var c=board[i];if(claimed[i]||!c||c===3||!c.v2||SYMB[c.k].fam!=='flesh')continue;
+  var vis={},q=[i],cells=[],wilds=[];vis[i]=1;
+  while(q.length){var x=q.pop();
+   var cx=board[x];
+   if(cx&&cx.v2&&SYMB[cx.k].fam==='flesh'){cells.push(x);}else{wilds.push(x);continue;}
    for(var jj=0;jj<adjOf(x).length;jj++){var j=adjOf(x)[jj];var o=board[j];
-    if(!seen[j]&&o&&o!==3&&o.v2&&o.k===c.k){seen[j]=true;q.push(j);}}}
-  if(cells.length>=3)out.push({k:c.k,cells:cells});
+    if(vis[j]||!o||o===3||!o.v2)continue;
+    if(SYMB[o.k].fam==='flesh'&&o.k===c.k&&!claimed[j]){vis[j]=1;q.push(j);}
+    else if(SYMB[o.k].fam==='dev'&&!usedWild[j]){vis[j]=1;q.push(j);}}}
+  if(cells.length>=2&&cells.length+wilds.length>=3){
+   for(var m2=0;m2<cells.length;m2++)claimed[cells[m2]]=true;
+   out.push({k:c.k,cells:cells,wilds:wilds});}
  }
  return out;
 }
@@ -5047,21 +5056,23 @@ function resolveLever(pool,eyes,rng,opt){
  var board=new Array(CELLS_N).fill(null);
  for(i=0;i<CELLS_N;i++)board[i]=eyeSet[i]?3:drawCell(pool,rng);
  var script=[{t:'board',b:board.slice()}];
- var totalBase=0,step=0,bursts=0,transHits=0,grinds=0;
+ var totalBase=0,step=0,bursts=0,transHits=0,grinds=0,usedWild={};
  for(;;){
-  var cls=findClusters(board);
+  var cls=findClusters(board,usedWild);
   if(!cls.length)break;
   step++;
   var stepEvents=[];
   for(var ci=0;ci<cls.length;ci++){var cl=cls[ci];
    var v=0;for(var x2=0;x2<cl.cells.length;x2++)v+=symValB(board[cl.cells[x2]]);
+   var totalN=cl.cells.length+(cl.wilds?cl.wilds.length:0);
    var tr=1;
    for(var x3=0;x3<cl.cells.length;x3++){var ad=adjOf(cl.cells[x3]);
     for(var a2=0;a2<ad.length;a2++){var o=board[ad[a2]];
      if(o&&o!==3&&o.v2&&o.k==='TRANS'){tr=Math.max(tr,1+0.3*sc2(o.lv));transHits++;}}}
-   var burst=v*sizeMul(cl.cells.length)*chainMul(step)*tr;
+   var burst=v*sizeMul(totalN)*chainMul(step)*tr;
    totalBase+=burst;bursts++;
-   stepEvents.push({cells:cl.cells.slice(),k:cl.k,val:burst,tr:tr>1});
+   stepEvents.push({cells:cl.cells.slice(),wilds:(cl.wilds||[]).slice(),k:cl.k,val:burst,tr:tr>1});
+   for(var w3=0;w3<(cl.wilds||[]).length;w3++)usedWild[cl.wilds[w3]]=1; /* 장치는 레버당 1회 합류 */
    /* 눈 갈이: 폭발 인접 눈 (눈 빌드 게이트는 호출측 상태로 판정) */
    if(!opt.eyeKeep){for(var x4=0;x4<cl.cells.length;x4++){var ad2=adjOf(cl.cells[x4]);
     for(var a3=0;a3<ad2.length;a3++){var j2=ad2[a3];
@@ -5160,7 +5171,7 @@ doSpin=function(S){
 '.cell .v2l{position:absolute;top:1px;right:4px;font-size:11px;color:#e3b341;font-weight:800}'+
 '.cell.v2burst{animation:v2bst .5s ease-out}'+
 '@keyframes v2bst{0%{box-shadow:inset 0 0 0 3px rgba(255,120,80,.95);transform:scale(1.06)}100%{box-shadow:inset 0 0 0 0 rgba(255,120,80,0);transform:scale(1)}}'+
-'.cell.v2dev{box-shadow:inset 0 0 0 1px rgba(212,175,55,.35)}'+
+'.cell.v2dev{box-shadow:inset 0 0 0 1px rgba(212,175,55,.35)}'+'.cell.v2wild{animation:v2wl .6s ease-out}'+'@keyframes v2wl{0%{box-shadow:inset 0 0 0 3px rgba(255,215,90,.95)}100%{box-shadow:inset 0 0 0 1px rgba(212,175,55,.35)}}'+
 '.cell.v2core{box-shadow:inset 0 0 0 2px rgba(170,120,255,.85)}'+
 '#v2read{margin:4px auto 6px;text-align:center;font-size:15px;color:#cfd8e3;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:5px 8px;max-width:560px}'+
 '#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}'+
@@ -5229,6 +5240,8 @@ revealJudge=async function(p,preEyes){
    for(var ei=0;ei<fr.ev.length;ei++){var ev=fr.ev[ei];
     for(var ci2=0;ci2<ev.cells.length;ci2++){var cix=ev.cells[ci2];
      if(CELLS[cix]){CELLS[cix].classList.remove('v2burst');void CELLS[cix].offsetWidth;CELLS[cix].classList.add('v2burst');}}
+    for(var wi2=0;wi2<(ev.wilds||[]).length;wi2++){var wx=ev.wilds[wi2];
+     if(CELLS[wx]){CELLS[wx].classList.remove('v2wild');void CELLS[wx].offsetWidth;CELLS[wx].classList.add('v2wild');}}
     acc+=ev.val;
     num(ev.cells[(ev.cells.length/2)|0],'+'+Math.round(ev.val)+'W'+(ev.tr?' ⚡':''),'#ffb37a');
     try{sndStop(0);}catch(e){}
@@ -5282,7 +5295,7 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px">'+d3.g+' '+d3.nm+(s2.lv>1?' <b style="color:#e3b341">L'+s2.lv+'</b>':'')+' ×'+arr.length
    +(arr.length>=3&&s2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+s2.k+'&#39;,'+s2.lv+')">⚙합성</a>':'')
    +' <a style="color:#7a8694;cursor:pointer" onclick="window.__v2.rm(&#39;'+s2.k+'&#39;,'+s2.lv+')">제거3닢</a></span>';}
- h+='</div><div style="color:#5d6875;margin-top:4px">풀 '+S.symDeck.length+'개 · 순도가 높을수록 잘 터진다 — 장치는 안 터지지만 곁에서 증폭한다</div>';
+ h+='</div><div style="color:#5d6875;margin-top:4px">풀 '+S.symDeck.length+'개 · 순도가 높을수록 잘 터진다 · 장치는 만능 문양 — 묶음을 완성시키되 레버당 한 번만 거든다</div>';
  p.innerHTML=h;
 }
 window.__v2={
