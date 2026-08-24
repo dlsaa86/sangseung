@@ -5016,6 +5016,7 @@ var PAYLINES=(function(){
  var rows=[[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[1,0,0,0,1],[1,2,2,2,1],[0,0,1,2,2],[2,2,1,0,0]];
  return rows.map(function(rw){return rw.map(function(r,c){return r*5+c;});});
 })();
+var LINE_NAMES=['중단','상단','하단','브이','산','지붕','골짜기','내리막','오르막'];
 function lenMul(n){return n>=5?4:n===4?2:1;}
 function findLines(board,usedWild){
  /* 슬롯 판정: 페이라인 좌측부터 같은 문양 3연속+ (장치=와일드 대체·실문양 2개+) */
@@ -5254,18 +5255,23 @@ revealJudge=async function(p,preEyes){
     svg.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:8;width:100%;height:100%';
     bzEl.style.position='relative';bzEl.appendChild(svg);}
    var zr2=bzEl.getBoundingClientRect();
-   var pts=ev.path.map(function(ix){var rc=CELLS[ix].getBoundingClientRect();
-    return (rc.left-zr2.left+rc.width/2)+','+(rc.top-zr2.top+rc.height/2);}).join(' ');
+   var toPts=function(idxs){return idxs.map(function(ix){var rc=CELLS[ix].getBoundingClientRect();
+    return (rc.left-zr2.left+rc.width/2)+','+(rc.top-zr2.top+rc.height/2);}).join(' ');};
+   /* 전체 경로(5칸)는 흐리게 — "이 줄의 일부"임이 보인다 */
+   var full=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+   full.setAttribute('points',toPts(PAYLINES[ev.li]));full.setAttribute('fill','none');
+   full.setAttribute('stroke','rgba(255,200,90,.25)');full.setAttribute('stroke-width','3');
+   full.setAttribute('stroke-dasharray','4 5');svg.appendChild(full);
    var pl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
-   pl.setAttribute('points',pts);pl.setAttribute('fill','none');
-   pl.setAttribute('stroke','rgba(255,200,90,.9)');pl.setAttribute('stroke-width','5');
+   pl.setAttribute('points',toPts(ev.path));pl.setAttribute('fill','none');
+   pl.setAttribute('stroke','rgba(255,200,90,.95)');pl.setAttribute('stroke-width','5');
    pl.setAttribute('stroke-linecap','round');pl.setAttribute('stroke-linejoin','round');
    svg.appendChild(pl);
-   (function(el){setTimeout(function(){el.remove();},1400*spd());})(pl);}
+   (function(a,b2){setTimeout(function(){a.remove();b2.remove();},1500*spd());})(full,pl);}
   for(var ci2=0;ci2<ev.cells.length;ci2++){var cix=ev.cells[ci2];
    if(CELLS[cix]){CELLS[cix].classList.remove('v2burst');void CELLS[cix].offsetWidth;CELLS[cix].classList.add('v2burst');}}
   acc+=ev.val;
-  num(ev.cells[(ev.cells.length/2)|0],'+'+Math.round(ev.val)+'W'+(ev.len>=4?' '+ev.len+'연속!':''),'#ffb37a');
+  num(ev.cells[(ev.cells.length/2)|0],LINE_NAMES[ev.li]+'줄 +'+Math.round(ev.val)+'W'+(ev.len>=4?' '+ev.len+'연속!':''),'#ffb37a');
   /* 뱃지 발동 팝 */
   for(var bi=0;bi<(ev.badges||[]).length;bi++){var b=ev.badges[bi];
    num(b.cell,SYMB[b.dev.k].g+' 발동!','#e3b341');}
@@ -5275,7 +5281,7 @@ revealJudge=async function(p,preEyes){
  if(evs.length>=2)log('동시 '+evs.length+'줄! 전체 ×'+(z.lineMulAll||1).toFixed(1),'hi');
  try{renderBoard();}catch(e){}
  if(z.grinds>0)log('당첨 줄이 눈을 갈았다 — 눈 −'+z.grinds,'hi');
- if(evs.length>0)log('⚡ +'+p.power+'W — 줄 '+evs.length+'개'+(z.m2>1?' · 코어 점화':''),(evs.length>=2||z.m2>1)?'hi':undefined);
+ if(evs.length>0)log('⚡ +'+p.power+'W — '+evs.map(function(e2){return LINE_NAMES[e2.li]+'줄';}).join('·')+(z.m2>1?' · 코어 점화':''),(evs.length>=2||z.m2>1)?'hi':undefined);
  else log('꽝 — 줄이 서지 않았다');
  if(p.gaugeAdd>0)log('벨 게이지 +'+p.gaugeAdd);
  return p;
@@ -5328,7 +5334,15 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px;margin-right:4px">'+dd.g+' '+dd.nm+(ds2.lv>1?' <b style="color:#e3b341">L'+ds2.lv+'</b>':'')+' ×'+darr.length
    +(darr.length>=3&&ds2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+ds2.k+'&#39;,'+ds2.lv+')">⚙합성</a>':'')
    +'</span>';}
- h+='</div><div style="color:#5d6875;margin-top:4px">릴 풀 '+S.symDeck.length+'개(문양만) · 당첨 = 9개 페이라인 왼쪽부터 3연속+ (4연속 ×2 · 5연속 ×4) · 동시 여러 줄이면 전체 배율 ↑</div>';
+ h+='</div><div style="color:#5d6875;margin-top:5px">릴 풀 '+S.symDeck.length+'개(문양만) · 당첨 = 아래 9개 줄 위에서 <b style="color:#cfd8e3">왼쪽부터 3연속+</b> (4연속 ×2 · 5연속 ×4) · 동시 여러 줄 = 전체 배율 ↑</div>';
+ h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
+ for(var pli=0;pli<PAYLINES.length;pli++){
+  var pw2='<svg width="46" height="30" style="background:#0d1218;border:1px solid #232c37;border-radius:4px">';
+  for(var rr=0;rr<3;rr++)for(var cc2=0;cc2<5;cc2++)pw2+='<circle cx="'+(6+cc2*8.5)+'" cy="'+(6+rr*9)+'" r="1.3" fill="#3a4553"/>';
+  pw2+='<polyline fill="none" stroke="#e3b341" stroke-width="1.8" points="'
+   +PAYLINES[pli].map(function(ix){var rr2=(ix/5)|0,cc3=ix%5;return (6+cc3*8.5)+','+(6+rr2*9);}).join(' ')+'"/></svg>';
+  h+='<span style="text-align:center;font-size:10px;color:#8b98a8">'+pw2+'<br>'+LINE_NAMES[pli]+'</span>';}
+ h+='</div>';
  p.innerHTML=h;
 }
 window.__v2={
