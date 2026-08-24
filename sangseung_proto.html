@@ -606,7 +606,7 @@ label.dl{display:flex; justify-content:space-between; align-items:center; gap:12
           <div class="gcap">레버로 모은다 — 문턱을 넘어야 출발한다</div>
           <div id="dangerLine"></div>
       </div>
-      <div class="g" title="이 층에서 앞으로 몇 번 더 당길 수 있는지다. 불이 켜진 만큼 남았다.&#10;&#10;다 쓰고도 문턱을 못 넘으면 추락한다 — 런이 끝난다.&#10;남긴 채로 출발하면 남은 수만큼 동전이 되고, 다음 층 전력으로도 조금 실린다.&#10;&#10;오른쪽 숫자는 이 층에서 세운 줄 수다.&#10;&#10;줄값 새김 — 같은 줄을 2번 세워야 그 줄의 값이 +1 오른다(영구). 딱지로 세운 줄은 한 번에 +2. 새김 계열 부품(새김 정 · 각인 망치)을 사면 필요 횟수가 줄어든다."><div class="t"><span>남은 레버</span><span>이번 층 줄 <b id="lineCountV">0</b></span></div><div id="lamps"></div>
+      <div class="g" title="이 층에서 앞으로 몇 번 더 당길 수 있는지다. 불이 켜진 만큼 남았다.&#10;&#10;다 쓰고도 문턱을 못 넘으면 추락한다 — 런이 끝난다.&#10;남긴 채로 출발하면 남은 수만큼 동전이 되고, 다음 층 전력으로도 조금 실린다.&#10;&#10;오른쪽 숫자는 이 층에서 세운 줄 수다.&#10;&#10;줄값 새김 — 같은 줄을 2번 세워야 그 줄의 값이 +1 오른다(영구). 딱지로 세운 줄은 한 번에 +2. 새김 계열 부품(새김 정 · 각인 망치)을 사면 필요 횟수가 줄어든다."><div class="t"><span>남은 레버</span><span>이번 층 시너지 <b id="lineCountV">0</b></span></div><div id="lamps"></div>
         <div class="gcap">다 쓰기 전에 문턱을 넘어야 한다 · 남기면 동전이 된다</div></div>
 </div>
 <div class="ggroup"><div class="gglab">내가 쌓은 것</div>
@@ -3389,7 +3389,7 @@ async function actionSpin(){
  /* v9.10: 뱃지는 릴이 멈추는 칼럼과 함께 드러난다 — 미리 보이면 스포일러(설계자 지적) */
  globalThis._spinRev=new Set();
  for(const el of CELLS)el.classList.remove('badged');
- const spinGlyph=()=>SYM_G[LINE_SYMS[Math.floor(Math.random()*LINE_SYMS.length)]];
+ const spinGlyph=()=>DIAL.coreV2?['🔋','🔆','🔥','🧲','⚡','📡','💠','♨️','🚜','♻️'][Math.floor(Math.random()*10)]:SYM_G[LINE_SYMS[Math.floor(Math.random()*LINE_SYMS.length)]];
  /* ── 릴 순차 정지 ──
     카지노 문법의 뼈대. 첫 릴은 "가능성", 마지막 릴은 "아하". 15칸을 한 번에 열면 이 구조가 통째로 사라진다. */
  const t0=Date.now();
@@ -5050,7 +5050,7 @@ doSpin=function(S){
  if(S.mode==='ascent'&&S.floorNow>=(DIAL.eyeFromFloor||0)&&S.eyes.length<eyeMax){
   const pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+(M0(S).eyeW||0)*0.5));
   if(S.rng()<pE){const emp=[];for(let i=0;i<CELLS_N;i++)if(b[i]===null)emp.push(i);
-   if(emp.length>1){const c=emp[(S.rng()*emp.length)|0];b[c]=3;S.eyes.push(c);S._freshEyes.push(c);}}}
+   if(emp.length>1){const c=emp[(S.rng()*emp.length)|0];b[c]=3;S.eyes.push(c);S._freshEyes.push(c);log('👁 눈이 떴다 — 칸 하나를 먹는다');}}}
  const free=[];for(let i=0;i<CELLS_N;i++)if(b[i]===null)free.push(i);
  const pool=S.symDeck.slice();
  for(let i=pool.length-1;i>0;i--){const j=(S.rng()*(i+1))|0;const t=pool[i];pool[i]=pool[j];pool[j]=t;}
@@ -5077,8 +5077,11 @@ doSpin=function(S){
  /* 턴 종료: 석탄 소모 · 제설(눈 제거+eyeGone 훅) · 압축기 */
  let removed=0;
  for(const s of chosen){
-  if(s.k==='COAL'){s.charges--;if(s.charges<=0){const ix=S.symDeck.indexOf(s);if(ix>=0)S.symDeck.splice(ix,1);}}
+  if(s.k==='COAL'){s.charges--;if(s.charges<=0){const ix=S.symDeck.indexOf(s);if(ix>=0)S.symDeck.splice(ix,1);log('🔥 석탄 발전기가 다 타서 부서졌다');}}
  }
+ if(S._v2stop!==S.stopIdx){S._v2stop=S.stopIdx;S._v2synSum=0;S._v2coreLogged=0;}
+ S._v2synSum=(S._v2synSum||0)+(S.pend.synergyN||0);
+ if(S.pend.v2.coreOn>0&&!S._v2coreLogged){S._v2coreLogged=1;log('💠 융합 코어 발동 — 총 전력 ×'+S.pend.v2.m2.toFixed(1),'hi');}
  chosen.forEach((s,j)=>{
   if(s.k==='PLOW'){for(let n=0;n<s.lv&&S.eyes.length>0;n++){
    const cell=S.eyes.shift();removed++;
@@ -5091,7 +5094,7 @@ doSpin=function(S){
    if(gens.length>3){let best=null,bv=1e9;
     for(const a of adjOf(pos)){const o=(S.board[a]&&S.board[a].v2)?S.board[a]:null;
      if(o&&GENK[o.k]&&o.k!=='RECY'&&o._v<bv){bv=o._v;best=o;}}
-    if(best){const ix=S.symDeck.indexOf(best);if(ix>=0){S.symDeck.splice(ix,1);s.stacks++;}}}}
+    if(best){const ix=S.symDeck.indexOf(best);if(ix>=0){S.symDeck.splice(ix,1);s.stacks++;log('♻️ 압축기가 '+SYMB[best.k].nm+'을(를) 삼켰다 — 영구 +'+(2*Math.pow(2,s.lv-1))+'W','hi');}}}}
  });
  /* 종 게이지: 시너지 이벤트 적립 (코어 발동 / 눈 제거 / 안테나 세트) */
  const add=(S.pend.v2.coreOn>0?1:0)+(removed>0?1:0)+(S.pend.synergyN>1?1:0);
@@ -5106,22 +5109,60 @@ doSpin=function(S){
 };
 function M0(S){try{return mods(S);}catch(e){return{};}}
 /* ── 보드 렌더 ── */
+(function(){const st=document.createElement('style');st.textContent=
+'.cell.v2c{font-size:30px}'+
+'.cell .v2v{position:absolute;bottom:2px;left:0;right:0;font-size:13px;font-weight:800;text-align:center;line-height:1;text-shadow:0 1px 2px #000}'+
+'.cell .v2l{position:absolute;top:1px;right:4px;font-size:11px;color:#e3b341;font-weight:800}'+
+'.cell.v2on{box-shadow:inset 0 0 0 2px rgba(212,175,55,.75)}'+
+'.cell.v2heat{box-shadow:inset 0 0 0 2px rgba(240,110,80,.8)}'+
+'.cell.v2core{box-shadow:inset 0 0 0 2px rgba(170,120,255,.85)}'+
+'#v2read{margin:4px auto 6px;text-align:center;font-size:15px;color:#cfd8e3;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:5px 8px;max-width:520px}'+
+'#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}';
+document.head.appendChild(st);})();
 const _rbV1=renderBoard;
 renderBoard=function(){
  if(!DIAL.coreV2)return _rbV1.apply(this,arguments);
  for(const bar of (typeof LBARS!=='undefined'?LBARS:[]))bar.style.display='none';
  for(const ch of (typeof CHIPS!=='undefined'?CHIPS:[]))ch.style.display='none';
  if(!S||!S.board)return;
+ const inst=i=>(S.board[i]&&S.board[i].v2)?S.board[i]:null;
  for(let i=0;i<CELLS_N;i++){const cell=CELLS[i];if(!cell)continue;const g=cell.querySelector('.gly');
-  const v=S.board[i];cell.classList.remove('dimmed');
-  if(v===3){g.innerHTML='👁';}
-  else if(v&&v.v2){const d=SYMB[v.k];
-   let sub='';
-   if(v._v!==undefined)sub=v._v.toFixed(v._v%1?1:0)+'W';
-   else if(v._c!==undefined)sub='+'+v._c.toFixed(2)+'×';
-   else if(v.k==='CORE')sub=(v._on?'×'+(2+0.5*(v.lv-1)).toFixed(1):'대기');
-   g.innerHTML=d.g+'<span style="display:block;font-size:10px;line-height:1;color:#9ecbff">'+sub+(v.lv>1?' <b style="color:#e3b341">L'+v.lv+'</b>':'')+'</span>';}
-  else g.innerHTML='';}
+  const v=S.board[i];
+  cell.classList.remove('dimmed');cell.classList.add('v2c');
+  cell.classList.remove('v2on','v2heat','v2core');
+  let old=cell.querySelector('.v2v');if(old)old.remove();
+  old=cell.querySelector('.v2l');if(old)old.remove();
+  if(v===3){g.textContent='👁';continue;}
+  if(!v||!v.v2){g.textContent='';continue;}
+  const d=SYMB[v.k];
+  g.textContent=d.g;
+  const val=document.createElement('span');val.className='v2v';
+  if(v._v!==undefined){val.textContent=(v._v%1?v._v.toFixed(1):v._v)+'W';val.style.color='#9ecbff';
+   if(v.k==='HEATER'&&v._v>1*Math.pow(2,v.lv-1)){cell.classList.add('v2heat');}}
+  else if(v._c!==undefined&&v._c>0){val.textContent='+'+v._c.toFixed(2).replace(/0$/,'')+'×';val.style.color='#e3b341';
+   if(v.k==='TRANS'&&v._c>0){cell.classList.add('v2on');
+    for(const j of adjOf(i)){const o=inst(j);if(o&&GENK[o.k])CELLS[j]&&CELLS[j].classList.add('v2on');}}}
+  else if(v.k==='CORE'){val.textContent=v._on?('×'+(2+0.5*(v.lv-1)).toFixed(1)):'대기';
+   val.style.color=v._on?'#c9a6ff':'#5d6875';if(v._on)cell.classList.add('v2core');}
+  else{val.textContent='';}
+  cell.appendChild(val);
+  if(v.lv>1){const lb=document.createElement('span');lb.className='v2l';lb.textContent='L'+v.lv;cell.appendChild(lb);}
+ }
+ /* 판정 분해 리드아웃 */
+ let rd=document.getElementById('v2read');
+ if(!rd){rd=document.createElement('div');rd.id='v2read';
+  const be=document.getElementById('board');be.parentNode.insertBefore(rd,be);}
+ if(S.pend&&S.pend.v2){const z=S.pend.v2;
+  const ex=[];
+  if(z.eyePow>1.001)ex.push('<span class="e">눈 ×'+z.eyePow.toFixed(2)+'</span>');
+  if((S.outMult||1)>1.001)ex.push('<span class="m">전력배수 ×'+(S.outMult).toFixed(2)+'</span>');
+  rd.innerHTML='기초 <b>'+z.base.toFixed(1)+'W</b> × 배율 <span class="m">'+z.m1.toFixed(2)+'</span>'
+   +(z.m2>1?' × 코어 <span class="c">×'+z.m2.toFixed(1)+'</span>':'')
+   +(ex.length?' × '+ex.join(' × '):'')
+   +' = <b class="tot">'+S.pend.power+'W</b>';
+  const lc=document.getElementById('lineCountV');if(lc)lc.textContent=S._v2synSum||0;
+ }else rd.innerHTML='레버를 당기면 심볼 덱이 판에 배치된다 — 기초합 × 배율 × 코어';
+ const bag=document.getElementById('btnBag');if(bag)bag.style.display='none';
 };
 /* ── 심볼 상점 패널 ── */
 function v2Phase(S){return S.stopIdx<=3?0:S.stopIdx<=6?1:2;}
@@ -5166,11 +5207,11 @@ function renderV2Shop(){
 }
 window.__v2={
  buy:function(i){const k=S.symShop[i];if(!k)return;const d=SYMB[k];
-  if(S.tickets<d.price)return;S.tickets-=d.price;S.symShop[i]=null;S.symDeck.push(mkI(k));renderV2Shop();try{render();}catch(e){}},
+  if(S.tickets<d.price)return;S.tickets-=d.price;S.symShop[i]=null;S.symDeck.push(mkI(k));log('구매 — '+d.nm+' ('+d.price+'닢)');renderV2Shop();try{render();}catch(e){}},
  merge:function(k,lv){const same=S.symDeck.filter(x=>x.k===k&&x.lv===lv);
   if(same.length<3||lv>=3)return;
   for(let n=0;n<3;n++)S.symDeck.splice(S.symDeck.indexOf(same[n]),1);
-  S.symDeck.push(mkI(k,lv+1));renderV2Shop();},
+  S.symDeck.push(mkI(k,lv+1));log('⚙ 합성! '+SYMB[k].nm+' Lv'+(lv+1)+' — 성능 ×2','hi');renderV2Shop();},
  rm:function(k,lv){if(S.tickets<3)return;const t=S.symDeck.filter(x=>x.k===k&&x.lv===lv);
   if(!t.length||S.symDeck.length<=3)return;S.tickets-=3;S.symDeck.splice(S.symDeck.indexOf(t[t.length-1]),1);renderV2Shop();},
  reroll:function(){if(S.tickets<1)return;S.tickets-=1;rollSymShop(S);renderV2Shop();}
