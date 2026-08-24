@@ -3384,13 +3384,15 @@ async function actionSpin(){
  const cycling=[];
  for(let i=0;i<CELLS.length;i++){
   if(preEyes.has(i)){continue;}
+  if(DIAL.coreV2&&!(S.board[i]&&S.board[i].v2)){const _c=CELLS[i];if(_c){_c.querySelector('.gly').innerHTML='';}continue;} /* 빈 칸은 돌리지 않는다 — 없는 것을 보여주지 않는다 */
   const cell=CELLS[i];cell.classList.add('cycling');cycling.push(i);
  }
  let stopNow=false;spinAbort=()=>{stopNow=true};
  /* v9.10: 뱃지는 릴이 멈추는 칼럼과 함께 드러난다 — 미리 보이면 스포일러(설계자 지적) */
  globalThis._spinRev=new Set();
  for(const el of CELLS)el.classList.remove('badged');
- const spinGlyph=()=>DIAL.coreV2?['🔋','🔆','🔥','🧲','⚡','📡','💠','♨️','🚜','♻️'][Math.floor(Math.random()*10)]:SYM_G[LINE_SYMS[Math.floor(Math.random()*LINE_SYMS.length)]];
+ const _v2gl=(DIAL.coreV2&&S.symDeck&&S.symDeck.length)?S.symDeck.map(x=>(window.__v2G||{})[x.k]||'🔋'):['🔋'];
+ const spinGlyph=()=>DIAL.coreV2?_v2gl[Math.floor(Math.random()*_v2gl.length)]:SYM_G[LINE_SYMS[Math.floor(Math.random()*LINE_SYMS.length)]];
  /* ── 릴 순차 정지 ──
     카지노 문법의 뼈대. 첫 릴은 "가능성", 마지막 릴은 "아하". 15칸을 한 번에 열면 이 구조가 통째로 사라진다. */
  const t0=Date.now();
@@ -5080,6 +5082,7 @@ doSpin=function(S){
  for(const s of chosen){
   if(s.k==='COAL'){s.charges--;if(s.charges<=0){const ix=S.symDeck.indexOf(s);if(ix>=0)S.symDeck.splice(ix,1);log('🔥 석탄 발전기가 다 타서 부서졌다');}}
  }
+ if(!S._v2emptyTaught&&S.symDeck.length<CELLS_N-S.eyes.length){S._v2emptyTaught=1;log('덱이 '+S.symDeck.length+'개라 빈 칸이 남는다 — 상점에서 심볼을 사면 판이 차오른다 (태양광은 빈 칸 옆에서 강하다)','warn');}
  if(S._v2stop!==S.stopIdx){S._v2stop=S.stopIdx;S._v2synSum=0;S._v2coreLogged=0;}
  S._v2synSum=(S._v2synSum||0)+(S.pend.synergyN||0);
  if(S.pend.v2.coreOn>0&&!S._v2coreLogged){S._v2coreLogged=1;log('💠 융합 코어 발동 — 총 전력 ×'+S.pend.v2.m2.toFixed(1),'hi');}
@@ -5118,7 +5121,7 @@ function M0(S){try{return mods(S);}catch(e){return{};}}
 '.cell.v2heat{box-shadow:inset 0 0 0 2px rgba(240,110,80,.8)}'+
 '.cell.v2core{box-shadow:inset 0 0 0 2px rgba(170,120,255,.85)}'+
 '#v2read{margin:4px auto 6px;text-align:center;font-size:15px;color:#cfd8e3;background:#10151c;border:1px solid #2b343f;border-radius:8px;padding:5px 8px;max-width:520px}'+
-'#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}'+'.cell.cycling .v2v,.cell.cycling .v2l{display:none}'+'.cell.v2pulse{animation:v2pu .55s ease-out}'+'@keyframes v2pu{0%{box-shadow:inset 0 0 0 3px rgba(212,175,55,.95)}100%{box-shadow:inset 0 0 0 2px rgba(212,175,55,0)}}';
+'#v2read b{color:#9ecbff}#v2read .m{color:#e3b341}#v2read .c{color:#c9a6ff}#v2read .e{color:#a5d6ff}#v2read .tot{color:#fff;font-size:17px}'+'.cell.cycling .v2v,.cell.cycling .v2l{display:none}'+'.cell.v2empty{opacity:.45}'+'.cell.v2pulse{animation:v2pu .55s ease-out}'+'@keyframes v2pu{0%{box-shadow:inset 0 0 0 3px rgba(212,175,55,.95)}100%{box-shadow:inset 0 0 0 2px rgba(212,175,55,0)}}';
 document.head.appendChild(st);})();
 const _rbV1=renderBoard;
 renderBoard=function(){
@@ -5133,8 +5136,9 @@ renderBoard=function(){
   cell.classList.remove('v2on','v2heat','v2core');
   let old=cell.querySelector('.v2v');if(old)old.remove();
   old=cell.querySelector('.v2l');if(old)old.remove();
-  if(v===3){g.textContent='👁';continue;}
-  if(!v||!v.v2){g.textContent='';continue;}
+  if(v===3){g.textContent='👁';cell.classList.remove('v2empty');continue;}
+  if(!v||!v.v2){g.textContent='';cell.classList.add('v2empty');continue;}
+  cell.classList.remove('v2empty');
   const d=SYMB[v.k];
   g.textContent=d.g;
   const val=document.createElement('span');val.className='v2v';
