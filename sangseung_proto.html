@@ -3157,12 +3157,16 @@ function render(){
  $('luckNeedle').style.transform='rotate('+(-90+lk*20)+'deg)';
  $('luckSrc').textContent='운 '+lk+((S.pend&&S.pend.ovLuck)?' · 과부하 +'+S.pend.ovLuck:'');
  /* 심볼값 라벨판 (프로필 가변) */
- if(DIAL.coreV2&&S.symDeck){ /* coreB: 릴 풀 지분이 곧 칸당 추첨 확률 — 구엔진 가중치 표는 여기서 거짓이라 교체 */
+ if(DIAL.coreV2&&S.symDeck){ /* coreB: 풀 지분 × 아이템 가중 = 칸당 실제 추첨 확률 */
   const _pn={},_pl=S.symDeck.length||1;
   for(const _e of S.symDeck)_pn[_e.k]=(_pn[_e.k]||0)+1;
+  const _wm=(window.__v2&&window.__v2.drawW)?window.__v2.drawW():{};
+  const _eff={};let _effT=0;
+  for(const _k in _pn){_eff[_k]=_pn[_k]*(_wm[_k]||1);_effT+=_eff[_k];}
   const _ks=Object.keys(_pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
-  const _mx2=Math.max(...Object.values(_pn),1);
-  let _lh=_ks.map(k=>'<span class="sym" title="'+(100*_pn[k]/_pl).toFixed(1)+'% — 풀 '+_pn[k]+'/'+_pl+'">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><i class="wtr"><i class="wbar" style="width:'+Math.max(6,Math.round(_pn[k]/_mx2*100))+'%"></i></i><span class="wpct">'+Math.round(100*_pn[k]/_pl)+'%</span></span>').join('');
+  const _mx2=Math.max(...Object.values(_eff),0.001);
+  let _lh=_ks.map(k=>'<span class="sym" title="'+(100*_eff[k]/_effT).toFixed(1)+'% — 풀 '+_pn[k]+'/'+_pl+((_wm[k]||1)!==1?' · 아이템 가중 ×'+(_wm[k]).toFixed(2):'')+'">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><i class="wtr"><i class="wbar" style="width:'+Math.max(6,Math.round(_eff[k]/_mx2*100))+'%"></i></i><span class="wpct">'+Math.round(100*_eff[k]/_effT)+'%</span></span>').join('');
+  if((S.v2swapLeft||0)>0)_lh='<b style="color:#c9a6ff">🔀'+S.v2swapLeft+'</b>'+_lh;
   const _pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
   _lh+='<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="레버당 눈 출현 확률 — 정차가 깊을수록 오른다"><b style="color:#c96a5f">눈</b><span class="wpct eye">'+Math.round(_pE*100)+'%</span></span>';
   if((S.devList||[]).length)_lh+='<span class="sym" title="장치 뱃지 — 레버마다 장치당 35%로 심볼에 붙고, 당첨 줄에 들면 발동(레버당 1회·변압기만 줄마다)">🧲<span class="wpct bell">뱃지 35%×'+S.devList.length+'</span></span>';
@@ -4730,8 +4734,17 @@ function openBag(){
  if(DIAL.coreV2&&S.symDeck){ /* coreB 확률판 — 숨김 없음, 측정은 게임 엔진 그대로 */
   const pn={},pl=S.symDeck.length||1,lvN={},brN={};
   for(const e of S.symDeck){pn[e.k]=(pn[e.k]||0)+1;if((e.lv||1)>1)lvN[e.k]=(lvN[e.k]||0)+1;if(e.brandW)brN[e.k]=(brN[e.k]||0)+e.brandW;}
+  const wm2=(window.__v2&&window.__v2.drawW)?window.__v2.drawW():{};
+  const effN={};let effT2=0;
+  for(const k3 in pn){effN[k3]=pn[k3]*(wm2[k3]||1);effT2+=effN[k3];}
   const ks=Object.keys(pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
-  let rows=ks.map(k=>'<tr><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+(lvN[k]?' <b style="color:#e3b341">합성'+lvN[k]+'</b>':'')+(brN[k]?' <b style="color:#e08b4a">새김+'+brN[k]+'W</b>':'')+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>'+pn[k]+'/'+pl+'</td><td>'+(100*pn[k]/pl).toFixed(1)+'%</td></tr>').join('');
+  let rows=ks.map(k=>'<tr><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+(lvN[k]?' <b style="color:#e3b341">합성'+lvN[k]+'</b>':'')+(brN[k]?' <b style="color:#e08b4a">새김+'+brN[k]+'W</b>':'')+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>'+pn[k]+'/'+pl+((wm2[k]||1)!==1?' <b style="color:#c9a6ff">×'+(wm2[k]).toFixed(2)+'</b>':'')+'</td><td>'+(100*effN[k]/effT2).toFixed(1)+'%</td></tr>').join('');
+  const vi3=(window.__v2&&window.__v2.items)?window.__v2.items():null;
+  let itemH='';
+  if(vi3){const own=[];
+   for(const it3 of vi3.list){if(it3.tier!=='a'&&vi3.st.stacks[it3.id])own.push(it3.g+' '+it3.nm+(vi3.st.stacks[it3.id]>1?' ×'+vi3.st.stacks[it3.id]:''));}
+   for(const a3 of vi3.st.actives){const d4=vi3.list.find(x=>x.id===a3.id);if(d4)own.push(d4.g+' '+d4.nm+' (충전 '+(a3.chg||0)+')');}
+   itemH='<h3>아이템</h3><p style="font-size:12px">'+(own.join(' · ')||'없음')+((S.v2swapLeft||0)>0?' · <b style="color:#c9a6ff">🔀 반전 '+S.v2swapLeft+'레버 남음</b>':'')+'<br><span style="color:#7f8b98">일반은 무한 스택(가중 ×1.4^n) · 가중 아이템은 살수록 상점 매물이 ×0.55로 귀해진다 · 유일은 하나뿐 · 액티브 2칸(도착마다 충전 +1)</span></p>';}
   let devH=(S.devList||[]).map(d=>'<b>'+(window.__v2G[d.k]||'')+' '+(window.__v2NM[d.k]||d.k)+(d.lv>1?' L'+d.lv:'')+'</b>').join(' · ')||'없음';
   const pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
   /* 완성형 실측 — 지금 풀·지금 눈 그대로 400레버 (게임과 같은 함수) */
@@ -4745,6 +4758,7 @@ function openBag(){
   +'<table class="tb"><tr><th>문양</th><th>기본값</th><th>풀</th><th>칸당 확률</th></tr>'+rows+'</table>'
   +'<p style="font-size:12px"><b>지금 풀 실측</b> — '+zigTxt+'</p>'
   +'<h3>장치 (뱃지)</h3><p style="font-size:12px">'+devH+'<br><span style="color:#7f8b98">레버마다 장치당 35%로 심볼에 붙는다. 붙은 심볼이 당첨 줄에 들면 발동 — 레버당 1회, 변압기만 줄마다.</span></p>'
+  +itemH
   +'<h3>눈</h3><p style="font-size:12px">레버당 출현 '+Math.round(pE*100)+'% (정차가 깊을수록 오른다) · 눈 배수 기저 ×'+fmt2(eyeMultBase(S))+' (상한 ×3) · 당첨 줄에 붙은 눈은 갈린다 — 눈 배수 1.5+ 빌드는 면제</p>'
   +'<h3>운 — 규칙 공개 (항상 유리한 방향으로만)</h3><p style="font-size:11.5px">첫 정차는 레버 3·5번째에 운 4를 보장한다(온보딩). 이후엔 전량 미스가 3연속 쌓일 때만 +1씩(최대 +4), 줄이 서면 초기화. 상시 운은 부품·승객·인터폰 거래가 준다. 운 1점 = 20% 확률로 뽑힌 문양 하나를 줄이 되는 자리에 앉힌다.</p>'
   +'<h3>동전</h3><p style="font-size:12px">당첨 레버 +1닢 · 출발 때 남긴 레버 누진(1·2·3·5·8닢) · 초과 전력 거스름/환전은 출발 정산에서</p>'
@@ -5029,6 +5043,43 @@ var SYMB={
  LID:{nm:'눈꺼풀',g:'🫦',fam:'dev',price:6,rar:'U',w:[2,4,6],d:'발동 시 눈을 레벨 수만큼 감긴다 (순수 제거)'},
  GRIND:{nm:'분쇄기',g:'⚙️',fam:'dev',price:8,rar:'R',w:[1,3,5],d:'발동 시 풀의 최저 문양을 먹고 영구 +2W (문양 5개 미만이면 쉰다)'}
 };
+/* ══ RoR식 아이템 3계층 (설계자 지시 2026-08-24) ══
+   일반(c) = 무한 스택 · 가중(rate) 아이템은 상점 공급이 ×0.55^보유로 고갈 (100%는 이론상만)
+   유일(u) = 강력 패시브, 하나 사면 다시 안 나옴 · 액티브(a) = 소지 2 제한, 충전제(도착마다 +1) */
+var V2ITEMS=[
+ {id:'iT',nm:'어금니 주머니',g:'🦷',tier:'c',rate:1,k:'TOOTH',cost:2,fx:'어금니 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iB',nm:'뼈 표본함',g:'🦴',tier:'c',rate:1,k:'BONE',cost:2,fx:'뼈 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iE',nm:'귀 컬렉션',g:'👂',tier:'c',rate:1,k:'EAR',cost:2,fx:'귀 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iG',nm:'혀 절임',g:'👅',tier:'c',rate:1,k:'TONGUE',cost:3,fx:'혀 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iH',nm:'심장 방부액',g:'🫀',tier:'c',rate:1,k:'HEART',cost:3,fx:'심장 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iN',nm:'뇌수 표본',g:'🧠',tier:'c',rate:1,k:'BRAIN',cost:4,fx:'뇌 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iL',nm:'폐포 슬라이드',g:'🫁',tier:'c',rate:1,k:'LUNG',cost:4,fx:'폐 등장 가중 ×1.4 (곱연산 스택)'},
+ {id:'iC',nm:'구리 코일',g:'🧵',tier:'c',cost:3,m1:0.1,fx:'레버 배율 +0.1× (합연산 스택)'},
+ {id:'uP',nm:'족제비 앞발',g:'🐾',tier:'u',cost:5,luck:2,fx:'상시 운 +2 — 하나뿐이다'},
+ {id:'uA',nm:'증폭 결정',g:'💎',tier:'u',cost:6,m1:0.4,fx:'레버 배율 +0.4× — 하나뿐이다'},
+ {id:'uH',nm:'기관사의 습관',g:'🎩',tier:'u',cost:5,freeLever:1,fx:'정차마다 예비 레버 1회 무료 — 하나뿐이다'},
+ {id:'aS',nm:'확률 반전기',g:'🔀',tier:'a',cost:4,act:'swap',chg:2,fx:'발동: 3레버 동안 최고↔최저 등장 문양의 지분을 맞바꾼다 · 충전 2 (도착마다 +1)'},
+ {id:'aV',nm:'과부하 손잡이',g:'🎚',tier:'a',cost:3,act:'surge',chg:2,fx:'발동: 다음 레버 운 +4 · 충전 2 (도착마다 +1)'},
+];
+function v2Items(S){if(!S.v2items)S.v2items={stacks:{},actives:[]};return S.v2items;}
+function v2ItemM1(S){var st=v2Items(S).stacks,m=0;
+ for(var i=0;i<V2ITEMS.length;i++){var it=V2ITEMS[i];if(it.m1&&st[it.id])m+=it.m1*st[it.id];}
+ return m;}
+function v2ItemLuck(S){var st=v2Items(S).stacks,l=0;
+ for(var i=0;i<V2ITEMS.length;i++){var it=V2ITEMS[i];if(it.luck&&st[it.id])l+=it.luck*st[it.id];}
+ return l;}
+function v2DrawW(S){ /* 문양별 실효 가중 — 아이템 스택(×1.4^n) + 확률 반전기 반영 */
+ var st=v2Items(S).stacks,m={},cnt={},i;
+ for(i=0;i<S.symDeck.length;i++){var k=S.symDeck[i].k;cnt[k]=(cnt[k]||0)+1;if(m[k]===undefined)m[k]=1;}
+ for(i=0;i<V2ITEMS.length;i++){var it=V2ITEMS[i];
+  if(it.rate&&it.k&&st[it.id]&&m[it.k]!==undefined)m[it.k]*=Math.pow(1.4,st[it.id]);}
+ if((S.v2swapLeft||0)>0){var hi=null,lo=null;
+  for(var k2 in m){var sh=cnt[k2]*m[k2];
+   if(hi===null||sh>cnt[hi]*m[hi])hi=k2;
+   if(lo===null||sh<cnt[lo]*m[lo])lo=k2;}
+  if(hi&&lo&&hi!==lo){var whi=m[hi],wlo=m[lo];
+   m[hi]=cnt[lo]*wlo/Math.max(1,cnt[hi]);m[lo]=cnt[hi]*whi/Math.max(1,cnt[lo]);}}
+ return m;}
 var V2T=[60,100,120,320,600,620,640,680,1100,1300]; /* 최종: 직선 기본+완성형 잭팟, 뱃지 1회 발동 수정 반영 — MC, 2026-08-24 */
 var V2TURNS=[5,5,5,6,6,6,7,7,8,8];
 function adjOf(i){var C=BCOLS,r=(i/C)|0,c=i%C,a=[];if(r>0)a.push(i-C);if(r<2)a.push(i+C);if(c>0)a.push(i-1);if(c<C-1)a.push(i+1);return a;}
@@ -5052,7 +5103,12 @@ spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
  var L=(DIAL.v2BaseSpins===undefined?5:DIAL.v2BaseSpins)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
  if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);return Math.max(2,L);};
 /* ── B 해석기: 순수 함수 — 게임과 측정이 같이 쓴다 ── */
-function drawCell(pool,rng){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
+function drawCell(pool,rng,wm){
+ if(!wm){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
+ var tot=0,i;for(i=0;i<pool.length;i++)tot+=(wm[pool[i].k]||1);
+ var r=rng()*tot,e2=pool[pool.length-1];
+ for(i=0;i<pool.length;i++){r-=(wm[pool[i].k]||1);if(r<0){e2=pool[i];break;}}
+ return{v2:1,k:e2.k,lv:e2.lv,ref:e2};}
 var PAYLINES=(function(){
  /* 고전 9라인 (행 인덱스 per 열): 중단·상단·하단·V·역V·모자2·계단2 */
  var rows=[[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[1,0,0,0,1],[1,2,2,2,1],[0,0,1,2,2],[2,2,1,0,0]];
@@ -5111,7 +5167,7 @@ function resolveLever(pool,eyes,rng,opt){
  opt=opt||{};
  var eyeSet={},i;for(i=0;i<eyes.length;i++)eyeSet[eyes[i]]=1;
  var board=new Array(CELLS_N).fill(null);
- for(i=0;i<CELLS_N;i++)board[i]=eyeSet[i]?3:drawCell(pool,rng);
+ for(i=0;i<CELLS_N;i++)board[i]=eyeSet[i]?3:drawCell(pool,rng,opt.drawW);
  /* 운(0~9): 뽑힌 문양을 "줄이 되는 자리"로 끌어와 앉힌다 — 가로 2연속의 세 번째 칸에 판 위 같은 문양을 스왑 (운 1점당 1회, §3-③ 재배선) */
  var LK=Math.min(9,Math.max(0,opt.luck||0));
  for(var lk3=0;lk3<LK;lk3++){if(rng()>=(0.2))continue; /* 운 1점 = 20% 확률로 1회 앉힘 — "9면 거의 맞춰준다"(기대 1.8회), 확정 보정은 과강 */
@@ -5137,7 +5193,7 @@ function resolveLever(pool,eyes,rng,opt){
  var hits=findLines(board,{});
  var M2=(opt.mods)||{};
  var totalBase=0,events=[],grinds=0,burnN=0,lidN=0,grindDev=null;
- var m1=1,ampTrig=0,coreTrig=[],capTrig=0,trHit=0;
+ var m1=1+(opt.itemM1||0),ampTrig=0,coreTrig=[],capTrig=0,trHit=0;
  for(var hi=0;hi<hits.length;hi++){var h=hits[hi];
   var v=0;
   for(var x2=0;x2<h.cells.length;x2++)v+=symValB(board[h.cells[x2]]);
@@ -5199,9 +5255,11 @@ doSpin=function(S){
  var eyeKeep=(DIAL.grindGate===undefined?1:DIAL.grindGate)&&eyeMultBase(S)>=(DIAL.grindGateAt===undefined?1.01:DIAL.grindGateAt);
  var eyesArr=S.eyes.slice();
  var _lk2=calcLuck(S);
+ _lk2=Object.assign({},_lk2,{total:Math.min(9,_lk2.total+v2ItemLuck(S))}); /* 아이템 상시 운 */
  var _M0=mods(S);
  var _lvEff={h:((_M0.lv&&_M0.lv.h)||0)+(hasP(S,'line')?2:0),v:((_M0.lv&&_M0.lv.v)||0)+(hasP(S,'plum')?2:0),d:((_M0.lv&&_M0.lv.d)||0)}; /* 배관공(세로)·고압선 전공(가로) 재배선 §3-③ */
- var R=resolveLever(S.symDeck,eyesArr,S.rng,{eyeKeep:eyeKeep,mods:_M0,devices:S.devList||[],luck:_lk2.total,lvEff:_lvEff});
+ var R=resolveLever(S.symDeck,eyesArr,S.rng,{eyeKeep:eyeKeep,mods:_M0,devices:S.devList||[],luck:_lk2.total,lvEff:_lvEff,drawW:v2DrawW(S),itemM1:v2ItemM1(S)});
+ if((S.v2swapLeft||0)>0){S.v2swapLeft--;if(S.v2swapLeft===0)log('🔀 확률 반전이 풀렸다');}
  if(_lk2.total>0&&_lk2.ov>0)log('운 보정 — 이번 레버 운 '+_lk2.total,'dim');
  if(hasP(S,'scri'))S.scribeLuck=(R.bursts===0)?((S.scribeLuck||0)+1):0; /* 필경사: 꽝마다 다음 레버 운 +1, 줄 서면 초기화 */
  var goneEyes=S.eyes.filter(function(c){return eyesArr.indexOf(c)<0;});
@@ -5450,6 +5508,20 @@ revealJudge=async function(p,preEyes){
 };
 /* ── 릴 풀 상점 ── */
 function v2Phase(S){return S.stopIdx<=3?0:S.stopIdx<=6?1:2;}
+function rollItemShop(S){
+ var st=v2Items(S).stacks,offers=[],cand=[];
+ for(var i=0;i<V2ITEMS.length;i++){var it=V2ITEMS[i];
+  if(it.tier==='u'&&st[it.id])continue; /* 유일 — 하나 사면 끝 */
+  var w=it.tier==='u'?2:it.tier==='a'?4:8;
+  if(it.rate&&st[it.id])w*=Math.pow(0.55,st[it.id]); /* 공급 고갈 — 살수록 안 나온다 */
+  cand.push({it:it,w:w});}
+ for(var n2=0;n2<2&&cand.length;n2++){
+  var tw=0,j;for(j=0;j<cand.length;j++)tw+=cand[j].w;
+  var r2=S.rng()*tw,pick=cand[cand.length-1];
+  for(j=0;j<cand.length;j++){r2-=cand[j].w;if(r2<0){pick=cand[j];break;}}
+  offers.push(pick.it.id);cand.splice(cand.indexOf(pick),1);}
+ S.itemShop=offers;
+}
 function rollSymShop(S){
  var pool=Object.keys(SYMB).filter(function(k){
   if(k==='FURN'||k==='LID')return S.eyes.length>0||S.stopIdx>=2;
@@ -5472,7 +5544,11 @@ function v2Panel(){
 function renderV2Shop(){
  if(!DIAL.coreV2||!S){var p0=document.getElementById('v2shop');if(p0)p0.style.display='none';return;}
  ensurePool(S);
- if(S._v2shopStop!==S.stopIdx){S._v2shopStop=S.stopIdx;S._levBuyN=0;rollSymShop(S);}
+ if(S._v2shopStop!==S.stopIdx){S._v2shopStop=S.stopIdx;S._levBuyN=0;rollSymShop(S);rollItemShop(S);
+  var _vi=v2Items(S);
+  for(var _ai=0;_ai<_vi.actives.length;_ai++){var _ad=V2ITEMS.find(function(x){return x.id===_vi.actives[_ai].id;});
+   _vi.actives[_ai].chg=Math.min((_ad&&_ad.chg)||2,(_vi.actives[_ai].chg||0)+1);}
+  if(_vi.stacks.uH){S.bonusSpins=(S.bonusSpins||0)+1;log('🎩 기관사의 습관 — 이번 정차 예비 레버 1회 무료');}}
  var p=v2Panel();p.style.display='';
  var grp={};
  for(var gi=0;gi<S.symDeck.length;gi++){var s=S.symDeck[gi];var key=s.k+'@'+s.lv;(grp[key]=grp[key]||[]).push(s);}
@@ -5496,6 +5572,22 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px;margin-right:4px">'+dd.g+' '+dd.nm+(ds2.lv>1?' <b style="color:#e3b341">L'+ds2.lv+'</b>':'')+' ×'+darr.length
    +(darr.length>=3&&ds2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+ds2.k+'&#39;,'+ds2.lv+')">⚙합성</a>':'')
    +'</span>';}
+ h+='</div><div style="margin-top:5px"><b style="color:#c9a6ff">아이템</b> <span style="color:#6d7885">— 일반은 무한 스택 · 가중 아이템은 살수록 매물이 귀해진다 · 유일은 하나뿐 · 액티브는 2칸</span><br>';
+ var _st2=v2Items(S).stacks,_ac2=v2Items(S).actives;
+ var _ofs=(S.itemShop||[]);
+ for(var _oi=0;_oi<_ofs.length;_oi++){var _it2=V2ITEMS.find(function(x){return x.id===_ofs[_oi];});
+  if(!_it2)continue;
+  var _afford=S.tickets>=_it2.cost;
+  h+='<span style="border:1px solid '+(_it2.tier==='u'?'#7a5fa8':_it2.tier==='a'?'#5f7aa8':'#3a4553')+';border-radius:6px;padding:2px 7px;margin-right:4px" title="'+_it2.fx+'">'+_it2.g+' '+_it2.nm+' <b>'+_it2.cost+'닢</b> '
+   +(_afford?'<a style="color:#8fce6e;cursor:pointer" onclick="window.__v2.buyItem(&#39;'+_it2.id+'&#39;)">구매</a>':'<span style="color:#5d6875">동전 부족</span>')+'</span>';}
+ if(!_ofs.length)h+='<span style="color:#5d6875">매물 없음</span>';
+ var _ownH=[];
+ for(var _ii=0;_ii<V2ITEMS.length;_ii++){var _iw=V2ITEMS[_ii];
+  if(_iw.tier!=='a'&&_st2[_iw.id])_ownH.push('<span title="'+_iw.fx+'">'+_iw.g+(_st2[_iw.id]>1?'×'+_st2[_iw.id]:'')+'</span>');}
+ for(var _aj=0;_aj<_ac2.length;_aj++){var _ax=V2ITEMS.find(function(x){return x.id===_ac2[_aj].id;});
+  if(_ax)_ownH.push('<span title="'+_ax.fx+'">'+_ax.g+'<a style="color:#e3b341;cursor:pointer" onclick="window.__v2.useItem('+_aj+')">발동('+(_ac2[_aj].chg||0)+')</a></span>');}
+ if(_ownH.length)h+='<br><span style="color:#8b98a8">보유:</span> '+_ownH.join(' ');
+ if((S.v2swapLeft||0)>0)h+=' <b style="color:#c9a6ff">🔀 반전 '+S.v2swapLeft+'레버</b>';
  h+='</div><div style="color:#5d6875;margin-top:5px">동전: 당첨 레버 +1닢 · 출발 때 남긴 레버 누진(1·2·3·5·8닢) — 일찍 떠날수록 두둑하다<br>릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 같은 줄의 하위 조각은 안 세고(5연속=1회), 다른 모양끼리는 겹쳐도 각각 지불 · 동시 여러 줄 = 전체 배율 ↑</div>';
  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
  for(var pli=0;pli<PAYLINES.length;pli++){
@@ -5522,6 +5614,22 @@ window.__v2={
   var tg=L.filter(function(x){return x.k===k&&x.lv===lv;});
   if(!tg.length||(L===S.symDeck&&S.symDeck.length<=6))return;S.tickets-=3;L.splice(L.indexOf(tg[tg.length-1]),1);log('제거 — '+SYMB[k].nm);renderV2Shop();},
  reroll:function(){if(S.tickets<1)return;S.tickets-=1;rollSymShop(S);renderV2Shop();},
+ buyItem:function(id){var it=null;for(var i=0;i<V2ITEMS.length;i++)if(V2ITEMS[i].id===id)it=V2ITEMS[i];
+  if(!it||S.tickets<it.cost)return;
+  var vi=v2Items(S);
+  if(it.tier==='a'){if(vi.actives.length>=2){toast('액티브는 2칸 — 자리가 없다','red');return;}
+   S.tickets-=it.cost;vi.actives.push({id:it.id,chg:it.chg||2});log('구매 — '+it.nm+' (액티브 장착)');}
+  else{if(it.tier==='u'&&vi.stacks[it.id])return;
+   S.tickets-=it.cost;vi.stacks[it.id]=(vi.stacks[it.id]||0)+1;
+   log('구매 — '+it.nm+(it.tier==='c'?' ×'+vi.stacks[it.id]:'')+(it.rate?' · 매물이 귀해진다':''));}
+  var ix=(S.itemShop||[]).indexOf(id);if(ix>=0)S.itemShop.splice(ix,1);
+  renderV2Shop();try{render();}catch(e){}},
+ useItem:function(ai){var vi=v2Items(S);var a=vi.actives[ai];if(!a||!(a.chg>0))return;
+  var it=null;for(var i=0;i<V2ITEMS.length;i++)if(V2ITEMS[i].id===a.id)it=V2ITEMS[i];
+  a.chg--;
+  if(it.act==='swap'){S.v2swapLeft=3;log('🔀 확률 반전 — 3레버 동안 최고↔최저 문양이 자리를 바꾼다','hi');}
+  else if(it.act==='surge'){S.tempLuck=(S.tempLuck||0)+4;log('🎚 과부하 — 다음 레버 운 +4','hi');}
+  renderV2Shop();try{render();}catch(e){}},
  buySpin:function(){var c=2+(S._levBuyN||0);if(S.tickets<c)return;S.tickets-=c;S._levBuyN=(S._levBuyN||0)+1;S.bonusSpins=(S.bonusSpins||0)+1;
   log('🕹 예비 레버 — 이번 정차 레버 +1 ('+c+'닢)');renderV2Shop();try{render();}catch(e){}},
  /* 측정 훅: 게임과 동일 함수로 몬테카를로 */
@@ -5529,6 +5637,9 @@ window.__v2={
  _bet:function(n2,need){S.betCoins={n:n2,need:need};return S.tickets;},
  _tk:function(){return S.tickets;},
  _S:function(){return S;},
+ drawW:function(){return v2DrawW(S);},
+ _rollItems:function(){rollItemShop(S);return S.itemShop;},
+ items:function(){return {list:V2ITEMS,st:v2Items(S)};},
  _resolve:function(pool,eyes,rng,opt){return resolveLever(pool,eyes,rng,opt);},
  _cell:function(k){return{v2:1,k:k,lv:1};},
  simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec,luckN){
