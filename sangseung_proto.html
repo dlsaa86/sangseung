@@ -4988,7 +4988,7 @@ var SYMB={
  LID:{nm:'눈꺼풀',g:'🫦',fam:'dev',price:6,rar:'U',w:[2,4,6],d:'뽑히면 레버 끝에 눈 하나를 감긴다'},
  GRIND:{nm:'분쇄기',g:'⚙️',fam:'dev',price:8,rar:'R',w:[1,3,5],d:'연쇄가 끝나면 풀의 최저 문양 하나를 먹고 영구 +2W'}
 };
-var V2T=[300,350,400,800,1200,3000,6500,8000,15000,40000]; /* 20줄 판정 확정 — 게임 중 상태(LINES=20)에서 MC 측정. 타이틀 측정은 8줄 유물이라 무효였음 */
+var V2T=[80,100,120,500,1000,2500,5000,5500,15000,20000]; /* 9페이라인 확정 — 눈 무작위 산포 MC p30 기준, 2026-08-24 */
 var V2TURNS=[5,5,5,6,6,6,7,7,8,8];
 function adjOf(i){var C=BCOLS,r=(i/C)|0,c=i%C,a=[];if(r>0)a.push(i-C);if(r<2)a.push(i+C);if(c>0)a.push(i-1);if(c<C-1)a.push(i+1);return a;}
 function sc2(lv){return Math.pow(2,(lv||1)-1);}
@@ -5011,25 +5011,27 @@ spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
  if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);return Math.max(2,L);};
 /* ── B 해석기: 순수 함수 — 게임과 측정이 같이 쓴다 ── */
 function drawCell(pool,rng){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
+var PAYLINES=(function(){
+ /* 고전 9라인 (행 인덱스 per 열): 중단·상단·하단·V·역V·모자2·계단2 */
+ var rows=[[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[1,0,0,0,1],[1,2,2,2,1],[0,0,1,2,2],[2,2,1,0,0]];
+ return rows.map(function(rw){return rw.map(function(r,c){return r*5+c;});});
+})();
+function lenMul(n){return n>=5?4:n===4?2:1;}
 function findLines(board,usedWild){
- /* 슬롯 판정: LINES(가로9·세로5·대각6) 위에 같은 문양 3칸 — 장치는 와일드로 대체(실문양 2개 이상) */
+ /* 슬롯 판정: 페이라인 좌측부터 같은 문양 3연속+ (장치=와일드 대체·실문양 2개+) */
  usedWild=usedWild||{};
  var hits=[];
- for(var li=0;li<LINES.length;li++){var L=LINES[li];
-  var kind=null,real=[],wild=[],dead=false;
-  for(var ci=0;ci<3;ci++){var cell=board[L[ci]];
-   if(!cell||cell===3||!cell.v2){dead=true;break;}
-   if(SYMB[cell.k].fam==='flesh'){
-    if(kind===null)kind=cell.k;
-    else if(kind!==cell.k){dead=true;break;}
-    real.push(L[ci]);}
-   else if(SYMB[cell.k].fam==='dev'&&!usedWild[L[ci]]){wild.push(L[ci]);}
-   else{dead=true;break;}}
-  if(dead||real.length<2||real.length+wild.length<3)continue;
-  var r0=(L[0]/BCOLS)|0,r1=(L[1]/BCOLS)|0,r2=(L[2]/BCOLS)|0;
-  var c0=L[0]%BCOLS,c1=L[1]%BCOLS;
-  var dir=(r0===r1&&r1===r2)?'h':(c0===c1?'v':'d');
-  hits.push({li:li,k:kind,cells:real.slice(),wilds:wild.slice(),dir:dir});
+ for(var li=0;li<PAYLINES.length;li++){var P=PAYLINES[li];
+  var kind=null,cells=[],wilds=[],count=0;
+  for(var col=0;col<5;col++){var idx=P[col],cell=board[idx];
+   if(!cell||cell===3||!cell.v2)break;
+   if(SYMB[cell.k].fam==='dev'){if(usedWild[idx])break;wilds.push(idx);count++;continue;}
+   if(SYMB[cell.k].fam!=='flesh')break;
+   if(kind===null)kind=cell.k;
+   else if(cell.k!==kind)break;
+   cells.push(idx);count++;}
+  if(kind===null||count<3||cells.length<2)continue;
+  hits.push({li:li,k:kind,cells:cells,wilds:wilds,len:count,path:P.slice(0,count)});
  }
  return hits;
 }
@@ -5068,7 +5070,8 @@ function resolveLever(pool,eyes,rng,opt){
   for(var hi=0;hi<hits.length;hi++){var h=hits[hi];
    var v=0;
    for(var x2=0;x2<h.cells.length;x2++)v+=symValB(board[h.cells[x2]]);
-   if(M2.lv)v+=(h.dir==='h'?(M2.lv.h||0):h.dir==='v'?(M2.lv.v||0):(M2.lv.d||0));
+   if(M2.lv)v+=(M2.lv.h||0); /* 줄값 부품: 페이라인 공통 가산 (세로·대각 계열은 재해석 대기) */
+   v*=lenMul(h.len);
    var tr=1;
    var lineAll=h.cells.concat(h.wilds);
    for(var x3=0;x3<lineAll.length;x3++){var ad=adjOf(lineAll[x3]);
@@ -5076,7 +5079,7 @@ function resolveLever(pool,eyes,rng,opt){
      if(o&&o!==3&&o.v2&&o.k==='TRANS'){tr=Math.max(tr,1+0.3*sc2(o.lv));transHits++;}}}
    var burst=v*chainMul(step)*tr;
    totalBase+=burst;bursts++;
-   stepEvents.push({cells:h.cells.slice(),wilds:h.wilds.slice(),k:h.k,val:burst,tr:tr>1,li:h.li});
+   stepEvents.push({cells:h.cells.slice(),wilds:h.wilds.slice(),k:h.k,val:burst,tr:tr>1,li:h.li,len:h.len,path:h.path.slice()});
    /* 눈 갈이: 줄 인접 눈 */
    if(!opt.eyeKeep){for(var x4=0;x4<h.cells.length;x4++){var ad2=adjOf(h.cells[x4]);
     for(var a3=0;a3<ad2.length;a3++){var j2=ad2[a3];
@@ -5245,15 +5248,26 @@ revealJudge=async function(p,preEyes){
    if(si2>0)await wt(240);}
   else if(fr.t==='burst'){
    for(var ei=0;ei<fr.ev.length;ei++){var ev=fr.ev[ei];
-    if(ev.li!==undefined&&typeof LBARS!=='undefined'&&LBARS[ev.li]){var bar=LBARS[ev.li];
-     bar.style.display='';bar.style.background='rgba(255,200,90,.85)';
-     (function(b){setTimeout(function(){b.style.display='none';},600*spd());})(bar);}
+    if(ev.path&&bzEl){
+     var svg=document.getElementById('v2paySvg');
+     if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.id='v2paySvg';
+      svg.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:8;width:100%;height:100%';
+      bzEl.style.position='relative';bzEl.appendChild(svg);}
+     var zr2=bzEl.getBoundingClientRect();
+     var pts=ev.path.map(function(ix){var rc=CELLS[ix].getBoundingClientRect();
+      return (rc.left-zr2.left+rc.width/2)+','+(rc.top-zr2.top+rc.height/2);}).join(' ');
+     var pl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+     pl.setAttribute('points',pts);pl.setAttribute('fill','none');
+     pl.setAttribute('stroke','rgba(255,200,90,.9)');pl.setAttribute('stroke-width','5');
+     pl.setAttribute('stroke-linecap','round');pl.setAttribute('stroke-linejoin','round');
+     svg.appendChild(pl);
+     (function(el){setTimeout(function(){el.remove();},700*spd());})(pl);}
     for(var ci2=0;ci2<ev.cells.length;ci2++){var cix=ev.cells[ci2];
      if(CELLS[cix]){CELLS[cix].classList.remove('v2burst');void CELLS[cix].offsetWidth;CELLS[cix].classList.add('v2burst');}}
     for(var wi2=0;wi2<(ev.wilds||[]).length;wi2++){var wx=ev.wilds[wi2];
      if(CELLS[wx]){CELLS[wx].classList.remove('v2wild');void CELLS[wx].offsetWidth;CELLS[wx].classList.add('v2wild');}}
     acc+=ev.val;
-    num(ev.cells[(ev.cells.length/2)|0],'+'+Math.round(ev.val)+'W'+(ev.tr?' ⚡':''),'#ffb37a');
+    num(ev.cells[(ev.cells.length/2)|0],'+'+Math.round(ev.val)+'W'+(ev.len>=4?' '+ev.len+'연속!':'')+(ev.tr?' ⚡':''),'#ffb37a');
     try{sndStop(0);}catch(e){}
     if(rd)rd.innerHTML=(fr.step>1?('연쇄 '+fr.step+'단 ×'+fr.mul+' — '):'')+'폭발 <b>'+acc.toFixed(0)+'W</b> …';
     await wt(300);}
@@ -5305,7 +5319,7 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px">'+d3.g+' '+d3.nm+(s2.lv>1?' <b style="color:#e3b341">L'+s2.lv+'</b>':'')+' ×'+arr.length
    +(arr.length>=3&&s2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+s2.k+'&#39;,'+s2.lv+')">⚙합성</a>':'')
    +' <a style="color:#7a8694;cursor:pointer" onclick="window.__v2.rm(&#39;'+s2.k+'&#39;,'+s2.lv+')">제거3닢</a></span>';}
- h+='</div><div style="color:#5d6875;margin-top:4px">풀 '+S.symDeck.length+'개 · 순도가 높을수록 잘 터진다 · 장치는 와일드 — 줄을 완성시키되 한 레버에 한 번 거든다 · 줄 = 가로·세로·대각 3연속</div>';
+ h+='</div><div style="color:#5d6875;margin-top:4px">풀 '+S.symDeck.length+'개 · 순도가 높을수록 잘 터진다 · 장치는 와일드 — 줄을 완성시키되 한 레버에 한 번 거든다 · 당첨 = 9개 페이라인 위 왼쪽부터 3연속+ (4연속 ×2 · 5연속 ×4)</div>';
  p.innerHTML=h;
 }
 window.__v2={
@@ -5323,10 +5337,11 @@ window.__v2={
   var pool=[];poolSpec.split(',').forEach(function(kv){var pp=kv.trim().split(':');var kk=pp[0],lv=1;
    if(kk.indexOf('@')>=0){var qq=kk.split('@');kk=qq[0];lv=parseInt(qq[1],10);}
    for(var m=0;m<parseInt(pp[1],10);m++)pool.push({k:kk,lv:lv,stacks:0});});
-  var eyes=[];for(var e2=0;e2<eyeN;e2++)eyes.push(e2*BCOLS%CELLS_N+((e2/3)|0));
+  /* 눈은 트라이얼마다 무작위 산포 (열 몰림 병리 방지) */
   var seed=(seed0||12345),rng=function(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x80000000;};
   var tot=0,tot2=0,ch=0,mx=0,sums=[];sumK=sumK||1;
   for(var t2=0;t2<n;t2++){var sum=0;
+   var eyes=[];while(eyes.length<eyeN){var cnd=(rng()*CELLS_N)|0;if(eyes.indexOf(cnd)<0)eyes.push(cnd);}
    for(var kk2=0;kk2<sumK;kk2++){var ey=eyes.slice();
     var R=resolveLever(pool,ey,rng,{eyeKeep:!!(arguments.length>5&&arguments[5])});
     var pw=R.totalBase*R.m1*R.coreM;
