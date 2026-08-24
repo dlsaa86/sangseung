@@ -13,17 +13,3 @@ MEASURE_NOTE,Fixture_p30은 게임 엔진 내장 MC(__v2.simLever)로 측정 —
 DESIGN_DEBT,도구 부품 10종(D-12 폐기: 각인 인두·재추첨·봉인) 부활 여부 · 승객 도구 지급(광부·청소부·검역관) 미배선 — 소각로/눈꺼풀 중복은 해소(2026-08-24),debt,다음 패스 목록
 DESCENT_MODE,10층 클리어 후 하강 2막 (예약),descent,옛 하강/문 계열·DESC_DEALS 슬롯 — 설계 보류
 BPI_NOTE,Min_Expected_Mult는 정적 눈 기준,anchor,강설·무게 인상분 제외 — 실효 목표는 시뮬로 검증
-START_DECK,SYM_BASE_001 x5 + SYM_MULT_001 x1,economy,시작 덱 (15W/턴)
-START_GOLD,10,economy,시작 골드
-GOLD_PER_TURN,4,economy,턴당 골드 수입
-CLEAR_BONUS,5+2*Stage_ID,economy,층 클리어 보너스
-INTEREST,보유 10G당 +1 (최대 +5),economy,층 클리어 시 이자
-SHOP_SLOTS,3,economy,상점 슬롯 수
-REROLL_COST,1,economy,상점 새로고침 비용
-REMOVE_COST,3,economy,심볼 제거 서비스 비용 (덱 압축 수단)
-SHOP_RATIO_EARLY_MID,기초70:배율30,economy,1~6층 등장 가중치 비율 (Weight 열 합계로 검증)
-COUNTER_GATE,다음 층 Snow_Count>0일 때만 등장,economy,카운터 심볼 등장 조건
-CALC_ORDER,기초합→1차합연산→2차곱연산,calc,[동결] 한 턴 전력 = ΣBase x (1+ΣAdd) x ΠMul
-CALC_SNOW_ORDER,보너스 적용 후 페널티 적용,calc,기초값+조건보너스 계산 후 눈 페널티 차감(하한 0)
-CORE_EVAL,페널티 반영된 최종 기초합 기준,calc,융합 코어 임계(12W) 판정 시점
-LEGACY_NOTE,START_DECK~CORE_EVAL 행은 구코어(RULESET 2.0) 유물 — 라이브 기준은 상단 *_3 행과 1·2탭,meta,행 삭제는 설계자 판단 대기
