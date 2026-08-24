@@ -1,11 +1,15 @@
 ID,Name,Type,Tags,BaseValue,AuxValue,MultValue,MultType,TriggerCondition,Rarity,Price,MaxCopies,LevelScale,Weight_Early,Weight_Mid,Weight_Late,Enabled,Desc
-SYM_BASE_001,소형 배터리,Base,GEN|BATTERY,2,0,0,NONE,ALWAYS,Common,3,0,MULT2,30,20,10,TRUE,매 턴 2W를 생산하는 표준 기준 심볼
-SYM_BASE_002,태양광 패널,Base,GEN|SOLAR,2,1,0,NONE,PER:ADJ(EMPTY)<=2,Common,4,6,MULT2,20,15,8,TRUE,인접 빈 칸 1개당 +1W (최대 +2W). 보드가 비어있을수록 강함
-SYM_BASE_003,석탄 발전기,Base,GEN|BURN,7,0,0,NONE,CHARGES:3,Uncommon,5,3,MULT2,12,10,5,TRUE,3회 발동 후 소멸하는 고출력 발전기. 자동 덱 압축
-SYM_MULT_001,축전 커패시터,Mult,CIRCUIT,0,0,0.5,Add,ALWAYS,Common,4,6,MULT2,12,8,12,TRUE,무조건 1차 배율 +0.5x. 위치 무관
-SYM_MULT_002,변압기,Mult,CIRCUIT,0,0,0.3,Add,PER:ADJ(TAG:GEN),Uncommon,6,6,MULT2,8,6,14,TRUE,인접 발전(GEN) 심볼 1개당 +0.3x. 배치 시너지의 핵심
-SYM_MULT_003,증폭 안테나,Mult,CIRCUIT|ANTENNA,0,0.5,0.2,Add,UPGRADE:COUNT(TAG:ANTENNA)>=3,Uncommon,5,6,MULT2,6,4,12,TRUE,+0.2x. 보드 위 안테나 레벨 합 3 이상이면 +0.5x로 강화
-SYM_MULT_004,융합 코어,Mult,CORE,0,0,2.0,Mul,IF:SUM(BASE)>=12,Rare,12,4,ADD05,2,2,10,TRUE,보드 기초 전력 합 12W 이상일 때 총 전력 x2.0 (레벨당 +0.5x)
-SYM_CNT_001,열선 발전기,Counter,GEN|HEAT,1,2.5,0,NONE,PER:ADJ(SNOW),Uncommon,7,6,MULT2,4,8,12,TRUE,인접 눈 1개당 +2.5W. 눈 페널티 면역. 눈을 연료로 쓴다
-SYM_CNT_002,제설차,Counter,MACHINE,1,0,0,NONE,TURNEND:REMOVE_SNOW(LV),Uncommon,6,2,MULT2,3,7,10,TRUE,턴 종료 시 눈을 레벨 수만큼 제거 (해당 층 한정). 유효 슬롯 확장
-SYM_CNT_003,재활용 압축기,Counter,MACHINE,1,2,0,NONE,TURNEND:CONSUME(ADJ_MIN_GEN),Rare,8,2,MULT2,3,6,8,TRUE,턴 종료 시 인접 최저가치 GEN 1개를 파괴하고 영구 +2W (덱 압축+성장)
+SYM_F_001,어금니,Flesh,GEN|PERI,1,0,0,NONE,LINE_MATCH,Common,2,0,MULT2,30,16,8,TRUE,말초. 가장 흔하고 가장 싸다
+SYM_F_002,뼈,Flesh,GEN|PERI,2,0,0,NONE,LINE_MATCH,Common,3,0,MULT2,20,14,8,TRUE,말초. 어금니보다 굵다
+SYM_F_003,귀,Flesh,GEN|PERI,3,0,0,NONE,LINE_MATCH,Common,3,0,MULT2,10,12,8,TRUE,말초. 소리를 듣던 것
+SYM_F_004,혀,Flesh,GEN|PERI,4,0,0,NONE,LINE_MATCH,Uncommon,4,0,MULT2,6,10,8,TRUE,말초 중 가장 값진 것
+SYM_F_005,심장,Flesh,GEN|ORGAN,6,0,0,NONE,LINE_MATCH,Uncommon,6,0,MULT2,3,8,10,TRUE,장기. 크게 터진다
+SYM_F_006,뇌,Flesh,GEN|ORGAN,9,0,0,NONE,LINE_MATCH,Rare,8,0,MULT2,1,4,8,TRUE,장기. 더 크게 터진다
+SYM_F_007,폐,Flesh,GEN|ORGAN,13,0,0,NONE,LINE_MATCH,Rare,10,0,MULT2,0,2,6,TRUE,장기. 가장 크게 터진다
+SYM_D_001,축전지,DeviceBadge,DEV,0,0,0.5,Add,BADGE:HIT_ONCE,Common,4,0,MULT2,8,8,8,TRUE,당첨 줄에 붙어 발동 시 레버 배율 +0.5x (레버당 1회)
+SYM_D_002,변압기,DeviceBadge,DEV,0,0,1.3,LineMul,BADGE:PER_LINE,Uncommon,6,0,MULT2,4,6,8,TRUE,붙은 줄을 x1.3 — 위치 효과라 줄마다 적용
+SYM_D_003,안테나,DeviceBadge,DEV,0,0.5,0.2,Add,BADGE:SET>=2,Uncommon,5,0,MULT2,3,5,7,TRUE,+0.2x · 같은 레버에 안테나 발동 2개+면 +0.5x
+SYM_D_004,융합 코어,DeviceBadge,DEV,0,0,2.0,Mul,BADGE:IF_SUM>=12,Rare,12,0,ADD05,1,2,5,TRUE,폭발합 12W+ 이면 총 전력 x2 (레벨당 +0.5·레버당 1회)
+SYM_D_005,소각로,DeviceBadge,DEV|EYE,0,0,0,NONE,BADGE:BURN_EYE_1,Uncommon,7,0,MULT2,2,5,7,TRUE,발동 시 눈 1개 소각 (주의: 눈꺼풀과 기능 중복 — 재설계 후보)
+SYM_D_006,눈꺼풀,DeviceBadge,DEV|EYE,0,0,0,NONE,BADGE:CLOSE_EYE_LV,Uncommon,6,0,MULT2,2,4,6,TRUE,발동 시 눈을 레벨 수만큼 감긴다
+SYM_D_007,분쇄기,DeviceBadge,DEV,0,2,0,NONE,BADGE:EAT_LOWEST,Rare,8,0,MULT2,1,3,5,TRUE,발동 시 풀 최저 문양 포식·이후 그 줄에 영구 +2W/스택
