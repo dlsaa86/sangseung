@@ -3157,6 +3157,17 @@ function render(){
  $('luckNeedle').style.transform='rotate('+(-90+lk*20)+'deg)';
  $('luckSrc').textContent='운 '+lk+((S.pend&&S.pend.ovLuck)?' · 과부하 +'+S.pend.ovLuck:'');
  /* 심볼값 라벨판 (프로필 가변) */
+ if(DIAL.coreV2&&S.symDeck){ /* coreB: 릴 풀 지분이 곧 칸당 추첨 확률 — 구엔진 가중치 표는 여기서 거짓이라 교체 */
+  const _pn={},_pl=S.symDeck.length||1;
+  for(const _e of S.symDeck)_pn[_e.k]=(_pn[_e.k]||0)+1;
+  const _ks=Object.keys(_pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
+  const _mx2=Math.max(...Object.values(_pn),1);
+  let _lh=_ks.map(k=>'<span class="sym" title="'+(100*_pn[k]/_pl).toFixed(1)+'% — 풀 '+_pn[k]+'/'+_pl+'">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><i class="wtr"><i class="wbar" style="width:'+Math.max(6,Math.round(_pn[k]/_mx2*100))+'%"></i></i><span class="wpct">'+Math.round(100*_pn[k]/_pl)+'%</span></span>').join('');
+  const _pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
+  _lh+='<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="레버당 눈 출현 확률 — 정차가 깊을수록 오른다"><b style="color:#c96a5f">눈</b><span class="wpct eye">'+Math.round(_pE*100)+'%</span></span>';
+  if((S.devList||[]).length)_lh+='<span class="sym" title="장치 뱃지 — 레버마다 장치당 35%로 심볼에 붙고, 당첨 줄에 들면 발동(레버당 1회·변압기만 줄마다)">🧲<span class="wpct bell">뱃지 35%×'+S.devList.length+'</span></span>';
+  const lp0=$('labelPlate');if(lp0.__h!==_lh){lp0.innerHTML=_lh;lp0.__h=_lh;}
+ }else{
  const _ord=LINE_SYMS.slice().sort((a,b)=>valTable()[a]-valTable()[b]);
  /* v9: 확률 막대 — 값 옆에 지금 이 순간의 뽑힘 가중치를 상시로 깐다.
     막대는 최대 가중치 대비 상대폭(값↔확률 트레이드오프가 한눈에), 정확한 %는 title·확률판.
@@ -3170,7 +3181,7 @@ function render(){
    +((_ws[3]||0)>0?'<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="눈 출현 '+(_ws[3]/_tot*100).toFixed(1)+'% — 머무를수록 오른다"><b style="color:#c96a5f">눈</b>'+_bar(_ws[3],'eye')+'</span>':'')
    +((_ws[8]||0)>0?'<span class="sym" title="벨 '+(_ws[8]/_tot*100).toFixed(1)+'%">🔔'+_bar(_ws[8],'bell')+'</span>':'')
    +('<span class="sym" title="벨 뱃지 — 매 레버 각 심볼 칸에 붙을 확률. 터지면 게이지 +1(레버 한 번당 1)">🔔<span class="wpct bell">뱃지 '+Math.round(Math.max(0,((DIAL.badgeRate===undefined?0.08:DIAL.badgeRate)+(mods(S).badgeAdd||0)))*100)+'%</span></span>');
- const lp=$('labelPlate');if(lp.__h!==lpHtml){lp.innerHTML=lpHtml;lp.__h=lpHtml;}}
+ const lp=$('labelPlate');if(lp.__h!==lpHtml){lp.innerHTML=lpHtml;lp.__h=lpHtml;}}}
  /* D-12: 도구 랙 삭제 — 렌더 없음 */
  /* ══ v12.8 목표 층 (설계자 지시: "이번 턴에 몇 층으로 가야하는지 명확하게 보여야") ══
     capRatio=0이면 tryConfirm의 래치가 항상 걸려 점프는 정확히 상한이다 → 목표 층은 확정값.
@@ -4716,6 +4727,29 @@ function patternBookHTML(){
 function openBag(){
  if(!S){openPanel('<h2>확률판</h2><p>탑승 후 열린다.</p>');return;}
  if(MET.cur)MET.cur.bag++;
+ if(DIAL.coreV2&&S.symDeck){ /* coreB 확률판 — 숨김 없음, 측정은 게임 엔진 그대로 */
+  const pn={},pl=S.symDeck.length||1,lvN={},brN={};
+  for(const e of S.symDeck){pn[e.k]=(pn[e.k]||0)+1;if((e.lv||1)>1)lvN[e.k]=(lvN[e.k]||0)+1;if(e.brandW)brN[e.k]=(brN[e.k]||0)+e.brandW;}
+  const ks=Object.keys(pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
+  let rows=ks.map(k=>'<tr><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+(lvN[k]?' <b style="color:#e3b341">합성'+lvN[k]+'</b>':'')+(brN[k]?' <b style="color:#e08b4a">새김+'+brN[k]+'W</b>':'')+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>'+pn[k]+'/'+pl+'</td><td>'+(100*pn[k]/pl).toFixed(1)+'%</td></tr>').join('');
+  let devH=(S.devList||[]).map(d=>'<b>'+(window.__v2G[d.k]||'')+' '+(window.__v2NM[d.k]||d.k)+(d.lv>1?' L'+d.lv:'')+'</b>').join(' · ')||'없음';
+  const pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
+  /* 완성형 실측 — 지금 풀·지금 눈 그대로 400레버 (게임과 같은 함수) */
+  let zigTxt='—';
+  try{const spec=Object.keys(pn).map(k=>{const byLv={};S.symDeck.filter(e=>e.k===k).forEach(e=>{const L=e.lv||1;byLv[L]=(byLv[L]||0)+1;});
+    return Object.keys(byLv).map(L=>((L>1)?(k+'@'+L):k)+':'+byLv[L]).join(',');}).join(',');
+   const mR=window.__v2.simLever(spec,S.eyes.length,400,(Date.now()%100000)|1,1,false,'',0);
+   zigTxt='완성형 잭팟 ~'+mR.pZig+'%/레버 · 평균 '+mR.ev+'W · 최대 '+mR.max+'W';}catch(e2){}
+  openPanel('<h2>확률판 — 릴 풀 조회 (숨김 없음)</h2>'
+  +'<p style="font-size:11.5px;color:#7f8b98">칸마다 풀에서 하나씩 뽑는다 — 지분이 곧 확률이다. 순도를 올리면 줄이 잘 서고, 완성형(꺾인 줄 5칸)이 잭팟이다.</p>'
+  +'<table class="tb"><tr><th>문양</th><th>기본값</th><th>풀</th><th>칸당 확률</th></tr>'+rows+'</table>'
+  +'<p style="font-size:12px"><b>지금 풀 실측</b> — '+zigTxt+'</p>'
+  +'<h3>장치 (뱃지)</h3><p style="font-size:12px">'+devH+'<br><span style="color:#7f8b98">레버마다 장치당 35%로 심볼에 붙는다. 붙은 심볼이 당첨 줄에 들면 발동 — 레버당 1회, 변압기만 줄마다.</span></p>'
+  +'<h3>눈</h3><p style="font-size:12px">레버당 출현 '+Math.round(pE*100)+'% (정차가 깊을수록 오른다) · 눈 배수 기저 ×'+fmt2(eyeMultBase(S))+' (상한 ×3) · 당첨 줄에 붙은 눈은 갈린다 — 눈 배수 1.5+ 빌드는 면제</p>'
+  +'<h3>운 — 규칙 공개 (항상 유리한 방향으로만)</h3><p style="font-size:11.5px">첫 정차는 레버 3·5번째에 운 4를 보장한다(온보딩). 이후엔 전량 미스가 3연속 쌓일 때만 +1씩(최대 +4), 줄이 서면 초기화. 상시 운은 부품·승객·인터폰 거래가 준다. 운 1점 = 20% 확률로 뽑힌 문양 하나를 줄이 되는 자리에 앉힌다.</p>'
+  +'<h3>동전</h3><p style="font-size:12px">당첨 레버 +1닢 · 출발 때 남긴 레버 누진(1·2·3·5·8닢) · 초과 전력 거스름/환전은 출발 정산에서</p>'
+  +'<h3>보유 부품 '+partCount(S)+'/'+((DIAL.holdCap===undefined?6:DIAL.holdCap))+'</h3><p style="font-size:11.5px">'+(PARTS.filter(p=>S.parts[p.id]).map(p=>'<b>'+p.nm+'</b> — '+p.fx).join('<br>')||'없음')+'</p>');
+  return;}
  const wsA=symWeights(S);
  const NM4=['어금니','뼈','심장','눈','귀','뇌','혀','폐','벨'];
  const order=LINE_SYMS.slice().sort((a,b)=>valTable()[a]-valTable()[b]).concat([3,8]);
@@ -5213,6 +5247,7 @@ doSpin=function(S){
  else{S.tickets=(S.tickets||0)+(hasP(S,'gamb')?1:0)+(mods(S).onBlankTick||0);}
  S.stat.eyesPeak=Math.max(S.stat.eyesPeak,S.eyes.length);
  S.pend={power:power,formed:[],toolCells:[],luckCells:[],sealedCells:[],pats:[],
+  luckUsed:_lk2.total,ovLuck:_lk2.ov,
   eyeN:S.eyes.length,badges:[],bellN:0,goneEyes:goneEyes,
   v2:{base:R.totalBase,m1:R.m1,m2:R.coreM,coreOn:R.coreOn,chain:0,bursts:R.bursts,
       eyePow:eyePow,events:R.events,badges:R.badges,lineMulAll:R.lineMulAll,grinds:R.grinds}};
@@ -5295,7 +5330,7 @@ renderBoard=function(){
    +' = <b class="tot">'+S.pend.power+'W</b>';
   var lc=document.getElementById('lineCountV');if(lc)lc.textContent=S._v2synSum||0;
  }else rd.textContent='레버 = 전 칸 추첨 → 줄 지불 → 판은 그대로 (꽝은 정직한 꽝)';
- var bag=document.getElementById('btnBag');if(bag)bag.style.display='none';
+ var bag=document.getElementById('btnBag');if(bag)bag.style.display=''; /* §3-⑤ 확률판 부활 — coreB 내용으로 교체됨 */
 };
 /* ── 연쇄 리플레이 연출 ── */
 var _rjV1=revealJudge;
@@ -5486,6 +5521,7 @@ window.__v2={
    p15:q(0.15),p30:q(0.30),p45:q(0.45),p60:q(0.60),med:q(0.5)};}
 };
 window.__v2G={TOOTH:'🦷',BONE:'🦴',EAR:'👂',TONGUE:'👅',HEART:'🫀',BRAIN:'🧠',LUNG:'🫁',CAP:'🧲',TRANS:'⚡',AMP:'📡',CORE:'💠',FURN:'♨️',LID:'🫦',GRIND:'⚙️'};
+window.__v2NM={TOOTH:'어금니',BONE:'뼈',EAR:'귀',TONGUE:'혀',HEART:'심장',BRAIN:'뇌',LUNG:'폐',CAP:'축전지',TRANS:'변압기',AMP:'안테나',CORE:'융합 코어',FURN:'소각로',LID:'눈꺼풀',GRIND:'분쇄기'};
 var _renderV1=render;
 render=function(){var r=_renderV1.apply(this,arguments);try{renderV2Shop();}catch(e){}return r;};
 })();
