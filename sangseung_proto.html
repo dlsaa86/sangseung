@@ -3157,15 +3157,18 @@ function render(){
  $('luckNeedle').style.transform='rotate('+(-90+lk*20)+'deg)';
  $('luckSrc').textContent='운 '+lk+((S.pend&&S.pend.ovLuck)?' · 과부하 +'+S.pend.ovLuck:'');
  /* 심볼값 라벨판 (프로필 가변) */
+ if(DIAL.coreV2&&!S.symDeck&&window.__v2&&window.__v2._ensure)window.__v2._ensure(); /* 첫 레버 전에도 coreB 패널 */
  if(DIAL.coreV2&&S.symDeck){ /* coreB: 풀 지분 × 아이템 가중 = 칸당 실제 추첨 확률 */
   const _pn={},_pl=S.symDeck.length||1;
   for(const _e of S.symDeck)_pn[_e.k]=(_pn[_e.k]||0)+1;
   const _wm=(window.__v2&&window.__v2.drawW)?window.__v2.drawW():{};
   const _eff={};let _effT=0;
   for(const _k in _pn){_eff[_k]=_pn[_k]*(_wm[_k]||1);_effT+=_eff[_k];}
-  const _ks=Object.keys(_pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
+  const _ks=Object.keys(V2FLESHV).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0)); /* 7종 사다리 상시 공개 — 설계자 지시 2026-08-25 */
   const _mx2=Math.max(...Object.values(_eff),0.001);
-  let _lh=_ks.map(k=>'<span class="sym" title="'+(100*_eff[k]/_effT).toFixed(1)+'% — 풀 '+_pn[k]+'/'+_pl+((_wm[k]||1)!==1?' · 아이템 가중 ×'+(_wm[k]).toFixed(2):'')+'">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><i class="wtr"><i class="wbar" style="width:'+Math.max(6,Math.round(_eff[k]/_mx2*100))+'%"></i></i><span class="wpct">'+Math.round(100*_eff[k]/_effT)+'%</span></span>').join('');
+  let _lh=_ks.map(k=>{
+   if(!_pn[k])return '<span class="sym" style="opacity:.38" title="아직 풀에 없다 — 상점에서 사면 릴에 들어온다">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><span class="wpct">0%</span></span>';
+   return '<span class="sym" title="'+(100*_eff[k]/_effT).toFixed(1)+'% — 풀 '+_pn[k]+'/'+_pl+((_wm[k]||1)!==1?' · 아이템 가중 ×'+(_wm[k]).toFixed(2):'')+'">'+(window.__v2G[k]||'?')+' <b>'+(V2FLESHV[k]||0)+'</b><i class="wtr"><i class="wbar" style="width:'+Math.max(6,Math.round(_eff[k]/_mx2*100))+'%"></i></i><span class="wpct">'+Math.round(100*_eff[k]/_effT)+'%</span></span>';}).join('');
   if((S.v2swapLeft||0)>0)_lh='<b style="color:#c9a6ff">🔀'+S.v2swapLeft+'</b>'+_lh;
   const _pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
   _lh+='<span style="color:#39424d;margin:0 3px">│</span><span class="sym" title="레버당 눈 출현 확률 — 정차가 깊을수록 오른다"><b style="color:#c96a5f">눈</b><span class="wpct eye">'+Math.round(_pE*100)+'%</span></span>';
@@ -4731,14 +4734,17 @@ function patternBookHTML(){
 function openBag(){
  if(!S){openPanel('<h2>확률판</h2><p>탑승 후 열린다.</p>');return;}
  if(MET.cur)MET.cur.bag++;
+ if(DIAL.coreV2&&!S.symDeck&&window.__v2&&window.__v2._ensure)window.__v2._ensure();
  if(DIAL.coreV2&&S.symDeck){ /* coreB 확률판 — 숨김 없음, 측정은 게임 엔진 그대로 */
   const pn={},pl=S.symDeck.length||1,lvN={},brN={};
   for(const e of S.symDeck){pn[e.k]=(pn[e.k]||0)+1;if((e.lv||1)>1)lvN[e.k]=(lvN[e.k]||0)+1;if(e.brandW)brN[e.k]=(brN[e.k]||0)+e.brandW;}
   const wm2=(window.__v2&&window.__v2.drawW)?window.__v2.drawW():{};
   const effN={};let effT2=0;
   for(const k3 in pn){effN[k3]=pn[k3]*(wm2[k3]||1);effT2+=effN[k3];}
-  const ks=Object.keys(pn).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0));
-  let rows=ks.map(k=>'<tr><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+(lvN[k]?' <b style="color:#e3b341">합성'+lvN[k]+'</b>':'')+(brN[k]?' <b style="color:#e08b4a">새김+'+brN[k]+'W</b>':'')+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>'+pn[k]+'/'+pl+((wm2[k]||1)!==1?' <b style="color:#c9a6ff">×'+(wm2[k]).toFixed(2)+'</b>':'')+'</td><td>'+(100*effN[k]/effT2).toFixed(1)+'%</td></tr>').join('');
+  const ks=Object.keys(V2FLESHV).sort((a,b)=>(V2FLESHV[a]||0)-(V2FLESHV[b]||0)); /* 7종 사다리 전체 — 미보유는 흐리게 */
+  let rows=ks.map(k=>{
+   if(!pn[k])return '<tr style="opacity:.4"><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>0/'+pl+'</td><td>0% — 상점에서</td></tr>';
+   return '<tr><td>'+(window.__v2G[k]||'')+' '+(window.__v2NM[k]||k)+(lvN[k]?' <b style="color:#e3b341">합성'+lvN[k]+'</b>':'')+(brN[k]?' <b style="color:#e08b4a">새김+'+brN[k]+'W</b>':'')+'</td><td>'+(V2FLESHV[k]||0)+'W</td><td>'+pn[k]+'/'+pl+((wm2[k]||1)!==1?' <b style="color:#c9a6ff">×'+(wm2[k]).toFixed(2)+'</b>':'')+'</td><td>'+(100*effN[k]/effT2).toFixed(1)+'%</td></tr>';}).join('');
   const vi3=(window.__v2&&window.__v2.items)?window.__v2.items():null;
   let itemH='';
   if(vi3){const own=[];
@@ -5656,6 +5662,7 @@ window.__v2={
  _S:function(){return S;},
  drawW:function(){return v2DrawW(S);},
  _rollItems:function(){rollItemShop(S);return S.itemShop;},
+ _ensure:function(){try{ensurePool(S);}catch(e){}},
  items:function(){return {list:V2ITEMS,st:v2Items(S)};},
  _resolve:function(pool,eyes,rng,opt){return resolveLever(pool,eyes,rng,opt);},
  _cell:function(k){return{v2:1,k:k,lv:1};},
