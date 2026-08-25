@@ -5087,13 +5087,13 @@ function v2DrawW(S){ /* 문양별 실효 가중 — 아이템 스택(×1.4^n) + 
   if(hi&&lo&&hi!==lo){var whi=m[hi],wlo=m[lo];
    m[hi]=cnt[lo]*wlo/Math.max(1,cnt[hi]);m[lo]=cnt[hi]*whi/Math.max(1,cnt[lo]);}}
  return m;}
-var V2T=[60,100,120,320,600,620,640,680,1100,1300]; /* 최종: 직선 기본+완성형 잭팟, 뱃지 1회 발동 수정 반영 — MC, 2026-08-24 */
+var V2T=[12,18,26,55,100,120,150,160,175,200]; /* 재보정 2026-08-25: 7종 시작 풀(설계자 확정) + 레버 탱크 5 기준 — 모노 순도 픽스처 p30 사다리 [16,22,33,64,121,137,174,106,204,62]의 0.8~0.95배, 최종은 시험 */
 var V2TURNS=[5,5,5,6,6,6,7,7,8,8];
 function adjOf(i){var C=BCOLS,r=(i/C)|0,c=i%C,a=[];if(r>0)a.push(i-C);if(r<2)a.push(i+C);if(c>0)a.push(i-1);if(c<C-1)a.push(i+1);return a;}
 function sc2(lv){return Math.pow(2,(lv||1)-1);}
 function symValB(cell){var d=SYMB[cell.k];var v=(d.val||0)*sc2(cell.lv);if(cell.ref&&cell.ref.stacks)v+=2*cell.ref.stacks;if(cell.ref&&cell.ref.brandW)v+=cell.ref.brandW;return v;}
 function mkP(k,lv){return{k:k,lv:lv||1,stacks:0};}
-function ensurePool(S){if(!S.symDeck)S.symDeck=[mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('EAR'),mkP('EAR'),mkP('EAR')];if(!S.devList)S.devList=[mkP('CAP')];}
+function ensurePool(S){if(!S.symDeck)S.symDeck=[mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('TOOTH'),mkP('BONE'),mkP('BONE'),mkP('BONE'),mkP('EAR'),mkP('EAR'),mkP('TONGUE'),mkP('HEART'),mkP('BRAIN'),mkP('LUNG')];if(!S.devList)S.devList=[mkP('CAP')];} /* 설계자 확정 2026-08-25: 처음부터 7종 — 어금니4·뼈3·귀2·혀1·심장1·뇌1·폐1 (13) */
 /* ── 요구량/레버 수 (곡선은 측정 후 갱신) ── */
 var _reqV1=reqOfStop;
 reqOfStop=function(k,f,pd){if(!DIAL.coreV2)return _reqV1(k,f,pd);
@@ -5666,7 +5666,8 @@ window.__v2={
  items:function(){return {list:V2ITEMS,st:v2Items(S)};},
  _resolve:function(pool,eyes,rng,opt){return resolveLever(pool,eyes,rng,opt);},
  _cell:function(k){return{v2:1,k:k,lv:1};},
- simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec,luckN){
+ simLever:function(poolSpec,eyeN,n,seed0,sumK,eyeKeepArg,devSpec,luckN,wSpec){
+  var wMap=null;if(wSpec){wMap={};wSpec.split(',').forEach(function(kv){var pp0=kv.trim().split(':');wMap[pp0[0]]=parseFloat(pp0[1])||1;});}
   var devs=[];if(devSpec)devSpec.split(',').forEach(function(kv){var pp=kv.trim().split(':');var kk=pp[0],lv=1;
    if(kk.indexOf('@')>=0){var qq=kk.split('@');kk=qq[0];lv=parseInt(qq[1],10);}
    for(var m=0;m<parseInt(pp[1],10);m++)devs.push({k:kk,lv:lv,stacks:0});});
@@ -5679,7 +5680,7 @@ window.__v2={
   for(var t2=0;t2<n;t2++){var sum=0;
    var eyes=[];while(eyes.length<eyeN){var cnd=(rng()*CELLS_N)|0;if(eyes.indexOf(cnd)<0)eyes.push(cnd);}
    for(var kk2=0;kk2<sumK;kk2++){var ey=eyes.slice();
-    var R=resolveLever(pool,ey,rng,{eyeKeep:!!eyeKeepArg,devices:devs,luck:luckN||0});
+    var R=resolveLever(pool,ey,rng,{eyeKeep:!!eyeKeepArg,devices:devs,luck:luckN||0,drawW:wMap});
     var pw=R.totalBase*(R.lineMulAll||1)*R.m1*R.coreM;
     levN++;var zh=0;for(var ze=0;ze<R.events.length;ze++)if(R.events[ze].zig){zh++;zigValSum+=R.events[ze].val;}
     if(zh>0)zigLev++;zigTot+=zh;
