@@ -4743,7 +4743,7 @@ function openBag(){
   let itemH='';
   if(vi3){const own=[];
    for(const it3 of vi3.list){if(it3.tier!=='a'&&vi3.st.stacks[it3.id])own.push(it3.g+' '+it3.nm+(vi3.st.stacks[it3.id]>1?' ×'+vi3.st.stacks[it3.id]:''));}
-   for(const a3 of vi3.st.actives){const d4=vi3.list.find(x=>x.id===a3.id);if(d4)own.push(d4.g+' '+d4.nm+' (충전 '+(a3.chg||0)+')');}
+   for(const a3 of vi3.st.actives){const d4=vi3.list.find(x=>x.id===a3.id);if(d4)own.push(d4.g+' '+d4.nm+' (충전 '+(a3.chg||0)+'/'+(a3.maxChg||2)+')');}
    itemH='<h3>아이템</h3><p style="font-size:12px">'+(own.join(' · ')||'없음')+((S.v2swapLeft||0)>0?' · <b style="color:#c9a6ff">🔀 반전 '+S.v2swapLeft+'레버 남음</b>':'')+'<br><span style="color:#7f8b98">일반은 무한 스택(가중 ×1.4^n) · 가중 아이템은 살수록 상점 매물이 ×0.55로 귀해진다 · 유일은 하나뿐 · 액티브 2칸(도착마다 충전 +1)</span></p>';}
   let devH=(S.devList||[]).map(d=>'<b>'+(window.__v2G[d.k]||'')+' '+(window.__v2NM[d.k]||d.k)+(d.lv>1?' L'+d.lv:'')+'</b>').join(' · ')||'없음';
   const pE=Math.max(0,Math.min(0.6,(0.08+0.02*Math.max(0,S.stopIdx-3))+((mods(S).eyeW||0))*0.5));
@@ -5553,7 +5553,8 @@ function renderV2Shop(){
  if(S._v2shopStop!==S.stopIdx){S._v2shopStop=S.stopIdx;S._levBuyN=0;rollSymShop(S);rollItemShop(S);
   var _vi=v2Items(S);
   for(var _ai=0;_ai<_vi.actives.length;_ai++){var _ad=V2ITEMS.find(function(x){return x.id===_vi.actives[_ai].id;});
-   _vi.actives[_ai].chg=Math.min((_ad&&_ad.chg)||2,(_vi.actives[_ai].chg||0)+1);}
+   var _amx=_vi.actives[_ai].maxChg||((_ad&&_ad.chg)||2);
+   _vi.actives[_ai].chg=Math.min(_amx,(_vi.actives[_ai].chg||0)+1);}
   }
  var p=v2Panel();p.style.display='';
  var grp={};
@@ -5578,20 +5579,21 @@ function renderV2Shop(){
   h+='<span style="border:1px solid #2a3542;border-radius:6px;padding:2px 7px;margin-right:4px">'+dd.g+' '+dd.nm+(ds2.lv>1?' <b style="color:#e3b341">L'+ds2.lv+'</b>':'')+' ×'+darr.length
    +(darr.length>=3&&ds2.lv<3?' <a style="color:#e3b341;cursor:pointer" onclick="window.__v2.merge(&#39;'+ds2.k+'&#39;,'+ds2.lv+')">⚙합성</a>':'')
    +'</span>';}
- h+='</div><div style="margin-top:5px"><b style="color:#c9a6ff">아이템</b> <span style="color:#6d7885">— 일반은 무한 스택 · 가중 아이템은 살수록 매물이 귀해진다 · 유일은 하나뿐 · 액티브는 2칸</span><br>';
+ h+='</div><div style="margin-top:5px"><b style="color:#c9a6ff">아이템</b> <span style="color:#6d7885">— 일반은 무한 스택 · 가중 아이템은 살수록 매물이 귀해진다 · 유일은 하나뿐 · 액티브는 2칸, 중복 구매 = 충전 업그레이드</span><br>';
  var _st2=v2Items(S).stacks,_ac2=v2Items(S).actives;
  var _ofs=(S.itemShop||[]);
  for(var _oi=0;_oi<_ofs.length;_oi++){var _it2=V2ITEMS.find(function(x){return x.id===_ofs[_oi];});
   if(!_it2)continue;
   var _afford=S.tickets>=_it2.cost;
-  h+='<span style="border:1px solid '+(_it2.tier==='u'?'#7a5fa8':_it2.tier==='a'?'#5f7aa8':'#3a4553')+';border-radius:6px;padding:2px 7px;margin-right:4px" title="'+_it2.fx+'">'+_it2.g+' '+_it2.nm+' <b>'+_it2.cost+'닢</b> '
-   +(_afford?'<a style="color:#8fce6e;cursor:pointer" onclick="window.__v2.buyItem(&#39;'+_it2.id+'&#39;)">구매</a>':'<span style="color:#5d6875">동전 부족</span>')+'</span>';}
+  var _isOwnedA=_it2.tier==='a'&&(v2Items(S).actives||[]).some(function(x){return x.id===_it2.id;});
+  h+='<span style="border:1px solid '+(_it2.tier==='u'?'#7a5fa8':_it2.tier==='a'?'#5f7aa8':'#3a4553')+';border-radius:6px;padding:2px 7px;margin-right:4px" title="'+_it2.fx+(_it2.tier==='a'?' · 중복 구매 = 충전 상한 +1 (최대 4)':'')+'">'+_it2.g+' '+_it2.nm+' <b>'+_it2.cost+'닢</b> '
+   +(_afford?'<a style="color:#8fce6e;cursor:pointer" onclick="window.__v2.buyItem(&#39;'+_it2.id+'&#39;)">'+(_isOwnedA?'⬆업그레이드':'구매')+'</a>':'<span style="color:#5d6875">동전 부족</span>')+'</span>';}
  if(!_ofs.length)h+='<span style="color:#5d6875">매물 없음</span>';
  var _ownH=[];
  for(var _ii=0;_ii<V2ITEMS.length;_ii++){var _iw=V2ITEMS[_ii];
   if(_iw.tier!=='a'&&_st2[_iw.id])_ownH.push('<span title="'+_iw.fx+'">'+_iw.g+(_st2[_iw.id]>1?'×'+_st2[_iw.id]:'')+'</span>');}
  for(var _aj=0;_aj<_ac2.length;_aj++){var _ax=V2ITEMS.find(function(x){return x.id===_ac2[_aj].id;});
-  if(_ax)_ownH.push('<span title="'+_ax.fx+'">'+_ax.g+'<a style="color:#e3b341;cursor:pointer" onclick="window.__v2.useItem('+_aj+')">발동('+(_ac2[_aj].chg||0)+')</a></span>');}
+  if(_ax)_ownH.push('<span title="'+_ax.fx+' · 중복 구매 = 충전 상한 +1 (최대 4)">'+_ax.g+'<a style="color:#e3b341;cursor:pointer" onclick="window.__v2.useItem('+_aj+')">발동 '+(_ac2[_aj].chg||0)+'/'+(_ac2[_aj].maxChg||2)+'</a></span>');}
  if(_ownH.length)h+='<br><span style="color:#8b98a8">보유:</span> '+_ownH.join(' ');
  if((S.v2swapLeft||0)>0)h+=' <b style="color:#c9a6ff">🔀 반전 '+S.v2swapLeft+'레버</b>';
  h+='</div><div style="color:#5d6875;margin-top:5px">동전: 당첨 레버 +1닢 · 출발 때 남긴 레버 누진(1·2·3·5·8닢) — 일찍 떠날수록 두둑하다<br>릴 풀 '+S.symDeck.length+'개(문양만) · <b style="color:#cfd8e3">기본: 직선 3연속 — 가로(어디든·4연속 ×2·5연속 ×4)·세로·대각</b> · <b style="color:#ffd76e">희귀: 꺾인 줄 5칸 완성 ×4 잭팟</b> · 같은 줄의 하위 조각은 안 세고(5연속=1회), 다른 모양끼리는 겹쳐도 각각 지불 · 동시 여러 줄 = 전체 배율 ↑</div>';
@@ -5623,8 +5625,15 @@ window.__v2={
  buyItem:function(id){var it=null;for(var i=0;i<V2ITEMS.length;i++)if(V2ITEMS[i].id===id)it=V2ITEMS[i];
   if(!it||S.tickets<it.cost)return;
   var vi=v2Items(S);
-  if(it.tier==='a'){if(vi.actives.length>=2){toast('액티브는 2칸 — 자리가 없다','red');return;}
-   S.tickets-=it.cost;vi.actives.push({id:it.id,chg:it.chg||2});log('구매 — '+it.nm+' (액티브 장착)');}
+  if(it.tier==='a'){
+   var ownedA=null;for(var oa=0;oa<vi.actives.length;oa++)if(vi.actives[oa].id===it.id)ownedA=vi.actives[oa];
+   if(ownedA){ /* 업그레이드: 충전 상한 +1 (최대 4) — 설계자 지시 2026-08-25 */
+    var mx=ownedA.maxChg||it.chg||2;
+    if(mx>=4){toast(it.nm+' — 이미 최대 업그레이드(충전 4)','red');return;}
+    S.tickets-=it.cost;ownedA.maxChg=mx+1;ownedA.chg=Math.min(ownedA.maxChg,(ownedA.chg||0)+1);
+    log('⬆ 업그레이드 — '+it.nm+' 충전 상한 '+ownedA.maxChg,'hi');}
+   else{if(vi.actives.length>=2){toast('액티브는 2칸 — 자리가 없다','red');return;}
+    S.tickets-=it.cost;vi.actives.push({id:it.id,chg:it.chg||2,maxChg:it.chg||2});log('구매 — '+it.nm+' (액티브 장착)');}}
   else{if(it.tier==='u'&&vi.stacks[it.id])return;
    S.tickets-=it.cost;vi.stacks[it.id]=(vi.stacks[it.id]||0)+1;
    log('구매 — '+it.nm+(it.tier==='c'?' ×'+vi.stacks[it.id]:'')+(it.rate?' · 매물이 귀해진다':''));}
