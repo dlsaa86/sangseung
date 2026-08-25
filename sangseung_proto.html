@@ -5057,9 +5057,10 @@ var V2ITEMS=[
  {id:'iC',nm:'구리 코일',g:'🧵',tier:'c',cost:3,m1:0.1,fx:'레버 배율 +0.1× (합연산 스택)'},
  {id:'uP',nm:'족제비 앞발',g:'🐾',tier:'u',cost:5,luck:2,fx:'상시 운 +2 — 하나뿐이다'},
  {id:'uA',nm:'증폭 결정',g:'💎',tier:'u',cost:6,m1:0.4,fx:'레버 배율 +0.4× — 하나뿐이다'},
- {id:'uH',nm:'기관사의 습관',g:'🎩',tier:'u',cost:5,freeLever:1,fx:'정차마다 예비 레버 1회 무료 — 하나뿐이다'},
+ {id:'uH',nm:'기관사의 습관',g:'🎩',tier:'u',cost:5,freeLever:1,fx:'정차마다 첫 레버를 +1 되감는다 (탱크 5 상한) — 하나뿐이다'},
  {id:'aS',nm:'확률 반전기',g:'🔀',tier:'a',cost:4,act:'swap',chg:2,fx:'발동: 3레버 동안 최고↔최저 등장 문양의 지분을 맞바꾼다 · 충전 2 (도착마다 +1)'},
  {id:'aV',nm:'과부하 손잡이',g:'🎚',tier:'a',cost:3,act:'surge',chg:2,fx:'발동: 다음 레버 운 +4 · 충전 2 (도착마다 +1)'},
+ {id:'aL',nm:'예비 레버 태엽',g:'🕹',tier:'a',cost:4,act:'lever',chg:2,fx:'발동: 레버 +1 충전 (탱크 5 미만일 때만) · 충전 2 (도착마다 +1)'},
 ];
 function v2Items(S){if(!S.v2items)S.v2items={stacks:{},actives:[]};return S.v2items;}
 function v2ItemM1(S){var st=v2Items(S).stacks,m=0;
@@ -5099,9 +5100,13 @@ effReq=function(S){if(!DIAL.coreV2)return _effV1(S);
  return Math.round(st.req*(1+wc*totalW(S))*((S.dn&&S.dn.reqMul)||1)*(mods(S).reqMul||1)*killReqMul(S));};
 var _slV1=spinLimit;
 spinLimit=function(S){if(!DIAL.coreV2)return _slV1(S);
- /* 설계자 지시(2026-08-24): 층수 자동 증가 폐지 — 기본 5 고정, 추가 레버는 예비 레버 구매(경제)로 */
- var L=(DIAL.v2BaseSpins===undefined?5:DIAL.v2BaseSpins)+(mods(S).spinCapD||0)+(S.bonusSpins||0);
- if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);return Math.max(2,L);};
+ /* 설계자 지시(2026-08-25): 레버 = 충전식 탱크 — 상한 5, 꽉 찬 채로 6개 시작 불가.
+    재충전은 아이템(예비 레버 태엽·기관사의 습관·태엽 부품)만. 동전 구매 폐지. */
+ var _cap5=(DIAL.v2BaseSpins===undefined?5:DIAL.v2BaseSpins);
+ var L=_cap5+(S.bonusSpins||0);
+ if(S.dn&&S.dn.spinCap)L=Math.min(L,S.dn.spinCap);
+ L=Math.max(2,L);
+ return Math.min(L,(S.spinsUsed||0)+_cap5);};
 /* ── B 해석기: 순수 함수 — 게임과 측정이 같이 쓴다 ── */
 function drawCell(pool,rng,wm){
  if(!wm){var e=pool[(rng()*pool.length)|0];return{v2:1,k:e.k,lv:e.lv,ref:e};}
@@ -5262,6 +5267,7 @@ doSpin=function(S){
  if((S.v2swapLeft||0)>0){S.v2swapLeft--;if(S.v2swapLeft===0)log('🔀 확률 반전이 풀렸다');}
  if(_lk2.total>0&&_lk2.ov>0)log('운 보정 — 이번 레버 운 '+_lk2.total,'dim');
  if(hasP(S,'scri'))S.scribeLuck=(R.bursts===0)?((S.scribeLuck||0)+1):0; /* 필경사: 꽝마다 다음 레버 운 +1, 줄 서면 초기화 */
+ if(v2Items(S).stacks.uH&&S._uHStop!==S.stopIdx){S._uHStop=S.stopIdx;S.bonusSpins=(S.bonusSpins||0)+1;log('🎩 기관사의 습관 — 첫 레버를 되감았다 (+1)');}
  var goneEyes=S.eyes.filter(function(c){return eyesArr.indexOf(c)<0;});
  /* 갈린 눈 훅 (eyeGone) */
  for(var g2=0;g2<goneEyes.length;g2++){
@@ -5548,14 +5554,14 @@ function renderV2Shop(){
   var _vi=v2Items(S);
   for(var _ai=0;_ai<_vi.actives.length;_ai++){var _ad=V2ITEMS.find(function(x){return x.id===_vi.actives[_ai].id;});
    _vi.actives[_ai].chg=Math.min((_ad&&_ad.chg)||2,(_vi.actives[_ai].chg||0)+1);}
-  if(_vi.stacks.uH){S.bonusSpins=(S.bonusSpins||0)+1;log('🎩 기관사의 습관 — 이번 정차 예비 레버 1회 무료');}}
+  }
  var p=v2Panel();p.style.display='';
  var grp={};
  for(var gi=0;gi<S.symDeck.length;gi++){var s=S.symDeck[gi];var key=s.k+'@'+s.lv;(grp[key]=grp[key]||[]).push(s);}
  var dgrp={};
  for(var di=0;di<(S.devList||[]).length;di++){var ds=S.devList[di];var dkey=ds.k+'@'+ds.lv;(dgrp[dkey]=dgrp[dkey]||[]).push(ds);}
  var h='<b style="color:#e3b341">릴 풀</b> <span style="color:#6d7885">— 사면 릴에 들어가 자주 나온다 · 동전 '+S.tickets+'닢</span> ';
- h+='<button class="gbtn" style="font-size:11px;padding:2px 8px" onclick="window.__v2.reroll()">새로고침 1닢</button> <button class="gbtn" style="font-size:11px;padding:2px 8px;border-color:#7a5f2a" onclick="window.__v2.buySpin()" title="이번 정차 한정 레버 +1 — 정차 안에서 살수록 1닢씩 비싸진다">🕹 예비 레버 '+(2+(S._levBuyN||0))+'닢</button><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">';
+ h+='<button class="gbtn" style="font-size:11px;padding:2px 8px" onclick="window.__v2.reroll()">새로고침 1닢</button><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">';
  for(var si3=0;si3<(S.symShop||[]).length;si3++){var k2=S.symShop[si3];
   if(!k2){h+='<div style="width:150px"></div>';continue;}var d2=SYMB[k2];
   h+='<div style="flex:1;min-width:150px;border:1px solid #2a3542;border-radius:8px;padding:5px 7px">'+d2.g+' <b>'+d2.nm+'</b> <span style="color:#6d7885">'+d2.rar+'</span><br><span style="color:#8b98a8;font-size:11px">'+d2.d+'</span><br><button class="gbtn" style="font-size:11px;padding:2px 10px;margin-top:3px" '+(S.tickets<d2.price?'disabled':'')+' onclick="window.__v2.buy('+si3+')">'+d2.price+'닢</button></div>';}
@@ -5629,9 +5635,11 @@ window.__v2={
   a.chg--;
   if(it.act==='swap'){S.v2swapLeft=3;log('🔀 확률 반전 — 3레버 동안 최고↔최저 문양이 자리를 바꾼다','hi');}
   else if(it.act==='surge'){S.tempLuck=(S.tempLuck||0)+4;log('🎚 과부하 — 다음 레버 운 +4','hi');}
+  else if(it.act==='lever'){
+   if(spinLimit(S)-S.spinsUsed>=(DIAL.v2BaseSpins===undefined?5:DIAL.v2BaseSpins)){a.chg++;toast('레버가 이미 가득 찼다 — 충전은 헛돌지 않는다','red');}
+   else{S.bonusSpins=(S.bonusSpins||0)+1;log('🕹 예비 레버 태엽 — 레버 +1 충전','hi');}}
   renderV2Shop();try{render();}catch(e){}},
- buySpin:function(){var c=2+(S._levBuyN||0);if(S.tickets<c)return;S.tickets-=c;S._levBuyN=(S._levBuyN||0)+1;S.bonusSpins=(S.bonusSpins||0)+1;
-  log('🕹 예비 레버 — 이번 정차 레버 +1 ('+c+'닢)');renderV2Shop();try{render();}catch(e){}},
+
  /* 측정 훅: 게임과 동일 함수로 몬테카를로 */
  _findLines:function(board){return findLines(board,{});},
  _bet:function(n2,need){S.betCoins={n:n2,need:need};return S.tickets;},
