@@ -116,7 +116,7 @@ Material:
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012
     - _BandSoftEnabled: 1
-    - _BandSoftness: 0.35
+    - _BandSoftness: 1
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1

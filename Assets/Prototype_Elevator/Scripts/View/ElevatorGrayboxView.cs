@@ -35,6 +35,19 @@ namespace Ascend.Prototype
         [SerializeField] private Transform _passengerAnchor;
         [SerializeField] private Transform _candidateAnchor;
 
+        [Header("Boarding")]
+        /// <summary>
+        /// 있으면 새로 탄 승객이 문 밖에서 걸어 들어온다. 비워 두면 예전처럼 즉시 배치된다 —
+        /// 연출은 선택이고, 게임 상태는 이 컴포넌트 유무와 무관하게 똑같이 흐른다.
+        /// </summary>
+        [SerializeField] private Ascend.Prototype.View.PassengerEntryAnimator _entryAnimator;
+
+        /// <summary>
+        /// 있으면 승객이 이 슬롯에 한 명씩 배정된다 — 기계 맞은편 백월, 서로 겹치지 않음.
+        /// 비워 두면 예전처럼 앵커 로컬 X 로 줄지어 선다.
+        /// </summary>
+        [SerializeField] private Ascend.Prototype.View.PassengerStationSet _stations;
+
         [Header("Instrument panel")]
         [SerializeField] private TextMeshPro _floorLabel;
         [SerializeField] private TextMeshPro _powerLabel;
@@ -57,6 +70,7 @@ namespace Ascend.Prototype
 
         private readonly List<GameObject> _passengerViews = new List<GameObject>();
         private readonly List<GameObject> _candidateViews = new List<GameObject>();
+        private readonly Dictionary<string, Vector3> _previousSlots = new Dictionary<string, Vector3>();
         private readonly List<Material> _ownedMaterials = new List<Material>();
 
         private Material[] _buttonMaterials;
@@ -205,13 +219,61 @@ namespace Ascend.Prototype
             IReadOnlyList<PassengerDefinition> boarded = pm.Boarded;
             int count = boarded != null ? boarded.Count : 0;
             if (count == _lastBoardedCount) return;
+
+            // 승객이 '늘어난' 경우에만 탑승 연출을 건다. 층이 바뀌어 명단이 초기화될 때
+            // (count 가 줄거나 첫 빌드일 때) 걸으면 없던 사람이 걸어 들어온다.
+            bool grew = _lastBoardedCount >= 0 && count == _lastBoardedCount + 1;
             _lastBoardedCount = count;
+
+            // 슬롯 간격이 바뀌므로 기존 승객도 자리를 옮긴다. 팝 대신 미끄러지게 하려면
+            // 옮기기 전 위치를 기억해 둬야 한다.
+            _previousSlots.Clear();
+            foreach (GameObject go in _passengerViews)
+                if (go != null) _previousSlots[go.name] = go.transform.localPosition;
 
             ClearViews(_passengerViews);
             if (boarded == null) return;
 
             for (int i = 0; i < count; i++)
-                _passengerViews.Add(BuildFigure(boarded[i], _passengerAnchor, i, count, 0.8f, true));
+            {
+                GameObject figure = BuildFigure(boarded[i], _passengerAnchor, i, count, 0.8f, true);
+                _passengerViews.Add(figure);
+
+                // 슬롯이 있으면 줄 계산을 버리고 자리에 꽂는다. 한 슬롯 = 한 명 이므로
+                // 인원이 바뀜도 기존 승객의 자리가 안 밀리고, 겹침이 구조적으로 불가능하다.
+                Transform slot = _stations != null ? _stations.Slot(i) : null;
+                if (slot != null)
+                {
+                    figure.transform.SetParent(slot, false);
+                    figure.transform.localPosition = Vector3.zero;
+                    figure.transform.localRotation = Quaternion.identity;
+                }
+
+                if (_entryAnimator == null) continue;
+
+                bool isNewcomer = grew && i == count - 1;
+                if (isNewcomer && _stations != null &&
+                    _stations.EntryOutside != null && _stations.EntryInside != null)
+                {
+                    if (_stations.EntryTurn != null)
+                        _entryAnimator.PlayEntry(figure,
+                                                 _stations.EntryOutside.position,
+                                                 _stations.EntryInside.position,
+                                                 _stations.EntryTurn.position);
+                    else
+                        _entryAnimator.PlayEntry(figure,
+                                                 _stations.EntryOutside.position,
+                                                 _stations.EntryInside.position);
+                }
+                else if (isNewcomer && _candidateAnchor != null)
+                {
+                    _entryAnimator.PlayEntry(figure, _candidateAnchor);
+                }
+                else if (slot == null && _previousSlots.TryGetValue(figure.name, out Vector3 previous))
+                {
+                    _entryAnimator.PlaySlide(figure, previous);
+                }
+            }
         }
 
         // ── Candidates waiting outside the door ──

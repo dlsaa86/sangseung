@@ -25,6 +25,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _BANDSOFT_ON
   - _MINFILL_ON
   - _SHADEGAMMA_ON
   m_InvalidKeywords: []
@@ -114,8 +115,8 @@ Material:
     - _AlphaToMask: 0
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012
-    - _BandSoftEnabled: 0
-    - _BandSoftness: 0.35
+    - _BandSoftEnabled: 1
+    - _BandSoftness: 1
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1

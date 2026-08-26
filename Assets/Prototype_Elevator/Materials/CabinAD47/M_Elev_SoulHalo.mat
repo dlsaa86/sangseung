@@ -12,6 +12,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _BANDSOFT_ON
   - _EMISSION
   - _MINFILL_ON
   - _SHADEGAMMA_ON
@@ -50,8 +51,8 @@ Material:
     - _AffineAmount: 0
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012
-    - _BandSoftEnabled: 0
-    - _BandSoftness: 0.35
+    - _BandSoftEnabled: 1
+    - _BandSoftness: 1
     - _ColorDepth: 0
     - _ColorDepthEnabled: 0
     - _DebugOutput: 0

@@ -53,7 +53,7 @@ Material:
     - _AmbientFloor: 0.03
     - _BandFloor: 0.012
     - _BandSoftEnabled: 1
-    - _BandSoftness: 0.35
+    - _BandSoftness: 1
     - _ColorDepth: 0
     - _ColorDepthEnabled: 0
     - _DebugOutput: 0
@@ -73,7 +73,7 @@ Material:
     - _ShadeGammaEnabled: 1
     - _ShadowLift: 0.18
     - _SpecPower: 64
-    - _SpecSoftness: 0.05
+    - _SpecSoftness: 0.3
     - _SpecSteps: 2
     - _SpecStrength: 0.12
     - _SpecThreshold: 0.45
