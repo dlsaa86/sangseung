@@ -1,14 +1,18 @@
 membership files ['/tmp/sp500/S&P 500 Historical Components & Changes (Updated).csv', '/tmp/sp500/S&P 500 Historical Components & Changes.csv']
-tickers since 2009 729
+membership range 1996-01-02 2026-08-18
+tickers since 2009 866
 0 A 378
-150 CMCSA 31849
-200 DIS 43127
-250 EW 50632
-300 GM 62369
-350 ILMN 74447
-400 L 86891
-550 PVH 120976
-650 TMUS 139307
-revenue rows 157396
-fund rows 654428
-price cols (4637, 476)
+50 AN 13043
+100 BHF 22899
+300 FANG 65648
+350 GIS 76608
+400 HUBB 87979
+450 KIM 101575
+500 MAS 113178
+550 MUR 125620
+600 OTIS 136365
+700 SII 157086
+750 TFC 167330
+revenue rows 193979
+fund rows 817561
+price cols (4637, 651)
