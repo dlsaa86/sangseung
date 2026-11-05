@@ -1,4 +1,4 @@
-name: SPY excess study data
+name: BCG backtest data
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,11 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install yfinance pandas
-      - run: python research/spy_excess/fetch_prices.py
-      - run: |
+      - run: python -m pip install yfinance pandas requests
+      - run: python research/bcg/fetch_bcg.py
+      - if: always()
+        run: |
           git config user.name github-actions
           git config user.email github-actions@users.noreply.github.com
-          git add -f artifacts/prices
-          git commit -m "price snapshot"
+          git add -f artifacts/bcg
+          git commit -m "bcg data snapshot"
           git push
