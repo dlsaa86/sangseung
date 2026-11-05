@@ -1,0 +1,14 @@
+membership files ['/tmp/sp500/S&P 500 Historical Components & Changes (Updated).csv', '/tmp/sp500/S&P 500 Historical Components & Changes.csv']
+tickers since 2009 729
+0 A 378
+150 CMCSA 31849
+200 DIS 43127
+250 EW 50632
+300 GM 62369
+350 ILMN 74447
+400 L 86891
+550 PVH 120976
+650 TMUS 139307
+revenue rows 157396
+fund rows 654428
+price cols (4637, 476)
