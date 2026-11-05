@@ -31,7 +31,11 @@ REV_TAGS = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
             "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet",
             "SalesRevenueGoodsNet", "SalesRevenueServicesNet", "RevenuesNetOfInterestExpense",
             "InterestAndDividendIncomeOperating", "TotalRevenuesAndOtherIncome"]
-rows, meta = [], []
+rows, meta, xrows = [], [], []
+EXTRA_DUR = ["OperatingIncomeLoss", "NetIncomeLoss", "EarningsPerShareDiluted",
+             "NetCashProvidedByUsedInOperatingActivities", "PaymentsToAcquirePropertyPlantAndEquipment"]
+EXTRA_INST = ["StockholdersEquity", "LongTermDebt", "LongTermDebtNoncurrent", "LongTermDebtCurrent",
+              "DebtCurrent", "ShortTermBorrowings", "CommercialPaper"]
 for i, t in enumerate(tickers):
     yt = t.replace(".", "-")
     cik = t2c.get(yt)
@@ -50,21 +54,40 @@ for i, t in enumerate(tickers):
         for f in g.get(tag, {}).get("units", {}).get("USD", []):
             if "start" not in f: continue
             rows.append((yt, tag, f["start"], f["end"], f["val"], f["filed"], f.get("form", "")))
+    for tag in EXTRA_DUR:
+        for unit in ("USD", "USD/shares"):
+            for f in g.get(tag, {}).get("units", {}).get(unit, []):
+                if "start" not in f: continue
+                xrows.append((yt, tag, f["start"], f["end"], f["val"], f["filed"]))
+    for tag in EXTRA_INST:
+        for f in g.get(tag, {}).get("units", {}).get("USD", []):
+            xrows.append((yt, tag, None, f["end"], f["val"], f["filed"]))
+    for f in cf.get("facts", {}).get("dei", {}).get("EntityCommonStockSharesOutstanding", {}).get("units", {}).get("shares", []):
+        xrows.append((yt, "SharesOutstanding", None, f["end"], f["val"], f["filed"]))
     if i % 50 == 0: L(i, yt, len(rows))
 pd.DataFrame(meta).to_csv(f"{OUT}/meta.csv", index=False)
 pd.DataFrame(rows, columns=["ticker", "tag", "start", "end", "val", "filed", "form"]).to_csv(
     f"{OUT}/revenue_facts.csv.gz", index=False, compression="gzip")
 L("revenue rows", len(rows))
+pd.DataFrame(xrows, columns=["ticker", "tag", "start", "end", "val", "filed"]).to_csv(
+    f"{OUT}/fund_facts.csv.gz", index=False, compression="gzip")
+L("fund rows", len(xrows))
 
 # 3. prices
 import yfinance as yf
 ylist = sorted({m["ticker"] for m in meta} | {"SPY", "RSP"})
-frames = []
+frames, cfr, spl = [], [], []
 for k in range(0, len(ylist), 100):
     chunk = ylist[k:k + 100]
-    d = yf.download(chunk, start="2008-06-01", auto_adjust=True, progress=False, threads=True)["Close"]
-    frames.append(d)
+    raw = yf.download(chunk, start="2008-06-01", auto_adjust=False, actions=True, progress=False, threads=True)
+    frames.append(raw["Adj Close"])
+    cfr.append(raw["Close"]); spl.append(raw["Stock Splits"])
 px = pd.concat(frames, axis=1)
 px = px.loc[:, ~px.columns.duplicated()].dropna(how="all", axis=1)
 px.round(4).to_csv(f"{OUT}/prices_adj.csv.gz", compression="gzip")
 L("price cols", px.shape)
+c = pd.concat(cfr, axis=1); c = c.loc[:, ~c.columns.duplicated()]
+c.round(4).to_csv(f"{OUT}/prices_close_splitadj.csv.gz", compression="gzip")
+sp = pd.concat(spl, axis=1); sp = sp.loc[:, ~sp.columns.duplicated()]
+sp = sp.stack(); sp = sp[sp > 0]
+sp.rename("ratio").to_csv(f"{OUT}/splits.csv")
