@@ -29,3 +29,4 @@ jobs:
           git add -f artifacts/bcg
           git commit -m "bcg data snapshot"
           git push
+# rerun Thu Nov  5 12:22:07 UTC 2026

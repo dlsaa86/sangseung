@@ -17,7 +17,9 @@ def L(*a):
 subprocess.run(["git", "clone", "--depth", "1", "https://github.com/fja05680/sp500", "/tmp/sp500"], check=True)
 cands = sorted(glob.glob("/tmp/sp500/*Historical Components*.csv"))
 L("membership files", cands)
-mem = pd.read_csv(cands[-1])
+mems = [pd.read_csv(c) for c in cands]
+mem = max(mems, key=lambda m: str(m["date"].max()))
+L("membership range", mem["date"].min(), mem["date"].max())
 mem.to_csv(f"{OUT}/sp500_membership.csv.gz", index=False, compression="gzip")
 mem["date"] = pd.to_datetime(mem["date"])
 mem = mem[mem["date"] >= "2009-01-01"]
