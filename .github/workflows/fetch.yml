@@ -1,4 +1,4 @@
-name: BCG backtest data
+name: VIX TQQQ data
 
 on:
   push:
@@ -21,12 +21,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install yfinance pandas requests
-      - run: python research/bcg/fetch_bcg.py
+      - run: python research/vix/fetch_vix.py
       - if: always()
         run: |
           git config user.name github-actions
           git config user.email github-actions@users.noreply.github.com
-          git add -f artifacts/bcg
-          git commit -m "bcg data snapshot"
+          git add -f artifacts/vix
+          git commit -m "vix data snapshot"
           git push
-# rerun Thu Nov  5 12:22:07 UTC 2026
+# rerun vix Tue Nov 10 05:40:12 UTC 2026
